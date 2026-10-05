@@ -1,6 +1,8 @@
+import { verifyEvidence } from "./evidence.mjs";
+
 export const STATES = Object.freeze(["CLAIMED","AUTHORIZED","EXECUTED","OBSERVED","ADJUDICATED"]);
 
-export function reduce(history, { verifyEvidence } = {}) {
+export function reduce(history, { resolveEvidence } = {}) {
   const canonical = new Map();
   const ledger = [];
 
@@ -13,15 +15,18 @@ export function reduce(history, { verifyEvidence } = {}) {
       accepted = false;
       reason = "INVALID_EVENT";
     } else if (event.state === "OBSERVED") {
-      if (!event.evidence || typeof event.evidence.ref !== "string" || !event.evidence.ref.trim()) {
+      if (!event.evidence?.digest) {
         accepted = false;
         reason = "EVIDENCE_REQUIRED";
-      } else if (typeof verifyEvidence !== "function") {
+      } else if (typeof resolveEvidence !== "function") {
         accepted = false;
-        reason = "VERIFIER_REQUIRED";
-      } else if (verifyEvidence(event.evidence, event) !== true) {
-        accepted = false;
-        reason = "EVIDENCE_NOT_VERIFIED";
+        reason = "EVIDENCE_RESOLVER_REQUIRED";
+      } else {
+        const bytes = resolveEvidence(event.evidence, event);
+        if (bytes == null || verifyEvidence(event.evidence, bytes) !== true) {
+          accepted = false;
+          reason = "EVIDENCE_NOT_VERIFIED";
+        }
       }
     }
 
