@@ -88,3 +88,17 @@ test("projection can be rebuilt from event history", () => {
   const rebuilt = projectWorld(original.history);
   assert.deepEqual(rebuilt, original);
 });
+
+test("an observation without authorization cannot award progress", () => {
+  const unapproved = { ...observed, event_id: "e9", authority: "UNAUTHORIZED" };
+  const s = projectWorld([unapproved]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("authorization without observation cannot award progress", () => {
+  const unobserved = { ...observed, event_id: "e10", evidence: "PROPOSED" };
+  const s = projectWorld([unobserved]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+});
