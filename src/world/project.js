@@ -13,6 +13,7 @@ const terminalSuccess = e =>
   e.authority === "AUTHORIZED" &&
   e.execution === "EXECUTED" &&
   e.evidence === "OBSERVED" &&
+  e.observation_verification === "VERIFIED" &&
   e.outcome === "SUCCEEDED" &&
   Array.isArray(e.receipts) &&
   e.receipts.length > 0 &&
