@@ -10,4 +10,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node genesis.test.mjs
+      - name: Execute genesis invariant
+        run: node genesis.test.mjs
+      - name: Execute forged-origin regression
+        run: node reconstitution/known-weakness-origin-label.test.mjs
