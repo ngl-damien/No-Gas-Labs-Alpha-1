@@ -18,6 +18,7 @@ const observed = {
   authority: "AUTHORIZED",
   execution: "EXECUTED",
   evidence: "OBSERVED",
+  observation_verification: "VERIFIED",
   outcome: "SUCCEEDED",
   receipts: ["rae:receipt:abc"],
   world_effect: { xp: 25, inventory: { verified_shard: 1 }, world: { forgeOpen: true } }
@@ -113,4 +114,22 @@ test("MMORPG realm derives avatar and quests from canonical projection", () => {
   assert.deepEqual(realm.history, ["e1", "e2"]);
   assert.equal(realm.locations.forge, "Forge");
   assert.equal(realm.locations.guild_hall, "Guild Hall");
+});
+
+
+test("an unverified observation cannot mint canonical progress", () => {
+  const unverified = { ...observed, event_id: "e11", observation_verification: undefined };
+  const s = projectWorld([unverified]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.inventory.verified_shard, undefined);
+  assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("institutional traversal is constrained by the realm graph", async () => {
+  const { canTravel } = await import("../src/world/realm.js");
+  assert.equal(canTravel("guild_hall", "decision_chamber"), true);
+  assert.equal(canTravel("guild_hall", "forge"), false);
+  assert.equal(canTravel("nowhere", "forge"), false);
+  const realm = projectRealm(projectWorld([claim]));
+  assert.deepEqual(realm.institutions.guild_hall.exits, ["decision_chamber", "town_square", "academy"]);
 });
