@@ -1,0 +1,33 @@
+{
+  "schema": "ngl.quest.v1",
+  "quest_id": "reconstitute-alpha-1",
+  "title": "Reconstitute Alpha-1",
+  "objective": "Recover, harden, integrate, and evolve No_Gas_Labs Alpha-1 through demonstrated work.",
+  "acceptance": [
+    "mesh-protocol",
+    "adversarial-tests",
+    "world-consequence"
+  ],
+  "capabilities": [
+    "repository.read",
+    "repository.write",
+    "evidence.verify",
+    "world.project"
+  ],
+  "constraints": [
+    "no invented execution",
+    "no self-certification",
+    "zero-dollar infrastructure"
+  ],
+  "reward": {
+    "xp": 100,
+    "inventory": [
+      "alpha-1-seal"
+    ],
+    "unlock": [
+      "Guild Hall",
+      "Forge",
+      "Evidence Archive"
+    ]
+  }
+}
