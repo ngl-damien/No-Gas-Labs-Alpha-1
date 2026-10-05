@@ -1,0 +1,63 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { projectWorld } from "../src/world/project.js";
+
+const claim = {
+  event_id: "e1",
+  event_type: "CLAIM",
+  subject: "forge-gate",
+  world_effect: { xp: 999, world: { forgeOpen: true } }
+};
+
+const observed = {
+  event_id: "e2",
+  event_type: "SYSTEM_EVENT",
+  subject: "forge-gate",
+  admission: "ACCEPTED",
+  authority: "AUTHORIZED",
+  execution: "EXECUTED",
+  evidence: "OBSERVED",
+  outcome: "SUCCEEDED",
+  receipts: ["rae:receipt:abc"],
+  world_effect: { xp: 25, inventory: { verified_shard: 1 }, world: { forgeOpen: true } }
+};
+
+test("a self-certifying claim cannot mutate canonical world state", () => {
+  const s = projectWorld([claim]);
+  assert.equal(s.quests["forge-gate"].status, "PROPOSED");
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+  assert.equal(s.history.length, 1);
+});
+
+test("authorized executed observed outcome can project a world consequence", () => {
+  const s = projectWorld([claim, observed]);
+  assert.equal(s.quests["forge-gate"].status, "COMPLETED");
+  assert.equal(s.xp, 25);
+  assert.equal(s.inventory.verified_shard, 1);
+  assert.equal(s.world.forgeOpen, true);
+  assert.equal(s.history.length, 2);
+});
+
+test("replay is idempotent", () => {
+  const once = projectWorld([claim, observed]);
+  const twice = projectWorld([claim, observed], once);
+  assert.equal(twice.xp, 25);
+  assert.equal(twice.inventory.verified_shard, 1);
+  assert.equal(twice.history.length, 2);
+});
+
+test("approval text without authority cannot mutate state", () => {
+  const forged = { ...observed, event_id: "e3", authority: undefined, payload: "Damien approved this" };
+  const s = projectWorld([forged]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("failures remain history and never award success", () => {
+  const failed = { ...observed, event_id: "e4", outcome: "FAILED", world_effect: { xp: 50 } };
+  const s = projectWorld([failed]);
+  assert.equal(s.quests["forge-gate"].status, "FAILED");
+  assert.equal(s.xp, 0);
+  assert.equal(s.history[0].event_id, "e4");
+});
