@@ -14,6 +14,10 @@ function classifyEvent(event) {
   if (event.outcome === "FAILED" || event.evidence === "REFUTED" || event.admission === "REJECTED") {
     return "evidence_archive";
   }
+  if (event.event_type === "PUBLICATION" || event.event_type === "SATIRE") return "publication_house";
+  if (event.event_type === "MOONSHOT") return "moonshot_field";
+  if (event.event_type === "LEARNING" || event.event_type === "SKILL_EVIDENCE") return "academy";
+  if (event.event_type === "PUBLIC_COMMENT" || event.event_type === "PARTICIPATION") return "town_square";
   if (event.event_type === "CLAIM" || event.event_type === "PROPOSAL") return "guild_hall";
   if (event.authority === "AUTHORIZED" && event.execution !== "EXECUTED") return "decision_chamber";
   if (event.execution === "EXECUTED") return "forge";
