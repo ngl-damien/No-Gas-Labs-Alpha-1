@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectWorld } from "../src/world/project.js";
+import { projectRealm } from "../src/world/realm.js";
 
 const claim = {
   event_id: "e1",
@@ -101,4 +102,15 @@ test("authorization without observation cannot award progress", () => {
   const s = projectWorld([unobserved]);
   assert.equal(s.xp, 0);
   assert.equal(s.world.forgeOpen, undefined);
+});
+
+
+test("MMORPG realm derives avatar and quests from canonical projection", () => {
+  const realm = projectRealm(projectWorld([claim, observed]));
+  assert.equal(realm.avatar.xp, 25);
+  assert.equal(realm.avatar.inventory.verified_shard, 1);
+  assert.equal(realm.quests["forge-gate"].status, "COMPLETED");
+  assert.deepEqual(realm.history, ["e1", "e2"]);
+  assert.equal(realm.locations.forge, "Forge");
+  assert.equal(realm.locations.guild_hall, "Guild Hall");
 });
