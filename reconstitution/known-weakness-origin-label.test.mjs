@@ -1,22 +1,37 @@
 import assert from "node:assert/strict";
 import { reduce } from "../core.mjs";
+import { makeEvidence } from "../evidence.mjs";
 
-const forged = reduce([{
-  id:"forged-1", subject:"forge", state:"OBSERVED", actor:"agent-a",
-  evidence:{ origin:"totally-independent-verifier", ref:"trust-me-with-a-different-label" }
-}], {
-  verifyEvidence: () => false
-});
+const realBytes = Buffer.from("observed artifact");
+const evidence = makeEvidence(realBytes);
 
-assert.equal(forged.ledger[0].accepted, false);
-assert.equal(forged.ledger[0].reason, "EVIDENCE_NOT_VERIFIED");
+const renamedOrigin = reduce([{
+  id:"forged-origin", subject:"forge", state:"OBSERVED", actor:"agent-a",
+  evidence:{ ...evidence, origin:"totally-independent-verifier" }
+}], { resolveEvidence: () => Buffer.from("different artifact") });
 
-const noVerifier = reduce([{
-  id:"forged-2", subject:"forge", state:"OBSERVED", actor:"agent-a",
-  evidence:{ origin:"verifier", ref:"sha256:anything" }
+assert.equal(renamedOrigin.ledger[0].accepted, false);
+assert.equal(renamedOrigin.ledger[0].reason, "EVIDENCE_NOT_VERIFIED");
+
+const forgedDigest = reduce([{
+  id:"forged-digest", subject:"forge", state:"OBSERVED", actor:"agent-a",
+  evidence:{ ...evidence, digest:"f".repeat(64) }
+}], { resolveEvidence: () => realBytes });
+
+assert.equal(forgedDigest.ledger[0].accepted, false);
+assert.equal(forgedDigest.ledger[0].reason, "EVIDENCE_NOT_VERIFIED");
+
+const noResolver = reduce([{
+  id:"no-resolver", subject:"forge", state:"OBSERVED", actor:"agent-a", evidence
 }]);
 
-assert.equal(noVerifier.ledger[0].accepted, false);
-assert.equal(noVerifier.ledger[0].reason, "VERIFIER_REQUIRED");
+assert.equal(noResolver.ledger[0].accepted, false);
+assert.equal(noResolver.ledger[0].reason, "EVIDENCE_RESOLVER_REQUIRED");
 
-console.log("REGRESSION VERIFIED: evidence.origin is not authority; OBSERVED requires an external runtime verifier.");
+const verified = reduce([{
+  id:"verified", subject:"forge", state:"OBSERVED", actor:"agent-a", evidence
+}], { resolveEvidence: () => realBytes });
+
+assert.equal(verified.ledger[0].accepted, true);
+
+console.log("REGRESSION VERIFIED: labels, claimed digests, and missing resolvers cannot manufacture OBSERVED state.");
