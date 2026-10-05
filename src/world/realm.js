@@ -4,7 +4,9 @@ export const locations = Object.freeze({
   evidence_archive: "Evidence Archive",
   decision_chamber: "Decision Chamber",
   town_square: "TownSquare",
-  academy: "Polymath Academy"
+  academy: "Polymath Academy",
+  moonshot_field: "Moonshot Field",
+  publication_house: "Publication House"
 });
 
 function classifyEvent(event) {
