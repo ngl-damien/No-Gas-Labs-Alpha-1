@@ -1,6 +1,6 @@
 export const STATES = Object.freeze(["CLAIMED","AUTHORIZED","EXECUTED","OBSERVED","ADJUDICATED"]);
 
-export function reduce(history) {
+export function reduce(history, { verifyEvidence } = {}) {
   const canonical = new Map();
   const ledger = [];
 
@@ -10,10 +10,18 @@ export function reduce(history) {
     let reason = null;
 
     if (!event.id || !STATES.includes(event.state)) {
-      accepted = false; reason = "INVALID_EVENT";
+      accepted = false;
+      reason = "INVALID_EVENT";
     } else if (event.state === "OBSERVED") {
-      if (!event.evidence || event.evidence.origin === event.actor) {
-        accepted = false; reason = "SELF_CERTIFICATION_FORBIDDEN";
+      if (!event.evidence || typeof event.evidence.ref !== "string" || !event.evidence.ref.trim()) {
+        accepted = false;
+        reason = "EVIDENCE_REQUIRED";
+      } else if (typeof verifyEvidence !== "function") {
+        accepted = false;
+        reason = "VERIFIER_REQUIRED";
+      } else if (verifyEvidence(event.evidence, event) !== true) {
+        accepted = false;
+        reason = "EVIDENCE_NOT_VERIFIED";
       }
     }
 
