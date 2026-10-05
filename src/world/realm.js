@@ -9,6 +9,21 @@ export const locations = Object.freeze({
   publication_house: "Publication House"
 });
 
+export const routes = Object.freeze({
+  guild_hall: Object.freeze(["decision_chamber", "town_square", "academy"]),
+  decision_chamber: Object.freeze(["guild_hall", "forge", "evidence_archive"]),
+  forge: Object.freeze(["decision_chamber", "evidence_archive", "moonshot_field"]),
+  evidence_archive: Object.freeze(["forge", "decision_chamber", "publication_house"]),
+  town_square: Object.freeze(["guild_hall", "publication_house"]),
+  publication_house: Object.freeze(["town_square", "evidence_archive"]),
+  academy: Object.freeze(["guild_hall", "moonshot_field"]),
+  moonshot_field: Object.freeze(["academy", "forge"])
+});
+
+export function canTravel(from, to) {
+  return Boolean(locations[from] && locations[to] && routes[from]?.includes(to));
+}
+
 function classifyEvent(event) {
   if (event.event_type === "REVOCATION") return "decision_chamber";
   if (event.outcome === "FAILED" || event.evidence === "REFUTED" || event.admission === "REJECTED") {
@@ -26,7 +41,7 @@ function classifyEvent(event) {
 
 export function projectRealm(state) {
   const institutions = Object.fromEntries(
-    Object.keys(locations).map(id => [id, { event_ids: [] }])
+    Object.keys(locations).map(id => [id, { event_ids: [], exits: [...routes[id]] }])
   );
 
   for (const event of state.history || []) {
