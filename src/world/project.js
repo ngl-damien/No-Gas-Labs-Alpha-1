@@ -4,7 +4,8 @@ const EMPTY = () => ({
   xp: 0,
   inventory: {},
   world: {},
-  seen: []
+  seen: [],
+  revoked: []
 });
 
 const terminalSuccess = e =>
@@ -13,24 +14,35 @@ const terminalSuccess = e =>
   e.execution === "EXECUTED" &&
   e.evidence === "OBSERVED" &&
   e.outcome === "SUCCEEDED" &&
-  Array.isArray(e.receipts) && e.receipts.length > 0;
+  Array.isArray(e.receipts) &&
+  e.receipts.length > 0 &&
+  e.receipts.every(r => typeof r === "string" && r.trim().length > 0);
 
 export function projectWorld(events, seed = EMPTY()) {
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
+  const revoked = new Set(state.revoked || []);
 
   for (const event of events) {
     if (!event?.event_id || seen.has(event.event_id)) continue;
+
+    const parents = Array.isArray(event.parents) ? event.parents : [];
+    if (parents.some(parent => !seen.has(parent))) {
+      throw new Error(`unresolved parent for ${event.event_id}`);
+    }
+
     seen.add(event.event_id);
     state.history.push(event);
+
+    if (event.event_type === "REVOCATION") {
+      if (typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
+      continue;
+    }
 
     const subject = event.subject || event.event_id;
 
     if (event.event_type === "CLAIM" || event.event_type === "PROPOSAL") {
-      state.quests[subject] = {
-        status: "PROPOSED",
-        source_event: event.event_id
-      };
+      state.quests[subject] = { status: "PROPOSED", source_event: event.event_id };
       continue;
     }
 
@@ -43,6 +55,7 @@ export function projectWorld(events, seed = EMPTY()) {
       continue;
     }
 
+    if (revoked.has(event.grant_id)) continue;
     if (!terminalSuccess(event)) continue;
 
     state.quests[subject] = {
@@ -62,5 +75,6 @@ export function projectWorld(events, seed = EMPTY()) {
   }
 
   state.seen = [...seen];
+  state.revoked = [...revoked];
   return state;
 }
