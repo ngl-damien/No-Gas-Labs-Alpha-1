@@ -61,3 +61,30 @@ test("failures remain history and never award success", () => {
   assert.equal(s.xp, 0);
   assert.equal(s.history[0].event_id, "e4");
 });
+
+test("unresolved parents are rejected instead of silently rewriting lineage", () => {
+  const orphan = { ...observed, event_id: "e5", parents: ["missing"] };
+  assert.throws(() => projectWorld([orphan]), /unresolved parent/);
+});
+
+test("malformed receipt references cannot award progress", () => {
+  const malformed = { ...observed, event_id: "e6", receipts: [""] };
+  const s = projectWorld([malformed]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("revoked grants cannot produce future world consequences", () => {
+  const revocation = { event_id: "e7", event_type: "REVOCATION", revokes: "grant-1" };
+  const after = { ...observed, event_id: "e8", parents: ["e7"], grant_id: "grant-1" };
+  const s = projectWorld([revocation, after]);
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+  assert.deepEqual(s.revoked, ["grant-1"]);
+});
+
+test("projection can be rebuilt from event history", () => {
+  const original = projectWorld([claim, observed]);
+  const rebuilt = projectWorld(original.history);
+  assert.deepEqual(rebuilt, original);
+});
