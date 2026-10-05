@@ -10,4 +10,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node genesis.test.mjs
+      - name: Execute content-addressed genesis invariant
+        run: node genesis.test.mjs
+      - name: Attack evidence boundary
+        run: node reconstitution/known-weakness-origin-label.test.mjs

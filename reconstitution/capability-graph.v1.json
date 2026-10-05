@@ -1,0 +1,105 @@
+{
+  "schema": "ngl.capability-graph.v1",
+  "status_legend": {
+    "VERIFIED": "independently supported by inspected evidence or current execution",
+    "IMPLEMENTED": "code exists; required behavior not yet observed",
+    "HISTORICALLY_OBSERVED": "archived evidence shows earlier execution; not reproduced now",
+    "CLAIMED": "asserted without sufficient independent observation",
+    "UNKNOWN": "insufficient evidence",
+    "CONTRADICTED": "available evidence conflicts",
+    "FAILED": "attempted and acceptance condition not met"
+  },
+  "rule": "Repository boundaries are archaeological metadata, not architectural authority.",
+  "source_population": {
+    "historical_repositories": 94,
+    "staging_topology": "4 categories x 9 temporary destinations",
+    "target_repository_count": null
+  },
+  "mechanisms": [
+    {
+      "id": "alpha.reducer.self-certification-boundary",
+      "source": [
+        "No-Gas-Labs-Alpha-1/core.mjs"
+      ],
+      "capability": "reject self-certifying OBSERVED events",
+      "status": "IMPLEMENTED",
+      "evidence": [
+        "genesis.test.mjs"
+      ],
+      "selection": "KEEP_AND_ATTACK",
+      "risks": [
+        "evidence origin is a caller-controlled label",
+        "evidence ref is not dereferenced",
+        "no hash recomputation",
+        "no transition ordering"
+      ]
+    },
+    {
+      "id": "rae.artifact-verification",
+      "source": [
+        "recursive-artifact-engine"
+      ],
+      "capability": "byte/structured artifact verification and receipts",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    },
+    {
+      "id": "agp.signed-adjudication",
+      "source": [
+        "VoxScriptNGL"
+      ],
+      "capability": "content-addressed decisions, signatures, deterministic history/world reduction",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    },
+    {
+      "id": "guild.advisory-council",
+      "source": [
+        "AI-BI-Intelligence-node-gate"
+      ],
+      "capability": "25-persona advisory deliberation bound to exact gate request",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    },
+    {
+      "id": "command.operator-orchestration",
+      "source": [
+        "no-gas-labs-command-center"
+      ],
+      "capability": "operations/counsel bridge preserving founder boundary",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    },
+    {
+      "id": "mesh.capability-authority",
+      "source": [
+        "ngl-mesh"
+      ],
+      "capability": "capability/authority coordination and exact-object grants",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    },
+    {
+      "id": "android.decision-desk",
+      "source": [
+        "VoxScriptNGL/world/android"
+      ],
+      "capability": "Android-keystore-backed exact decision signing",
+      "status": "HISTORICALLY_OBSERVED",
+      "selection": "RECOVER_AND_COMPETE"
+    }
+  ],
+  "discard_policy": [
+    "historical investment",
+    "repository age",
+    "code volume",
+    "README confidence",
+    "green CI without meaningful invariant",
+    "decorative world metaphor without machinery"
+  ],
+  "next_experiments": [
+    "prove caller cannot forge external evidence merely by changing evidence.origin",
+    "bind evidence to independently recomputed artifact observation",
+    "derive playable quest completion from verified acceptance condition without allowing UI to promote claims"
+  ]
+}
