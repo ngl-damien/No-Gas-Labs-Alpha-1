@@ -7,8 +7,11 @@ const proposal=proposeGuildAction({quest_id:"q1",proposal_id:"p1",actor:"guild",
 const payload=makeDecisionPayload({proposal,quest,capabilities:["repository.write"],outputs:["mesh"],acceptance:["mesh"],expires_at:"2099-01-01T00:00:00.000Z"});
 const canonical=v=>Array.isArray(v)?"["+v.map(canonical).join(",")+"]":v&&typeof v==="object"?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonical(v[k])).join(",")+"}":JSON.stringify(v);
 const signed={payload_sha256:decisionDigest(payload),key_fingerprint:fingerprint,signature:sign("sha256",Buffer.from(canonical(payload)),privateKey).toString("base64url")};
-test("enrolled key authorizes exact decision",()=>{const v=verifyFounderDecision({signed,payload,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:0});assert.equal(v.valid,true);assert.equal(authorizationEvent({signed,payload,verification:v}).proposal_id,"p1")});
+test("enrolled key authorizes exact decision",()=>{const v=verifyFounderDecision({signed,payload,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:0});assert.equal(v.valid,true);assert.equal(authorizationEvent({signed,payload,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:0}).proposal_id,"p1")});
 test("changing capability after signature invalidates ruling",()=>{const changed={...payload,capabilities:["repository.admin"]};assert.equal(verifyFounderDecision({signed,payload:changed,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:0}).valid,false)});
 test("changing expected output after signature invalidates ruling",()=>{const changed={...payload,outputs:["different-artifact"]};assert.equal(verifyFounderDecision({signed,payload:changed,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:0}).valid,false)});
 test("unenrolled key cannot exercise Founder authority",()=>assert.deepEqual(verifyFounderDecision({signed,payload,public_key_jwk:jwk,expected_fingerprint:"other",now:0}),{valid:false,reason:"KEY_NOT_ENROLLED"}));
 test("expired exact signature is still not current authority",()=>assert.deepEqual(verifyFounderDecision({signed,payload,public_key_jwk:jwk,expected_fingerprint:fingerprint,now:Date.parse("2100-01-01")}),{valid:false,reason:"DECISION_EXPIRED"}));
+
+test("caller-provided verification flag cannot authorize",()=>assert.throws(()=>authorizationEvent({signed,payload,verification:{valid:true},now:0}),/verified Founder decision required/));
+test("wrong enrolled key cannot authorize",()=>assert.throws(()=>authorizationEvent({signed,payload,public_key_jwk:jwk,expected_fingerprint:"other",now:0}),/KEY_NOT_ENROLLED/));
