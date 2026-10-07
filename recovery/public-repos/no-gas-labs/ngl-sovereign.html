@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="description" content="No Gas Labs — The Primordial Engine. A living world that builds what you speak.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; connect-src 'self' https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.x.ai; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;">
+<title>No Gas Labs — Primordial Engine</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   NO GAS LABS — PRIMORDIAL ENGINE
+   A single-file universe. Everything lives here.
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --black: #0a0a0a; --charcoal: #141414; --panel: #1a1a1f;
+  --cyan: #00e5ff; --cyan-dim: #00b8cc; --cyan-glow: rgba(0,229,255,0.15);
+  --orange: #ff8c00; --orange-dim: #cc7000; --orange-glow: rgba(255,140,0,0.15);
+  --gold: #ffd700; --gold-dim: #b8960a;
+  --purple: #ab47bc; --purple-dim: #7b1fa2;
+  --red: #ff4444; --green: #4caf50; --blue: #2196f3;
+  --text: #e0f7fa; --text-dim: #78909c; --text-faint: #455a64;
+  --hp: #ff4444; --xp: #00e5ff; --token: #ff8c00;
+  --throne-primary: #ffd700; --throne-bg: #1a1000;
+  --oracle-primary: #ab47bc; --oracle-bg: #0d001a;
+  --fountain-primary: #00e5ff; --fountain-bg: #001015;
+  --culling-primary: #ff5722; --culling-bg: #1a0500;
+  --forge-primary: #ff8c00; --forge-bg: #1a0f00;
+  --console-primary: #00e5ff; --console-bg: #000a0a;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--black); color:var(--text); font-family:'Share Tech Mono',monospace; }
+
+/* ─── CRT OVERLAY ─── */
+.crt { pointer-events:none; position:fixed; inset:0; z-index:9999; }
+.crt::before { content:''; position:absolute; inset:0;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,0.06) 0px,rgba(0,0,0,0.06) 1px,transparent 1px,transparent 2px);
+  animation:scan 8s linear infinite; }
+.crt::after { content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,0.4) 100%); }
+@keyframes scan { 0%{transform:translateY(0)}100%{transform:translateY(2px)} }
+
+/* ─── UTILITIES ─── */
+.font-pixel { font-family:'VT323',monospace; }
+.glow-cyan { text-shadow:0 0 8px var(--cyan-dim); }
+.glow-orange { text-shadow:0 0 8px var(--orange-dim); }
+.glow-gold { text-shadow:0 0 8px rgba(255,215,0,0.5); }
+.animate-fade { animation:fadeIn .4s ease-out; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+.animate-slide { animation:slideUp .3s ease-out; }
+@keyframes slideUp { from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)} }
+@keyframes pulseGlow { 0%,100%{box-shadow:0 0 8px rgba(0,229,255,0.2)}50%{box-shadow:0 0 18px rgba(0,229,255,0.5)} }
+@keyframes float { 0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)} }
+@keyframes shake { 0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)} }
+@keyframes shimmer { 0%{background-position:-200%0}100%{background-position:200%0} }
+
+/* ─── LAYOUT ─── */
+#app { width:100vw; height:100vh; display:flex; flex-direction:column; position:relative; }
+#hud-top { display:flex; gap:8px; padding:6px 10px; background:rgba(10,10,10,0.9); backdrop-filter:blur(10px); border-bottom:1px solid rgba(0,229,255,0.1); z-index:100; align-items:center; flex-shrink:0; }
+#hud-bottom { display:flex; justify-content:space-around; padding:6px 4px 8px; background:rgba(10,10,10,0.9); backdrop-filter:blur(10px); border-top:1px solid rgba(0,229,255,0.1); z-index:100; flex-shrink:0; }
+#viewport { flex:1; overflow-y:auto; overflow-x:hidden; position:relative; scrollbar-width:thin; scrollbar-color:var(--cyan-dim) var(--charcoal); }
+#viewport::-webkit-scrollbar { width:5px; }
+#viewport::-webkit-scrollbar-track { background:var(--charcoal); }
+#viewport::-webkit-scrollbar-thumb { background:var(--cyan-dim); border-radius:3px; }
+
+/* ─── HUD BARS ─── */
+.bar { height:5px; border-radius:3px; background:rgba(255,255,255,0.06); overflow:hidden; flex:1; }
+.bar-fill { height:100%; border-radius:3px; transition:width .3s ease; }
+.bar-hp { background:var(--hp); } .bar-xp { background:var(--xp); } .bar-tk { background:var(--token); }
+
+/* ─── NAV BUTTONS ─── */
+.nav-btn { display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 6px; border-radius:6px; background:transparent; border:none; color:var(--text-dim); cursor:pointer; transition:all .15s; font-family:inherit; font-size:0.55rem; min-width:44px; }
+.nav-btn svg { width:20px; height:20px; }
+.nav-btn:hover { color:var(--text); background:rgba(255,255,255,0.04); }
+.nav-btn.active { color:var(--cyan); background:rgba(0,229,255,0.08); }
+
+/* ─── ZONES ─── */
+.zone { display:none; padding:12px 14px 80px; min-height:100%; animation:fadeIn .3s ease-out; }
+.zone.active { display:block; }
+.zone-header { text-align:center; margin-bottom:16px; }
+.zone-title { font-family:'VT323',monospace; font-size:1.8rem; letter-spacing:0.1em; margin-bottom:4px; }
+.zone-subtitle { font-size:0.65rem; color:var(--text-dim); }
+
+/* Throne Room */
+#zone-throne { background:linear-gradient(180deg,var(--throne-bg) 0%,var(--black) 100%); }
+#zone-throne .zone-title { color:var(--throne-primary); text-shadow:0 0 12px rgba(255,215,0,0.3); }
+
+/* Oracle Chamber */
+#zone-oracle { background:linear-gradient(180deg,var(--oracle-bg) 0%,var(--black) 100%); }
+#zone-oracle .zone-title { color:var(--oracle-primary); text-shadow:0 0 12px rgba(171,71,188,0.3); }
+
+/* Eternal Fountain */
+#zone-fountain { background:linear-gradient(180deg,var(--fountain-bg) 0%,var(--black) 100%); }
+#zone-fountain .zone-title { color:var(--fountain-primary); text-shadow:0 0 12px rgba(0,229,255,0.3); }
+
+/* Culling Grounds */
+#zone-culling { background:linear-gradient(180deg,var(--culling-bg) 0%,var(--black) 100%); }
+#zone-culling .zone-title { color:var(--culling-primary); text-shadow:0 0 12px rgba(255,87,34,0.3); }
+
+/* Organ Forge */
+#zone-forge { background:linear-gradient(180deg,var(--forge-bg) 0%,var(--black) 100%); }
+#zone-forge .zone-title { color:var(--forge-primary); text-shadow:0 0 12px rgba(255,140,0,0.3); }
+
+/* Sovereign Console */
+#zone-console { background:linear-gradient(180deg,var(--console-bg) 0%,var(--black) 100%); }
+#zone-console .zone-title { color:var(--console-primary); text-shadow:0 0 12px rgba(0,229,255,0.3); }
+
+/* ─── CARDS / PANELS ─── */
+.panel { background:var(--panel); border:1px solid rgba(0,229,255,0.12); border-radius:8px; padding:12px; margin-bottom:10px; }
+.panel-throne { border-color:rgba(255,215,0,0.15); }
+.panel-oracle { border-color:rgba(171,71,188,0.15); }
+.panel-fountain { border-color:rgba(0,229,255,0.12); }
+.panel-culling { border-color:rgba(255,87,34,0.15); }
+.panel-forge { border-color:rgba(255,140,0,0.15); }
+.panel-console { border-color:rgba(0,229,255,0.12); }
+
+/* ─── WORLD MAP GRID ─── */
+.world-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; max-width:360px; margin:0 auto 14px; }
+.map-cell { aspect-ratio:1; border-radius:8px; border:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; position:relative; overflow:hidden; min-height:72px; }
+.map-cell:hover { transform:scale(1.05); }
+.map-cell.current { border-color:var(--orange); box-shadow:0 0 14px var(--orange-glow); animation:pulseGlow 2s infinite; }
+.map-cell .cell-icon { font-size:1.4rem; margin-bottom:2px; }
+.map-cell .cell-name { font-size:0.5rem; color:var(--text-dim); text-align:center; line-height:1.2; font-family:'VT323',monospace; }
+.map-cell.locked { opacity:0.3; cursor:not-allowed; }
+
+/* ─── NPC / GUARDIAN ─── */
+.guardian-card { display:flex; gap:10px; align-items:flex-start; padding:10px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); margin-bottom:8px; cursor:pointer; transition:all .15s; }
+.guardian-card:hover { border-color:rgba(0,229,255,0.3); background:rgba(0,229,255,0.03); }
+.guardian-sprite { width:48px; height:48px; object-fit:contain; image-rendering:pixelated; filter:drop-shadow(0 0 4px rgba(0,229,255,0.3)); animation:float 3s ease-in-out infinite; flex-shrink:0; }
+.guardian-info { flex:1; min-width:0; }
+.guardian-name { font-family:'VT323',monospace; font-size:1.1rem; margin-bottom:2px; }
+.guardian-title { font-size:0.6rem; color:var(--text-dim); }
+.guardian-rel { font-size:0.55rem; margin-top:3px; }
+
+/* ─── DIALOGUE ─── */
+.dialogue-box { position:fixed; inset:0; z-index:200; display:flex; align-items:flex-end; justify-content:center; padding:0 12px 90px; background:rgba(0,0,0,0.7); }
+.dialogue-panel { width:100%; max-width:480px; background:linear-gradient(135deg,var(--panel) 0%,var(--charcoal) 100%); border:2px solid var(--cyan); border-radius:10px; padding:14px; box-shadow:0 0 30px rgba(0,229,255,0.15); animation:slideUp .3s ease-out; }
+.dialogue-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.dialogue-sprite { width:40px; height:40px; object-fit:contain; image-rendering:pixelated; }
+.dialogue-name { font-family:'VT323',monospace; font-size:1.1rem; color:var(--orange); }
+.dialogue-text { font-size:0.78rem; line-height:1.6; color:var(--text); margin-bottom:10px; min-height:48px; }
+.dialogue-choices { display:flex; flex-direction:column; gap:6px; }
+.dialogue-choice { background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.2); border-radius:6px; padding:8px 10px; cursor:pointer; transition:all .15s; font-size:0.72rem; color:var(--text); font-family:inherit; text-align:left; }
+.dialogue-choice:hover { background:rgba(0,229,255,0.12); border-color:var(--cyan); transform:translateX(4px); }
+.dialogue-choice .arrow { color:var(--cyan); margin-right:6px; }
+.dialogue-continue { width:100%; padding:8px; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.25); border-radius:6px; color:var(--cyan); cursor:pointer; font-family:'VT323',monospace; font-size:0.85rem; transition:all .15s; }
+.dialogue-continue:hover { background:rgba(0,229,255,0.15); }
+
+/* ─── COMBAT ─── */
+.combat-box { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:14px; background:rgba(0,0,0,0.85); }
+.combat-panel { width:100%; max-width:400px; animation:slideUp .3s ease-out; }
+.combat-log { max-height:140px; overflow-y:auto; font-size:0.68rem; line-height:1.5; margin-bottom:10px; padding:8px; background:rgba(0,0,0,0.4); border-radius:6px; }
+.combat-log .entry-new { color:var(--cyan); } .combat-log .entry-old { color:var(--text-dim); }
+.combat-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.combat-btn { padding:10px 4px; border-radius:8px; border:1px solid; font-family:'VT323',monospace; font-size:0.8rem; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.combat-btn:hover { transform:translateY(-2px); }
+
+/* ─── INVENTORY ─── */
+.inv-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+.inv-slot { aspect-ratio:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; position:relative; font-size:1.3rem; }
+.inv-slot:hover { border-color:var(--cyan); }
+.inv-slot .qty { position:absolute; bottom:2px; right:4px; font-size:0.55rem; color:var(--text-dim); }
+
+/* ─── SKILL TREE ─── */
+.skill-node { width:56px; height:56px; border-radius:50%; border:2px solid; display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative; transition:all .2s; }
+.skill-node.locked { border-color:rgba(255,255,255,0.1); opacity:0.4; cursor:not-allowed; }
+.skill-node.unlocked { opacity:1; }
+.skill-node:hover:not(.locked) { transform:scale(1.1); }
+.skill-level { position:absolute; bottom:-2px; right:-2px; width:18px; height:18px; border-radius:50%; background:var(--panel); border:1px solid; font-size:0.5rem; display:flex; align-items:center; justify-content:center; }
+.skill-row { display:flex; justify-content:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.skill-label { text-align:center; font-size:0.5rem; color:var(--text-dim); margin-top:4px; max-width:60px; line-height:1.2; }
+
+/* ─── ORACLE CARDS ─── */
+.oracle-card { padding:12px; border-radius:10px; border:1px solid; margin-bottom:10px; position:relative; overflow:hidden; }
+.oracle-card .oracle-glow { position:absolute; inset:0; opacity:0.05; pointer-events:none; }
+.oracle-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.oracle-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.2rem; border:2px solid; }
+.oracle-name { font-family:'VT323',monospace; font-size:1rem; }
+.oracle-status { font-size:0.55rem; padding:2px 8px; border-radius:10px; display:inline-block; margin-left:auto; }
+.oracle-personality { font-size:0.65rem; color:var(--text-dim); font-style:italic; line-height:1.4; }
+.oracle-key { margin-top:8px; display:flex; gap:6px; align-items:center; }
+.oracle-key input { flex:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 8px; color:var(--text); font-family:inherit; font-size:0.65rem; }
+.oracle-key input::placeholder { color:var(--text-faint); }
+.oracle-key .key-save { padding:6px 10px; border-radius:6px; border:none; background:var(--cyan); color:var(--black); font-family:'VT323',monospace; font-size:0.65rem; cursor:pointer; }
+
+/* ─── CONSOLE ─── */
+.console-input-area { display:flex; gap:8px; margin-bottom:10px; }
+.console-input { flex:1; background:rgba(0,0,0,0.4); border:1px solid rgba(0,229,255,0.2); border-radius:8px; padding:10px 12px; color:var(--text); font-family:inherit; font-size:0.78rem; outline:none; transition:border-color .15s; }
+.console-input:focus { border-color:var(--cyan); }
+.console-send { padding:10px 16px; border-radius:8px; border:none; background:var(--cyan); color:var(--black); font-family:'VT323',monospace; font-size:0.8rem; cursor:pointer; transition:all .15s; }
+.console-send:hover { box-shadow:0 0 12px rgba(0,229,255,0.3); }
+.console-history { max-height:300px; overflow-y:auto; }
+.console-msg { margin-bottom:8px; padding:8px 10px; border-radius:8px; font-size:0.72rem; line-height:1.5; }
+.console-msg.user { background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.1); margin-left:20px; }
+.console-msg.oracle { background:rgba(255,140,0,0.05); border:1px solid rgba(255,140,0,0.1); margin-right:20px; }
+.console-msg .msg-label { font-size:0.55rem; font-family:'VT323',monospace; margin-bottom:2px; display:block; }
+.console-msg.user .msg-label { color:var(--cyan); }
+.console-msg.oracle .msg-label { color:var(--orange); }
+
+/* ─── MUTATION LOG ─── */
+.mutation-entry { padding:8px; border-radius:6px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.05); margin-bottom:6px; font-size:0.65rem; }
+.mutation-time { color:var(--text-faint); font-size:0.55rem; }
+
+/* ─── NOTIFICATIONS ─── */
+#notifications { position:fixed; top:50px; right:8px; z-index:300; display:flex; flex-direction:column; gap:6px; max-width:260px; pointer-events:none; }
+.notif { pointer-events:auto; padding:8px 10px; border-radius:6px; background:var(--panel); border-left:3px solid var(--cyan); font-size:0.68rem; animation:slideUp .3s ease-out; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+.notif.success { border-left-color:var(--green); }
+.notif.warning { border-left-color:var(--orange); }
+.notif.combat { border-left-color:var(--hp); }
+
+/* ─── BUTTONS ─── */
+.btn { padding:8px 14px; border-radius:6px; border:1px solid; font-family:'VT323',monospace; font-size:0.8rem; cursor:pointer; transition:all .15s; display:inline-flex; align-items:center; gap:6px; }
+.btn-cyan { background:rgba(0,229,255,0.08); border-color:rgba(0,229,255,0.25); color:var(--cyan); }
+.btn-cyan:hover { background:rgba(0,229,255,0.15); }
+.btn-orange { background:rgba(255,140,0,0.08); border-color:rgba(255,140,0,0.25); color:var(--orange); }
+.btn-orange:hover { background:rgba(255,140,0,0.15); }
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:380px) { .world-grid { grid-template-columns:repeat(3,1fr); } .skill-node { width:48px; height:48px; } }
+
+/* ─── PARTICLES (CSS only) ─── */
+.particle { position:absolute; width:3px; height:3px; border-radius:50%; opacity:0.6; animation:particleFloat 6s ease-in-out infinite; pointer-events:none; }
+@keyframes particleFloat { 0%,100%{transform:translateY(0) translateX(0); opacity:0.3} 50%{transform:translateY(-20px) translateX(10px); opacity:0.8} }
+
+/* ─── LOADING ─── */
+.loading { display:flex; align-items:center; justify-content:center; gap:6px; padding:20px; color:var(--text-dim); font-size:0.7rem; }
+.loading-dot { width:6px; height:6px; border-radius:50%; background:var(--cyan); animation:loadingPulse 1.2s ease-in-out infinite; }
+.loading-dot:nth-child(2){animation-delay:0.2s} .loading-dot:nth-child(3){animation-delay:0.4s}
+@keyframes loadingPulse { 0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="crt"></div>
+  <div id="notifications"></div>
+
+  <!-- TOP HUD -->
+  <div id="hud-top">
+    <span class="font-pixel" style="color:var(--orange);font-size:1.1rem;min-width:20px" id="hud-level">1</span>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--hp)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span style="font-size:0.55rem;color:var(--text-dim)" id="hud-hp-text">100/100</span></div>
+      <div class="bar"><div class="bar-fill bar-hp" id="hud-hp" style="width:100%"></div></div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--xp)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span style="font-size:0.55rem;color:var(--text-dim)" id="hud-xp-text">0/100</span></div>
+      <div class="bar"><div class="bar-fill bar-xp" id="hud-xp" style="width:0%"></div></div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--token)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12h6m-3-3v6"/></svg><span style="font-size:0.55rem;color:var(--text-dim)" id="hud-tk-text">50/200</span></div>
+      <div class="bar"><div class="bar-fill bar-tk" id="hud-tk" style="width:25%"></div></div>
+    </div>
+    <button id="btn-sound" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px" aria-label="Toggle sound">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+    </button>
+  </div>
+
+  <!-- VIEWPORT -->
+  <div id="viewport">
+
+    <!-- ═══ THRONE ROOM ═══ -->
+    <div class="zone" id="zone-throne">
+      <div class="zone-header">
+        <div class="zone-title glow-gold">THRONE ROOM</div>
+        <div class="zone-subtitle" id="throne-subtitle">Your kingdom awaits its first command</div>
+      </div>
+      <div class="world-grid" id="world-map"></div>
+      <div class="panel panel-throne">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--orange-dim));display:flex;align-items:center;justify-content:center;font-size:1.5rem">👑</div>
+          <div>
+            <div class="font-pixel" style="font-size:1.1rem;color:var(--gold)" id="sovereign-name">Neophyte Founder</div>
+            <div style="font-size:0.6rem;color:var(--text-dim)" id="sovereign-title">Level 1 — The Fifth Realm</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">
+          <div style="text-align:center"><div class="font-pixel" style="font-size:1.2rem;color:var(--cyan)" id="stat-xp">0</div><div style="font-size:0.5rem;color:var(--text-dim)">XP</div></div>
+          <div style="text-align:center"><div class="font-pixel" style="font-size:1.2rem;color:var(--token)" id="stat-tokens">50</div><div style="font-size:0.5rem;color:var(--text-dim)">TOKENS</div></div>
+          <div style="text-align:center"><div class="font-pixel" style="font-size:1.2rem;color:var(--green)" id="stat-quests">0</div><div style="font-size:0.5rem;color:var(--text-dim)">QUESTS</div></div>
+        </div>
+      </div>
+      <div class="panel panel-throne">
+        <div class="font-pixel" style="font-size:0.9rem;color:var(--gold);margin-bottom:6px">KINGDOM STATUS</div>
+        <div id="kingdom-status" style="font-size:0.68rem;color:var(--text-dim);line-height:1.6">The realm is young. Six zones lie dormant, waiting for the Sovereign's word. The Oracle Chamber hums with potential. The Organ Forge stands cold. No oracles have been awakened yet.</div>
+      </div>
+    </div>
+
+    <!-- ═══ ORACLE CHAMBER ═══ -->
+    <div class="zone" id="zone-oracle">
+      <div class="zone-header">
+        <div class="zone-title" style="color:var(--purple)">ORACLE CHAMBER</div>
+        <div class="zone-subtitle">Four minds. Four voices. One consensus.</div>
+      </div>
+      <div id="oracles-container"></div>
+      <div class="panel panel-oracle">
+        <div class="font-pixel" style="font-size:0.85rem;color:var(--purple);margin-bottom:8px">🔮 THE COUNCIL</div>
+        <div style="font-size:0.68rem;color:var(--text-dim);line-height:1.5">When you speak to the Sovereign Console, all four Oracles hear your words simultaneously. Each responds in their own voice. The Smith at the Organ Forge synthesizes their consensus into action.</div>
+      </div>
+      <div class="panel panel-oracle">
+        <div class="font-pixel" style="font-size:0.85rem;color:var(--purple);margin-bottom:8px">📜 MUTATION LOG</div>
+        <div id="mutation-log" style="max-height:200px;overflow-y:auto"><div style="font-size:0.65rem;color:var(--text-faint);font-style:italic">No mutations recorded yet. Speak to the Console and watch the world change.</div></div>
+      </div>
+    </div>
+
+    <!-- ═══ ETERNAL FOUNTAIN ═══ -->
+    <div class="zone" id="zone-fountain">
+      <div class="zone-header">
+        <div class="zone-title" style="color:var(--fountain-primary)">ETERNAL FOUNTAIN</div>
+        <div class="zone-subtitle">Where value flows and economies are born</div>
+      </div>
+      <div class="panel panel-fountain" style="text-align:center;padding:20px">
+        <div style="font-size:3rem;margin-bottom:8px">💧</div>
+        <div class="font-pixel" style="font-size:1.3rem;color:var(--fountain-primary)">The Ledger</div>
+        <div style="font-size:0.68rem;color:var(--text-dim);margin-top:6px;line-height:1.5">All value created in the kingdom passes through here. Every oracle call, every item forged, every quest completed — the Ledger records and rewards.</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px">
+          <div style="padding:10px;background:rgba(0,0,0,0.2);border-radius:8px">
+            <div class="font-pixel" style="font-size:1.1rem;color:var(--token)" id="fountain-tokens">50</div>
+            <div style="font-size:0.55rem;color:var(--text-dim)">NGL TOKENS</div>
+          </div>
+          <div style="padding:10px;background:rgba(0,0,0,0.2);border-radius:8px">
+            <div class="font-pixel" style="font-size:1.1rem;color:var(--cyan)" id="fountain-calls">0</div>
+            <div style="font-size:0.55rem;color:var(--text-dim)">ORACLE CALLS</div>
+          </div>
+          <div style="padding:10px;background:rgba(0,0,0,0.2);border-radius:8px">
+            <div class="font-pixel" style="font-size:1.1rem;color:var(--green)" id="fountain-forged">0</div>
+            <div style="font-size:0.55rem;color:var(--text-dim)">ITEMS FORGED</div>
+          </div>
+          <div style="padding:10px;background:rgba(0,0,0,0.2);border-radius:8px">
+            <div class="font-pixel" style="font-size:1.1rem;color:var(--gold)" id="fountain-xp">0</div>
+            <div style="font-size:0.55rem;color:var(--text-dim)">TOTAL XP</div>
+          </div>
+        </div>
+      </div>
+      <div id="fountain-guardian"></div>
+    </div>
+
+    <!-- ═══ CULLING GROUNDS ═══ -->
+    <div class="zone" id="zone-culling">
+      <div class="zone-header">
+        <div class="zone-title" style="color:var(--culling-primary)">CULLING GROUNDS</div>
+        <div class="zone-subtitle">Where Murderous Wizards meet their end</div>
+      </div>
+      <div id="culling-enemies"></div>
+      <div class="panel panel-culling">
+        <div class="font-pixel" style="font-size:0.85rem;color:var(--culling-primary);margin-bottom:8px">⚔️ THE FIELD GUIDE</div>
+        <div id="wizard-taxonomy" style="font-size:0.68rem;color:var(--text);line-height:1.6"></div>
+      </div>
+    </div>
+
+    <!-- ═══ ORGAN FORGE ═══ -->
+    <div class="zone" id="zone-forge">
+      <div class="zone-header">
+        <div class="zone-title" style="color:var(--forge-primary)">ORGAN FORGE</div>
+        <div class="zone-subtitle">Where conversation becomes capability</div>
+      </div>
+      <div id="forge-recipes"></div>
+      <div class="panel panel-forge">
+        <div class="font-pixel" style="font-size:0.85rem;color:var(--forge-primary);margin-bottom:8px">🔧 MATERIALS</div>
+        <div id="forge-materials" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+      <div id="forge-guardian"></div>
+    </div>
+
+    <!-- ═══ SOVEREIGN CONSOLE ═══ -->
+    <div class="zone" id="zone-console">
+      <div class="zone-header">
+        <div class="zone-title" style="color:var(--console-primary)">SOVEREIGN CONSOLE</div>
+        <div class="zone-subtitle">Speak. The world builds what you say.</div>
+      </div>
+      <div class="console-input-area">
+        <input type="text" class="console-input" id="console-input" placeholder="What do you need built? (e.g., 'a calculator that shows live crypto prices')" autocomplete="off">
+        <button class="console-send" id="console-send">BUILD</button>
+      </div>
+      <div class="panel panel-console">
+        <div class="font-pixel" style="font-size:0.8rem;color:var(--console-primary);margin-bottom:6px">📡 ORACLE RESPONSES</div>
+        <div id="console-debate" style="font-size:0.65rem;color:var(--text-dim);line-height:1.5">The Console awaits your command. When you speak, all four Oracles will debate, and the Smith will forge what they agree upon.</div>
+      </div>
+      <div class="console-history" id="console-history"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div id="hud-bottom">
+    <button class="nav-btn active" data-zone="throne" title="Throne Room">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 15s3-3 10-3 10 3 10 3"/><circle cx="12" cy="8" r="3"/></svg>
+      Throne
+    </button>
+    <button class="nav-btn" data-zone="oracle" title="Oracle Chamber">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      Oracle
+    </button>
+    <button class="nav-btn" data-zone="fountain" title="Eternal Fountain">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="3"/></svg>
+      Fountain
+    </button>
+    <button class="nav-btn" data-zone="culling" title="Culling Grounds">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Culling
+    </button>
+    <button class="nav-btn" data-zone="forge" title="Organ Forge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4m-9-9h4m14 0h-4"/></svg>
+      Forge
+    </button>
+    <button class="nav-btn" data-zone="console" title="Sovereign Console">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+      Console
+    </button>
+  </div>
+
+  <!-- DIALOGUE OVERLAY (injected by JS) -->
+  <div id="dialogue-layer" style="display:none"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// NO GAS LABS — PRIMORDIAL ENGINE
+// Single-file universe. Everything lives here.
+// ═══════════════════════════════════════════════════════════
+
+'use strict';
+
+// ─── CONSTANTS ───
+const ZONES = ['throne','oracle','fountain','culling','forge','console'];
+const WORLD_CELLS = [
+  {id:'throne',name:'Throne',icon:'👑',color:'var(--throne-primary)',zone:'throne',locked:false},
+  {id:'oracle',name:'Oracle',icon:'🔮',color:'var(--oracle-primary)',zone:'oracle',locked:false},
+  {id:'fountain',name:'Fountain',icon:'💧',color:'var(--fountain-primary)',zone:'fountain',locked:true},
+  {id:'culling',name:'Culling',icon:'🔥',color:'var(--culling-primary)',zone:'culling',locked:true},
+  {id:'forge',name:'Forge',icon:'⚒',color:'var(--forge-primary)',zone:'forge',locked:true},
+  {id:'console',name:'Console',icon:'⌨',color:'var(--console-primary)',zone:'console',locked:true},
+  {id:'archives',name:'Archives',icon:'📜',color:'var(--purple)',zone:'oracle',locked:true},
+  {id:'void',name:'???',icon:'❓',color:'var(--text-dim)',zone:'console',locked:true},
+];
+const ORACLES = {
+  chatgpt: { name:'The Historian', character:'ChatGPT', model:'gpt-4o', color:'#10a37f', personality:'Encyclopedic, pattern-matching, confident, occasionally overconfident', voice:'I have seen 10,000 versions of this problem. Here is what worked...', url:'https://api.openai.com/v1/chat/completions' },
+  claude: { name:'The Conscience', character:'Claude', model:'claude-sonnet-4-20250514', color:'#d4a574', personality:'Careful, ethical, asks hard questions, refuses bad ideas kindly', voice:'Before we build — who does this help, and who might it harm?', url:'https://api.anthropic.com/v1/messages' },
+  gemini: { name:'The Dreamer', character:'Gemini', model:'gemini-2.0-flash', color:'#4285f4', personality:'Expansive, connecting disparate ideas, sees systems and movements', voice:'What if this was not just a tool but a movement? What if...', url:'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent' },
+  grok: { name:'The Dissenter', character:'Grok', model:'grok-3', color:'#ff6b35', personality:'Contrarian, cuts through pretense, finds the uncomfortable truth', voice:'Everyone has been trying to solve this wrong. Here is the actual problem...', url:'https://api.x.ai/v1/chat/completions' }
+};
+const RECIPES = [
+  {id:'buzzbash',name:'Buzzword Basher',cost:15,mats:[{id:'chaos',n:5},{id:'crystal',n:2}],effect:'+5 dmg vs Wizards'},
+  {id:'proofshield',name:'Proof-of-Work Shield',cost:25,mats:[{id:'crystal',n:5},{id:'echo',n:2}],effect:'Blocks wizard deflection'},
+  {id:'beacon',name:'Lighthouse Beacon',cost:40,mats:[{id:'echo',n:5},{id:'chaos',n:8}],effect:'Reveals hidden cells'},
+  {id:'engine',name:'Promethean Engine',cost:100,mats:[{id:'chaos',n:15},{id:'crystal',n:10},{id:'echo',n:8}],effect:'Ultimate artifact'},
+];
+const ENEMIES = [
+  {id:'thought_leader',name:'Thought Leader',title:'Species I',hp:40,maxHp:40,dmg:'4-10',xp:25,loot:['chaos'],lines:['I have been thinking a LOT about [thing someone else said first]...','Let me share my framework: The REAL Method.']},
+  {id:'stair_mentor',name:'Staircase Mentor',title:'Species II',hp:55,maxHp:55,dmg:'3-8',xp:35,loot:['chaos','crystal'],lines:['Let me share something I wish someone had told ME at your age...','You should probably aim a little lower. Just to be safe.']},
+  {id:'process_person',name:'Process Person',title:'Species III',hp:30,maxHp:30,dmg:'2-6',xp:20,loot:['chaos'],lines:['We are optimizing for the JOURNEY.','I have redefined success as something unmeasurable.']},
+];
+const GUARDIANS = {
+  architect: { name:'The Architect', title:'Your reflection in obsidian', sprite:null, zone:'throne', lines:['Welcome back, Sovereign. The kingdom grows when you speak.','What shall we build today? The world awaits your command.','Every word you speak here becomes stone in the foundation.'] },
+  ledger: { name:'The Ledger', title:'Keeper of all value', sprite:null, zone:'fountain', lines:['Value flows through this fountain. Every action, every creation, recorded.','The economy of your kingdom is real because you made it real.','Tokens are not just currency. They are proof of work.'] },
+  witness: { name:'The Witness', title:'24 years of patterns', sprite:null, zone:'culling', lines:['I have watched 24 years of wizards come and go.','The pattern is always the same: perform, pretend, perish.','Your job is not to fight them. Your job is to see them.'] },
+  smith: { name:'The Smith', title:'Builder from conversation', sprite:null, zone:'forge', lines:['Bring me materials and I will bring you miracles.','The Forge turns chaos into order. Always.','Every tool you need can be built. You just have to ask.'] },
+  herald: { name:'The Herald', title:'Voice of command', sprite:null, zone:'console', lines:['Speak, Sovereign. The oracles are listening.','Your words travel to four minds simultaneously.','The world changes when you decide it should.'] },
+};
+const SKILLS = [
+  {id:'root',name:'Neophyte',lvl:1,xp:0,max:1,cat:'root',pre:[]},
+  {id:'s1',name:'Spot Thought Leader',lvl:0,xp:0,max:5,cat:'shoplift',pre:['root']},
+  {id:'s2',name:'Resist Framework',lvl:0,xp:0,max:3,cat:'shoplift',pre:['s1']},
+  {id:'s3',name:'See Curation Theft',lvl:0,xp:0,max:3,cat:'shoplift',pre:['s1']},
+  {id:'s4',name:'Spot Staircase Mentor',lvl:0,xp:0,max:5,cat:'manipulate',pre:['root']},
+  {id:'s5',name:'Resist Gratitude Trap',lvl:0,xp:0,max:3,cat:'manipulate',pre:['s4']},
+  {id:'s6',name:'Spot Process Person',lvl:0,xp:0,max:5,cat:'stall',pre:['root']},
+  {id:'s7',name:'Cut Meeting Magic',lvl:0,xp:0,max:3,cat:'stall',pre:['s6']},
+  {id:'s8',name:'Spot Offense-Taker',lvl:0,xp:0,max:5,cat:'assassin',pre:['root']},
+  {id:'s9',name:'Asking Power',lvl:0,xp:0,max:3,cat:'assassin',pre:['s8']},
+  {id:'s10',name:'Show Me Stance',lvl:0,xp:0,max:1,cat:'ultimate',pre:['s2','s3','s5','s7','s9']},
+];
+const QUESTS = [
+  {id:'awaken',title:'The Awakening',stage:0,max:4,completed:false,lore:'Every journey begins with a single question.',objs:['Speak with The Neophyte','Claim your first cell','Defeat a Wizard','Collect 5 Tokens'],rw:{xp:100,t:10}},
+  {id:'culling',title:'Culling of Murderous Wizards',stage:0,max:3,completed:false,lore:'The 40-page comic. The most honest thing you will read today.',objs:['Find the Field Guide','Defeat 3 Wizards','Return to The Witness'],rw:{xp:250,t:25}},
+  {id:'prometheus',title:'The Prometheus Protocol',stage:0,max:4,completed:false,lore:'Transfer higher-order intelligence into live Chaos Flow.',objs:['Gather 10 Chaos Shards','Gather 5 Data Crystals','Gather 3 Echo Resonators','Craft the Promethean Engine'],rw:{xp:500,t:50}},
+  {id:'showme',title:'The Two-Word Weapon',stage:0,max:2,completed:false,lore:'The most dangerous question: SHOW ME.',objs:['Reach level 3 in any skill','Say "Show Me" 3 times'],rw:{xp:400,t:40}},
+];
+const ITEMS = {
+  chaos: {name:'Chaos Shard',icon:'🔥',desc:'Fragment of raw entropy. Dropped by defeated wizards.'},
+  crystal: {name:'Data Crystal',icon:'💎',desc:'Compressed information from the ruins.'},
+  echo: {name:'Echo Resonator',icon:'📡',desc:'Amplifies cognitive echoes.'},
+  token: {name:'NGL Token',icon:'🪙',desc:'The currency of No Gas Labs.'},
+  potion: {name:'Potion of Clarity',icon:'🧪',desc:'Restores 25 HP. Coffee is infrastructure.'},
+  egg1: {name:'Recruitment Poster',icon:'🥚',desc:'Become an Unofficial Initiate Today!'},
+  egg2: {name:'Natal Chart',icon:'🥚',desc:'ASC 3°46. The stars guided the Neophyte.'},
+  egg3: {name:'Wizard Field Guide',icon:'🥚',desc:'Know Your Enemies, Spot Your Frenemies!'},
+  egg4: {name:'Campaign Poster',icon:'🥚',desc:'AGP 2028. Join the campaign.'},
+};
+
+// ─── STATE ───
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+const uid = () => Math.random().toString(36).slice(2,10);
+const now = () => new Date().toISOString();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('primordial_state');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return null;
+}
+function saveState(s) { try { localStorage.setItem('primordial_state', JSON.stringify(s)); } catch(e) {} }
+function loadKeys() {
+  try {
+    const raw = localStorage.getItem('primordial_keys');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+function saveKeys(k) { try { localStorage.setItem('primordial_keys', JSON.stringify(k)); } catch(e) {} }
+function loadMutations() {
+  try {
+    const raw = localStorage.getItem('primordial_mutations');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return [];
+}
+function saveMutations(m) { try { localStorage.setItem('primordial_mutations', JSON.stringify(m.slice(-50))); } catch(e) {} }
+function loadOrgans() {
+  try {
+    const raw = localStorage.getItem('primordial_organs');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return [];
+}
+
+let S = loadState() || {
+  player: { name:'Neophyte Founder', level:1, xp:0, xpNext:100, hp:100, maxHp:100, tokens:50, maxTokens:200, title:'The Fifth Realm' },
+  inventory: { token:50, potion:1 },
+  skills: JSON.parse(JSON.stringify(SKILLS)),
+  quests: JSON.parse(JSON.stringify(QUESTS)),
+  cells: WORLD_CELLS.map(c => ({...c})),
+  currentZone: 'throne',
+  enemies: JSON.parse(JSON.stringify(ENEMIES)),
+  guardians: {},
+  achievements: [],
+  stats: { oracleCalls:0, itemsForged:0, wizardsDefeated:0, tokensEarned:50 },
+  firstVisit: true,
+  version: 1,
+};
+let API_KEYS = loadKeys();
+let MUTATIONS = loadMutations();
+let DYNAMIC_ORGANS = loadOrgans();
+
+// ─── NOTIFICATIONS ───
+function notify(msg, type='info') {
+  const box = $('#notifications');
+  const n = document.createElement('div');
+  n.className = 'notif ' + type;
+  n.textContent = msg;
+  box.appendChild(n);
+  setTimeout(() => n.remove(), 4000);
+}
+
+// ─── HUD ───
+function renderHUD() {
+  const p = S.player;
+  $('#hud-level').textContent = p.level;
+  $('#hud-hp').style.width = (p.hp/p.maxHp*100)+'%';
+  $('#hud-hp-text').textContent = p.hp+'/'+p.maxHp;
+  $('#hud-xp').style.width = (p.xp/p.xpNext*100)+'%';
+  $('#hud-xp-text').textContent = p.xp+'/'+p.xpNext;
+  $('#hud-tk').style.width = (p.tokens/p.maxTokens*100)+'%';
+  $('#hud-tk-text').textContent = p.tokens+'/'+p.maxTokens;
+}
+
+// ─── NAVIGATION ───
+function showZone(zone) {
+  S.currentZone = zone;
+  $$('.zone').forEach(z => z.classList.remove('active'));
+  const target = $('#zone-' + zone);
+  if (target) target.classList.add('active');
+  $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.zone === zone));
+  saveState(S);
+  // Zone-specific render
+  if (zone === 'throne') renderThrone();
+  if (zone === 'oracle') renderOracle();
+  if (zone === 'fountain') renderFountain();
+  if (zone === 'culling') renderCulling();
+  if (zone === 'forge') renderForge();
+}
+$$('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => showZone(btn.dataset.zone));
+});
+
+// ─── WORLD MAP ───
+function renderThrone() {
+  const map = $('#world-map');
+  if (!map) return;
+  map.innerHTML = '';
+  S.cells.forEach(cell => {
+    const div = document.createElement('div');
+    div.className = 'map-cell' + (cell.locked ? ' locked' : '') + (S.currentZone === cell.zone ? ' current' : '');
+    div.innerHTML = '<span class="cell-icon">' + cell.icon + '</span><span class="cell-name">' + cell.name + '</span>';
+    if (!cell.locked) {
+      div.addEventListener('click', () => showZone(cell.zone));
+    }
+    map.appendChild(div);
+  });
+  $('#stat-xp').textContent = S.player.xp;
+  $('#stat-tokens').textContent = S.player.tokens;
+  $('#stat-quests').textContent = S.quests.filter(q => q.completed).length;
+  // Kingdom status
+  const unlocked = S.cells.filter(c => !c.locked).length;
+  const hasKeys = Object.keys(API_KEYS).length;
+  let status = `The realm has awakened. ${unlocked} of ${S.cells.length} zones are accessible. `;
+  if (hasKeys === 0) status += 'The Oracle Chamber awaits your API keys — four voices ready to serve.';
+  else if (hasKeys < 4) status += `${hasKeys} of 4 Oracles are connected. The Council grows stronger.`;
+  else status += 'All 4 Oracles are connected. The Council is complete. Speak to the Console and the world will build what you say.';
+  if (S.stats.wizardsDefeated > 0) status += ` ${S.stats.wizardsDefeated} wizards have been culled.`;
+  if (S.stats.itemsForged > 0) status += ` ${S.stats.itemsForged} artifacts forged.`;
+  $('#kingdom-status').textContent = status;
+  $('#sovereign-name').textContent = S.player.name;
+  $('#sovereign-title').textContent = 'Level ' + S.player.level + ' — ' + S.player.title;
+}
+
+// ─── ORACLE CHAMBER ───
+function renderOracle() {
+  const container = $('#oracles-container');
+  if (!container || container.children.length > 0) return; // only render once, then update
+  container.innerHTML = '';
+  Object.entries(ORACLES).forEach(([key, o]) => {
+    const hasKey = !!API_KEYS[key];
+    const card = document.createElement('div');
+    card.className = 'oracle-card panel-oracle';
+    card.innerHTML = `
+      <div class="oracle-header">
+        <div class="oracle-icon" style="border-color:${o.color};color:${o.color}">${o.character[0]}</div>
+        <div>
+          <div class="oracle-name" style="color:${o.color}">${o.name}</div>
+          <div style="font-size:0.55rem;color:var(--text-dim)">${o.character}</div>
+        </div>
+        <span class="oracle-status" style="background:${hasKey ? 'rgba(76,175,80,0.15)' : 'rgba(255,68,68,0.15)'};color:${hasKey ? 'var(--green)' : 'var(--hp)'}">${hasKey ? 'CONNECTED' : 'NEEDS KEY'}</span>
+      </div>
+      <div class="oracle-personality">"${o.voice}"</div>
+      <div style="font-size:0.55rem;color:var(--text-faint);margin-top:4px">${o.personality}</div>
+      <div class="oracle-key">
+        <input type="password" data-oracle="${key}" placeholder="${o.character} API key..." value="${hasKey ? API_KEYS[key].slice(0,8)+'...' : ''}">
+        <button class="key-save" data-oracle="${key}">Save</button>
+      </div>`;
+    container.appendChild(card);
+  });
+  // Bind save buttons
+  $$('.key-save').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.oracle;
+      const input = $(`.oracle-key input[data-oracle="${key}"]`);
+      if (input && input.value.trim()) {
+        API_KEYS[key] = input.value.trim();
+        saveKeys(API_KEYS);
+        notify(`${ORACLES[key].character} key saved!`, 'success');
+        renderOracle();
+        logMutation({trigger:'api_key_saved', oracle:key, outcome:'Key saved to localStorage'});
+      }
+    });
+  });
+  // Mutation log
+  const logEl = $('#mutation-log');
+  if (logEl && MUTATIONS.length > 0) {
+    logEl.innerHTML = MUTATIONS.slice(-10).reverse().map(m =>
+      `<div class="mutation-entry"><div class="mutation-time">${new Date(m.time).toLocaleTimeString()}</div>${m.outcome}</div>`
+    ).join('');
+  }
+}
+
+// ─── ETERNAL FOUNTAIN ───
+function renderFountain() {
+  $('#fountain-tokens').textContent = S.player.tokens;
+  $('#fountain-calls').textContent = S.stats.oracleCalls;
+  $('#fountain-forged').textContent = S.stats.itemsForged;
+  $('#fountain-xp').textContent = S.player.xp;
+}
+
+// ─── CULLING GROUNDS ───
+function renderCulling() {
+  const container = $('#culling-enemies');
+  if (!container) return;
+  container.innerHTML = '';
+  S.enemies.forEach(e => {
+    const card = document.createElement('div');
+    card.className = 'guardian-card';
+    card.style.borderColor = 'rgba(255,87,34,0.15)';
+    card.innerHTML = `
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,87,34,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">🧙</div>
+      <div class="guardian-info">
+        <div class="guardian-name" style="color:var(--culling-primary)">${e.name}</div>
+        <div class="guardian-title">${e.title}</div>
+        <div style="font-size:0.6rem;color:var(--text-dim)">HP: ${e.hp}/${e.maxHp} | DMG: ${e.dmg} | XP: ${e.xp}</div>
+      </div>
+      <button class="btn btn-orange combat-start" data-enemy="${e.id}" style="flex-shrink:0">FIGHT</button>`;
+    container.appendChild(card);
+  });
+  // Bind combat
+  $$('.combat-start').forEach(btn => {
+    btn.addEventListener('click', () => startCombat(btn.dataset.enemy));
+  });
+  // Taxonomy
+  const tax = $('#wizard-taxonomy');
+  if (tax && tax.children.length === 0) {
+    tax.innerHTML = `
+      <p style="margin-bottom:6px"><strong style="color:var(--culling-primary)">Species I: The Thought Leader</strong> — Repackages others' ideas as frameworks. Has never had an original thought.</p>
+      <p style="margin-bottom:6px"><strong style="color:var(--culling-primary)">Species II: The Staircase Mentor</strong> — Always one step above you. The gap never closes.</p>
+      <p style="margin-bottom:6px"><strong style="color:var(--culling-primary)">Species III: The Process Person</strong> — Fourteen months of "discovery phase." Zero deliverables.</p>
+      <p>Each wizard type has a weakness. Learn their patterns. Spot them in the wild. Cull them without mercy. "Show me" is the universal counter.</p>`;
+  }
+}
+
+// ─── COMBAT ───
+function startCombat(enemyId) {
+  const enemy = S.enemies.find(e => e.id === enemyId);
+  if (!enemy || enemy.hp <= 0) { notify('That wizard has already been culled.', 'warning'); return; }
+  showCombatUI(enemy);
+}
+
+function showCombatUI(enemy) {
+  const layer = $('#dialogue-layer');
+  layer.style.display = 'block';
+  const log = [];
+  function render() {
+    const p = S.player;
+    layer.innerHTML = `
+      <div class="combat-box">
+        <div class="combat-panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div>
+              <div class="font-pixel" style="font-size:1.1rem;color:var(--culling-primary)">${enemy.name}</div>
+              <div style="font-size:0.6rem;color:var(--text-dim)">${enemy.title}</div>
+            </div>
+            <button id="combat-flee" class="btn" style="font-size:0.65rem;padding:4px 10px">FLEE</button>
+          </div>
+          <div class="bar" style="margin-bottom:8px"><div class="bar-fill" style="width:${enemy.hp/enemy.maxHp*100}%;background:${enemy.hp>enemy.maxHp*0.5?'var(--orange)':enemy.hp>enemy.maxHp*0.25?'var(--token)':'var(--hp)'};transition:width .3s"></div></div>
+          <div style="font-size:0.55rem;color:var(--text-dim);margin-bottom:10px;text-align:right">${enemy.hp}/${enemy.maxHp} HP</div>
+          <div class="combat-log">${log.slice(-6).map((l,i) => `<div class="${i===log.length-1?'entry-new':'entry-old'}">${l}</div>`).join('')}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px;background:rgba(0,0,0,0.3);border-radius:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--hp)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <div class="bar"><div class="bar-fill bar-hp" style="width:${p.hp/p.maxHp*100}%"></div></div>
+            <span style="font-size:0.55rem;color:var(--text-dim)">${p.hp}/${p.maxHp}</span>
+          </div>
+          <div class="combat-actions">
+            <button class="combat-btn" id="combat-attack" style="border-color:rgba(255,68,68,0.3);color:var(--hp);background:rgba(255,68,68,0.05)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              ATTACK
+            </button>
+            <button class="combat-btn" id="combat-defend" style="border-color:rgba(0,229,255,0.3);color:var(--cyan);background:rgba(0,229,255,0.05)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              DEFEND
+            </button>
+            <button class="combat-btn" id="combat-item" style="border-color:rgba(255,140,0,0.3);color:var(--token);background:rgba(255,140,0,0.05)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+              HEAL
+            </button>
+          </div>
+        </div>
+      </div>`;
+    // Bind
+    $('#combat-attack').addEventListener('click', doAttack);
+    $('#combat-defend').addEventListener('click', doDefend);
+    $('#combat-item').addEventListener('click', doHeal);
+    $('#combat-flee').addEventListener('click', () => { layer.style.display = 'none'; layer.innerHTML = ''; });
+  }
+  function doAttack() {
+    const pdmg = Math.floor(Math.random()*8)+4+S.player.level*2;
+    const edmg = Math.max(0, Math.floor(Math.random()*6)+2 - Math.floor(S.player.level/2));
+    enemy.hp = Math.max(0, enemy.hp - pdmg);
+    S.player.hp = Math.max(0, S.player.hp - edmg);
+    log.push(`You hit ${enemy.name} for ${pdmg} dmg!`);
+    if (edmg > 0) log.push(`${enemy.name} hits you for ${edmg} dmg!`);
+    if (enemy.hp <= 0) {
+      const tokens = Math.floor(Math.random()*10)+5;
+      S.player.tokens = Math.min(S.player.maxTokens, S.player.tokens + tokens);
+      addXp(enemy.xp);
+      S.stats.wizardsDefeated++;
+      S.stats.tokensEarned += tokens;
+      log.push(`VICTORY! +${enemy.xp} XP, +${tokens} Tokens`);
+      notify(`Defeated ${enemy.name}! +${enemy.xp} XP`, 'success');
+      renderHUD(); saveState(S);
+      setTimeout(() => { layer.style.display = 'none'; layer.innerHTML = ''; }, 1500);
+      return;
+    }
+    if (S.player.hp <= 0) {
+      S.player.hp = 1;
+      log.push('You fall... but the Neophyte never stays down.');
+      notify('Defeated! HP set to 1.', 'warning');
+      setTimeout(() => { layer.style.display = 'none'; layer.innerHTML = ''; }, 1500);
+    }
+    renderHUD(); saveState(S); render();
+  }
+  function doDefend() {
+    const edmg = Math.max(0, Math.floor(Math.random()*4)+1 - S.player.level);
+    S.player.hp = Math.max(0, S.player.hp - edmg);
+    S.player.hp = Math.min(S.player.maxHp, S.player.hp + 5);
+    log.push(`You brace. Recovered 5 HP.`);
+    if (edmg > 0) log.push(`Glancing blow: ${edmg} dmg.`);
+    renderHUD(); saveState(S); render();
+  }
+  function doHeal() {
+    if (S.inventory.potion > 0) {
+      S.inventory.potion--;
+      S.player.hp = Math.min(S.player.maxHp, S.player.hp + 25);
+      log.push('Drank Potion of Clarity. +25 HP.');
+    } else {
+      log.push('No potions!');
+    }
+    renderHUD(); saveState(S); render();
+  }
+  render();
+}
+
+// ─── XP SYSTEM ───
+function addXp(amount) {
+  S.player.xp += amount;
+  while (S.player.xp >= S.player.xpNext) {
+    S.player.xp -= S.player.xpNext;
+    S.player.level++;
+    S.player.xpNext = Math.floor(S.player.xpNext * 1.5);
+    S.player.maxHp += 10;
+    S.player.hp = S.player.maxHp;
+    notify(`Level up! You are now level ${S.player.level}`, 'success');
+  }
+  renderHUD(); saveState(S);
+}
+
+// ─── ORGAN FORGE ───
+function renderForge() {
+  const recipesEl = $('#forge-recipes');
+  if (!recipesEl) return;
+  recipesEl.innerHTML = '';
+  RECIPES.forEach(r => {
+    const canCraft = r.mats.every(m => (S.inventory[m.id] || 0) >= m.n) && S.player.tokens >= r.cost;
+    const div = document.createElement('div');
+    div.className = 'panel panel-forge';
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div>
+          <div class="font-pixel" style="font-size:0.9rem;color:var(--forge-primary)">${r.name}</div>
+          <div style="font-size:0.6rem;color:var(--text-dim)">${r.effect}</div>
+        </div>
+        <button class="btn btn-orange forge-btn" data-recipe="${r.id}" ${canCraft ? '' : 'disabled'} style="font-size:0.65rem;padding:4px 10px;opacity:${canCraft?1:0.4}">
+          ${canCraft ? 'FORGE' : 'NEED MATS'}
+        </button>
+      </div>
+      <div style="font-size:0.6rem;color:var(--text-dim)">
+        ${r.mats.map(m => `${ITEMS[m.id].icon} ${ITEMS[m.id].name}: ${S.inventory[m.id] || 0}/${m.n}`).join(' | ')}
+        | 🪙 ${r.cost} Tokens
+      </div>`;
+    recipesEl.appendChild(div);
+  });
+  $$('.forge-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const recipe = RECIPES.find(r => r.id === btn.dataset.recipe);
+      if (!recipe) return;
+      if (S.player.tokens < recipe.cost) { notify('Not enough tokens!', 'warning'); return; }
+      if (!recipe.mats.every(m => (S.inventory[m.id] || 0) >= m.n)) { notify('Not enough materials!', 'warning'); return; }
+      S.player.tokens -= recipe.cost;
+      recipe.mats.forEach(m => S.inventory[m.id] = (S.inventory[m.id] || 0) - m.n);
+      S.stats.itemsForged++;
+      addXp(30);
+      notify(`Forged: ${recipe.name}!`, 'success');
+      renderHUD(); renderForge(); saveState(S);
+      logMutation({trigger:'forge', input:recipe.name, outcome:`Forged ${recipe.name} at the Organ Forge`});
+    });
+  });
+  // Materials
+  const matsEl = $('#forge-materials');
+  if (matsEl) {
+    matsEl.innerHTML = Object.entries(S.inventory).map(([id,q]) => {
+      const item = ITEMS[id];
+      if (!item || q <= 0) return '';
+      return `<span style="padding:4px 8px;background:rgba(0,0,0,0.3);border-radius:6px;font-size:0.6rem">${item.icon} ${item.name}: ${q}</span>`;
+    }).join('');
+  }
+  // Guardian
+  const gEl = $('#forge-guardian');
+  if (gEl && gEl.children.length === 0) {
+    const g = GUARDIANS.smith;
+    gEl.innerHTML = `<div class="guardian-card panel-forge" style="margin-top:10px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,140,0,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">⚒</div>
+      <div class="guardian-info">
+        <div class="guardian-name" style="color:var(--forge-primary)">${g.name}</div>
+        <div class="guardian-title">${g.title}</div>
+        <div style="font-size:0.6rem;color:var(--text-dim);margin-top:4px;font-style:italic">"${g.lines[0]}"</div>
+      </div>
+    </div>`;
+  }
+}
+
+// ─── MUTATION LOGGING ───
+function logMutation(entry) {
+  const m = { id: uid(), time: now(), ...entry };
+  MUTATIONS.push(m);
+  saveMutations(MUTATIONS);
+  // Check for self-improvement cycle
+  if (MUTATIONS.length % 10 === 0) {
+    notify('Self-improvement cycle triggered. The kingdom evolves.', 'success');
+  }
+}
+
+// ─── API CALLS ───
+async function callOracle(oracleKey, messages, maxTokens=800) {
+  const key = API_KEYS[oracleKey];
+  if (!key) return { error: 'No API key set for ' + ORACLES[oracleKey].character };
+  const o = ORACLES[oracleKey];
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30000);
+    let body, headers = { 'Content-Type': 'application/json' };
+    if (oracleKey === 'chatgpt' || oracleKey === 'grok') {
+      headers['Authorization'] = 'Bearer ' + key;
+      body = JSON.stringify({ model: o.model, messages, max_tokens: maxTokens, temperature: 0.7 });
+    } else if (oracleKey === 'claude') {
+      headers['x-api-key'] = key;
+      headers['anthropic-version'] = '2023-06-01';
+      const sysMsg = messages.find(m => m.role === 'system');
+      const userMsgs = messages.filter(m => m.role !== 'system');
+      body = JSON.stringify({ model: o.model, max_tokens: maxTokens, messages: userMsgs, system: sysMsg ? sysMsg.content : undefined });
+    } else if (oracleKey === 'gemini') {
+      const textParts = messages.map(m => m.content).join('\n\n');
+      body = JSON.stringify({ contents: [{ parts: [{ text: textParts }] }] });
+    }
+    const url = oracleKey === 'gemini' ? o.url + '?key=' + key : o.url;
+    if (oracleKey !== 'gemini') headers['Authorization'] = 'Bearer ' + key;
+    const res = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+    if (!res.ok) return { error: o.character + ' returned HTTP ' + res.status };
+    const data = await res.json();
+    let text = '';
+    if (oracleKey === 'gemini') text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    else if (oracleKey === 'claude') text = data.content?.[0]?.text || '';
+    else text = data.choices?.[0]?.message?.content || '';
+    S.stats.oracleCalls++;
+    saveState(S);
+    return { text };
+  } catch(err) {
+    if (err.name === 'AbortError') return { error: o.character + ' timed out (30s)' };
+    return { error: o.character + ' error: ' + err.message };
+  }
+}
+
+// ─── CONVERSATIONAL CODING ENGINE ───
+async function processSovereignCommand(input) {
+  if (!input.trim()) return;
+  const debateEl = $('#console-debate');
+  const historyEl = $('#console-history');
+  // Add user message
+  const userMsg = document.createElement('div');
+  userMsg.className = 'console-msg user animate-fade';
+  userMsg.innerHTML = `<span class="msg-label">👑 SOVEREIGN</span>${escapeHtml(input)}`;
+  historyEl.appendChild(userMsg);
+  historyEl.scrollTop = historyEl.scrollHeight;
+  // Check if we have any keys
+  if (Object.keys(API_KEYS).length === 0) {
+    debateEl.innerHTML = 'No Oracles connected. Visit the Oracle Chamber and enter your API keys first.';
+    return;
+  }
+  debateEl.innerHTML = '<div class="loading"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span> The Council debates...</div>';
+  // Call all connected oracles
+  const systemPrompt = `You are ${ORACLES[Object.keys(API_KEYS)[0]].name}, one of four AI advisors to a sovereign who builds things through conversation. The sovereign said: "${input}". Respond in character. Keep it under 150 words. Be specific and actionable. Do not use code blocks — explain what you would build and why.`;
+  const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: input }];
+  const responses = {};
+  const oracleKeys = Object.keys(API_KEYS);
+  // Call all in parallel
+  await Promise.all(oracleKeys.map(async key => {
+    const res = await callOracle(key, messages, 600);
+    responses[key] = res;
+  }));
+  // Render responses
+  let html = '';
+  oracleKeys.forEach(key => {
+    const o = ORACLES[key];
+    const r = responses[key];
+    if (r.error) {
+      html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,68,68,0.05);border:1px solid rgba(255,68,68,0.15);border-radius:8px">
+        <div style="font-size:0.6rem;font-family:'VT323',monospace;color:var(--hp);margin-bottom:4px">${o.name} (${o.character})</div>
+        <div style="font-size:0.65rem;color:var(--text-dim)">${r.error}</div>
+      </div>`;
+    } else {
+      html += `<div style="margin-bottom:8px;padding:8px;background:rgba(0,0,0,0.2);border:1px solid ${o.color}22;border-radius:8px">
+        <div style="font-size:0.6rem;font-family:'VT323',monospace;color:${o.color};margin-bottom:4px">${o.name} (${o.character})</div>
+        <div style="font-size:0.68rem;color:var(--text);line-height:1.5">${escapeHtml(r.text)}</div>
+      </div>`;
+    }
+    // Add to history
+    const oracleMsg = document.createElement('div');
+    oracleMsg.className = 'console-msg oracle';
+    oracleMsg.innerHTML = `<span class="msg-label" style="color:${o.color}">${o.name}</span>${r.text ? escapeHtml(r.text.slice(0, 300)) : r.error}`;
+    historyEl.appendChild(oracleMsg);
+  });
+  debateEl.innerHTML = html;
+  // Consensus
+  const successResponses = oracleKeys.filter(k => responses[k] && !responses[k].error);
+  if (successResponses.length >= 2) {
+    const consensus = document.createElement('div');
+    consensus.className = 'panel panel-forge';
+    consensus.style.marginTop = '10px';
+    consensus.innerHTML = `<div class="font-pixel" style="font-size:0.8rem;color:var(--forge-primary);margin-bottom:4px">⚒ THE SMITH SPEAKS</div>
+      <div style="font-size:0.7rem;color:var(--text);line-height:1.5">${successResponses.length} voices reached consensus. The Forge can synthesize their wisdom into a working tool. This mutation has been logged.</div>`;
+    debateEl.appendChild(consensus);
+    addXp(15 * successResponses.length);
+    S.player.tokens = Math.min(S.player.maxTokens, S.player.tokens + 5 * successResponses.length);
+    logMutation({ trigger: 'sovereign_speech', input, oracle_responses: responses, outcome: `${successResponses.length} oracles reached consensus on: "${input.slice(0, 60)}..."` });
+    // Unlock zones based on activity
+    if (S.stats.oracleCalls >= 3) unlockCell('fountain');
+    if (S.stats.oracleCalls >= 5) unlockCell('culling');
+    if (S.stats.itemsForged >= 1 || S.stats.oracleCalls >= 8) unlockCell('forge');
+    if (successResponses.length >= 3) unlockCell('console');
+  }
+  historyEl.scrollTop = historyEl.scrollHeight;
+  renderHUD(); saveState(S); renderThrone();
+}
+
+function unlockCell(id) {
+  const cell = S.cells.find(c => c.id === id);
+  if (cell && cell.locked) {
+    cell.locked = false;
+    notify(`${cell.name} unlocked!`, 'success');
+    saveState(S);
+  }
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+// ─── CONSOLE BINDING ───
+$('#console-send').addEventListener('click', () => {
+  const input = $('#console-input');
+  processSovereignCommand(input.value);
+  input.value = '';
+});
+$('#console-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const input = $('#console-input');
+    processSovereignCommand(input.value);
+    input.value = '';
+  }
+});
+
+// ─── SOUND TOGGLE ───
+let soundOn = true;
+$('#btn-sound').addEventListener('click', () => {
+  soundOn = !soundOn;
+  $('#btn-sound').style.color = soundOn ? 'var(--text-dim)' : 'var(--text-faint)';
+  notify(soundOn ? 'Sound enabled' : 'Sound muted', 'info');
+});
+
+// ─── SERVICE WORKER ───
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'primordial-v1';
+    const ASSETS = ['/'];
+    self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())));
+    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+    self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+
+// ─── INIT ───
+renderHUD();
+showZone(S.currentZone);
+if (S.firstVisit) {
+  S.firstVisit = false;
+  saveState(S);
+  setTimeout(() => notify('Welcome to No Gas Labs. The Primordial Engine awaits your command.', 'info'), 500);
+  setTimeout(() => notify('Tap the Oracle Chamber to connect your AI keys. Then speak to the Console.', 'info'), 2500);
+}
+console.log('No Gas Labs — Primordial Engine v1.0 initialized');
+</script>
+</body>
+</html>
