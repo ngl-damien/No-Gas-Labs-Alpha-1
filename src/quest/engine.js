@@ -6,10 +6,10 @@ export function defineQuest({quest_id,title,objective,acceptance,capabilities=[]
   return Object.freeze({schema:"ngl.quest.v1",quest_id,title,objective,acceptance:[...acceptance],capabilities:[...capabilities]});
 }
 
-export function projectQuest(quest, events=[]) {
+export function projectQuest(quest, events=[], {authorize}={}) {
   const relevant=events.filter(e=>e?.quest_id===quest.quest_id||e?.subject===quest.quest_id);
-  const authorized=relevant.some(e=>e.type==="QUEST_AUTHORIZED"&&e.grant_id);
-  const executions=relevant.filter(e=>e.event_type==="EXECUTION_ADJUDICATION"&&e.admission==="ACCEPTED");
+  const authorized=relevant.some(e=>e.type==="QUEST_AUTHORIZED"&&e.grant_id&&typeof authorize==="function"&&authorize(e)===true);
+  const executions=authorized?relevant.filter(e=>e.event_type==="EXECUTION_ADJUDICATION"&&e.admission==="ACCEPTED"&&typeof authorize==="function"&&authorize(e)===true):[];
   const succeeded=executions.filter(e=>e.outcome==="SUCCEEDED");
   const failed=executions.filter(e=>e.outcome==="FAILED");
   const satisfied=new Set(succeeded.flatMap(e=>Array.isArray(e.acceptance_satisfied)?e.acceptance_satisfied:[]));
