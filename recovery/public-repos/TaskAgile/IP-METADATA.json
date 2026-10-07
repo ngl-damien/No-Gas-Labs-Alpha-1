@@ -1,0 +1,49 @@
+{
+  "ip_governance": {
+    "framework_version": "NGL-IP-GF v3.1-MOBILE",
+    "copyright_claimant": "Damien Edward Featherstone",
+    "license_type": "NoGasLabs-IP-Attribution v1.0-MOBILE-WIFI",
+    "commercial_fee": "0.031 ETH per deployment",
+    "ip_classification": "internal",
+    "defensive_rating": "CRITICAL",
+    "monetization_tier": "PREMIUM",
+    "timestamp_registered": "2025-11-11T02:17:15.325814"
+  },
+  "cryptographic_proofs": {
+    "hash_signature": "SHA256:f7f0106aee880cfebf84461fde6cf60897c49c0aa88cd13cd4e972da77f44d7e",
+    "merkle_root": "MERKLE:b18806e23c479db73660b61355a7cca32c1118885079cef117543d45794d38ba",
+    "ipfs_snapshot": "ipfs://bafybeige5b69e6758961450de091a1f6469eb3b8b000f437837"
+  },
+  "blockchain_anchors": {
+    "sui_timestamp": "0x127a356a1476005b7691e180f48bc7f104048ca975d117b078efdcd08f652133",
+    "ton_provenance": "60d2bb1ade7f1c49dfb9cfad9b5831328934adbfbea0c648af2766fa771a08a2",
+    "arweave_permanence": "e9d96a7b703ce2c3ec4120f46ecb518518bf466f2ae8bef6bf3572c8caed6ffa"
+  },
+  "usage_restrictions": {
+    "commercial_use": "LICENSED_ONLY",
+    "derivative_works": "ATTRIBUTION_REQUIRED",
+    "redistribution": "ALLOWED_ATTRIBUTION",
+    "ai_training": "PROHIBITED",
+    "api_access": "MONITORED",
+    "forking_allowed": true,
+    "mobile_deployment": "WIFI_ONLY_OPTIMIZED"
+  },
+  "governance_controls": {
+    "access_control": "PUBLIC_READ",
+    "branch_protection": "MAIN_ONLY",
+    "required_reviewers": 1,
+    "signed_commits_required": false,
+    "force_push_blocked": false,
+    "deletion_blocked": false,
+    "forking_blocked": false
+  },
+  "enforcement": {
+    "ai_training_prohibited": true,
+    "smart_contract_license": true,
+    "cross_chain_verification": [
+      "TON",
+      "SUI",
+      "Arweave"
+    ]
+  }
+}

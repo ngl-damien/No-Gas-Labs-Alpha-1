@@ -1,0 +1,17 @@
+name: Org CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  core:
+    uses: No-Gas-Labs-Official/no-gas-labs-governance/.github/workflows/ci-core.yml@main
+
+  security:
+    uses: No-Gas-Labs-Official/no-gas-labs-governance/.github/workflows/security-core.yml@main
+
+  classification:
+    uses: No-Gas-Labs-Official/no-gas-labs-governance/.github/workflows/repo-classification-check.yml@main

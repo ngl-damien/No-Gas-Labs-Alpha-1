@@ -1,0 +1,10 @@
+# Code Owners for No-Gas-Labs-Official
+# See https://help.github.com/articles/about-codeowners/
+
+* @No-Gas-Labs-Official
+
+# Global owners for everything in the repository
+* @No-Gas-Labs-Official
+
+# Default to organization ownership
+* @No-Gas-Labs-Official
