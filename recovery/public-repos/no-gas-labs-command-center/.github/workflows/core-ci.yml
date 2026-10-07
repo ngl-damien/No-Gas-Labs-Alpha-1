@@ -1,0 +1,68 @@
+name: Core CI
+
+# NOTE ON SHARED WORKFLOWS: this repo previously called the org's
+# reusable workflows from No-Gas-Labs-Official/no-gas-labs-governance
+# (ci-core.yml, security-core.yml, repo-classification-check.yml).
+# That can never work here: this repository is PUBLIC and the
+# governance repository is PRIVATE. GitHub Actions docs ("Access to
+# reusable workflows") — public callers can only use workflows stored
+# in public repositories. Every org-ci run on this repo has failed in
+# 0 seconds with zero jobs since it was introduced (verified Sep 2
+# and Sep 5, 2026), while the identical caller works on the private
+# node-gate repo. The same intended checks are inlined below, named
+# identically to the previous shared-workflow check contexts so the
+# required branch-protection contexts keep matching.
+#
+# Node matrix note: vite@7 requires node ^20.19.0 || >=22.12.0 —
+# Node 18 cannot build this repository (vite/package.json engines).
+# The matrix below covers the supported range instead of 18/20.
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [ 20, 22 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      # This repo is pnpm-only (pnpm-lock.yaml; no npm/yarn lock file).
+      # setup-node hard-fails "Dependencies lock file is not found" when
+      # cache:npm is set but no package-lock.json exists.
+      # pnpm must be on PATH BEFORE setup-node's cache step (it runs
+      # `pnpm store path` to locate the store). corepack ships with
+      # Node; `corepack enable` installs the pnpm shim from the
+      # packageManager field in package.json.
+      - name: Setup pnpm via corepack
+        run: |
+          corepack enable
+          COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check (tsc --noEmit)
+        run: pnpm run check
+
+      - name: Run tests (if present)
+        run: |
+          if pnpm run | grep -q " test"; then
+            pnpm test
+          else
+            echo "No test script found in package.json"
+          fi
+
+      - name: Build
+        run: pnpm run build

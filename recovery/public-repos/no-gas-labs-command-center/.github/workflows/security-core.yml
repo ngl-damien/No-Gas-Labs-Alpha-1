@@ -1,0 +1,37 @@
+name: Security Core
+
+# Inlined from no-gas-labs-governance security-core.yml because this
+# repository is PUBLIC and the governance repository is PRIVATE —
+# public repos cannot call reusable workflows from private repos
+# (GitHub Actions docs, "Access to reusable workflows").
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # TruffleHog scans the commit range base..head, so the full
+          # history (including the PR base sha) must be present.
+          fetch-depth: 0
+
+      # NOTE ON CODEQL: github/codeql-action steps are intentionally
+      # absent. In the reusable-workflow chain they could never succeed
+      # (read-only GITHUB_TOKEN through workflow_call cannot be elevated
+      # to security-events:write). In this public repo CodeQL code
+      # scanning IS available — but enabling it here without a
+      # codeql-config and verification would repeat the
+      # claimed-but-unverified pattern this change removes. TruffleHog
+      # below performs real secret scanning and fails closed
+      # (exit 183 on findings via --fail, which the action adds).
+      # Pinned by commit SHA (v3.97.4). The floating tag "v3" was
+      # deleted upstream and breaks workflow resolution.
+      - uses: trufflesecurity/trufflehog@363923b901c911a9164f50b6c423f47c15372b1c # v3.97.4
+        with:
+          extra_args: "--results=verified,unknown"

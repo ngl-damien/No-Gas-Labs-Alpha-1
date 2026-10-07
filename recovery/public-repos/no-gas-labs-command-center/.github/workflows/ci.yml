@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # vite@7 requires node ^20.19.0 || >=22.12.0 — Node 18 cannot
+        # build this repository, so the matrix covers the supported
+        # range instead of 18.x/20.x.
+        node-version: [ 20.x, 22.x ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # This repo is pnpm-only (pnpm-lock.yaml; no package-lock.json).
+      # setup-node hard-fails "Dependencies lock file is not found"
+      # when cache:npm is set without a package-lock.json.
+      # pnpm must be on PATH BEFORE setup-node's cache step (it runs
+      # `pnpm store path` to locate the store). corepack ships with
+      # Node; `corepack enable` installs the pnpm shim from the
+      # packageManager field in package.json.
+      - name: Setup pnpm via corepack
+        run: |
+          corepack enable
+          COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --if-present is an npm flag; pnpm hard-fails with
+      # ERR_PNPM_NO_SCRIPT when the script is absent. Guard explicitly.
+      - name: Run linter (if present)
+        run: |
+          if pnpm run | grep -q " lint"; then
+            pnpm run lint
+          else
+            echo "No lint script found in package.json"
+          fi
+
+      - name: Run tests (if present)
+        run: |
+          if pnpm run | grep -q " test"; then
+            pnpm test
+          else
+            echo "No test script found in package.json"
+          fi
+
+      - name: Build
+        run: pnpm run build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run security audit
+        run: |
+          corepack enable
+          COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm audit --audit-level=high || true

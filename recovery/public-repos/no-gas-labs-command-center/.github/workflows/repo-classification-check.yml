@@ -1,0 +1,72 @@
+name: Repo Classification Check
+
+# Inlined from no-gas-labs-governance repo-classification-check.yml
+# because this repository is PUBLIC and the governance repository is
+# PRIVATE — public repos cannot call reusable workflows from private
+# repos (GitHub Actions docs, "Access to reusable workflows").
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  check-classification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check classification file exists
+        run: |
+          if [ ! -f .repo-classification.json ]; then
+            echo "::error::.repo-classification.json file is required in the repository root"
+            exit 1
+          fi
+
+      - name: Validate classification schema
+        run: |
+          # Check basic JSON validity
+          if ! jq . .repo-classification.json > /dev/null 2>&1; then
+            echo "::error::.repo-classification.json is not valid JSON"
+            exit 1
+          fi
+
+          # Validate 'state' field
+          STATE=$(jq -r '.state // empty' .repo-classification.json)
+          if [ -z "$STATE" ]; then
+            echo "::error::Missing 'state' field in .repo-classification.json"
+            exit 1
+          fi
+
+          if [[ ! "$STATE" =~ ^(ACTIVE|SANDBOX|FROZEN)$ ]]; then
+            echo "::error::Invalid state '$STATE': must be ACTIVE, SANDBOX, or FROZEN"
+            exit 1
+          fi
+
+      - name: Check criticality for ACTIVE repos
+        run: |
+          STATE=$(jq -r '.state' .repo-classification.json)
+          if [ "$STATE" = "ACTIVE" ]; then
+            CRITICALITY=$(jq -r '.criticality // empty' .repo-classification.json)
+            if [ -z "$CRITICALITY" ]; then
+              echo "::error::ACTIVE repositories MUST specify a 'criticality' level (HIGH, MEDIUM, LOW)"
+              exit 1
+            fi
+            if [[ ! "$CRITICALITY" =~ ^(HIGH|MEDIUM|LOW)$ ]]; then
+              echo "::error::Invalid criticality '$CRITICALITY': must be HIGH, MEDIUM, or LOW"
+              exit 1
+            fi
+          fi
+
+      - name: Verify Owner and Domain
+        run: |
+          OWNER=$(jq -r '.owner // empty' .repo-classification.json)
+          if [ -z "$OWNER" ]; then
+             echo "::warning::Missing 'owner' field in .repo-classification.json"
+          fi
+
+          DOMAIN=$(jq -r '.domain // empty' .repo-classification.json)
+          if [ -z "$DOMAIN" ]; then
+             echo "::warning::Missing 'domain' field in .repo-classification.json"
+          fi
