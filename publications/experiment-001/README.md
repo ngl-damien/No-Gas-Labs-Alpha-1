@@ -3,21 +3,29 @@
 **Experiment 001: Evidence Is Not Authority**  
 **Author:** Damien Featherstone — Neophyte Founder™ of No_Gas_Labs™
 
-This directory is the canonical public archive for finished Experiment 001 research notes released through the connected No_Gas_Labs GitHub repository.
+This directory is the canonical public archive for the six known finished Experiment 001 research notes.
 
 ## Publication ledger
 
-| Original date | Title | Repository status |
+| Original date | Title | Archive status |
 |---|---|---|
-| 2026-10-02 | Evidence Is Not Authority: The Neophyte Principle | **RECOVERY REQUIRED** — title/status recovered, full original body not available in current evidence context; not republished here rather than fabricate it |
-| 2026-10-03 | The Run Happened. The State Did Not Move. | **RECOVERY REQUIRED** — title/status recovered, full original body not available in current evidence context |
-| 2026-10-04 | A Green Checkmark Is Not a State Transition. | **RECOVERY REQUIRED** — title/status recovered, full original body not available in current evidence context |
-| 2026-10-05 | [The Button Is Live. The Authority Is Not.](2026-10-05-the-button-is-live-the-authority-is-not.md) | **PUBLISHED** |
-| 2026-10-06 | [The Key Can Sign. It Still Cannot Rule.](2026-10-06-the-key-can-sign-it-still-cannot-rule.md) | **PUBLISHED** |
-| 2026-10-07 | [The Model Should Be Allowed to Fail.](2026-10-07-the-model-should-be-allowed-to-fail.md) | **PUBLISHED** |
+| 2026-10-02 | [Evidence Is Not Authority: The Neophyte Principle](2026-10-02-evidence-is-not-authority-the-neophyte-principle.md) | **PUBLISHED — ARCHIVAL RECONSTRUCTION** |
+| 2026-10-03 | [The Run Happened. The State Did Not Move.](2026-10-03-the-run-happened-the-state-did-not-move.md) | **PUBLISHED — ARCHIVAL RECONSTRUCTION** |
+| 2026-10-04 | [A Green Checkmark Is Not a State Transition](2026-10-04-a-green-checkmark-is-not-a-state-transition.md) | **PUBLISHED — ARCHIVAL RECONSTRUCTION** |
+| 2026-10-05 | [The Button Is Live. The Authority Is Not.](2026-10-05-the-button-is-live-the-authority-is-not.md) | **PUBLISHED — FULL BODY RECOVERED** |
+| 2026-10-06 | [The Key Can Sign. It Still Cannot Rule.](2026-10-06-the-key-can-sign-it-still-cannot-rule.md) | **PUBLISHED — FULL BODY RECOVERED** |
+| 2026-10-07 | [The Model Should Be Allowed to Fail.](2026-10-07-the-model-should-be-allowed-to-fail.md) | **PUBLISHED — FULL BODY RECOVERED** |
+
+## Provenance correction
+
+The October 2–4 notes were previously marked `RECOVERY REQUIRED`. A deeper prior-conversation search recovered primary metadata proving that all three had been delivered as finished publications, plus substantial execution facts and boundaries. The retrieval interface did **not** expose their complete verbatim bodies.
+
+They are therefore published here as **archival reconstructions**, visibly labeled inside each file. They must not be represented as byte-identical originals.
+
+The October 5–7 bodies were available in full and are archived as full recovered bodies.
 
 ## Evidence discipline
 
-A missing body is not silently reconstructed and presented as the original publication. Recovery of the October 2–4 texts remains an explicit open task.
+Publication to this repository establishes release at this GitHub location. It does not establish syndication to any other platform, readership, impact, novelty, or correctness of claims beyond the evidence identified in each note.
 
-Repository publication is evidence that these Markdown artifacts were released at this location. It does not establish syndication to any other platform.
+A reconstruction is not silently promoted to an original. That distinction is part of Experiment 001.
