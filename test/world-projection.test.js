@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { projectWorld } from "../src/world/project.js";
 import { projectRealm } from "../src/world/realm.js";
+import { makeReceipt } from "../src/evidence/content-addressed.js";
 
 const claim = {
   event_id: "e1",
