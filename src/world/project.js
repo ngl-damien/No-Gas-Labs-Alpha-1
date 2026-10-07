@@ -28,6 +28,11 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
     seen.add(event.event_id);
     state.history.push(event);
 
+    if (event.type === "QUEST_AUTHORIZED") {
+      // Event labels alone do not establish cryptographic authority.
+      continue;
+    }
+
     if (event.event_type === "REVOCATION") {
       if (typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
       continue;
