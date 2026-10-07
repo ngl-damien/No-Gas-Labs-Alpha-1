@@ -1,0 +1,50 @@
+{
+  "valid": {
+    "verdict": "PASS",
+    "findings": []
+  },
+  "altered_payload": {
+    "verdict": "FAIL",
+    "findings": [
+      "GRANT_PAYLOAD_MISMATCH",
+      "EXECUTION_PAYLOAD_MISMATCH",
+      "OBSERVATION_PAYLOAD_MISMATCH"
+    ]
+  },
+  "revoked": {
+    "verdict": "FAIL",
+    "findings": [
+      "GRANT_REVOKED"
+    ]
+  },
+  "expired": {
+    "verdict": "FAIL",
+    "findings": [
+      "GRANT_EXPIRED"
+    ]
+  },
+  "replay": {
+    "verdict": "FAIL",
+    "findings": [
+      "REPLAY_DETECTED"
+    ]
+  },
+  "wrong_subject": {
+    "verdict": "FAIL",
+    "findings": [
+      "SUBJECT_MISMATCH"
+    ]
+  },
+  "false_result": {
+    "verdict": "FAIL",
+    "findings": [
+      "RESULT_REF_MISMATCH"
+    ]
+  },
+  "wrong_scope": {
+    "verdict": "FAIL",
+    "findings": [
+      "SCOPE_DENIED"
+    ]
+  }
+}
