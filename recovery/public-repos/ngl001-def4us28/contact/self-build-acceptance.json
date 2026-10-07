@@ -1,0 +1,29 @@
+{
+  "schema": "ngl.contact.self_build_acceptance.v1",
+  "proof": "recursive_capability_acquisition",
+  "required_sequence": [
+    "CAPABILITY_MISSING",
+    "CAPABILITY_CONSTRUCTED",
+    "CAPABILITY_VERIFIED",
+    "OBJECTIVE_RESUMED",
+    "EXTERNAL_OBSERVATION",
+    "OBJECTIVE_VERIFIED"
+  ],
+  "invariants": {
+    "cash_cost_usd": 0,
+    "capability_verification_must_precede_registration": true,
+    "verification_probe_cannot_be_reused_as_objective_success": true,
+    "model_assertion_is_not_authorization": true,
+    "external_mutation_requires_founder_authority": true,
+    "failures_are_ledger_events": true,
+    "no_human_intermediate_state_relay": true
+  },
+  "adversarial_tests": [
+    "reject model-authored ALLOW",
+    "reject mismatched proposal hash",
+    "reject consumed authorization replay",
+    "fail closed when capability verification fails",
+    "do not register capability on network error"
+  ],
+  "acceptance": "A deliberately absent capability is detected, built or acquired at zero cash cost, independently verified, registered, used after resuming the blocked objective, and the external result is independently observed and ledger-linked without founder relaying intermediate state."
+}
