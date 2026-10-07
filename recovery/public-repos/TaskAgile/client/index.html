@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#00ff88">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <title>No_Gas_Slaps™ - Telegram Mini App</title>
+    <meta name="description" content="The ultimate tap-to-earn game experience on Telegram">
+    
+    <!-- Telegram Web Apps SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="./public/sounds/hit.mp3" as="audio">
+    <link rel="preload" href="./public/sounds/success.mp3" as="audio">
+    <link rel="preload" href="./public/sounds/background.mp3" as="audio">
+    
+    <!-- Main stylesheet -->
+    <link rel="stylesheet" href="/styles.css">
+    
+    <!-- Web App Manifest for PWA features -->
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body data-theme="light">
+    <!-- Screen reader announcements -->
+    <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    
+    <!-- Loading screen -->
+    <div id="loading-screen" class="loading-screen" role="status" aria-label="Loading No_Gas_Slaps™">
+        <div class="loading-logo">
+            <svg width="120" height="120" viewBox="0 0 120 120" class="logo-animation">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--neon-green)" stroke-width="4" stroke-dasharray="314" stroke-dashoffset="314" class="loading-circle"/>
+                <text x="60" y="70" text-anchor="middle" fill="var(--neon-green)" font-size="16" font-weight="bold">NGS™</text>
+            </svg>
+        </div>
+        <div class="loading-text" aria-live="polite">Loading your slap experience...</div>
+    </div>
+    
+    <!-- Main application container -->
+    <main id="app" class="app-container" role="main" aria-label="No_Gas_Slaps™ Game Interface">
+        <!-- Multiplayer game area -->
+        <div id="game-area" class="game-area" role="region" aria-label="Multiplayer game battlefield">
+            <div id="player-count" class="player-count">Connecting...</div>
+            <!-- Player elements will be dynamically added here -->
+        </div>
+        
+        <!-- App content will be dynamically generated -->
+    </main>
+    
+    <!-- Onboarding overlay -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+        <div class="onboarding-content">
+            <h1 id="onboarding-title" class="onboarding-title">
+                Welcome to No_Gas_Slaps™
+            </h1>
+            
+            <div class="onboarding-steps">
+                <div class="onboarding-step">
+                    <div class="step-icon">👋</div>
+                    <h3>Tap to Slap</h3>
+                    <p>Tap the slap button rapidly to increase your score and build momentum!</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="step-icon">⚡</div>
+                    <h3>Build Combos</h3>
+                    <p>Keep tapping within the time window to multiply your points exponentially!</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="step-icon">🚀</div>
+                    <h3>Unlock Power-ups</h3>
+                    <p>Reach score milestones to activate game-changing power-ups!</p>
+                </div>
+                
+                <div class="onboarding-step">
+                    <div class="step-icon">🏆</div>
+                    <h3>Climb the Leaderboard</h3>
+                    <p>Compete with players worldwide and claim your spot at the top!</p>
+                </div>
+            </div>
+            
+            <div class="onboarding-actions">
+                <button id="onboarding-skip" class="btn btn-secondary" aria-label="Skip tutorial">
+                    Skip Tutorial
+                </button>
+                <button id="onboarding-start" class="btn btn-primary" aria-label="Start playing No_Gas_Slaps™">
+                    Let's Slap! 🚀
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Help overlay -->
+    <div id="help-overlay" class="help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <div class="help-content">
+            <div class="help-header">
+                <h2 id="help-title">How to Play No_Gas_Slaps™</h2>
+                <button id="help-close" class="btn-close" aria-label="Close help">×</button>
+            </div>
+            
+            <div class="help-sections">
+                <section>
+                    <h3>🎯 Game Objective</h3>
+                    <p>Tap the slap button to build your score and climb the global leaderboard. Master the art of timing to maximize your combo multipliers!</p>
+                </section>
+                
+                <section>
+                    <h3>⚡ Combo System</h3>
+                    <p>Rapid tapping within 1.2 seconds maintains your combo multiplier. Higher combos = exponentially higher scores!</p>
+                </section>
+                
+                <section>
+                    <h3>🛡️ Anti-Cheat</h3>
+                    <p>Maximum 4 taps per second are allowed. Suspicious activity will be detected and penalized.</p>
+                </section>
+                
+                <section>
+                    <h3>🎁 Daily Rewards</h3>
+                    <p>Claim your daily bonus to boost your score and maintain your winning streak!</p>
+                </section>
+                
+                <section>
+                    <h3>♿ Accessibility</h3>
+                    <p>Use Space or Enter to slap. Navigate with Tab. Screen reader compatible.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error toast container -->
+    <div id="error-toast" class="error-toast hidden" role="alert" aria-live="assertive">
+        <div class="toast-content">
+            <div class="toast-icon">⚠️</div>
+            <div class="toast-message" id="error-message"></div>
+            <button class="toast-close" aria-label="Dismiss error">×</button>
+        </div>
+    </div>
+    
+    <!-- Success toast container -->
+    <div id="success-toast" class="success-toast hidden" role="status" aria-live="polite">
+        <div class="toast-content">
+            <div class="toast-icon">🎉</div>
+            <div class="toast-message" id="success-message"></div>
+        </div>
+    </div>
+    
+    <!-- PWA Install prompt -->
+    <div id="pwa-install" class="pwa-install hidden">
+        <div class="pwa-content">
+            <h3>Install No_Gas_Slaps™</h3>
+            <p>Add to your home screen for the best experience!</p>
+            <div class="pwa-actions">
+                <button id="pwa-dismiss" class="btn btn-secondary">Not now</button>
+                <button id="pwa-install-btn" class="btn btn-primary">Install</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main application script -->
+    <script type="module" src="/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Shrine of TONX (LIVE)</title>
+  <!-- 🔁 Relic Engine by Damien Edward Featherstone // No_Gas_Labs™ -->
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: radial-gradient(circle at center, #000022, #0a0015);
+      color: #d0f0ff;
+      text-align: center;
+      padding: 20px;
+    }
+    .shrine {
+      border: 2px solid #48f;
+      border-radius: 12px;
+      background: #10103a;
+      padding: 24px;
+      max-width: 420px;
+      margin: 40px auto;
+      box-shadow: 0 0 25px #33f8ff99;
+    }
+    .glow {
+      animation: glow 2s infinite alternate;
+    }
+    @keyframes glow {
+      from { box-shadow: 0 0 10px #33f8ff66; }
+      to { box-shadow: 0 0 25px #33f8ffdd; }
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+    input {
+      width: 100%;
+    }
+    button {
+      background: #3ef;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #5ff;
+    }
+    .scroll {
+      background: #1c1c2b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 20px;
+      display: none;
+      color: #fff3c0;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="shrine glow">
+    <h1>🛕 Shrine of TONX</h1>
+    <p>Offer your TON testnet address and receive XP from the TONX ritual stream.</p>
+    <input type="text" id="wallet" placeholder="Enter your TON testnet address"/>
+    <button onclick="saveAddress()">🔐 Save Address</button>
+    <button onclick="pingNode()">📡 Ping TON Shrine</button>
+    <p id="xpDisplay">Current XP: 0</p>
+    <div class="scroll" id="prophecy">
+      🌌 “When the node speaks and your balance rises, so too shall your relic awaken…”
+    </div>
+  </div>
+
+  <script>
+    const endpoint = "https://ton-testnet.core.chainstack.com/da46a896a109776d1ba6e6d8da18af46/api/v3";
+    const xpKey = "tonx_xp";
+    const addrKey = "tonx_wallet";
+
+    let xp = parseInt(localStorage.getItem(xpKey)) || 0;
+    document.getElementById("xpDisplay").innerText = "Current XP: " + xp;
+
+    function saveAddress() {
+      const addr = document.getElementById("wallet").value.trim();
+      if (addr.length > 30) {
+        localStorage.setItem(addrKey, addr);
+        alert("TON address saved.");
+      } else {
+        alert("Invalid address.");
+      }
+    }
+
+    function pingNode() {
+      const wallet = localStorage.getItem(addrKey);
+      if (!wallet) return alert("Please save your TON address first.");
+
+      const payload = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getAddressInformation",
+        params: [wallet]
+      };
+
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.result && data.result.balance && data.result.balance.nanoTON) {
+          const nano = parseInt(data.result.balance.nanoTON);
+          const ton = nano / 1e9;
+          xp += 10;
+          localStorage.setItem(xpKey, xp);
+          document.getElementById("xpDisplay").innerText = "Current XP: " + xp;
+          if (xp >= 100) {
+            document.getElementById("prophecy").style.display = "block";
+          }
+          alert("Ritual complete. TON balance: " + ton.toFixed(3));
+        } else {
+          alert("Shrine responded, but no balance found.");
+        }
+      })
+      .catch(err => {
+        alert("TON node unreachable. Ritual failed.");
+        console.error(err);
+      });
+    }
+
+    // Pre-fill if available
+    const saved = localStorage.getItem(addrKey);
+    if (saved) document.getElementById("wallet").value = saved;
+    if (xp >= 100) document.getElementById("prophecy").style.display = "block";
+  </script>
+</body>
+</html>
