@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local tooling and OS files
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Generated local state
+*.sqlite
+*.db
