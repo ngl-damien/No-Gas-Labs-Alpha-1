@@ -1,0 +1,72 @@
+Hi Replit! Build an ultra-polished, cutting-edge, production-ready No_Gas_Slaps™ Telegram Mini App game that redefines mobile tap games with jaw-dropping visuals, physics, and UX sophistication. Deliver a next-gen sensory and gameplay experience that hooks players instantly and keeps them obsessed.
+
+Visuals & UI Mastery:
+
+Craft a vibrant, hand-illustrated, cartoon-inspired art style with rich, layered animations that feel alive and dynamic.
+
+Design an adaptive, flawlessly responsive mobile-first interface with pixel-perfect alignment, harmonious spacing, and fluid scaling across all device sizes.
+
+Employ a bold, signature color palette anchored by toxic neon green, electric azure blue, and sleek deep charcoal—fully integrated into Telegram’s theming system with seamless dark, light, and high-contrast modes.
+
+Implement ultra-smooth, hardware-accelerated CSS animations and transitions: button pulsations, combo number scaling with elastic easing, dynamic particle bursts, and glowing power-up unlocks with multi-layered effects (blur, glow, shimmer).
+
+Deliver intuitive visual affordances with clear, animated hover/focus/active states that elevate tactile feedback and accessibility compliance (WCAG AAA).
+
+Leaderboard entries animate with cascading reveals and highlight the current player with a distinct neon glow and subtle pulsing aura.
+
+Include seamless animated state transitions—loading spinners morphing into gameplay, game over screen fades with celebratory confetti, and subtle parallax backgrounds adding depth.
+
+
+Physics & Gameplay Excellence:
+
+Architect a hyper-responsive tap detection system with zero input lag; taps register instantly even under rapid-fire conditions.
+
+Model slap momentum using a custom physics engine emulating real-world elastic collisions, velocity decay, and friction—every slap sends the “momentum meter” soaring with realistic easing curves.
+
+Integrate dynamic bounce mechanics: slaps ricochet off onscreen “virtual bumpers” with visually satisfying recoil and velocity vectors, encouraging skillful tap timing and positioning.
+
+Combo multipliers escalate exponentially with precise time windows, visually represented by kinetic typography animations synchronized to tap cadence.
+
+Design an adaptive difficulty curve that intelligently adjusts slap sensitivity and momentum decay to maintain player engagement.
+
+Integrate immersive haptic feedback and crisp, layered sound design synced perfectly with slap impacts, combo milestones, power-up activations, and leaderboard celebrations. Provide placeholder audio assets with easy-to-swap references.
+
+
+Branding, Naming & Instructional Design:
+
+Enforce consistent, trademarked naming No_Gas_Slaps™ everywhere: HTML title, ARIA labels, buttons, error messages, and all UI text.
+
+Deliver a captivating, elegantly animated onboarding tutorial on first launch that explains game mechanics—slapping, combos, power-ups, leaderboards—with playful, witty copy embodying the game’s irreverent tone.
+
+Provide a persistent, accessible “Help” button that reveals detailed instructions and tips with smooth slide-in/out animations.
+
+Architect the UI text for effortless localization: utilize resource key/value pairs with a comprehensive example English localization file, enabling frictionless multi-language support.
+
+Ensure all interactive elements are fully keyboard-navigable, screen reader compatible, and meet WCAG 2.1 AA+ standards.
+
+
+
+---
+
+Deliverables:
+
+Fully modular, expertly documented CSS and JavaScript source files leveraging performant requestAnimationFrame loops and declarative animation APIs.
+
+An optimized, semantic HTML scaffold with fully accessible ARIA roles and landmark regions.
+
+Reusable animation and physics utility modules with clear separation of concerns and extensibility.
+
+Sound effect integration points with placeholders designed for seamless asset replacement.
+
+Inline comments with deep technical insights explaining animation curves, physics calculations, accessibility techniques, and localization strategies.
+
+Propose an ambitious yet practical roadmap for future expansions: GPU-accelerated particle systems, advanced real-time multiplayer physics sync, adaptive audio mixing, and dynamic theme customizations.
+
+
+
+---
+
+Deliver a groundbreaking No_Gas_Slaps™ experience that not only meets but obliterates industry standards for mobile Telegram Mini Games—an addictive, visually hypnotic, physically rewarding, and flawlessly accessible masterpiece players will rave about.
+
+Thank you! Ready to build a legendary game that captivates millions on Telegram from day one.
+

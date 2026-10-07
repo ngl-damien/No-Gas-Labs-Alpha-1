@@ -1,0 +1,460 @@
+Sure! Here is the full one-shot prompt with all the code files embedded directly inside it, ready to paste into Replit’s AI Copilot for generating your No_Gas_Slaps™ game scaffold:
+
+
+---
+
+You are creating a **production-ready, mobile-first, play-to-earn Telegram Mini App game called No_Gas_Slaps™**. The game’s core mechanic is fast-paced slap tapping with combo multipliers, power-ups, and a leaderboard. The app must be polished, addictive, and ready for monetization.
+
+**Requirements:**
+
+1. **Tech Stack:**  
+- HTML5, CSS3, ES6+ JavaScript only (no frameworks).  
+- Modular file structure with ES modules.  
+- Must run smoothly in Telegram Mini App environment and regular mobile browsers.
+
+2. **UI/UX:**  
+- Responsive, mobile-first design with dark/light themes.  
+- Accessible (ARIA roles, keyboard navigation, screen reader announcements).  
+- Crisp button animations, slap feedback (visual + audio placeholders), and smooth combo multiplier display.  
+- Onboarding tutorial screen on first launch with skip option.  
+- Clear progress feedback: score, combo multiplier, power-up status.  
+- Error messages and offline mode indicators.  
+- Social sharing buttons (placeholders) to share score and leaderboard.
+
+3. **Game Mechanics:**  
+- Tap/slap button that increases score.  
+- Combos increase multiplier if tapping rapidly but throttle to prevent spamming.  
+- Power-ups unlock at score thresholds with clear UI and cooldown timers.  
+- Leaderboard integration showing top 10 players with current user highlighted.  
+- Anti-cheat: throttle taps to max 4 per second and detect suspicious jumps.
+
+4. **Monetization Placeholders:**  
+- Daily reward system (code stub) with claim button.  
+- Ad integration placeholder functions (e.g., show rewarded ad).  
+- In-app purchase placeholders for power-ups or cosmetic skins.  
+- Wallet connect placeholder (gasless wallet integration stub).
+
+5. **Persistence & Sync:**  
+- Offline-first with localStorage persistence of progress and leaderboard cache.  
+- Sync queue with retry logic for leaderboard updates.
+
+6. **Telegram API Integration:**  
+- Telegram Web App init and user auth.  
+- Theming based on Telegram color scheme.  
+- Handle Telegram lifecycle events (ready, close, theme change).
+
+7. **Performance & Reliability:**  
+- Game loop using requestAnimationFrame.  
+- Debounced input handling.  
+- Error handling and user-friendly fallback UI.  
+- Basic automated tests for core modules included.
+
+8. **Code Quality:**  
+- Well-commented and modular for easy future expansion.  
+- All assets are placeholders with comments on where to replace with real art/sounds.  
+
+9. **Deliverables:**  
+Create the following files with full code exactly as below:
+
+---
+
+### index.html
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>No_Gas_Slaps™ Telegram Mini App</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Telegram Web Apps SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <main id="app" role="main" aria-label="No_Gas_Slaps™ Game" tabindex="0"></main>
+  <div id="screen-reader-announcer" aria-live="polite" class="sr-only"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
+
+
+---
+
+styles.css
+
+:root {
+  --tg-bg-color: #ffffff;
+  --tg-text-color: #222;
+  --tg-accent: #007aff;
+  --tg-error: #e53935;
+  --tg-success: #43a047;
+  --tg-border-radius: 12px;
+  --tg-font: 'Segoe UI', Arial, sans-serif;
+  --tg-btn-bg: var(--tg-accent);
+  --tg-btn-text: #fff;
+  --tg-btn-focus: #0051a8;
+}
+
+[data-theme="dark"] {
+  --tg-bg-color: #181818;
+  --tg-text-color: #fafafa;
+  --tg-accent: #00c1ff;
+  --tg-btn-bg: var(--tg-accent);
+  --tg-btn-text: #fff;
+  --tg-btn-focus: #006b99;
+}
+
+[data-theme="high-contrast"] {
+  --tg-bg-color: #000;
+  --tg-text-color: #ff0;
+  --tg-accent: #f00;
+  --tg-btn-bg: var(--tg-accent);
+  --tg-btn-text: #fff;
+  --tg-btn-focus: #d00;
+}
+
+body {
+  background: var(--tg-bg-color);
+  color: var(--tg-text-color);
+  font-family: var(--tg-font);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+#app {
+  max-width: 400px;
+  margin: 2rem auto;
+  padding: 2rem;
+  border-radius: var(--tg-border-radius);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  background: var(--tg-bg-color);
+  transition: background 0.2s, color 0.2s;
+}
+
+.slap-btn {
+  display: block;
+  width: 100%;
+  font-size: 2rem;
+  padding: 1rem;
+  border-radius: var(--tg-border-radius);
+  background: var(--tg-btn-bg);
+  color: var(--tg-btn-text);
+  border: none;
+  cursor: pointer;
+  margin-bottom: 1.5rem;
+  transition: background 0.2s;
+}
+.slap-btn:focus {
+  outline: 2px solid var(--tg-btn-focus);
+  outline-offset: 2px;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--tg-btn-focus); }
+  50% { box-shadow: 0 0 16px var(--tg-btn-focus); }
+}
+
+.score {
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+
+.combo {
+  font-size: 1.2rem;
+  text-align: center;
+  color: var(--tg-accent);
+  margin-bottom: 1rem;
+}
+
+.power-up {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.power-up button {
+  padding: 0.5rem 1rem;
+  border-radius: var(--tg-border-radius);
+  background: var(--tg-success);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.power-up button:disabled {
+  background: gray;
+  cursor: not-allowed;
+}
+
+.leaderboard {
+  margin-bottom: 1rem;
+}
+
+.leaderboard h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.leaderboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  border-radius: var(--tg-border-radius);
+  background: var(--tg-bg-color);
+}
+
+.leaderboard-list li {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.leaderboard-list li.me {
+  background: rgba(0,0,0,0.05);
+  font-weight: bold;
+}
+
+.error-msg {
+  background: var(--tg-error);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: var(--tg-border-radius);
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.offline-msg {
+  background: orange;
+  color: #000;
+  padding: 0.5rem 1rem;
+  border-radius: var(--tg-border-radius);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.onboarding-overlay {
+  position: fixed;
+  top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  font-family: var(--tg-font);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  z-index: 1000;
+  text-align: center;
+}
+
+.onboarding-overlay button {
+  margin-top: 2rem;
+  padding: 1rem 2rem;
+  border-radius: var(--tg-border-radius);
+  background: var(--tg-accent);
+  color: #fff;
+  font-size: 1.2rem;
+  border: none;
+  cursor: pointer;
+}
+
+@media (max-width: 500px) {
+  #app {
+    padding: 1rem;
+  }
+  .slap-btn {
+    font-size: 1.5rem;
+    padding: 0.75rem;
+  }
+  .score {
+    font-size: 2rem;
+  }
+}
+
+
+---
+
+main.js
+
+/**
+ * @file App entry point: orchestrates lifecycle, initializes modules.
+ */
+
+import { initTelegram, getTheme, onThemeChanged, getUser, onReady, onClose } from './modules/telegram-api.js';
+import { initUI, updateUI, announce, focusSlapButton, showOnboarding, hideOnboarding } from './modules/ui.js';
+import { state, initState, onStateChange, slap, initPowerUps, claimDailyReward, onPowerUpChange } from './modules/state.js';
+import { syncLeaderboard, getLeaderboard, onLeaderboardChange, updateLeaderboard } from './modules/leaderboard-api.js';
+import { showError, clearError } from './modules/error.js';
+import { verifyInitData } from './modules/security.js';
+import { initPersistence, onSyncQueueChange } from './modules/persistence.js';
+import { logDev, runUnitTests } from './modules/testing.js';
+
+(async function main() {
+  try {
+    await initTelegram();
+    verifyInitData();
+
+    // Theming
+    const theme = getTheme();
+    document.body.setAttribute('data-theme', theme);
+    onThemeChanged(newTheme => document.body.setAttribute('data-theme', newTheme));
+
+    // Persistent data & state
+    await initPersistence();
+    await initState();
+    await initPowerUps();
+
+    // Show onboarding if first time
+    if (!localStorage.getItem('ngs_onboarded')) {
+      showOnboarding(() => {
+        localStorage.setItem('ngs_onboarded', 'true');
+        hideOnboarding();
+        focusSlapButton();
+      });
+    }
+
+    // UI init
+    initUI({
+      onSlap: async () => {
+        try {
+          await slap();
+          updateLeaderboard(state.score);
+        } catch (err) {
+          showError(err.message || 'Unable to slap.');
+        }
+      },
+      onClaimDaily: async () => {
+        try {
+          await claimDailyReward();
+          updateLeaderboard(state.score);
+        } catch (err) {
+          showError(err.message || 'Unable to claim reward.');
+        }
+      },
+      onLeaderboardFocus: focusSlapButton
+    });
+
+    onStateChange(updateUI);
+    onPowerUpChange(updateUI);
+    onLeaderboardChange(updateUI);
+
+    setInterval(clearError, 4000);
+
+    onSyncQueueChange(syncLeaderboard);
+
+    // Dev mode
+    if (import.meta.env?.DEV || window.location.hostname === 'localhost') {
+      logDev('Dev mode active.');
+      runUnitTests();
+    }
+
+    setTimeout(focusSlapButton, 100);
+
+    onReady(() => announce('Game loaded. Press space or Enter to slap!'));
+    onClose(() => announce('App closed.'));
+
+  } catch (e) {
+    showError(e.message || 'Fatal app error.');
+    announce('Error: ' + (e.message || 'unknown error'));
+  }
+})();
+
+
+---
+
+modules/ui.js
+
+/**
+ * @file Accessible UI module for No_Gas_Slaps™.
+ * @module ui
+ */
+
+import { state } from './state.js';
+import { getLeaderboard } from './leaderboard-api.js';
+import { getUser, getTheme } from './telegram-api.js';
+import { getError } from './error.js';
+
+let appEl, slapBtnEl, errorEl, leaderboardEl, scoreEl, comboEl, powerUpEl, dailyRewardBtn, offlineMsgEl;
+
+let onboardingCallback;
+
+export function initUI({ onSlap, onClaimDaily, onLeaderboardFocus }) {
+  appEl = document.getElementById('app');
+  appEl.innerHTML = `
+    <section>
+      <button class="slap-btn" id="slap-btn" aria-label="Slap!" tabindex="0" autofocus>
+        👋 SLAP!
+      </button>
+      <div class="score" id="score" aria-live="polite"></div>
+      <div class="combo" id="combo" aria-live="polite"></div>
+      <div class="power-up" id="power-up"></div>
+      <button id="daily-reward-btn" style="display:none;" aria-label="Claim Daily Reward">Claim Daily Reward</button>
+      <div class="error-msg" id="error" role="alert" aria-live="assertive" style="display:none"></div>
+      <div class="offline-msg" id="offline-msg" role="alert" aria-live="assertive" style="display:none">Offline Mode: Rewards disabled</div>
+      <section class="leaderboard" id="leaderboard" aria-label="Leaderboard" tabindex="0">
+        <h2>🏆 Leaderboard</h2>
+        <ol class="leaderboard-list" id="leaderboard-list"></ol>
+      </section>
+    </section>
+    <div id="onboarding" class="onboarding-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+      <h1 id="onboarding-title">Welcome to No_Gas_Slaps™</h1>
+      <p>Tap the slap button as fast as you can to increase your score.<br/>
+      Combos multiply your points! Unlock power-ups as you progress.<br/>
+      Claim your daily rewards and climb the leaderboard.<br/>
+      Have fun and don’t cheat!</p>
+      <button id="onboarding-skip-btn">Got it, let me play!</button>
+    </div>
+  `;
+
+  slapBtnEl = document.getElementById('slap-btn');
+  errorEl = document.getElementById('error');
+  leaderboardEl = document.getElementById('leaderboard');
+  scoreEl = document.getElementById('score');
+  comboEl = document.getElementById('combo');
+  powerUpEl = document.getElementById('power-up');
+  dailyRewardBtn = document.getElementById('daily-reward-btn');
+  offlineMsgEl = document.getElementById('offline-msg');
+
+  slapBtnEl.addEventListener('click', onSlap);
+  slapBtnEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      onSlap();
+      e.preventDefault();
+    }
+  });
+
+  dailyRewardBtn.addEventListener('click', onClaimDaily);
+
+  leaderboardEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      onLeaderboardFocus();
+      e.preventDefault();
+    }
+  });
+
+  // Onboarding skip
+  const onboardingEl = document.getElementById('onboarding');
+  const skipBtn = document.getElementById('onboarding-skip-btn');
+  skipBtn.addEventListener('click', ()
+

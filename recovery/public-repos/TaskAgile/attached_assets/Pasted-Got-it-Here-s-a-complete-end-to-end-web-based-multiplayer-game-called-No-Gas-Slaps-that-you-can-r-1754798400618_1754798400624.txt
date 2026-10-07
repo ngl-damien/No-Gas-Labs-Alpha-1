@@ -1,0 +1,375 @@
+Got it! Here’s a complete, end-to-end web-based multiplayer game called No Gas Slaps™ that you can run locally or deploy.
+
+
+---
+
+No Gas Slaps™ — Full Multiplayer Web Game
+
+Overview
+
+Players move around and slap opponents.
+
+Each slap costs “gas” that recharges over time.
+
+Players have health; being slapped reduces health.
+
+Last player alive wins.
+
+Multiplayer synced via simple WebSocket server.
+
+
+
+---
+
+How to run
+
+1. Save the server code (server.js) and install dependencies (npm install ws express).
+
+
+2. Run the server: node server.js.
+
+
+3. Open multiple browser tabs to http://localhost:3000 to play locally.
+
+
+
+
+---
+
+1. Server Code (Node.js with WebSocket & Express)
+
+// server.js
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+const PORT = 3000;
+app.use(express.static('public'));
+
+let players = {};
+let nextId = 1;
+
+function broadcast(data) {
+  const msg = JSON.stringify(data);
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) client.send(msg);
+  });
+}
+
+function resetGame() {
+  for (const id in players) {
+    players[id].health = 100;
+    players[id].gas = 100;
+    players[id].x = Math.random() * 600 + 50;
+    players[id].y = Math.random() * 400 + 50;
+    players[id].alive = true;
+  }
+  broadcast({ type: 'gameReset', players });
+}
+
+wss.on('connection', (ws) => {
+  const playerId = nextId++;
+  players[playerId] = {
+    id: playerId,
+    x: Math.random() * 600 + 50,
+    y: Math.random() * 400 + 50,
+    health: 100,
+    gas: 100,
+    alive: true,
+  };
+
+  ws.send(JSON.stringify({ type: 'init', id: playerId, players }));
+
+  broadcast({ type: 'playerJoined', player: players[playerId] });
+
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+
+      if (!players[playerId]) return;
+
+      if (data.type === 'move') {
+        if (!players[playerId].alive) return;
+        players[playerId].x = data.x;
+        players[playerId].y = data.y;
+        broadcast({ type: 'playerMoved', id: playerId, x: data.x, y: data.y });
+      }
+
+      else if (data.type === 'slap') {
+        if (!players[playerId].alive) return;
+        if (players[playerId].gas < 20) return; // Not enough gas to slap
+        players[playerId].gas -= 20;
+
+        // Check hit: simple radius check on target player
+        const targetId = data.targetId;
+        if (players[targetId] && players[targetId].alive) {
+          const dx = players[targetId].x - players[playerId].x;
+          const dy = players[targetId].y - players[playerId].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 50) { // slap range
+            players[targetId].health -= 20;
+            if (players[targetId].health <= 0) {
+              players[targetId].alive = false;
+              broadcast({ type: 'playerDied', id: targetId });
+            }
+            broadcast({ type: 'playerHit', id: targetId, health: players[targetId].health });
+          }
+        }
+
+        broadcast({ type: 'playerGasUpdate', id: playerId, gas: players[playerId].gas });
+      }
+
+    } catch (e) {
+      console.error('Invalid message', e);
+    }
+  });
+
+  ws.on('close', () => {
+    delete players[playerId];
+    broadcast({ type: 'playerLeft', id: playerId });
+  });
+});
+
+// Gas recharge loop every second
+setInterval(() => {
+  for (const id in players) {
+    if (players[id].alive) {
+      players[id].gas = Math.min(100, players[id].gas + 5);
+    }
+  }
+  broadcast({ type: 'gasRecharge', players });
+}, 1000);
+
+// Start the server
+server.listen(PORT, () => {
+  console.log(`No Gas Slaps™ server running at http://localhost:${PORT}`);
+});
+
+
+---
+
+2. Client Code (HTML + JavaScript)
+
+Create a folder named public and inside it a file named index.html with this content:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>No Gas Slaps™</title>
+<style>
+  body { margin: 0; background: #222; color: #eee; font-family: sans-serif; }
+  #gameCanvas { background: #444; display: block; margin: 20px auto; border-radius: 10px; }
+  #status { text-align: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="700" height="500"></canvas>
+<div id="status">Connecting...</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const statusDiv = document.getElementById('status');
+
+  const ws = new WebSocket(`ws://${location.host}`);
+
+  let playerId = null;
+  const players = {};
+
+  let keysPressed = {};
+
+  // Player settings
+  const speed = 4;
+  const slapRange = 50;
+  const slapCooldown = 1000;
+  let lastSlapTime = 0;
+
+  function drawPlayer(p) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+    ctx.fillStyle = p.id === playerId ? '#4CAF50' : p.alive ? '#2196F3' : '#888';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+
+    // Health bar
+    ctx.fillStyle = '#f44336';
+    ctx.fillRect(p.x - 20, p.y - 30, 40, 6);
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(p.x - 20, p.y - 30, 40 * (p.health / 100), 6);
+
+    // Gas bar
+    ctx.fillStyle = '#555';
+    ctx.fillRect(p.x - 20, p.y - 22, 40, 4);
+    ctx.fillStyle = '#00bcd4';
+    ctx.fillRect(p.x - 20, p.y - 22, 40 * (p.gas / 100), 4);
+
+    // Player ID
+    ctx.fillStyle = '#eee';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Player ' + p.id, p.x, p.y + 35);
+  }
+
+  function update() {
+    if (!playerId || !players[playerId] || !players[playerId].alive) {
+      requestAnimationFrame(update);
+      return;
+    }
+    const p = players[playerId];
+    let moved = false;
+
+    if (keysPressed['ArrowUp'] && p.y > 20) { p.y -= speed; moved = true; }
+    if (keysPressed['ArrowDown'] && p.y < canvas.height - 20) { p.y += speed; moved = true; }
+    if (keysPressed['ArrowLeft'] && p.x > 20) { p.x -= speed; moved = true; }
+    if (keysPressed['ArrowRight'] && p.x < canvas.width - 20) { p.x += speed; moved = true; }
+
+    if (moved) {
+      ws.send(JSON.stringify({ type: 'move', x: p.x, y: p.y }));
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  function slap() {
+    if (!playerId || !players[playerId] || !players[playerId].alive) return;
+    const now = Date.now();
+    if (now - lastSlapTime < slapCooldown) return;
+    const p = players[playerId];
+    if (p.gas < 20) {
+      statusDiv.textContent = 'Not enough gas to slap!';
+      return;
+    }
+
+    // Find nearest opponent in range
+    let targetId = null;
+    let minDist = Infinity;
+    for (const id in players) {
+      if (id == playerId) continue;
+      const op = players[id];
+      if (!op.alive) continue;
+      const dx = op.x - p.x;
+      const dy = op.y - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < slapRange && dist < minDist) {
+        minDist = dist;
+        targetId = id;
+      }
+    }
+
+    if (targetId) {
+      ws.send(JSON.stringify({ type: 'slap', targetId: Number(targetId) }));
+      lastSlapTime = now;
+      statusDiv.textContent = 'Slapped player ' + targetId + '!';
+    } else {
+      statusDiv.textContent = 'No players in slap range!';
+    }
+  }
+
+  ws.onopen = () => {
+    statusDiv.textContent = 'Connected! Use arrow keys to move. Press SPACE to slap.';
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    switch (data.type) {
+      case 'init':
+        playerId = data.id;
+        Object.assign(players, data.players);
+        break;
+
+      case 'playerJoined':
+        players[data.player.id] = data.player;
+        break;
+
+      case 'playerMoved':
+        if (players[data.id]) {
+          players[data.id].x = data.x;
+          players[data.id].y = data.y;
+        }
+        break;
+
+      case 'playerHit':
+        if (players[data.id]) {
+          players[data.id].health = data.health;
+        }
+        break;
+
+      case 'playerDied':
+        if (players[data.id]) {
+          players[data.id].alive = false;
+          if (data.id == playerId) statusDiv.textContent = 'You died! Refresh to play again.';
+        }
+        break;
+
+      case 'playerGasUpdate':
+        if (players[data.id]) {
+          players[data.id].gas = data.gas;
+        }
+        break;
+
+      case 'gasRecharge':
+        // Update gas values for all players
+        Object.keys(players).forEach(id => {
+          if (data.players[id]) players[id].gas = data.players[id].gas;
+        });
+        break;
+
+      case 'playerLeft':
+        delete players[data.id];
+        break;
+
+      case 'gameReset':
+        Object.assign(players, data.players);
+        statusDiv.textContent = 'Game reset!';
+        break;
+    }
+  };
+
+  document.addEventListener('keydown', e => {
+    keysPressed[e.key] = true;
+    if (e.code === 'Space') {
+      slap();
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('keyup', e => {
+    keysPressed[e.key] = false;
+  });
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const id in players) {
+      drawPlayer(players[id]);
+    }
+    requestAnimationFrame(render);
+  }
+
+  render();
+  update();
+})();
+</script>
+
+</body>
+</html>
+
+
+---
+
+That’s it!
+
+This gives you a fully playable multiplayer slap game with gas and health mechanics.
+Open multiple browser tabs to test.
+
+If you want me to add enhancements like matchmaking, lobby, sound effects, or mobile controls, just ask!
+
