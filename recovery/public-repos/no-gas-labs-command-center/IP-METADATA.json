@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "framework": "NGL-IP-GF v3.0",
+  "license": "NGL-A v1.0",
+  "repository": {
+    "name": "no-gas-labs-command-center",
+    "organization": "No-Gas-Labs-Official",
+    "url": "https://github.com/No-Gas-Labs-Official/no-gas-labs-command-center"
+  },
+  "intellectual_property": {
+    "type": "SOURCE_CODE",
+    "classification": "PROPRIETARY",
+    "defensive_rating": "CRITICAL",
+    "monetization_tier": "PREMIUM"
+  },
+  "ownership": {
+    "primary_author": "Damien Edward Featherstone",
+    "organization": "No-Gas-Labs-Official",
+    "jurisdiction": "Carter Lake Exclave, Iowa",
+    "contact": "damienedwardfeatherstone@gmail.com"
+  },
+  "blockchain_anchors": {
+    "sui": null,
+    "arweave": null,
+    "ethereum": null
+  },
+  "licensing_fees": {
+    "deployment_fee_eth": 0.0,
+    "ai_training_fee_eth": 0.5,
+    "commercial_use_fee_eth": 1.0
+  },
+  "timestamps": {
+    "created": "2026-01-06T21:32:09Z",
+    "last_updated": "2026-01-09T00:00:00Z",
+    "ip_registration": "2026-01-09T00:00:00Z"
+  },
+  "fingerprint": {
+    "algorithm": "SHA-256",
+    "hash": null
+  },
+  "monitoring": {
+    "ethosguard_enabled": true,
+    "alert_threshold": "HIGH"
+  }
+}
