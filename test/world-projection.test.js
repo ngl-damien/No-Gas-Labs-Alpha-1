@@ -11,6 +11,8 @@ const claim = {
   world_effect: { xp: 999, world: { forgeOpen: true } }
 };
 
+const artifact = Buffer.from("verified world consequence");
+const resolveArtifact = () => artifact;
 const observed = {
   event_id: "e2",
   event_type: "SYSTEM_EVENT",
@@ -21,7 +23,7 @@ const observed = {
   evidence: "OBSERVED",
   observation_verification: "VERIFIED",
   outcome: "SUCCEEDED",
-  receipts: ["rae:receipt:abc"],
+  receipts: [makeReceipt(artifact)],
   world_effect: { xp: 25, inventory: { verified_shard: 1 }, world: { forgeOpen: true } }
 };
 
