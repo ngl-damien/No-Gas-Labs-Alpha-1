@@ -5,6 +5,7 @@ import { makeReceipt } from "../src/evidence/content-addressed.js";
 
 const artifact = Buffer.from("actual executed artifact");
 const receipt = makeReceipt(artifact);
+const authorize = e => e.event_id === "proof-1";
 const event = {
   event_id:"proof-1", event_type:"SYSTEM_EVENT", subject:"forge-gate",
   admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED",
@@ -13,7 +14,7 @@ const event = {
 };
 
 test("verified artifact bytes can mint world consequences", () => {
-  const s=projectWorld([event], undefined, {resolveArtifact:()=>artifact});
+  const s=projectWorld([event], undefined, {resolveArtifact:()=>artifact,authorize});
   assert.equal(s.xp,100);
   assert.equal(s.inventory.proof_shard,1);
   assert.equal(s.world.forgeOpen,true);
@@ -27,7 +28,7 @@ test("a VERIFIED-looking label without artifact bytes cannot mint XP", () => {
 });
 
 test("mutated artifact bytes invalidate the receipt", () => {
-  const s=projectWorld([event], undefined, {resolveArtifact:()=>Buffer.from("different artifact")});
+  const s=projectWorld([event], undefined, {resolveArtifact:()=>Buffer.from("different artifact"),authorize});
   assert.equal(s.xp,0);
 });
 
