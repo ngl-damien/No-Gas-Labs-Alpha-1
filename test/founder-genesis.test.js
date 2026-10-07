@@ -1,0 +1,17 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { establishGenesis, fingerprintPublicKey, verifyEnrolledDecision } from "../src/authority/genesis.js";
+import { decisionDigest } from "../src/authority/decision.js";
+const canonical=v=>Array.isArray(v)?"["+v.map(canonical).join(",")+"]":v&&typeof v==="object"?"{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonical(v[k])).join(",")+"}":JSON.stringify(v);
+const {privateKey,publicKey}=generateKeyPairSync("ec",{namedCurve:"P-256"});
+const jwk=publicKey.export({format:"jwk"});
+const evidence_sha256="ed30cd7cc278113fe571909078f1edaa132d0f07c3a7ebd341eac7d482604929";
+const genesis=establishGenesis({public_key_jwk:jwk,evidence_sha256,challenge:"The first key is not the first proof",founder_declaration:"I accept the inaugural No_Gas_Labs Founder key"});
+const payload={schema:"ngl.founder-decision.v1",proposal_id:"p1",quest_id:"q1",capabilities:["repository.write"],outputs:[],acceptance:[],expires_at:"2099-01-01T00:00:00Z"};
+const signed={payload_sha256:decisionDigest(payload),key_fingerprint:fingerprintPublicKey(jwk),signature:sign("sha256",Buffer.from(canonical(payload)),privateKey).toString("base64url")};
+test("enrolled public key verifies signed decision",()=>assert.equal(verifyEnrolledDecision({genesis,signed,payload,now:0}).valid,true));
+test("unsigned assertion is rejected",()=>assert.equal(verifyEnrolledDecision({genesis,signed:{...signed,signature:""},payload,now:0}).valid,false));
+test("tampered enrollment fingerprint is rejected",()=>assert.equal(verifyEnrolledDecision({genesis:{...genesis,key_fingerprint:"0".repeat(64)},signed,payload,now:0}).valid,false));
+test("expired grant is rejected",()=>assert.equal(verifyEnrolledDecision({genesis,signed,payload,now:Date.parse("2100-01-01")}).valid,false));
+test("explicit declaration required",()=>assert.throws(()=>establishGenesis({public_key_jwk:jwk,evidence_sha256,challenge:"test",founder_declaration:"AI says yes"})));
