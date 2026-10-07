@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="description" content="No Gas Labs Empire — Modular Vibe Coding OS. 86 repos. One command center.">
+<title>NGL Empire OS — Modular Command Center</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+:root{--b:#0a0a0a;--c1:#1a1a1f;--cyan:#00e5ff;--cyan-d:#00b8cc;--o:#ff8c00;--o-d:#cc7000;--g:#4caf50;--r:#ff4444;--gold:#ffd700;--p:#ab47bc;--t:#e0f7fa;--td:#78909c;--tf:#455a64;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--b);color:var(--t);font-family:'Share Tech Mono',monospace;font-size:14px}
+.crt{pointer-events:none;position:fixed;inset:0;z-index:9999}
+.crt::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.06)0px,rgba(0,0,0,0.06)1px,transparent 1px,transparent 2px);animation:scn 8s linear infinite}
+.crt::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,0.4)100%)}
+@keyframes scn{0%{transform:translateY(0)}100%{transform:translateY(2px)}}
+#app{width:100vw;height:100vh;display:flex;flex-direction:column}
+#top{display:flex;gap:6px;padding:6px 10px;background:rgba(10,10,10,0.92);border-bottom:1px solid rgba(0,229,255,0.1);z-index:100;align-items:center;flex-shrink:0;font-size:0.6rem}
+#top .logo{font-family:'VT323',monospace;font-size:1.1rem;color:var(--gold);margin-right:8px}
+.bar{height:5px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden;flex:1}
+.bar-f{height:100%;border-radius:3px;transition:width .3s}
+#bot{display:flex;justify-content:space-around;padding:5px 2px 7px;background:rgba(10,10,10,0.92);border-top:1px solid rgba(0,229,255,0.1);z-index:100;flex-shrink:0}
+.nb{display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 4px;border-radius:6px;background:transparent;border:none;color:var(--td);cursor:pointer;transition:all .15s;font-family:inherit;font-size:0.5rem;min-width:36px}
+.nb svg{width:18px;height:18px}
+.nb:hover{color:var(--t);background:rgba(255,255,255,0.04)}
+.nb.on{color:var(--cyan);background:rgba(0,229,255,0.08)}
+#vp{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:thin;scrollbar-color:var(--cyan-d) var(--b)}
+#vp::-webkit-scrollbar{width:4px}
+#vp::-webkit-scrollbar-thumb{background:var(--cyan-d);border-radius:2px}
+.z{display:none;padding:10px 12px 70px;min-height:100%;animation:fi .3s ease-out}
+.z.a{display:block}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.zh{text-align:center;margin-bottom:12px}
+.zt{font-family:'VT323',monospace;font-size:1.6rem;letter-spacing:0.08em;margin-bottom:3px}
+.zs{font-size:0.6rem;color:var(--td)}
+.pn{background:var(--c1);border:1px solid rgba(0,229,255,0.1);border-radius:8px;padding:10px;margin-bottom:8px}
+.pn-g{border-color:rgba(255,215,0,0.12)}
+.pn-r{border-color:rgba(255,68,68,0.12)}
+.pn-g2{border-color:rgba(76,175,80,0.12)}
+.fp{font-family:'VT323',monospace}
+.g-c{color:var(--cyan);text-shadow:0 0 8px var(--cyan-d)}
+.g-g{color:var(--gold);text-shadow:0 0 8px rgba(255,215,0,0.3)}
+.g-r{color:var(--r)}
+.g-gr{color:var(--g)}
+.g-o{color:var(--o)}
+.g-p{color:var(--p)}
+.btn{padding:6px 12px;border-radius:6px;border:1px solid;font-family:'VT323',monospace;font-size:0.75rem;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;background:transparent}
+.btn-c{border-color:rgba(0,229,255,0.25);color:var(--cyan);background:rgba(0,229,255,0.05)}
+.btn-c:hover{background:rgba(0,229,255,0.12)}
+.btn-o{border-color:rgba(255,140,0,0.25);color:var(--o);background:rgba(255,140,0,0.05)}
+.btn-o:hover{background:rgba(255,140,0,0.12)}
+.btn-g{border-color:rgba(76,175,80,0.25);color:var(--g);background:rgba(76,175,80,0.05)}
+.btn-g:hover{background:rgba(76,175,80,0.12)}
+.btn-r{border-color:rgba(255,68,68,0.25);color:var(--r);background:rgba(255,68,68,0.05)}
+.ti{width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:10px 12px;color:var(--t);font-family:inherit;font-size:0.75rem;outline:none}
+.ti:focus{border-color:var(--cyan)}
+.ti::placeholder{color:var(--tf)}
+.mgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.mcard{padding:8px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:all .15s;position:relative}
+.mcard:hover{border-color:rgba(0,229,255,0.25);transform:translateY(-1px)}
+.mcard .st{position:absolute;top:4px;right:4px;font-size:0.45rem;padding:1px 5px;border-radius:6px}
+.mcard .st-real{background:rgba(76,175,80,0.15);color:var(--g)}
+.mcard .st-spec{background:rgba(255,140,0,0.15);color:var(--o)}
+.mcard .st-shell{background:rgba(255,68,68,0.1);color:var(--r)}
+.mcard .nm{font-family:'VT323',monospace;font-size:0.8rem;margin-bottom:2px}
+.mcard .ds{font-size:0.5rem;color:var(--td);line-height:1.3}
+.pipe{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.pipe-step{padding:6px 10px;border-radius:8px;border:1px solid rgba(0,229,255,0.15);background:rgba(0,0,0,0.2);font-size:0.6rem;text-align:center;min-width:60px}
+.pipe-arr{color:var(--cyan);font-size:0.7rem}
+.prod{padding:12px;border-radius:10px;border:1px solid rgba(255,215,0,0.15);background:linear-gradient(135deg,rgba(26,20,0,0.5),rgba(10,10,10,0.8));margin-bottom:10px}
+.price{font-family:'VT323',monospace;font-size:1.8rem;color:var(--gold)}
+.fw{font-weight:normal}
+#nf{position:fixed;top:48px;right:6px;z-index:300;display:flex;flex-direction:column;gap:5px;max-width:240px;pointer-events:none}
+.nf{pointer-events:auto;padding:7px 9px;border-radius:6px;background:var(--c1);border-left:3px solid var(--cyan);font-size:0.65rem;animation:su .3s ease-out;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+.nf.s{border-left-color:var(--g)}
+.nf.w{border-left-color:var(--o)}
+.nf.e{border-left-color:var(--r)}
+@keyframes su{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+.twc{padding:8px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.05);margin-bottom:6px;font-size:0.65rem;line-height:1.5}
+.twc .t{font-size:0.5rem;color:var(--tf)}
+#dl{position:fixed;inset:0;z-index:200;display:none;align-items:flex-end;justify-content:center;padding:0 10px 80px;background:rgba(0,0,0,0.75)}
+.dlp{width:100%;max-width:460px;background:linear-gradient(135deg,var(--c1),var(--b));border:2px solid var(--cyan);border-radius:10px;padding:12px;animation:su .3s ease-out}
+.dltxt{font-size:0.75rem;line-height:1.6;margin-bottom:10px;min-height:40px}
+.dlch{display:flex;flex-direction:column;gap:5px}
+.dlchb{background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.15);border-radius:5px;padding:7px 9px;cursor:pointer;transition:all .15s;font-size:0.68rem;color:var(--t);font-family:inherit;text-align:left}
+.dlchb:hover{background:rgba(0,229,255,0.1);border-color:var(--cyan);transform:translateX(3px)}
+.dlc{font-family:'VT323',monospace;color:var(--o);background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);border-radius:5px;padding:7px;cursor:pointer;font-size:0.8rem}
+.dlc:hover{background:rgba(0,229,255,0.12)}
+.ld{display:flex;align-items:center;gap:5px;padding:15px;color:var(--td);font-size:0.65rem}
+.ldd{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:lp 1.2s ease-in-out infinite}
+.ldd:nth-child(2){animation-delay:0.2s}.ldd:nth-child(3){animation-delay:0.4s}
+@keyframes lp{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}
+.kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.62rem}
+.kvk{color:var(--td)}.kvv{color:var(--t)}
+.sm{font-size:0.55rem;color:var(--tf);line-height:1.4}
+.smc{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.smt{padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.3);font-size:0.5rem;color:var(--td)}
+@media(max-width:360px){.mgrid{grid-template-columns:1fr}.zt{font-size:1.3rem}}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="crt"></div>
+<div id="nf"></div>
+
+<div id="top">
+<span class="logo fp">👑 NGL EMPIRE</span>
+<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:3px;margin-bottom:1px"><span style="font-size:0.5rem;color:var(--td)">LVL</span><span id="h-lvl" class="fp g-o" style="font-size:0.9rem">1</span></div></div>
+<div style="flex:1;min-width:0"><div class="bar"><div id="h-xp" class="bar-f" style="width:0%;background:var(--cyan)"></div></div></div>
+<div style="flex:1;min-width:0"><div class="bar"><div id="h-tk" class="bar-f" style="width:12%;background:var(--o)"></div></div></div>
+</div>
+
+<div id="vp">
+
+<!-- ===== DASHBOARD ===== -->
+<div class="z a" id="z-dash">
+<div class="zh"><div class="zt g-g">EMPIRE DASHBOARD</div><div class="zs">86 repos. 6 module families. 1 sovereign.</div></div>
+
+<div class="pn pn-g">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--o-d));display:flex;align-items:center;justify-content:center;font-size:1.4rem">👑</div>
+<div><div class="fp g-g" style="font-size:1rem">Neophyte Founder</div><div class="sm">Level <span id="d-lvl">1</span> — <span id="d-title">The Fifth Realm</span></div></div>
+</div>
+<div class="mgrid" style="margin-top:8px">
+<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"><div class="fp g-c" id="d-xp">0</div><div class="sm">XP</div></div>
+<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"><div class="fp g-o" id="d-tk">50</div><div class="sm">TOKENS</div></div>
+<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"><div class="fp g-gr" id="d-real">5</div><div class="sm">REAL MODULES</div></div>
+<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"><div class="fp" style="color:var(--p)" id="d-total">86</div><div class="sm">TOTAL REPOS</div></div>
+</div>
+</div>
+
+<div class="pn">
+<div class="fp g-c" style="font-size:0.85rem;margin-bottom:6px">📊 MODULE FAMILIES</div>
+<div id="mod-families"></div>
+</div>
+
+<div class="pn pn-g2">
+<div class="fp g-gr" style="font-size:0.85rem;margin-bottom:6px">🚀 QUICK ACTIONS</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<button class="btn btn-c" onclick="Z('council')">AI Council</button>
+<button class="btn btn-o" onclick="Z('podcast')">Pipeline</button>
+<button class="btn btn-g" onclick="Z('market')">Sell</button>
+<button class="btn btn-c" onclick="Z('audience')">Grow</button>
+<button class="btn btn-o" onclick="exportEmpire()">💾 Export</button>
+<button class="btn btn-r" onclick="resetEmpire()">🔄 Reset</button>
+</div>
+</div>
+
+<div class="pn">
+<div class="fp g-o" style="font-size:0.85rem;margin-bottom:6px">📜 EMPIRE LOG</div>
+<div id="empire-log" style="font-size:0.6rem;color:var(--td);line-height:1.5;max-height:150px;overflow-y:auto"></div>
+</div>
+</div>
+
+<!-- ===== AI COUNCIL ===== -->
+<div class="z" id="z-council">
+<div class="zh"><div class="zt g-p">AI COUNCIL</div><div class="zs">Four minds. One consensus. Your word becomes code.</div></div>
+<div id="council-oracles"></div>
+<div class="pn">
+<div class="fp g-c" style="font-size:0.8rem;margin-bottom:6px">⌨ SOVEREIGN CONSOLE</div>
+<div style="display:flex;gap:6px;margin-bottom:8px">
+<input class="ti" id="cc-in" placeholder="Describe what you need built..." style="flex:1">
+<button class="btn btn-c" onclick="councilSpeak()">SPEAK</button>
+</div>
+<div id="cc-debate" style="font-size:0.6rem;color:var(--td);line-height:1.4"></div>
+</div>
+<div id="cc-hist" style="max-height:250px;overflow-y:auto"></div>
+</div>
+
+<!-- ===== PODCAST PIPELINE ===== -->
+<div class="z" id="z-podcast">
+<div class="zh"><div class="zt" style="color:var(--r)">🔥 PODCAST PIPELINE</div><div class="zs">America's Got Problems — Full Production System</div></div>
+<div class="pn pn-r">
+<div class="fp" style="font-size:0.85rem;color:var(--r);margin-bottom:8px">6-AGENT WORKFLOW</div>
+<div class="pipe">
+<div class="pipe-step"><div class="fp" style="color:var(--gold)">1</div>Maestro</div><span class="pipe-arr">→</span>
+<div class="pipe-step"><div class="fp" style="color:var(--cyan)">2</div>EthosGuard</div><span class="pipe-arr">→</span>
+<div class="pipe-step"><div class="fp" style="color:var(--g)">3</div>SonicForge</div><span class="pipe-arr">→</span>
+<div class="pipe-step"><div class="fp" style="color:var(--p)">4</div>BuzzWire</div><span class="pipe-arr">→</span>
+<div class="pipe-step"><div class="fp" style="color:var(--o)">5</span>Broadcast</div><span class="pipe-arr">→</span>
+<div class="pipe-step"><div class="fp" style="color:var(--r)">6</div>Pulse</div>
+</div>
+<div style="font-size:0.6rem;color:var(--td);line-height:1.5;margin-top:6px">
+<b style="color:var(--gold)">MaestroNGL</b> — Workflow orchestration: schedules guests, sequences episodes, manages production calendar<br>
+<b style="color:var(--cyan)">EthosGuardNGL</b> — Brand enforcement: ensures every clip matches NGL tone, flags deviations<br>
+<b style="color:var(--g)">SonicForgeNGL</b> — Audio mastering: edits, FX, leveling, export to all formats<br>
+<b style="color:var(--p)">BuzzWireNGL</b> — Social media: clips, audiograms, scheduling across all platforms<br>
+<b style="color:var(--o)">BroadcastNGL</b> — Distribution: pushes to Spotify, Apple, YouTube, RSS feeds<br>
+<b style="color:var(--r)">PulseMonitorNGL</b> — Sentiment analysis: tracks reviews, comments, engagement metrics
+</div>
+</div>
+<div id="podcast-episodes"></div>
+</div>
+
+<!-- ===== MARKETPLACE ===== -->
+<div class="z" id="z-market">
+<div class="zh"><div class="zt g-g">MARKETPLACE</div><div class="zs">Your empire generates revenue. Zero ad spend.</div></div>
+
+<div class="prod">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:1.8rem">🌱</span><div><div class="fp g-g" style="font-size:1rem">THE SEED</div><div class="sm">Personal Sovereignty</div></div><div class="price" style="margin-left:auto">$15</div></div>
+<div class="sm" style="margin-bottom:8px">The single-file empire. Open on your phone. 6 zones, 4 AI oracles, combat, crafting. Yours forever. No subscription.</div>
+<div class="smc"><span class="smt">Lifetime</span><span class="smt">No Recurring</span><span class="smt">PWA</span><span class="smt">Offline</span></div>
+</div>
+
+<div class="prod">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:1.8rem">🌳</span><div><div class="fp" style="color:var(--g);font-size:1rem">THE GROVE</div><div class="sm">Team of 3</div></div><div class="price" style="margin-left:auto;color:var(--g)">$150</div></div>
+<div class="sm" style="margin-bottom:8px">3 sovereign seats. Shared world state. Team mutation log. Custom oracle tuning per member. Priority organ drops.</div>
+</div>
+
+<div class="prod">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:1.8rem">🏛️</span><div><div class="fp g-p" style="font-size:1rem">THE ACROPOLIS</div><div class="sm">Enterprise White-Label</div></div><div class="price" style="margin-left:auto;color:var(--p)">$500</div></div>
+<div class="sm" style="margin-bottom:8px">Your branding, your colors, your guardians. Custom oracle integrations. Quarterly world expansions. Direct architect line.</div>
+</div>
+
+<div class="pn pn-g2">
+<div class="fp g-gr" style="font-size:0.85rem;margin-bottom:6px">💰 CLIENT FUNNEL</div>
+<div class="twc"><div class="t">STEP 1: DM TEMPLATE (send to 10 people today)</div>
+"Hey [NAME] — quick question: ever wanted a tool built but didn't know how to code or who to ask? I made something that turns conversation into working software. Four AI minds debate your idea, a working tool appears on your phone. $15 lifetime, no recurring. Want me to send you the file?"</div>
+<div class="twc"><div class="t">STEP 2: PAYMENT</div>Venmo or crypto only. No Stripe. No PayPal. No Cash App. Owner provides Venmo handle + BTC/ETH/SOL addresses. Buyer sends payment, owner sends the HTML file via DM/email. Every sale is pure profit — zero marginal cost.</div>
+<div class="twc"><div class="t">STEP 3: GROWTH LOOP</div>Every user becomes a node. They show their friends. The comic attracts readers. The podcast attracts listeners. Three funnels, one empire.</div>
+</div>
+</div>
+
+<!-- ===== AUDIENCE ===== -->
+<div class="z" id="z-audience">
+<div class="zh"><div class="zt g-c">AUDIENCE BUILDER</div><div class="zs">Zero to community. From the margins to the center.</div></div>
+
+<div class="pn">
+<div class="fp g-c" style="font-size:0.85rem;margin-bottom:6px">🐦 TWITTER THREAD GENERATOR</div>
+<div style="display:flex;gap:6px;margin-bottom:8px">
+<input class="ti" id="tg-topic" placeholder="What topic? (e.g., 'building without code')" style="flex:1">
+<button class="btn btn-c" onclick="genThread()">GENERATE</button>
+</div>
+<div id="tg-output"></div>
+</div>
+
+<div class="pn">
+<div class="fp g-o" style="font-size:0.85rem;margin-bottom:6px">📅 CONTENT CALENDAR (Week 1)</div>
+<div id="content-cal"></div>
+</div>
+
+<div class="pn pn-g2">
+<div class="fp g-gr" style="font-size:0.85rem;margin-bottom:6px">🎯 GROWTH TACTICS</div>
+<div class="twc"><div class="t">DAILY HABIT (15 min)</div>Post 1 thread + 3 replies + 1 quote-tweet on relevant topics. Consistency beats virality. Every post is a recruitment signal.</div>
+<div class="twc"><div class="t">WEEKLY HABIT (1 hour)</div>Release one "organ" — a new zone, a new guardian, a new tool. Post the changelog. Show the evolution in real-time.</div>
+<div class="twc"><div class="t">THE RECRUITMENT POSTER</div>"Become an Unofficial Initiate Today!" — frame joining your community as an act of rebellion against performative expertise.</div>
+</div>
+</div>
+
+<!-- ===== MODULES ===== -->
+<div class="z" id="z-mods">
+<div class="zh"><div class="zt g-p">MODULE REGISTRY</div><div class="zs">86 repos. Every one has a purpose.</div></div>
+<div id="mod-registry"></div>
+</div>
+
+</div>
+
+<div id="bot">
+<button class="nb on" data-z="dash" title="Dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dash</button>
+<button class="nb" data-z="council" title="AI Council"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Council</button>
+<button class="nb" data-z="podcast" title="Pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>Pipeline</button>
+<button class="nb" data-z="market" title="Marketplace"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Sell</button>
+<button class="nb" data-z="audience" title="Audience"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>Grow</button>
+<button class="nb" data-z="mods" title="Modules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>86 Mods</button>
+</div>
+
+<div id="dl"><div id="dlp" class="dlp"></div></div>
+
+</div>
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),uid=()=>Math.random().toString(36).slice(2,10),now=()=>new Date().toISOString();
+const ORACLES={
+  chatgpt:{n:'The Historian',c:'ChatGPT',color:'#10a37f',v:'I have seen 10,000 versions of this problem. Here is what worked...',p:'Encyclopedic, pattern-matching, confident'},
+  claude:{n:'The Conscience',c:'Claude',color:'#d4a574',v:'Before we build — who does this help, and who might it harm?',p:'Careful, ethical, asks hard questions, refuses bad ideas kindly'},
+  gemini:{n:'The Dreamer',c:'Gemini',color:'#4285f4',v:'What if this was not just a tool but a movement? What if...',p:'Expansive, connecting disparate ideas, sees systems and movements'},
+  grok:{n:'The Dissenter',c:'Grok',color:'#ff6b35',v:'Everyone has been trying to solve this wrong. Here is the actual problem...',p:'Contrarian, cuts through pretense, finds the uncomfortable truth'}
+};
+const MODULES=[
+  {id:'core',name:'CORE PRODUCTS',color:'var(--gold)',repos:[
+    {name:'no-gas-labs',desc:'The Primordial Engine — sovereign seed (THIS FILE)',status:'real',size:'65KB',lang:'HTML'},
+    {name:'culling-of-murderous-wizards',desc:'Interactive 40-page digital comic — Authentic Faux',status:'real',size:'173KB',lang:'TypeScript'},
+    {name:'ngl001-def4us28',desc:'NGL-001 Artifact & DEF4US28 Unified Manifesto',status:'real',size:'16MB',lang:'JavaScript'},
+  ]},
+  {id:'intel',name:'INTELLIGENCE SYSTEM',color:'var(--cyan)',repos:[
+    {name:'ai-guild-hardened-v0.2',desc:'Operations Intelligence System — 9 modules, 59,457 LOC, mobile app',status:'real',size:'1.3MB',lang:'JavaScript'},
+    {name:'no-gas-labs-command-center',desc:'Full-stack TypeScript command center — 26MB',status:'real',size:'26MB',lang:'TypeScript'},
+    {name:'no-gas-labs-audit-monorepo',desc:'Comprehensive audit monorepo — Python analysis scripts',status:'real',size:'?',lang:'Python'},
+  ]},
+  {id:'agents',name:'AI AGENTS (Podcast Pipeline)',color:'var(--r)',repos:[
+    {name:'MaestroNGL',desc:'Workflow orchestration — schedules guests, sequences episodes',status:'spec',size:'9 files',lang:'Python'},
+    {name:'EthosGuardNGL',desc:'Brand enforcement — ensures NGL tone consistency',status:'spec',size:'9 files',lang:'Python'},
+    {name:'SonicForgeNGL',desc:'Audio editing, mastering, and FX',status:'spec',size:'7 files',lang:'Python'},
+    {name:'BuzzWireNGL',desc:'Social media posts, audiograms, scheduling',status:'spec',size:'9 files',lang:'Python'},
+    {name:'BroadcastNGL',desc:'Multi-platform distribution — Spotify, Apple, YouTube',status:'spec',size:'9 files',lang:'Python'},
+    {name:'PulseMonitorNGL',desc:'Sentiment analysis and review scanning',status:'spec',size:'9 files',lang:'Python'},
+    {name:'MoodSync-MVP',desc:'Communication context overlay — emotional state signaling',status:'spec',size:'16 files',lang:'JavaScript'},
+    {name:'NGL-POLYSYNTH-v1',desc:'LLM model merge — 4-source Frankenstein Feather',status:'spec',size:'?',lang:'Python'},
+  ]},
+  {id:'feather',name:'FEATHERSTONE PROTOCOL',color:'var(--p)',repos:[
+    {name:'featherstone-MaestroNGL',desc:'Enhanced Maestro (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-BroadcastNGL',desc:'Enhanced Broadcast (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-EthosGuardNGL',desc:'Enhanced EthosGuard (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-BuzzWireNGL',desc:'Enhanced BuzzWire (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-SonicForgeNGL',desc:'Enhanced SonicForge (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-PulseMonitorNGL',desc:'Enhanced PulseMonitor (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-MoodSync-MVP',desc:'Enhanced MoodSync (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-Mythos',desc:'Enhanced Mythos (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-No_Gas_Slaps-',desc:'Enhanced NoGasSlaps (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-No_Gas_Labs-Omnichain_TownSquare',desc:'Enhanced TownSquare (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-Omnichain_Bridge_wallet',desc:'Enhanced Bridge Wallet (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-SonicForgeNGL',desc:'Enhanced SonicForge (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-PulseMonitorNGL',desc:'Enhanced PulseMonitor (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-Store',desc:'Enhanced Store (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-VeritasShieldNGL',desc:'Enhanced VeritasShield (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-NoGasSlaps-Frontend-v1',desc:'Enhanced NoGasSlaps Frontend (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-BuzzWireNGL',desc:'Enhanced BuzzWire (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-dia-p2e-cockpit',desc:'Enhanced P2E Cockpit (Operation Featherstone)',status:'dup',size:'?',lang:'None'},
+  ]},
+  {id:'scaff',name:'SCAFFOLDED MODULES',color:'var(--o)',repos:[
+    {name:'sui-flash-loan-protocol',desc:'Sui blockchain flash loan system — 102 files analyzed',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'flashware-monorepo',desc:'No-Code Sui Flash Loan Builder',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'multi-chain-flash-loan-dapp',desc:'Multi-chain flash loan dapp',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'omnichain-faucet-townsquare',desc:'Mobile-first social RPG with blockchain onboarding — 2014 files',status:'shell',size:'?',lang:'HTML'},
+    {name:'Omnichain_Bridge_wallet',desc:'Omnichain bridge wallet',status:'shell',size:'?',lang:'HTML'},
+    {name:'no_gas_labs_sui_flashloan',desc:'Sui flashloan JavaScript implementation',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'sui-flash-loan-dapp',desc:'Sui flash loan dapp — 58 files',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'sui-flash-loan-system',desc:'Flash loan system — 30 files analyzed',status:'shell',size:'?',lang:'None'},
+    {name:'nextjs-ai-chatbot',desc:'AI chatbot — 174 files',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'TaskAgile',desc:'Task management — 143 files analyzed',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'Store',desc:'Store frontend — 10 files',status:'shell',size:'?',lang:'None'},
+    {name:'No_Gas_Slaps-',desc:'NoGasSlaps app — 17 files',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'NoGasSlaps-Frontend-v1',desc:'NoGasSlaps frontend v1',status:'shell',size:'?',lang:'None'},
+    {name:'no-gas-slaps',desc:'NoGasSlaps — 13 files',status:'shell',size:'?',lang:'None'},
+    {name:'nogas-site',desc:'NGL website — 138 files',status:'shell',size:'?',lang:'HTML'},
+    {name:'nogas-matrix-2026',desc:'Mini-App Matrix — 65+ gasless mini-apps on Base & Farcaster',status:'shell',size:'?',lang:'HTML'},
+    {name:'Vibe-_Coding_Protocol',desc:'Vibe Coding Protocol — 64 files',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'vibe-coding-protocol',desc:'Vibe Coding Protocol v1',status:'shell',size:'?',lang:'None'},
+    {name:'vibe-coding-protocol-v2',desc:'Vibe Coding Protocol v2',status:'shell',size:'?',lang:'None'},
+    {name:'app',desc:'App — 79 files',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'Mythos',desc:'Mythos — 34 files',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'MoodSync-MVP',desc:'MoodSync MVP — 16 files',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'dia-p2e-cockpit',desc:'P2E Cockpit — 19 files',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'flash-loan-dapp',desc:'Flash loan dapp — 40 files',status:'shell',size:'?',lang:'TypeScript'},
+    {name:'flash-loan-arbitrage-sui',desc:'Flash loan arbitrage',status:'shell',size:'?',lang:'None'},
+    {name:'no-gas-labs-profile',desc:'NGL profile',status:'shell',size:'?',lang:'None'},
+    {name:'no-gas-labs-monorepo',desc:'NGL monorepo — 127 files',status:'shell',size:'?',lang:'JavaScript'},
+  ]},
+  {id:'gov',name:'GOVERNANCE & INFRA',color:'var(--td)',repos:[
+    {name:'no-gas-labs-governance',desc:'CI/CD control plane — org-ci.yml, CODEOWNERS',status:'shell',size:'?',lang:'Shell'},
+    {name:'no-gas-labs-system-integration',desc:'Cross-repo integration testing',status:'shell',size:'?',lang:'None'},
+    {name:'no-gas-labs-execution',desc:'Execution tracking',status:'shell',size:'?',lang:'None'},
+    {name:'audit-vault',desc:'Audit vault for account-wide analysis',status:'shell',size:'?',lang:'None'},
+    {name:'AI-orchestrator-test',desc:'AI orchestrator testing — 11 files',status:'shell',size:'?',lang:'None'},
+    {name:'featherstone-AI-orchestrator-test',desc:'Enhanced AI Orchestrator (Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'featherstone-BroadcastNGL',desc:'Enhanced Broadcast (Featherstone)',status:'dup',size:'?',lang:'None'},
+    {name:'AI-BI-Intelligence-node-gate',desc:'Business Intelligence Node Gate — (((DAMIEN)))',status:'shell',size:'?',lang:'JavaScript'},
+    {name:'believe-in-me',desc:'Gamified email pruning with Manus AI voice control',status:'shell',size:'?',lang:'None'},
+    {name:'nogaslabs-setup-wizard',desc:'Python setup wizard',status:'shell',size:'?',lang:'Python'},
+  ]},
+];
+const PODCAST_AGENTS=['MaestroNGL — Orchestration','EthosGuardNGL — Brand Guard','SonicForgeNGL — Audio Master','BuzzWireNGL — Social Clips','BroadcastNGL — Distribution','PulseMonitorNGL — Sentiment'];
+const CALENDAR=[
+  {d:'Day 1',t:'🧵 "I built something that should not exist" thread',c:'twitter'},
+  {d:'Day 2',t:'🎨 Share the Culling comic — Pages 1-10',c:'content'},
+  {d:'Day 3',t:'📹 Clip: "What is a Murderous Wizard?" audiogram',c:'podcast'},
+  {d:'Day 4',t:'🧵 "The $0 proof of concept IS the pitch"',c:'twitter'},
+  {d:'Day 5',t:'🔧 Demo: Building a tool via the AI Council',c:'demo'},
+  {d:'Day 6',t:'📜 Share: The Five Declarations manifesto',c:'content'},
+  {d:'Day 7',t:'🎙️ AGP Pilot Episode — behind the scenes',c:'podcast'},
+];
+const STATUS_LABELS={real:'REAL CODE',spec:'SPEC/BUILD ME',shell:'SHELL/ACTIVATE',dup:'DUPLICATE'};
+const STATUS_CLASS={real:'st-real',spec:'st-spec',shell:'st-shell',dup:'st-shell'};
+
+function loadS(){try{const r=localStorage.getItem('ngl_empire');if(r)return JSON.parse(r)}catch(e){}return null}
+function saveS(s){try{localStorage.setItem('ngl_empire',JSON.stringify(s))}catch(e){}}
+function loadK(){try{const r=localStorage.getItem('ngl_keys');if(r)return JSON.parse(r)}catch(e){}return{}}
+function saveK(k){try{localStorage.setItem('ngl_keys',JSON.stringify(k))}catch(e){}}
+function loadM(){try{const r=localStorage.getItem('ngl_mutations');if(r)return JSON.parse(r)}catch(e){}return[]}
+function saveM(m){try{localStorage.setItem('ngl_mutations',JSON.stringify(m.slice(-100)))}catch(e){}}
+
+let S=loadS()||{player:{name:'Neophyte Founder',lvl:1,xp:0,xpN:100,tk:50},stats:{calls:0,sold:0,clients:0,threads:0},log:[],first:true,v:1};
+let K=loadK();
+let MUT=loadM();
+
+function ntf(msg,t='info'){const b=$('#nf'),d=document.createElement('div');d.className='nf '+(t==='success'?'s':t==='warning'?'w':t==='error'?'e':'');d.textContent=msg;b.appendChild(d);setTimeout(()=>d.remove(),4000)}
+function log(msg){S.log.unshift({t:now(),m:msg});if(S.log.length>50)S.log.pop();saveS(S);renderLog()}
+function renderLog(){const el=$('#empire-log');if(!el)return;el.innerHTML=S.log.slice(0,20).map(e=>`<div><span style="color:var(--tf)">${e.t.slice(11,16)}</span> ${e.m}</div>`).join('')||'<span style="color:var(--tf);font-style:italic">Empire awakened. Awaiting your command.</span>'}
+function renderHUD(){$('#h-lvl').textContent=S.player.lvl;$('#h-xp').style.width=(S.player.xp/S.player.xpN*100)+'%';$('#h-tk').style.width=(S.player.tk/200*100)+'%';$('#d-lvl').textContent=S.player.lvl;$('#d-xp').textContent=S.player.xp;$('#d-tk').textContent=S.player.tk;const r=MODULES.reduce((a,m)=>a+m.repos.filter(r=>r.status==='real').length,0);$('#d-real').textContent=r}
+
+function Z(z){S.current=z;$$('.z').forEach(e=>e.classList.remove('a'));const t=$('#z-'+z);if(t)t.classList.add('a');$$('.nb').forEach(b=>b.classList.toggle('on',b.dataset.z===z));saveS(S);if(z==='council')renderCouncil();if(z==='mods')renderMods();if(z==='podcast')renderPodcast();if(z==='audience')renderAudience()}
+$$('.nb').forEach(b=>b.addEventListener('click',()=>Z(b.dataset.z)));
+
+function renderCouncil(){const c=$('#council-oracles');if(!c||c.children.length>0)return;c.innerHTML='';Object.entries(ORACLES).forEach(([key,o])=>{const has=!!K[key];const d=document.createElement('div');d.className='pn';d.style.borderColor=o.color+'22';d.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="width:36px;height:36px;border-radius:50%;border:2px solid ${o.color};display:flex;align-items:center;justify-content:center;font-family:'VT323',monospace;font-size:1.1rem;color:${o.color}">${o.c[0]}</div><div><div class="fp" style="color:${o.color};font-size:0.95rem">${o.n}</div><div style="font-size:0.52rem;color:var(--td)">${o.c}</div></div><span style="margin-left:auto;font-size:0.5rem;padding:2px 8px;border-radius:8px;background:${has?'rgba(76,175,80,0.15)':'rgba(255,68,68,0.1)'};color:${has?'var(--g)':'var(--r)'}">${has?'READY':'NEEDS KEY'}</span></div><div style="font-size:0.58rem;color:var(--td);font-style:italic;margin-bottom:6px">"${o.v}"</div><div style="display:flex;gap:6px"><input class="ti" data-or="${key}" type="password" placeholder="${o.c} API key..." value="${has?K[key].slice(0,8)+'...':''}" style="flex:1;font-size:0.6rem;padding:6px 8px"><button class="btn btn-c" data-or="${key}" style="font-size:0.6rem;padding:4px 10px">SAVE</button></div>`;c.appendChild(d)});$$('.btn[data-or]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.or,inp=$(`.ti[data-or="${key}"]`);if(inp&&inp.value.trim()){K[key]=inp.value.trim();saveK(K);ntf(ORACLES[key].n+' connected!','success');renderCouncil();log(ORACLES[key].c+' API key saved')}}))}
+
+async function councilSpeak(){const inp=$('#cc-in'),txt=inp.value.trim();if(!txt)return;const deb=$('#cc-debate'),hist=$('#cc-hist');deb.innerHTML='<div class="ld"><span class="ldd"></span><span class="ldd"></span><span class="ldd"></span>The Council debates...</div>';const um=document.createElement('div');um.className='pn';um.innerHTML='<div style="font-size:0.55rem;color:var(--cyan);margin-bottom:3px">👑 SOVEREIGN</div><div style="font-size:0.7rem">'+esc(txt)+'</div>';hist.appendChild(um);const keys=Object.keys(K);if(!keys.length){deb.innerHTML='<span style="color:var(--r)">No Oracles connected. Add API keys above.</span>';return}const sys=`You are an AI advisor. The user said: "${txt}". Respond in character (you are ${Object.values(ORACLES).find(o=>o.c===keys[0]).n}). Keep under 120 words. Be specific and actionable.`;const msgs=[{role:'system',content:sys},{role:'user',content:txt}];const res={};await Promise.all(keys.map(async k=>{res[k]=await callOracle(k,msgs)}));let html='';let ok=0;keys.forEach(k=>{const o=ORACLES[k],r=res[k];if(r.err){html+=`<div style="margin-bottom:6px;padding:6px;background:rgba(255,68,68,0.05);border:1px solid rgba(255,68,68,0.1);border-radius:6px"><div style="font-size:0.55rem;color:var(--r);margin-bottom:2px">${o.n}</div><div style="font-size:0.6rem;color:var(--td)">${r.err}</div></div>`}else{ok++;html+=`<div style="margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.2);border:1px solid ${o.color}18;border-radius:6px"><div style="font-size:0.55rem;color:${o.color};margin-bottom:2px">${o.n} (${o.c})</div><div style="font-size:0.65rem;color:var(--t);line-height:1.45">${esc(r.txt)}</div></div>`;const om=document.createElement('div');om.className='pn';om.style.borderColor=o.color+'15';om.innerHTML='<div style="font-size:0.55rem;color:'+o.color+'">'+o.n+'</div><div style="font-size:0.62rem;color:var(--td)">'+esc(r.txt.slice(0,400))+'</div>';hist.appendChild(om)}}));if(ok>=2){html+=`<div class="pn" style="border-color:rgba(255,140,0,0.15)"><div class="fp g-o" style="font-size:0.75rem;margin-bottom:3px">⚒ SMITH CONSENSUS</div><div style="font-size:0.65rem;color:var(--t)">${ok} voices reached consensus. +${ok*15} XP, +${ok*5} tokens.</div></div>`;S.player.xp+=ok*15;S.player.tk=Math.min(200,S.player.tk+ok*5);S.stats.calls+=ok;while(S.player.xp>=S.player.xpN){S.player.xp-=S.player.xpN;S.player.lvl++;S.player.xpN=Math.floor(S.player.xpN*1.5);ntf('Level Up! You are now level '+S.player.lvl,'success');log('Leveled up to '+S.player.lvl)}saveS(S);renderHUD()}deb.innerHTML=html;hist.scrollTop=hist.scrollHeight;log('Council debated: "'+txt.slice(0,40)+'..." — '+ok+'/'+keys.length+' responses')}
+
+async function callOracle(key,msgs){const apiK=K[key];if(!apiK)return{err:'No key'};const o=ORACLES[key];try{const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),25000);let body,headers={'Content-Type':'application/json'};if(key==='chatgpt'||key==='grok'){headers['Authorization']='Bearer '+apiK;body=JSON.stringify({model:key==='chatgpt'?'gpt-4o-mini':'grok-beta',messages:msgs,max_tokens:500,temperature:0.7})}else if(key==='claude'){headers['x-api-key']=apiK;headers['anthropic-version']='2023-06-01';const sys=msgs.find(m=>m.role==='system'),ums=msgs.filter(m=>m.role!=='system');body=JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,messages:ums,system:sys?sys.content:undefined})}else if(key==='gemini'){const txt=msgs.map(m=>m.content).join('\n\n');body=JSON.stringify({contents:[{parts:[{text:txt}]}]});const r=await fetch(o.url+'?key='+apiK,{method:'POST',headers,body,signal:ctrl.signal});if(!r.ok)return{err:'HTTP '+r.status};const d=await r.json();return{txt:d.candidates?.[0]?.content?.parts?.[0]?.text||'[empty]'}}const r=await fetch(o.url,{method:'POST',headers,body,signal:ctrl.signal});if(!r.ok)return{err:'HTTP '+r.status};const d=await r.json();let t='';if(key==='claude')t=d.content?.[0]?.text||'';else t=d.choices?.[0]?.message?.content||'';return{txt:t}}catch(e){if(e.name==='AbortError')return{err:'Timed out (25s)'};return{err:e.message}}}
+
+function renderMods(){const el=$('#mod-registry');if(!el)return;el.innerHTML='';MODULES.forEach(fam=>{const d=document.createElement('div');d.className='pn';d.style.borderColor=fam.color+'18';let h=`<div class="fp" style="font-size:0.85rem;color:${fam.color};margin-bottom:6px">${fam.name}</div><div class="mgrid">`;fam.repos.forEach(r=>{h+=`<div class="mcard" onclick="modDetail('${r.name}')"><span class="st ${STATUS_CLASS[r.status]}">${STATUS_LABELS[r.status]}</span><div class="nm" style="color:${fam.color}">${r.name}</div><div class="ds">${r.desc}</div></div>`});h+='</div>';d.innerHTML=h;el.appendChild(d)})}
+function modDetail(name){ntf('Module: '+name+'. Status: '+STATUS_LABELS[MODULES.flatMap(m=>m.repos).find(r=>r.name===name)?.status||'unknown'],'info')}
+
+function renderPodcast(){const el=$('#podcast-episodes');if(!el)return;el.innerHTML=`<div class="pn pn-r"><div class="fp" style="color:var(--r);font-size:0.85rem;margin-bottom:6px">📋 EPISODE STATUS</div><div style="font-size:0.6rem;color:var(--td);line-height:1.6">The America's Got Problems podcast pipeline is defined but not yet active. The 6-agent workflow (Maestro→EthosGuard→SonicForge→BuzzWire→Broadcast→PulseMonitor) represents the full production system. Each agent needs to be activated with real code. Start with MaestroNGL for workflow orchestration.</div><div style="margin-top:8px;display:flex;gap:6px"><button class="btn btn-o" onclick="activateAgent('MaestroNGL')">ACTIVATE MAESTRO</button><button class="btn btn-c" onclick="Z('council')">BUILD VIA COUNCIL</button></div></div>`}
+function activateAgent(name){ntf('Activating '+name+'... In Wave 2, this will scaffold the full implementation via the AI Council.','warning');log('Activation requested: '+name)}
+
+function renderAudience(){const cal=$('#content-cal');if(!cal)return;cal.innerHTML=CALENDAR.map(d=>`<div class="twc"><div class="t">${d.d} — ${d.c.toUpperCase()}</div>${d.t}</div>`).join('')}
+function genThread(){const t=$('#tg-topic').,topic=t.value.trim();if(!topic)return;const threads=[
+`1/ I spent 24 years on the margins watching people perform success while I performed survival.\n\n2/ Here is what I learned about "Murderous Wizards" — people who kill potential while pretending to help.\n\n3/ Thread 🧵`,
+`1/ The $0 proof of concept IS the pitch.\n\n2/ I built an entire world in a single HTML file. 6 zones. 4 AI advisors. Combat. Crafting.\n\n3/ It runs on your phone. No server. No subscription. No code.\n\n4/ You speak. The world builds what you say.\n\n5/ Here's how 👇`,
+`1/ "Show me" — the two most dangerous words in any wizard's vocabulary.\n\n2/ I have asked this question 10,000 times.\n\n3/ The people who get angry are the ones with nothing to show.\n\n4/ The people who smile and open their laptop are the ones you keep.\n\n5/ Here is the full taxonomy of who to trust and who to cull 🧵`
+];const pick=threads[Math.floor(Math.random()*threads.length)].replace(/the margins watching people perform/g,'the margins building '+topic);const el=$('#tg-output');el.innerHTML='<div class="pn pn-g2"><div class="fp g-gr" style="font-size:0.8rem;margin-bottom:6px">GENERATED THREAD</div><div style="font-size:0.65rem;color:var(--t);line-height:1.6;white-space:pre-wrap">'+esc(pick)+'</div><div style="margin-top:8px"><button class="btn btn-c" onclick="copyThread()">COPY</button></div></div>';S.stats.threads++;saveS(S);log('Generated thread: '+topic.slice(0,30))}
+function copyThread(){const txt=$('#tg-output');if(!txt)return;const t=txt.textContent;navigator.clipboard.writeText(t).then(()=>ntf('Thread copied!','success')).catch(()=>ntf('Copy failed — select and copy manually','warning'))}
+
+function exportEmpire(){const data={state:S,modules:MODULES,timestamp:now()};const json=JSON.stringify(data,null,2);const blob=new Blob([json],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='ngl-empire-backup-'+Date.now()+'.json';a.click();URL.revokeObjectURL(url);ntf('Empire exported!','success');log('Empire state exported')}
+function resetEmpire(){if(!confirm('DESTROY THE EMPIRE? This resets ALL progress. Cannot be undone.'))return;S={player:{name:'Neophyte Founder',lvl:1,xp:0,xpN:100,tk:50},stats:{calls:0,sold:0,clients:0,threads:0},log:[],first:true,v:1};localStorage.removeItem('ngl_empire');localStorage.removeItem('ngl_keys');localStorage.removeItem('ngl_mutations');K={};saveS(S);renderHUD();renderLog();ntf('Empire reset. A new sovereign awakens.','warning')}
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}
+
+// INIT
+renderHUD();renderLog();Z(S.current||'dash');
+if(S.first){S.first=false;saveS(S);setTimeout(()=>{ntf('👑 The Empire awakens. 86 modules detected. Your command?','info');log('Empire initialized. 86 repositories mapped into 6 module families.')},500);setTimeout(()=>{ntf('💡 Tip: Add API keys in the AI Council, then speak to the Console.','info')},2500)}
+console.log('NGL Empire OS v1.0 — 86 repos, 6 families, 1 sovereign');
+</script>
+</body>
+</html>
