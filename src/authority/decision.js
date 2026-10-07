@@ -22,7 +22,8 @@ export function verifyFounderDecision({signed,payload,public_key_jwk,expected_fi
   } catch { return Object.freeze({valid:false,reason:"SIGNATURE_INVALID"}); }
 }
 
-export function authorizationEvent({signed,payload,verification}) {
-  if (!verification?.valid) throw new Error("verified Founder decision required");
+export function authorizationEvent({signed,payload,public_key_jwk,expected_fingerprint,now=Date.now()}) {
+  const verification=verifyFounderDecision({signed,payload,public_key_jwk,expected_fingerprint,now});
+  if (!verification.valid) throw new Error(`verified Founder decision required: ${verification.reason}`);
   return Object.freeze({event_id:`authorize:${payload.proposal_id}:${signed.payload_sha256}`,type:"QUEST_AUTHORIZED",quest_id:payload.quest_id,proposal_id:payload.proposal_id,grant_id:signed.payload_sha256,actor:"founder",capabilities:payload.capabilities,outputs:payload.outputs,acceptance:payload.acceptance,expires_at:payload.expires_at,key_fingerprint:signed.key_fingerprint});
 }
