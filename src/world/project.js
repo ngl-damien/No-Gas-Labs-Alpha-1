@@ -1,4 +1,5 @@
 import { verifyReceipt } from "../evidence/content-addressed.js";
+import { verifyAuthorizedEvent } from "../authority/genesis.js";
 
 const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
@@ -15,10 +16,11 @@ const terminalSuccess = (e, resolveArtifact, authorize) =>
   e.receipts.length > 0 &&
   e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
 
-export function projectWorld(events, seed = EMPTY(), { resolveArtifact, authorize } = {}) {
+export function projectWorld(events, seed = EMPTY(), { resolveArtifact, genesis, now = Date.now() } = {}) {
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
   const revoked = new Set(state.revoked || []);
+  const consumed = new Set(state.consumed || []);
 
   for (const event of events) {
     if (!event?.event_id || seen.has(event.event_id)) continue;
@@ -35,6 +37,7 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, authoriz
     }
 
     if (event.event_type === "REVOCATION") {
+      if (!verifyAuthorizedEvent({genesis,event,now}) || event.required_capability !== "authority.revoke") continue;
       if (typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
       continue;
     }
@@ -55,7 +58,10 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, authoriz
       continue;
     }
 
-    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact, authorize)) continue;
+    if (!genesis || consumed.has(event.grant_id) || revoked.has(event.grant_id) ||
+        !verifyAuthorizedEvent({genesis,event,now}) ||
+        !terminalSuccess(event, resolveArtifact, () => true)) continue;
+    consumed.add(event.grant_id);
 
     state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
     const effect = event.world_effect || {};
@@ -68,5 +74,6 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, authoriz
 
   state.seen = [...seen];
   state.revoked = [...revoked];
+  state.consumed = [...consumed];
   return state;
 }
