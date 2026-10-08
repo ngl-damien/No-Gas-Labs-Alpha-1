@@ -1,0 +1,16 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {normalizeFix} from "../src/location/consent.js";
+import {createLocationObservation,projectLocationEvidence} from "../src/location/evidence.js";
+import {defineQuest,projectQuest,QUEST_STATUS} from "../src/quest/engine.js";
+import {projectWorld} from "../src/world/project.js";
+import {projectRealm} from "../src/world/realm.js";
+const fix=normalizeFix({coords:{latitude:39.1234,longitude:-94.5678,accuracy:30},timestamp:Date.parse("2026-10-08T12:00:00Z")});
+const quest=defineQuest({quest_id:"geo-1",title:"Field research",objective:"Observe",acceptance:["independent-verification"]});
+const event=createLocationObservation(fix,{quest_id:"geo-1",event_id:"geo-event-1",consent:true});
+test("consent required for location evidence",()=>assert.throws(()=>createLocationObservation(fix,{quest_id:"geo-1",event_id:"x"}),/consent/));
+test("location observation is explicitly unverified",()=>{assert.equal(event.authority,"UNVERIFIED");assert.equal(event.observation.verified,false)});
+test("quest surfaces observation but does not authorize or complete",()=>{const result=projectQuest(quest,[event]);assert.equal(result.status,QUEST_STATUS.OPEN);assert.equal(result.authorized,false);assert.equal(result.location_observations.length,1)});
+test("world grants no XP from location observation",()=>{const result=projectWorld([{...event,world_effect:{xp:999}}]);assert.equal(result.xp,0)});
+test("realm routes location evidence to archive",()=>{const realm=projectRealm(projectWorld([event]));assert.deepEqual(realm.institutions.evidence_archive.event_ids,["geo-event-1"])});
+test("unrelated quests cannot see location observations",()=>assert.equal(projectLocationEvidence([event],"other").length,0));
