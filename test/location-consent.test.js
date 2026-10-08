@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {normalizeFix,createLocationController} from "../src/location/consent.js";
+const position={coords:{latitude:39.123456,longitude:-94.654321,accuracy:13.2},timestamp:Date.parse("2026-10-08T12:00:00Z")};
+test("coarse location is default",()=>{const x=normalizeFix(position);assert.equal(x.latitude,39.12);assert.equal(x.longitude,-94.65);assert.equal(x.verified,false)});
+test("precise requires explicit selection",()=>assert.equal(normalizeFix(position,{precision:"precise"}).latitude,39.12346));
+test("rejects invalid coordinates",()=>assert.throws(()=>normalizeFix({coords:{latitude:120,longitude:0}})));
+test("rejects invalid precision",()=>assert.throws(()=>normalizeFix(position,{precision:"raw"})));
+test("no request occurs without user call",()=>{let called=0;createLocationController({getCurrentPosition(){called++}});assert.equal(called,0)});
+test("permission errors propagate",async()=>{const c=createLocationController({getCurrentPosition(ok,err){err(new Error("denied"))}});await assert.rejects(c.request(),/denied/)});
+test("high accuracy is opt-in",async()=>{let high;const c=createLocationController({getCurrentPosition(ok,err,opts){high=opts.enableHighAccuracy;ok(position)}});await c.request();assert.equal(high,false);await c.request({precision:"precise"});assert.equal(high,true)});
