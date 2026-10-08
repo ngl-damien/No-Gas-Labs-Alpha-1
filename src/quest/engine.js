@@ -1,3 +1,4 @@
+import { projectLocationEvidence } from "../location/evidence.js";
 export const QUEST_STATUS=Object.freeze({OPEN:"OPEN",AUTHORIZED:"AUTHORIZED",IN_PROGRESS:"IN_PROGRESS",COMPLETED:"COMPLETED",FAILED:"FAILED"});
 
 export function defineQuest({quest_id,title,objective,acceptance,capabilities=[]}) {
@@ -15,7 +16,8 @@ export function projectQuest(quest, events=[]) {
   const satisfied=new Set(succeeded.flatMap(e=>Array.isArray(e.acceptance_satisfied)?e.acceptance_satisfied:[]));
   const complete=quest.acceptance.every(a=>satisfied.has(a));
   const status=complete?QUEST_STATUS.COMPLETED:failed.length&&authorized?QUEST_STATUS.FAILED:succeeded.length?QUEST_STATUS.IN_PROGRESS:authorized?QUEST_STATUS.AUTHORIZED:QUEST_STATUS.OPEN;
-  return Object.freeze({quest,status,authorized,acceptance:Object.freeze(quest.acceptance.map(id=>Object.freeze({id,satisfied:satisfied.has(id)}))),executions:Object.freeze(executions.map(e=>e.event_id))});
+  const location_observations=projectLocationEvidence(relevant,quest.quest_id);
+  return Object.freeze({quest,status,authorized,location_observations,acceptance:Object.freeze(quest.acceptance.map(id=>Object.freeze({id,satisfied:satisfied.has(id)}))),executions:Object.freeze(executions.map(e=>e.event_id))});
 }
 
 export function authorizeQuest({quest,grant_id,actor="founder"}) {
