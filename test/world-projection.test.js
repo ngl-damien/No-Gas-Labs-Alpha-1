@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { projectWorld } from "../src/world/project.js";
 import { projectRealm } from "../src/world/realm.js";
+import { makeReceipt } from "../src/evidence/content-addressed.js";
+
+const artifact = Buffer.from("verified forge execution");
+const resolveArtifact = () => artifact;
 
 const claim = {
   event_id: "e1",
@@ -20,7 +24,7 @@ const observed = {
   evidence: "OBSERVED",
   observation_verification: "VERIFIED",
   outcome: "SUCCEEDED",
-  receipts: ["rae:receipt:abc"],
+  receipts: [makeReceipt(artifact)],
   world_effect: { xp: 25, inventory: { verified_shard: 1 }, world: { forgeOpen: true } }
 };
 
@@ -33,7 +37,7 @@ test("a self-certifying claim cannot mutate canonical world state", () => {
 });
 
 test("authorized executed observed outcome can project a world consequence", () => {
-  const s = projectWorld([claim, observed]);
+  const s = projectWorld([claim, observed], undefined, { resolveArtifact });
   assert.equal(s.quests["forge-gate"].status, "COMPLETED");
   assert.equal(s.xp, 25);
   assert.equal(s.inventory.verified_shard, 1);
@@ -42,11 +46,18 @@ test("authorized executed observed outcome can project a world consequence", () 
 });
 
 test("replay is idempotent", () => {
-  const once = projectWorld([claim, observed]);
-  const twice = projectWorld([claim, observed], once);
+  const once = projectWorld([claim, observed], undefined, { resolveArtifact });
+  const twice = projectWorld([claim, observed], once, { resolveArtifact });
   assert.equal(twice.xp, 25);
   assert.equal(twice.inventory.verified_shard, 1);
   assert.equal(twice.history.length, 2);
+});
+
+test("changed artifact bytes cannot award canonical progress", () => {
+  const s = projectWorld([observed], undefined, { resolveArtifact: () => Buffer.from("tampered") });
+  assert.equal(s.xp, 0);
+  assert.equal(s.inventory.verified_shard, undefined);
+  assert.equal(s.world.forgeOpen, undefined);
 });
 
 test("approval text without authority cannot mutate state", () => {
@@ -86,8 +97,8 @@ test("revoked grants cannot produce future world consequences", () => {
 });
 
 test("projection can be rebuilt from event history", () => {
-  const original = projectWorld([claim, observed]);
-  const rebuilt = projectWorld(original.history);
+  const original = projectWorld([claim, observed], undefined, { resolveArtifact });
+  const rebuilt = projectWorld(original.history, undefined, { resolveArtifact });
   assert.deepEqual(rebuilt, original);
 });
 
@@ -107,7 +118,7 @@ test("authorization without observation cannot award progress", () => {
 
 
 test("MMORPG realm derives avatar and quests from canonical projection", () => {
-  const realm = projectRealm(projectWorld([claim, observed]));
+  const realm = projectRealm(projectWorld([claim, observed], undefined, { resolveArtifact }));
   assert.equal(realm.avatar.xp, 25);
   assert.equal(realm.avatar.inventory.verified_shard, 1);
   assert.equal(realm.quests["forge-gate"].status, "COMPLETED");
