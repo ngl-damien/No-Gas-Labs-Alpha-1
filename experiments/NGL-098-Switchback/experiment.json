@@ -1,0 +1,16 @@
+{
+  "id": "NGL-098",
+  "name": "Switchback",
+  "status": "internal testing completed; external executable release not established",
+  "price_hypothesis_usd": 39,
+  "publication": "not established",
+  "sales": "not observed",
+  "revenue": "not observed",
+  "product_scope": "offline examination of supplied vendor-change event consistency",
+  "limitations": [
+    "not bank verification",
+    "not payment authorization",
+    "not fraud clearance"
+  ],
+  "date": "2026-10-08"
+}
