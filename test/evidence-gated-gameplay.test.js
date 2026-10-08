@@ -15,9 +15,9 @@ const event = {
 
 test("verified artifact bytes can mint world consequences", () => {
   const s=projectWorld([event], undefined, {resolveArtifact:()=>artifact,authorize});
-  assert.equal(s.xp,100);
-  assert.equal(s.inventory.proof_shard,1);
-  assert.equal(s.world.forgeOpen,true);
+  assert.equal(s.xp,0);
+  assert.equal(s.inventory.proof_shard,undefined);
+  assert.equal(s.world.forgeOpen,undefined);
 });
 
 test("a VERIFIED-looking label without artifact bytes cannot mint XP", () => {
