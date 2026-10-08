@@ -25,6 +25,7 @@ export function canTravel(from, to) {
 }
 
 function classifyEvent(event) {
+  if (event.event_type === "LOCATION_OBSERVATION") return "evidence_archive";
   if (event.event_type === "REVOCATION") return "decision_chamber";
   if (event.outcome === "FAILED" || event.evidence === "REFUTED" || event.admission === "REJECTED") {
     return "evidence_archive";
