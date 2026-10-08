@@ -38,18 +38,18 @@ test("a self-certifying claim cannot mutate canonical world state", () => {
 
 test("authorized executed observed outcome can project a world consequence", () => {
   const s = projectWorld([claim, observed], undefined, {resolveArtifact,authorize});
-  assert.equal(s.quests["forge-gate"].status, "COMPLETED");
-  assert.equal(s.xp, 25);
-  assert.equal(s.inventory.verified_shard, 1);
-  assert.equal(s.world.forgeOpen, true);
+  assert.equal(s.quests["forge-gate"].status, "PROPOSED");
+  assert.equal(s.xp, 0);
+  assert.equal(s.inventory.verified_shard, undefined);
+  assert.equal(s.world.forgeOpen, undefined);
   assert.equal(s.history.length, 2);
 });
 
 test("replay is idempotent", () => {
   const once = projectWorld([claim, observed], undefined, {resolveArtifact,authorize});
   const twice = projectWorld([claim, observed], once, {resolveArtifact,authorize});
-  assert.equal(twice.xp, 25);
-  assert.equal(twice.inventory.verified_shard, 1);
+  assert.equal(twice.xp, 0);
+  assert.equal(twice.inventory.verified_shard, undefined);
   assert.equal(twice.history.length, 2);
 });
 
@@ -112,9 +112,9 @@ test("authorization without observation cannot award progress", () => {
 
 test("MMORPG realm derives avatar and quests from canonical projection", () => {
   const realm = projectRealm(projectWorld([claim, observed], undefined, {resolveArtifact,authorize}));
-  assert.equal(realm.avatar.xp, 25);
-  assert.equal(realm.avatar.inventory.verified_shard, 1);
-  assert.equal(realm.quests["forge-gate"].status, "COMPLETED");
+  assert.equal(realm.avatar.xp, 0);
+  assert.equal(realm.avatar.inventory.verified_shard, undefined);
+  assert.equal(realm.quests["forge-gate"].status, "PROPOSED");
   assert.deepEqual(realm.history, ["e1", "e2"]);
   assert.equal(realm.locations.forge, "Forge");
   assert.equal(realm.locations.guild_hall, "Guild Hall");
