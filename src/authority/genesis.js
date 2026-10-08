@@ -36,3 +36,16 @@ export function verifyEnrolledDecision({ genesis, signed, payload, now = Date.no
     expected_fingerprint: genesis.key_fingerprint, now
   });
 }
+
+export function verifyAuthorizedEvent({ genesis, event, now = Date.now() }) {
+  if (!event?.signed_decision || !event?.decision_payload) return false;
+  const verdict = verifyEnrolledDecision({
+    genesis, signed: event.signed_decision, payload: event.decision_payload, now
+  });
+  if (!verdict.valid) return false;
+  const p = event.decision_payload;
+  return p.quest_id === (event.quest_id || event.subject) &&
+    event.grant_id === event.signed_decision.payload_sha256 &&
+    Array.isArray(p.capabilities) &&
+    (event.required_capability == null || p.capabilities.includes(event.required_capability));
+}
