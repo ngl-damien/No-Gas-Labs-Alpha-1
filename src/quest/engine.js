@@ -1,3 +1,4 @@
+import { verifyAuthorizedEvent } from "../authority/genesis.js";
 export const QUEST_STATUS=Object.freeze({OPEN:"OPEN",AUTHORIZED:"AUTHORIZED",IN_PROGRESS:"IN_PROGRESS",COMPLETED:"COMPLETED",FAILED:"FAILED"});
 
 export function defineQuest({quest_id,title,objective,acceptance,capabilities=[]}) {
@@ -6,9 +7,9 @@ export function defineQuest({quest_id,title,objective,acceptance,capabilities=[]
   return Object.freeze({schema:"ngl.quest.v1",quest_id,title,objective,acceptance:[...acceptance],capabilities:[...capabilities]});
 }
 
-export function projectQuest(quest, events=[], {authorize}={}) {
+export function projectQuest(quest, events=[], {genesis, now = Date.now()}={}) {
   const relevant=events.filter(e=>e?.quest_id===quest.quest_id||e?.subject===quest.quest_id);
-  const authorized=relevant.some(e=>e.type==="QUEST_AUTHORIZED"&&e.grant_id&&typeof authorize==="function"&&authorize(e)===true);
+  const authorized=relevant.some(e=>e.type==="QUEST_AUTHORIZED"&&e.grant_id&&verifyAuthorizedEvent({genesis,event:e,now}));
   const executions=authorized?relevant.filter(e=>e.event_type==="EXECUTION_ADJUDICATION"&&e.admission==="ACCEPTED"&&typeof authorize==="function"&&authorize(e)===true):[];
   const succeeded=executions.filter(e=>e.outcome==="SUCCEEDED");
   const failed=executions.filter(e=>e.outcome==="FAILED");
