@@ -8,11 +8,12 @@
 <script type="module">
 import {createLocationController} from '../src/location/consent.js';
 import {createLocationObservation} from '../src/location/evidence.js';
+import {isLocationObservation} from '../src/location/schema.js';
 const $=id=>document.getElementById(id),controller=createLocationController(navigator.geolocation);let fix=null;
 function canonical(v){if(v===null||typeof v!=='object')return JSON.stringify(v);if(Array.isArray(v))return '['+v.map(canonical).join(',')+']';return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}'}
 async function digest(b){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b))).map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function pack(event){const bytes=new TextEncoder().encode(canonical(event));return {schema:'ngl.location.capsule.v1',event,integrity:{algorithm:'sha256',canonicalization:'ngl.canonical-json.v1',digest:await digest(bytes),size:bytes.length}}}
-async function check(c){if(c?.schema!=='ngl.location.capsule.v1'||c.integrity?.algorithm!=='sha256'||c.integrity?.canonicalization!=='ngl.canonical-json.v1')return 'REJECTED';const b=new TextEncoder().encode(canonical(c.event));return b.length===c.integrity.size&&await digest(b)===c.integrity.digest?'MATCH (integrity only; presence UNVERIFIED)':'REJECTED'}
+async function check(c){if(c?.schema!=='ngl.location.capsule.v1'||!isLocationObservation(c.event)||c.integrity?.algorithm!=='sha256'||c.integrity?.canonicalization!=='ngl.canonical-json.v1')return 'REJECTED';const b=new TextEncoder().encode(canonical(c.event));return b.length===c.integrity.size&&await digest(b)===c.integrity.digest?'MATCH (integrity only; presence UNVERIFIED)':'REJECTED'}
 $('capture').onclick=async()=>{try{fix=await controller.request({precision:$('precision').value});$('fix').textContent=JSON.stringify(fix,null,2);$('export').disabled=false;$('status').textContent='Observed locally; not verified'}catch(e){$('status').textContent=e.message}};
 $('export').onclick=async()=>{try{const e=createLocationObservation(fix,{quest_id:$('quest').value.trim(),event_id:'location:'+crypto.randomUUID(),consent:true});const c=await pack(e);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(c,null,2)],{type:'application/json'}));a.download='ngl-field-capsule.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);$('status').textContent='Downloaded locally; no upload'}catch(e){$('status').textContent=e.message}};
 $('file').onchange=async()=>{try{const f=$('file').files[0];if(!f)return;if(f.size>1048576)throw Error('file too large');$('verdict').textContent=await check(JSON.parse(await f.text()))}catch(e){$('verdict').textContent='REJECTED: '+e.message}};
