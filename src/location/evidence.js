@@ -1,16 +1,23 @@
-// Location evidence is a user-approved observation, never Founder authority or verified physical presence.
+import { isLocationObservation } from './schema.js';
+
+// A user-approved observation is NOT proof of presence or Founder authorization.
 export function createLocationObservation(fix, {quest_id, consent=false, event_id}={}) {
-  if (consent !== true) throw new Error("explicit consent required");
-  if (fix?.schema !== "ngl.location.fix.v1" || fix.verified !== false || fix.authority !== "USER_CONSENT_REQUIRED") throw new Error("untrusted location fix");
-  if (typeof quest_id !== "string" || !quest_id.trim()) throw new Error("quest required");
-  if (typeof event_id !== "string" || !event_id.trim()) throw new Error("event identity required");
-  return Object.freeze({
-    event_id, event_type:"LOCATION_OBSERVATION", quest_id, subject:quest_id,
-    admission:"PROPOSED", authority:"UNVERIFIED", evidence:"SELF_REPORTED",
+  if (consent !== true) throw new Error('explicit consent required');
+  if (typeof quest_id !== 'string' || !quest_id.trim()) throw new Error('quest required');
+  if (typeof event_id !== 'string' || !event_id.trim()) throw new Error('event identity required');
+  const event = {
+    event_id, event_type:'LOCATION_OBSERVATION', quest_id, subject:quest_id,
+    admission:'PROPOSED', authority:'UNVERIFIED', evidence:'SELF_REPORTED',
     observation:{...fix}, location_consent:true,
-    note:"Device-reported location; not independently verified, not authorization, no automatic quest reward"
-  });
+    note:fix?.source === 'synthetic-demo'
+      ? 'Synthetic example; no physical presence claimed'
+      : 'Device-reported location; not independently verified, not authorization, no automatic quest reward'
+  };
+  if (!isLocationObservation(event)) throw new Error('invalid or privilege-bearing location observation');
+  return Object.freeze(event);
 }
+
 export function projectLocationEvidence(events,quest_id) {
-  return Object.freeze(events.filter(e=>e?.event_type==="LOCATION_OBSERVATION"&&e.quest_id===quest_id&&e.location_consent===true&&e.observation?.schema==="ngl.location.fix.v1").map(e=>Object.freeze({event_id:e.event_id,observation:e.observation,verified:false})));
+  return Object.freeze(events.filter(e=>e?.quest_id===quest_id && isLocationObservation(e))
+    .map(e=>Object.freeze({event_id:e.event_id,observation:e.observation,verified:false,claim_status:'UNVERIFIED'})));
 }
