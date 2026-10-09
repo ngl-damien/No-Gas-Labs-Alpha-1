@@ -1,2 +1,12 @@
 import test from 'node:test';
-test('location integration file loads',()=>{});
+import assert from 'node:assert/strict';
+import {createLocationObservation} from '../src/location/evidence.js';
+import {createLocationCapsule,verifyLocationCapsule} from '../src/location/capsule.js';
+import {defineQuest,projectQuest,QUEST_STATUS} from '../src/quest/engine.js';
+import {projectWorld} from '../src/world/project.js';
+const fix={schema:'ngl.location.fix.v1',latitude:0,longitude:0,accuracy_m:500,precision:'coarse',observed_at:'2026-10-09T00:00:00.000Z',source:'synthetic-demo',authority:'USER_CONSENT_REQUIRED',verified:false};
+const event=createLocationObservation(fix,{quest_id:'sample',event_id:'loc:1',consent:true});
+const quest=defineQuest({quest_id:'sample',title:'Field research',objective:'Observe and verify',acceptance:['independent-attestation']});
+test('independent capsule digest matches',()=>assert.equal(verifyLocationCapsule(createLocationCapsule(event)).integrity,'MATCH'));
+test('quest remains open after location observation',()=>{const q=projectQuest(quest,[event]);assert.equal(q.status,QUEST_STATUS.OPEN);assert.equal(q.location_observations.length,1)});
+test('world progress stays zero after location observation',()=>assert.equal(projectWorld([event]).xp,0));
