@@ -27,6 +27,7 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
 
     seen.add(event.event_id);
     state.history.push(event);
+    if (event.event_type === 'LOCATION_OBSERVATION' || event.location_consent === true || event.observation?.schema === 'ngl.location.fix.v1') continue;
 
     if (event.event_type === "REVOCATION") {
       if (typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
