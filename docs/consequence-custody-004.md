@@ -1,3 +1,3 @@
-# Consequence custody
+# Commission 004: Branch Custody
 
-This experiment tests signed, scope-bound world-state changes. No Founder enrollment is asserted.
+Audits branch head aliases and queues unreviewed commits. It does not verify Founder identity, merge safety, or source novelty.
