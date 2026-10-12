@@ -1,0 +1,1 @@
+NGL-195 EVALFENCE | 2026-10-12 | offline eval split examiner | technical tests passed | commercial demand unvalidated | no sales evidenced
