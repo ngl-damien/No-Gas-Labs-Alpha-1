@@ -1,0 +1,3 @@
+NGL-184 ERASUREGRAPH
+Research experiment status: internal synthetic tests only.
+Commercial demand unverified.
