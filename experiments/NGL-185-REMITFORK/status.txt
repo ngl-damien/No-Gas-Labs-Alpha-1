@@ -1,0 +1,4 @@
+NGL-185 REMITFORK
+Offline four-ledger reconciliation research.
+Synthetic tests completed. Commercial validation pending.
+No public executable release or revenue claimed.
