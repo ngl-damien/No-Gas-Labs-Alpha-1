@@ -1,0 +1,4 @@
+NGL-187 BIDRANGE | 2026-10-12
+Offline evidence-bound bid stress tester. Local application and test package created.
+Market gate: conditional. Technical quality: pass within scope. Commercial evidence: hold.
+No public executable release, customer use, sale, or revenue established by this status file.
