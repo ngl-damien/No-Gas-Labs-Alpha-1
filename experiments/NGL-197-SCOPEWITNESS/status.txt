@@ -1,0 +1,7 @@
+NGL-197 SCOPEWITNESS
+Date: 2026-10-13
+Offline local product experiment.
+Local package built and tested. Proposed price USD 49, not validated.
+Internal tests: 320 differential scenarios, 0 disagreements; 42 browser assertions.
+This is a research record, not an executable release.
+No customer usage, traffic, sales, or revenue evidenced.
