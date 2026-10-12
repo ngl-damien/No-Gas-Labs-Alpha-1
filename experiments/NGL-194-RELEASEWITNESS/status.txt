@@ -1,4 +1,4 @@
 NGL-194 RELEASEWITNESS | 2026-10-12
 Offline digital handoff compiler. Technical tests passed. Buyer validation pending.
-Package SHA256: d4265d0c688d5e9936cd2031f553c8861fc06ac1690038f7aee5a3d84de7ed72
+Package SHA256: a009bfa601091bec35c834259b7f86e1a8330bfd64438328a9a01480ee78fc72
 No sales, revenue, or public executable release established.
