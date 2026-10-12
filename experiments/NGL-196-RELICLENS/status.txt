@@ -1,0 +1,4 @@
+NGL-196 RELICLENS
+Research branch created 2026-10-13.
+Local artifact and offline CLI built; external sales unverified.
+Byte comparison does not establish provenance or chronology.
