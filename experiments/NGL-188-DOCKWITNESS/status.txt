@@ -1,0 +1,6 @@
+NGL-188 DOCKWITNESS
+2026-10-12
+Offline detention timing evidence examiner.
+Technical controls: HOLD, REVIEW, BOUNDED; fictional data.
+Commercial validation: not observed.
+This record is research status, not an executable release.
