@@ -1,0 +1,6 @@
+NGL-219 AISLEFRONTIER (2026-10-13)
+Offline warehouse pick-route examiner: graph shortest paths, exact <=12 pick locations, heuristic 13-20, closed-edge HOLD, SHA-256 receipts.
+Internal tests: 437 JS/Python scenarios, 140 brute-force optimality cases, 59 browser assertions.
+Synthetic example: 700m baseline vs 340m modeled optimal.
+Proposed price: $49 one-time. Market conditional; external commercial evidence absent. No public executable, traffic, sales or revenue claimed.
+Local package SHA-256: 3f85a6a40b435cdee81a27bacf1da4d389b4e70865803e6c2ef9f09124a7e9bb
