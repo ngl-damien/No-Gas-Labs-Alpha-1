@@ -1,0 +1,3 @@
+NGL-205 AWARDBOUND research status, 2026-10-13.
+Offline bid scope comparison prototype created and internally tested.
+Commercial validation pending. No sales, traffic, publication of executable, or revenue asserted.
