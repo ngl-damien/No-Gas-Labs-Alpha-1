@@ -1,0 +1,4 @@
+NGL-204 PACKMATH | 2026-10-13
+Offline supplier pack and margin examiner.
+450 cross-language scenarios agreed; 48 browser assertions passed.
+Market and sales unvalidated. Local product package held in NGL Catalog.
