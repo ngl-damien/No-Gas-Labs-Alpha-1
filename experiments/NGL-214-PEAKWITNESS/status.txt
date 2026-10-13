@@ -1,0 +1,1 @@
+NGL-214 PEAKWITNESS. Offline interval electricity bill examination. Date 2026-10-13. Local technical tests passed; market and sales not validated. No public executable release or revenue claimed. Research branch only.
