@@ -1,0 +1,1 @@
+NGL-206 SHIFTFRONTIER: local offline scheduling prototype; 18 unit tests, 350 differential cases, 140 independent oracle cases, 81 browser checks. No public executable or sales established.
