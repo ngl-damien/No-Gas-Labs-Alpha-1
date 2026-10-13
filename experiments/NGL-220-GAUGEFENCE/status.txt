@@ -1,0 +1,1 @@
+NGL-220 GAUGEFENCE research branch. Offline crossed Gage R&R evidence examiner. Technical tests completed; commercial demand unverified. SHA256 ZIP 3a91c4f92308a5144d9f4e758572cfbef4576af24aed744506f1214ca55beecd. No public executable release, customer trial, or revenue claimed.
