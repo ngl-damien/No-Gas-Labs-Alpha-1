@@ -1,0 +1,6 @@
+NGL-216 BATCHFRONTIER | 2026-10-13
+Offline multi-recipe batch optimizer with commitment constraints and independent audits.
+Internal tests: 555 cross-language scenarios; 360 brute-force checks; 48 browser checks.
+Market: conditional. Quality: technical pass. Commercial: unvalidated.
+No public executable release, checkout, customer trials, sales or revenue established.
+ZIP SHA-256: 89374a61ed55803bf77ad8b2eee183f71a78fc31fe6f9a2fff9dabe99ce47c0f
