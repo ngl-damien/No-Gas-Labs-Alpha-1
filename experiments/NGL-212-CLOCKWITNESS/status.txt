@@ -1,0 +1,6 @@
+NGL-212 CLOCKWITNESS research status, 2026-10-13.
+Offline multi-clock causal consistency examiner.
+Synthetic joint constraint contradiction detected.
+Quality tested locally; commercial demand not validated.
+ZIP SHA256 4c2fcfa140f23e4e9c0f6b7c742c3f64a2bae272752efb7f3c03fd4285b5f6dd
+No public executable release, buyer trials, sales or revenue asserted.
