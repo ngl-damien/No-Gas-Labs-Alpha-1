@@ -1,0 +1,4 @@
+NGL-236 THERMALWITNESS research record, 2026-10-14.
+Independent offline temperature time-series interval examiner.
+Market: conditional. Quality: internal technical pass. Commercial: unvalidated.
+No buyer trials, sales or revenue observed.
