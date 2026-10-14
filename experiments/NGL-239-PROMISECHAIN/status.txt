@@ -1,0 +1,8 @@
+NGL-239 PROMISECHAIN (2026-10-14)
+Product: offline supplier OTIF definition-collision examiner.
+Mechanism: compare customer-requested, supplier-promised, and timely approved-amendment delivery dates using partial receiving and pending-acceptance bounds.
+Synthetic four-order case: confirmed line rates 0%, 25%, 50% respectively; not verified supplier performance.
+Proposed price: $59 one-time. Market gate conditional; internal quality passed; external evidence held.
+No independent buyers, checkout, sales, traffic, or revenue established.
+The executable product package is delivered as a ChatGPT artifact, not hosted in this repository.
+No Gas Labs rule: model assertion is not sufficient evidence.
