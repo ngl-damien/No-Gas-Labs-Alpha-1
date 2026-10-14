@@ -1,0 +1,1 @@
+NGL-237 REVISIONWITNESS: offline BOM revision-impact research. Internal tests: 18 Python, 520 differential, 720 graph references, 88 browser assertions. Market conditional; commercial unvalidated. 2026-10-14.
