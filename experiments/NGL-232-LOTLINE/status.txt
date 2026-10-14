@@ -1,0 +1,4 @@
+NGL-232 LOTLINE research record | 2026-10-14
+Offline lot genealogy examiner; market conditional; internal technical tests passed; commercial validation pending.
+719 cross-language comparisons; 0 disagreements. 550 independent graph cases. 320 decimal cases. 66 browser assertions.
+No sales or independent customer trials observed.
