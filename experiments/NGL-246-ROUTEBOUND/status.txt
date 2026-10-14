@@ -1,0 +1,6 @@
+NGL-246 ROUTEBOUND
+2026-10-15
+Offline exact small-crew dispatch witness built and internally tested.
+8 unit methods; 360 cross-language cases; 180 independent oracle cases; 93 browser assertions.
+Product ZIP SHA-256: d4c956d163e7046c3d7fda1e8a75ecefd6595347e553ec08893c2d0144f272b1
+No public executable release, customer trials, sales or revenue established.
