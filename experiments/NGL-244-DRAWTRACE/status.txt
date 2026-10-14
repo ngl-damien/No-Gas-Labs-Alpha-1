@@ -1,0 +1,1 @@
+NGL-244 DRAWTRACE: local prototype internally tested; market and external validation pending. 2026-10-14.
