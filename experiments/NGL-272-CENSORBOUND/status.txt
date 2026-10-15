@@ -1,0 +1,1 @@
+NGL-272 CENSORBOUND research status 2026-10-16. Offline stockout sensitivity examiner. Internal mathematical tests passed. Commercial evidence unverified. Adversarial demand shocks invalidate any confidence-bound interpretation.
