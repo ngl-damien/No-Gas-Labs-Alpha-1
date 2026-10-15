@@ -1,0 +1,8 @@
+NGL-270 ATTRIBUTECUT™ — Research Record
+Date: 2026-10-16
+Status: Offline prototype created; internal mathematical and browser tests passed; commercial validation not observed.
+Mechanism: exact integer-kWh certificate-to-site allocation with minimum-cut witnesses, serial-duplication quarantine, and source-labelled versus conditional scenarios.
+Internal technical checks: 18 Python unit tests, 1,200 independent NetworkX checks, 600 Python/JS full-report comparisons, 38 browser assertions.
+Market Gate: HOLD. Granular Energy and Flexidao already offer registry-integrated certificate allocation and matching.
+Evidence Gate: external HOLD. No registry authentication, real customer trials, sales, or revenue.
+Product package and full evidence are archived separately in the NGL Catalog. This GitHub file is a research status, not a hosted executable release.
