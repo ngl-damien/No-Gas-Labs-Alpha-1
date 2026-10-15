@@ -1,0 +1,3 @@
+NGL-262 AWARDLATTICE research status, 2026-10-15.
+Standalone offline calculation workbench and tests are maintained in the experiment package.
+Research branch only; no executable release hosted here.
