@@ -1,0 +1,1 @@
+NGL-267 FORKJURY research status 2026-10-15. Local executable and research ZIP built and tested. Portfolio audit compared 196 prior catalog entries. Candidate overlap flagged NGL-227 for manual review. No public executable release or buyer validation claimed.
