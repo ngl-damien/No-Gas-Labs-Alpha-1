@@ -1,0 +1,6 @@
+NGL-279 SIDEFXJURY | 2026-10-16
+Offline webhook-to-side-effect reconciliation research instrument.
+Local standalone HTML and ZIP created; SHA-256 ZIP 5702a08b957bce20e2c766fe0642cd869fad3fd49938e92f7f4df2ffcc364d63.
+Internal tests: 10 unit, 650 cross-language differential, 650 independent grouping checks, 33 Chromium checks; 400 constructed benchmark cases.
+Market HOLD; Quality INTERNAL PASS; Evidence EXTERNAL HOLD.
+No public executable release, checkout, buyer trial, traffic, sale, or revenue established by this record.
