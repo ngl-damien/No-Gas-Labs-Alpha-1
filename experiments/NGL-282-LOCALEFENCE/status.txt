@@ -1,0 +1,1 @@
+NGL-282 LOCALEFENCE technical experiment, 2026-10-16. Offline artifact built; commercial validation pending.
