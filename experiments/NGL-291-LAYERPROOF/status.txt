@@ -1,0 +1,1 @@
+NGL-291 LAYERPROOF: offline contrast scenario prototype; internal testing only; no sales or hosted executable.
