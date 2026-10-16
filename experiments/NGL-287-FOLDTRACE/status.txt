@@ -1,0 +1,1 @@
+NGL-287 FOLDTRACE technical experiment, 2026-10-16. Local artifact built; external commercial validation pending.
