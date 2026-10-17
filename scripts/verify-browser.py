@@ -95,13 +95,14 @@ def visit(page,title):
 
 
 def shared(browser,url,data,out):
-    errors=[]
+    errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
     visitor=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
             page.on('pageerror',lambda error:errors.append(str(error)))
+            page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
@@ -145,9 +146,12 @@ def shared(browser,url,data,out):
         assert snapshot['world']['creations'][0]['version']==2 and len(snapshot['world']['methods'])==1
         assert len(snapshot['institution']['kernel']['accepted'])==2
         assert visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()==original
+        before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
-            close_sheet(page);page.locator('#world').focus();page.keyboard.down('ArrowRight');page.wait_for_timeout(350);page.keyboard.up('ArrowRight')
-        a.wait_for_function("async()=>{const r=await(await fetch('/api/state')).json();return r.presence.length===2}")
+            # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
+            close_sheet(page);page.locator('#world').focus();page.keyboard.down('ArrowRight');page.wait_for_timeout(2000);page.keyboard.up('ArrowRight')
+        a.wait_for_function("async before=>{const r=await(await fetch('/api/state')).json();return r.presence.length===2&&r.presence.every(p=>Object.hasOwn(before,p.id)&&p.x>before[p.id]+1)}",arg=before)
+        assert not presence_errors,presence_errors
         a.screenshot(path=str(out/'shared-desktop.png'));b.screenshot(path=str(out/'shared-phone.png'))
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
         a.locator('#logout-button').click()
@@ -193,6 +197,10 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
+    def record(result):
+        results.append(result)
+        (out/'results.json').write_text(json.dumps(results,indent=2))
+        print(json.dumps(result),flush=True)
     with tempfile.TemporaryDirectory(prefix='ngl-browser-service-') as data:
         process,url=launch_server(data)
         try:
@@ -202,24 +210,29 @@ def main():
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
                         page=context.new_page()
-                        try:results.append(basic(page,url,out,label))
+                        try:record(basic(page,url,out,label))
                         except Exception:
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
-                    results.append(shared(browser,url,data,out))
+                    record(shared(browser,url,data,out))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
-                        try:results.append(launchpad(context.new_page(),url,out,f'one-button-{width}'))
+                        page=context.new_page()
+                        try:record(launchpad(page,url,out,f'one-button-{width}'))
+                        except Exception as error:
+                            page.screenshot(path=str(out/f'failed-one-button-{width}.png'))
+                            (out/'failure.json').write_text(json.dumps({'journey':f'one-button-{width}','passed':False,'error':str(error)},indent=2))
+                            raise
                         finally:context.close()
                     if args.standalone:
                         context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
                         page=context.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
                         try:
-                            results.append(basic(page,(ROOT/'dist/play.html').as_uri(),out,'standalone-file'))
+                            record(basic(page,(ROOT/'dist/play.html').as_uri(),out,'standalone-file'))
                             assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
                         except Exception as error:
                             if 'ERR_BLOCKED_BY_ADMINISTRATOR' not in str(error):raise
-                            results.append({'journey':'standalone-file','status':'blocked','reason':'Managed Chromium administrator policy blocks file navigation.'})
+                            record({'journey':'standalone-file','status':'blocked','reason':'Managed Chromium administrator policy blocks file navigation.'})
                         finally:context.close()
                         # Serve the exact packaged bytes with no added CSP; this is distinct from a file:// check.
                         static=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(ROOT/'dist')))
@@ -228,7 +241,7 @@ def main():
                         try:
                             context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
                             page=context.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
-                            results.append(launchpad(page,packaged,out,'standalone-exact-bytes'))
+                            record(launchpad(page,packaged,out,'standalone-exact-bytes'))
                             assert all(u==packaged or u.startswith(('data:','blob:')) for u in requests),requests
                             context.close()
                         finally:static.shutdown();static.server_close()
@@ -237,7 +250,7 @@ def main():
                     fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
                     assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
                     assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==1
-                    results.append({'journey':'shared-restart','passed':True,'retainedVersion':2})
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))

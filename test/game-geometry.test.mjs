@@ -1,6 +1,56 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView} from '../game/world-view.mjs';
+
+function makeView(t) {
+  const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
+    addEventListener:()=>{},removeEventListener:()=>{},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{},
+    ResizeObserver:class{observe(){}disconnect(){}}};
+  const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  Object.assign(globalThis,globals);
+  const interactions=[];
+  const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
+  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place)});
+  t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
+  return {view,interactions};
+}
+
+test('keyboard movement cancels a pending destination without opening it',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('workbench');
+  view.onKeyDown({key:'d',preventDefault(){}});
+  const before=view.getPlayer();
+  for(let i=0;i<5;i++)view.update(.045,i*45);
+  assert.ok(view.getPlayer().x>before.x,'manual movement still moves the player');
+  assert.deepEqual(interactions,[],'abandoned route must not count as arrival');
+});
+
+test('touch movement cancels a pending destination without opening it',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('workbench');
+  view.setInput({x:1,y:0});
+  view.update(.045,45);
+  view.setInput({x:0,y:0});
+  view.update(.045,90);
+  assert.deepEqual(interactions,[]);
+});
+
+test('restoring player coordinates cancels an old arrival target',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('workbench');
+  view.setPlayer({x:200,y:640});
+  view.update(.045,45);
+  assert.deepEqual(interactions,[]);
+});
+
+test('an uninterrupted route still interacts once when it reaches its destination',t=>{
+  const {view,interactions}=makeView(t);
+  view.setPlayer({x:280,y:700});
+  view.goTo('workbench');
+  view.setInput({x:0,y:0});
+  for(let i=0;i<100;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[{type:'workbench',id:'workbench'}]);
+});
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
   assert.equal(isWalkable(850,360,[]),true);
