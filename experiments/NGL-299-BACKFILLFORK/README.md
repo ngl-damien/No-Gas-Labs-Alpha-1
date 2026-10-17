@@ -11,7 +11,7 @@ Declared append-only event-time and arrival-time records; ordered incremental ex
 ## Reproducible test receipt
 31 Node unit tests; 500 synthetic investigations; 11,455 independent Python oracle checks with zero disagreements; 100/100 invalid inputs rejected; 47 Chromium assertions across 1440/390/320 px, zero external requests or page errors. The browser was loaded through Playwright set_content because direct local-file navigation was blocked.
 
-Product ZIP SHA-256: `5f00424716e989daef1f5ee622c896a1b0ac93d5c3bc95a036ea44412a4b10ae`.
+Product ZIP SHA-256: `33721d6ba997baa72722f149781d50d512c551bdb52136fac248319a71cba64a`.
 Standalone HTML SHA-256: `a74318e5da1be09e1f96af217af8eb2596afef429a25136b3d25a6f0bf00aad2`.
 
 ## Market context
