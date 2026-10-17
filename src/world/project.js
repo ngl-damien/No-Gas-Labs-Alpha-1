@@ -4,7 +4,8 @@ const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
 });
 
-const terminalSuccess = (e, resolveArtifact) =>
+const terminalSuccess = (e, resolveArtifact, verifyAuthorization) =>
+  (typeof verifyAuthorization !== "function" || verifyAuthorization(e) === true) &&
   e.admission === "ACCEPTED" &&
   e.authority === "AUTHORIZED" &&
   e.execution === "EXECUTED" &&
@@ -14,7 +15,8 @@ const terminalSuccess = (e, resolveArtifact) =>
   e.receipts.length > 0 &&
   e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
 
-export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
+export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyAuthorization, requireVerifiedAuthorization = false } = {}) {
+  if (requireVerifiedAuthorization && typeof verifyAuthorization !== "function") throw new Error("authorization verifier required");
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
   const revoked = new Set(state.revoked || []);
@@ -49,7 +51,7 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
       continue;
     }
 
-    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact)) continue;
+    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact, verifyAuthorization)) continue;
 
     state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
     const effect = event.world_effect || {};
