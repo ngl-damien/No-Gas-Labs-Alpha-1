@@ -12,7 +12,8 @@ const testOutput=await readFile(join(verificationDir,'tests.stdout.log'),'utf8')
 const exercise=JSON.parse(await readFile(join(verificationDir,'exercise/exercise.json'),'utf8'));
 const browser=JSON.parse(await readFile(join(browserDir,'results.json'),'utf8'));
 const throughput=JSON.parse(await readFile(throughputFile,'utf8'));
-if(!verification.passed||exercise.courier.status!=='RESPONDED'||!exercise.repository.integrity.passed||!browser.filter(r=>r.status!=='blocked').every(r=>r.passed))throw Error('Unsuccessful run cannot be preserved as a passing commission');
+const requiredJourneys=['desktop','phone','two-session-shared','one-button-320','one-button-412','standalone-exact-bytes','shared-restart'];
+if(!Array.isArray(browser)||requiredJourneys.some(name=>!browser.some(r=>r.journey===name&&r.passed))||!verification.passed||exercise.courier.status!=='RESPONDED'||!exercise.repository.integrity.passed||!browser.filter(r=>r.status!=='blocked').every(r=>r.passed))throw Error('Incomplete or unsuccessful run cannot be preserved as a passing commission');
 const count=/[ℹ#]\s*tests\s+(\d+)/.exec(testOutput)?.[1];
 if(!count)throw Error('Actual test count missing');
 const records={
