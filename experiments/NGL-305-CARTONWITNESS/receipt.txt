@@ -1,0 +1,1 @@
+NGL-305 final checks: 41 unit tests, 100 invalid rejections, 10042 reference checks, 34 browser assertions.\n
