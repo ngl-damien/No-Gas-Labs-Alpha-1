@@ -1,0 +1,3 @@
+NGL-302 DISPUTEWITNESS
+2026-10-17
+Internal tests passed. Commercial validation pending.
