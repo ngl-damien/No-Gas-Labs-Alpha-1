@@ -15,6 +15,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Execute evidence-bound world projection tests
-        run: npm test
+          node-version: 24
+      - name: Execute tests, package and bounded institutional exercise
+        run: npm run verify

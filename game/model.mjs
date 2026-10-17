@@ -1,0 +1,91 @@
+import {createArtifact} from './artifacts.mjs';
+const encoder=new TextEncoder();
+const kinds=new Set(['comic','loom','observatory','custom']);
+const knownPlaces=new Set(['relay','river','overlook','ruins']);
+const slots=[{x:540,y:610},{x:480,y:395},{x:1120,y:560},{x:1190,y:390},{x:1050,y:830},{x:380,y:800},{x:650,y:825},{x:1450,y:590},{x:270,y:310},{x:1400,y:180},{x:1100,y:190},{x:530,y:180}];
+const clone=value=>structuredClone(value);
+const uid=prefix=>`${prefix}-${globalThis.crypto.randomUUID()}`;
+const fail=(code,message,status=400)=>{throw Object.assign(new Error(message),{code,status})};
+const date=now=>new Date(now??Date.now()).toISOString();
+function text(value,max,label,{empty=false}={}){if(typeof value!=='string'||(!empty&&!value.trim()))fail('INVALID_INPUT',`${label} is required.`);if(Array.from(value).length>max)fail('TOO_LARGE',`${label} exceeds ${max} characters.`,413);return value.trim();}
+function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['founder','witness'].includes(actor.role))fail('INVALID_ACTOR','A valid actor is required.',403);return {id:actor.id,name:text(actor.name||'Witness',80,'Name'),role:actor.role};}
+async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
+function event(world,type,actor,at,detail={}){world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
+export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
+export async function applyAction(original,action,actor,{now}={}) {
+  const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
+  if(['draft','publish','repair'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
+  const world=clone(original),at=date(now);let result={};
+  const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
+  switch(action.type){
+    case 'draft':{
+      if(!kinds.has(action.kind))fail('INVALID_KIND','Choose a known recipe.');
+      if(world.creations.length>=12)fail('WORLD_FULL','This world holds twelve creations.',409);
+      if(world.drafts.length>=24)fail('DRAFT_LIMIT','Finish an existing draft first.',409);
+      const title=text(action.title,80,'Title'),intent=text(action.intent??'',2000,'Intent',{empty:true});
+      if(action.html!==undefined&&typeof action.html!=='string')fail('INVALID_INPUT','HTML must be text.');
+      if(encoder.encode(action.html||'').length>131072)fail('TOO_LARGE','Custom HTML exceeds 128 KiB.',413);
+      const built=createArtifact({kind:action.kind,title,intent,html:action.html});
+      const draft={id:uid('draft'),creationId:null,baseVersion:0,kind:action.kind,title,intent,html:built.html,receipt:await receipt(built.html),version:1,position:clone(slots[world.creations.length]),checks:built.checks,createdAt:at};
+      world.drafts.push(draft);result={draftId:draft.id};event(world,'draft',who,at,{draftId:draft.id});break;
+    }
+    case 'publish':{
+      const index=world.drafts.findIndex(d=>d.id===action.draftId);if(index<0)fail('STALE_DRAFT','That draft is no longer available.',409);
+      const d=world.drafts[index],existing=d.creationId?world.creations.find(c=>c.id===d.creationId):null;
+      const base=existing?.version??0;if(action.expectedVersion!==base||d.baseVersion!==base)fail('STALE_VERSION','This draft was based on a different version. Repair the current version.',409);
+      if(!d.checks.length||d.checks.some(c=>!c.passed))fail('CHECKS_FAILED','The draft checks must pass before publication.',409);
+      const exact=await receipt(d.html);if(exact.digest!==d.receipt.digest||exact.size!==d.receipt.size)fail('INVALID_RECEIPT','Draft bytes changed.',409);
+      if(!existing&&world.creations.length>=12)fail('WORLD_FULL','This world holds twelve creations.',409);
+      const id=existing?.id??uid('creation');
+      const previous=existing?clone(existing):null;if(previous)delete previous.versions;
+      const published={...d,id,version:base+1,position:existing?.position??clone(slots[world.creations.length]),publishedAt:at,versions:existing?[...existing.versions,previous]:[]};delete published.creationId;delete published.baseVersion;delete published.createdAt;
+      if(existing)world.creations[world.creations.indexOf(existing)]=published;else world.creations.push(published);
+      world.drafts.splice(index,1);world.xp+=100;
+      if(existing)world.methods.push({id:uid('method'),creationId:id,version:published.version,title:`Repair ${published.title} · v${published.version}`,description:published.intent||'Publish a checked revision while preserving the prior version and its exact bytes.',actor:who,at,semantics:'Earned game method: a retained, checked repair; no external truth or authority claim.'});
+      result={creationId:id,version:published.version};event(world,'publish',who,at,{creationId:id,version:published.version,reward:100});break;
+    }
+    case 'repair':{
+      const c=creation();if(action.expectedVersion!==c.version)fail('STALE_VERSION','Repair the current published version.',409);
+      if(world.drafts.length>=24)fail('DRAFT_LIMIT','Finish an existing draft first.',409);
+      const intent=action.intent===undefined?c.intent:text(action.intent,2000,'Intent',{empty:true});
+      if(action.html!==undefined&&typeof action.html!=='string')fail('INVALID_INPUT','HTML must be text.');
+      if(encoder.encode(action.html||'').length>131072)fail('TOO_LARGE','Custom HTML exceeds 128 KiB.',413);
+      const built=createArtifact({kind:c.kind,title:c.title,intent,html:action.html??(c.kind==='custom'?undefined:'') ,version:c.version+1});
+      // A custom repair preserves the existing portable document until an explicitly supplied replacement is drafted.
+      const html=c.kind==='custom'&&action.html===undefined?c.html:built.html;
+      const draft={id:uid('draft'),creationId:c.id,baseVersion:c.version,kind:c.kind,title:c.title,intent,html,receipt:await receipt(html),version:c.version+1,position:clone(c.position),checks:built.checks,createdAt:at};world.drafts.push(draft);result={draftId:draft.id};event(world,'repair',who,at,{creationId:c.id,draftId:draft.id,baseVersion:c.version});break;
+    }
+    case 'contribute':case 'report':{
+      const c=creation();if(!Number.isInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a published version.');
+      const isReport=action.type==='report';const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};world[isReport?'reports':'contributions'].push(entry);event(world,action.type,who,at,{creationId:c.id,version:action.version});result={id:entry.id};break;
+    }
+    case 'discover':{
+      if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
+      if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId))return {world:original,result:{discovered:false}};
+      const d={id:uid('discovery'),locationId:action.locationId,actor:who,at};world.discoveries.push(d);event(world,'discover',who,at,{locationId:action.locationId});result={discovered:true};break;
+    }
+    default:fail('INVALID_ACTION','Unknown world action.');
+  }
+  world.revision++;world.updatedAt=at;return {world,result};
+}
+export function publicWorld(world,actor){const copy=clone(world);if(actor?.role!=='founder'){copy.drafts=[];copy.events=copy.events.filter(e=>!['draft','repair'].includes(e.type));}return copy;}
+export async function validateWorld(raw) {
+  const invalid=message=>fail('INVALID_WORLD',message);
+  try{if(encoder.encode(JSON.stringify(raw)).length>32*1024*1024)invalid('World import exceeds 32 MiB.');}catch(error){if(error.code)throw error;invalid('World must be serializable JSON.');}
+  if(!raw||raw.schema!=='ngl.world.v2'||typeof raw.id!=='string'||typeof raw.founderName!=='string'||!Number.isInteger(raw.revision)||raw.revision<0)invalid('Unsupported or malformed world.');
+  for(const key of ['creations','drafts','events','contributions','reports','discoveries','methods'])if(!Array.isArray(raw[key]))invalid(`Missing ${key}.`);
+  if(raw.creations.length>12||raw.drafts.length>24||!Number.isFinite(Date.parse(raw.createdAt))||!Number.isFinite(Date.parse(raw.updatedAt)))invalid('Invalid world bounds.');
+  const ids=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
+  const checkArtifact=async a=>{
+    if(!a||!kinds.has(a.kind)||typeof a.title!=='string'||Array.from(a.title).length>80||typeof a.intent!=='string'||Array.from(a.intent).length>2000||typeof a.html!=='string'||encoder.encode(a.html).length>4*1024*1024||!Number.isInteger(a.version)||a.version<1||!a.position||!Number.isFinite(a.position.x)||!Number.isFinite(a.position.y)||a.position.x<80||a.position.x>1520||a.position.y<80||a.position.y>920||!Array.isArray(a.checks)||!a.checks.length||a.checks.some(c=>typeof c.id!=='string'||c.passed!==true))invalid('Malformed creation.');
+    const exact=await receipt(a.html);if(a.receipt?.algorithm!=='sha256'||a.receipt.digest!==exact.digest||a.receipt.size!==exact.size)fail('INVALID_RECEIPT','Artifact bytes do not match their receipt.');
+  };
+  for(const c of raw.creations){unique(c.id);await checkArtifact(c);if(!Array.isArray(c.versions)||c.versions.length!==c.version-1)invalid('Incomplete version history.');for(let i=0;i<c.versions.length;i++){const v=c.versions[i];if(v.id!==c.id||v.version!==i+1||v.versions!==undefined)invalid('Invalid flat version history.');await checkArtifact(v)}}
+  for(const d of raw.drafts){unique(d.id);await checkArtifact(d);if(!Number.isInteger(d.baseVersion)||d.baseVersion<0||d.version!==d.baseVersion+1)invalid('Invalid draft base.');if(d.creationId&&!raw.creations.some(c=>c.id===d.creationId))invalid('Orphan draft.');}
+  if(raw.xp!==raw.creations.reduce((sum,c)=>sum+c.version*100,0))invalid('Game rewards do not match published versions.');
+  for(const e of raw.events){unique(e.id);actorFor(e.actor);if(typeof e.type!=='string'||!Number.isFinite(Date.parse(e.at))||typeof e.semantics!=='string')invalid('Malformed event.');}
+  for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}
+  const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
+  for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!Number.isFinite(Date.parse(method.at)))invalid('Invalid earned game method.');}
+  return clone(raw);
+}

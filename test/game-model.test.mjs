@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+
+const founder={id:'founder-1',name:'Damien',role:'founder'};
+const witness={id:'witness-1',name:'River reader',role:'witness'};
+const now='2026-10-17T12:00:00.000Z';
+async function publish(world, kind='loom') {
+  const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},founder,{now});
+  return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now});
+}
+test('private drafts stay private; immutable publication has verified bytes and game-only XP',async()=>{
+  const original=createWorld({id:'test-world',now});
+  const drafted=await applyAction(original,{type:'draft',kind:'loom',title:'Secret loom',intent:'Listen.'},founder,{now});
+  assert.equal(original.drafts.length,0);
+  assert.equal(publicWorld(drafted.world,witness).drafts.length,0);
+  assert.equal(publicWorld(drafted.world,founder).drafts.length,1);
+  await assert.rejects(applyAction(drafted.world,{type:'publish',draftId:drafted.result.draftId,expectedVersion:0},witness),e=>e.code==='FORBIDDEN'&&e.status===403);
+  const published=await applyAction(drafted.world,{type:'publish',draftId:drafted.result.draftId,expectedVersion:0},founder,{now});
+  assert.equal(published.world.xp,100);
+  assert.equal(published.world.creations[0].version,1);
+  assert.equal(published.world.creations[0].receipt.size,new TextEncoder().encode(published.world.creations[0].html).length);
+  assert.equal(await validateWorld(published.world).then(()=>true),true);
+  assert.match(published.world.events[0].semantics,/game/i);
+  await assert.rejects(applyAction(published.world,{type:'publish',draftId:drafted.result.draftId,expectedVersion:0},founder),e=>e.status===409);
+});
+test('repair retains verified v1, stale publication fails and v2 earns only one game reward',async()=>{
+  const first=await publish(createWorld({now}));
+  const id=first.result.creationId;
+  const repaired=await applyAction(first.world,{type:'repair',creationId:id,expectedVersion:1,intent:'Add another voice.'},founder,{now});
+  assert.equal(repaired.world.creations[0].html,first.world.creations[0].html);
+  await assert.rejects(applyAction(repaired.world,{type:'publish',draftId:repaired.result.draftId,expectedVersion:0},founder),e=>e.code==='STALE_VERSION');
+  const second=await applyAction(repaired.world,{type:'publish',draftId:repaired.result.draftId,expectedVersion:1},founder,{now});
+  assert.equal(second.world.creations[0].versions.length,1);
+  assert.equal(second.world.creations[0].versions[0].version,1);
+  assert.equal(second.world.creations[0].version,2);
+  assert.equal(second.world.xp,200);
+  assert.equal(second.world.methods.length,1);
+  assert.equal(second.world.methods[0].version,2);
+  assert.equal(second.world.methods[0].actor.id,founder.id);
+  const tampered=structuredClone(second.world);tampered.creations[0].versions[0].html+='!';
+  await assert.rejects(validateWorld(tampered),e=>e.code==='INVALID_RECEIPT');
+});
+test('Unicode notes/reports/discoveries are attributed, bounded and never manufacture XP',async()=>{
+  const first=await publish(createWorld({now}));const creation=first.world.creations[0];
+  const noted=await applyAction(first.world,{type:'contribute',creationId:creation.id,version:1,text:'𓂀 café <script>京都 🐚'},witness,{now});
+  assert.equal(noted.world.contributions[0].text,'𓂀 café <script>京都 🐚');
+  assert.equal(noted.world.contributions[0].actor.id,witness.id);
+  const reported=await applyAction(noted.world,{type:'report',creationId:creation.id,version:1,text:'The method is unclear.'},witness,{now});
+  assert.equal(reported.world.reports[0].version,1);
+  const d1=await applyAction(reported.world,{type:'discover',locationId:'river'},witness,{now});
+  const d2=await applyAction(d1.world,{type:'discover',locationId:'river'},witness,{now});
+  assert.equal(d2.world.discoveries.length,1);assert.equal(d2.world.xp,100);
+  await assert.rejects(applyAction(d2.world,{type:'discover',locationId:'imaginary'},witness),e=>e.status===400);
+  await assert.rejects(applyAction(d2.world,{type:'contribute',creationId:creation.id,version:99,text:'stale'},witness),e=>e.code==='STALE_VERSION');
+});
+test('imports reject tampered bytes, invalid reward totals and oversized custom documents',async()=>{
+  const {world}=await publish(createWorld({now}),'comic');
+  const tampered=structuredClone(world);tampered.creations[0].html+='\n';
+  await assert.rejects(validateWorld(tampered),e=>e.code==='INVALID_RECEIPT');
+  const xp=structuredClone(world);xp.xp=999;await assert.rejects(validateWorld(xp));
+  await assert.rejects(applyAction(world,{type:'draft',kind:'custom',title:'Big',intent:'',html:'🐚'.repeat(40000)},founder),e=>e.code==='TOO_LARGE');
+  await assert.rejects(applyAction(world,{type:'repair',creationId:world.creations[0].id,expectedVersion:1,html:'🐚'.repeat(40000)},founder),e=>e.code==='TOO_LARGE');
+});
