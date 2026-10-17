@@ -1,0 +1,1 @@
+NGL-304 STACKJURY research branch. Product artifact and tests created locally. No public executable release or commercial validation claimed. 2026-10-17.
