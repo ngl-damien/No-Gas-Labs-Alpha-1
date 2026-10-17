@@ -5,7 +5,7 @@ const EMPTY = () => ({
 });
 
 const terminalSuccess = (e, resolveArtifact, verifyAuthorization) =>
-  (typeof verifyAuthorization !== "function" || verifyAuthorization(e) === true) &&
+  (typeof verifyAuthorization === "function" ? verifyAuthorization(e) === true : true) &&
   e.admission === "ACCEPTED" &&
   e.authority === "AUTHORIZED" &&
   e.execution === "EXECUTED" &&
