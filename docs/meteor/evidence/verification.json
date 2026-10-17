@@ -1,0 +1,43 @@
+{
+  "schema": "ngl.verification-run.v1",
+  "observedAt": "2026-10-17T23:50:58.591Z",
+  "passed": true,
+  "stages": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test"
+      ],
+      "exitCode": 0,
+      "wallMs": 5490.289309999999
+    },
+    {
+      "name": "package",
+      "command": [
+        "node",
+        "scripts/build-game.mjs"
+      ],
+      "exitCode": 0,
+      "wallMs": 303.9023240000006
+    },
+    {
+      "name": "institutional-exercise",
+      "command": [
+        "node",
+        "scripts/meteor-demo.mjs",
+        "--out",
+        "/workspace/No-Gas-Labs-Alpha-1/.runtime/verification-MCCr5T/exercise"
+      ],
+      "exitCode": 0,
+      "wallMs": 3156.157944999999
+    }
+  ],
+  "wallMs": 8952.560295000001,
+  "limitations": [
+    "Browser acceptance is an additional check: python3 scripts/verify-browser.py.",
+    "These local results do not establish external publication, provider execution or independent human review."
+  ],
+  "tests": 147,
+  "testOutputSHA256": "61bec74f6854b2a60626887315e3fb8d5af55dcdd7a4b54b0d051ad9a96bf27d"
+}

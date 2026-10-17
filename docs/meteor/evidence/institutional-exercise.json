@@ -1,0 +1,149 @@
+{
+  "schema": "ngl.meteor-exercise.v1",
+  "mode": "LOCAL_EXECUTION",
+  "externalProvidersExecuted": [],
+  "courier": {
+    "workerPid": 117992,
+    "requestId": "fixture-demonstration",
+    "status": "RESPONDED",
+    "acknowledgmentVerified": true,
+    "responseVerified": true,
+    "dissent": "Fixture computation supplies no external model judgment or Founder approval."
+  },
+  "forge": {
+    "taskId": "8ec2b388c12030df6f67865eb3b26f3ddf638e1cee2e3d820a1a72fa7c3489d7",
+    "outcomes": [
+      "passing",
+      "failed",
+      "timed_out"
+    ],
+    "results": [
+      {
+        "id": "correct",
+        "outcome": "passing",
+        "timing": {
+          "copyMs": 62.487752,
+          "runtimeMs": 49.865950999999995,
+          "verificationMs": 33.015917,
+          "integrityMs": 68.67294800000002,
+          "verificationOverheadMs": 103.27351899999996,
+          "wallMs": 216.612615
+        }
+      },
+      {
+        "id": "wrong",
+        "outcome": "failed",
+        "timing": {
+          "copyMs": 55.105684999999994,
+          "runtimeMs": 26.21201000000002,
+          "verificationMs": 34.43409100000008,
+          "integrityMs": 82.83548799999994,
+          "verificationOverheadMs": 118.68310600000007,
+          "wallMs": 200.82246699999996
+        }
+      },
+      {
+        "id": "timeout",
+        "outcome": "timed_out",
+        "timing": {
+          "copyMs": 56.48514,
+          "runtimeMs": 503.61614199999985,
+          "verificationMs": 0,
+          "integrityMs": 66.47286800000006,
+          "verificationOverheadMs": 66.6594889999999,
+          "wallMs": 627.3837780000001
+        }
+      }
+    ],
+    "timing": {
+      "snapshotMs": 166.781091,
+      "wallMs": 1213.125986,
+      "aggregateRuntimeMs": 579.6941029999998,
+      "aggregateVerificationMs": 67.45000800000008,
+      "aggregateIntegrityMs": 217.98130400000002,
+      "aggregateVerificationOverheadMs": 288.6161139999999
+    }
+  },
+  "repository": {
+    "taskId": "edb330c2fd688c1273081d31907cdd1ac0a0c0f5f80a9a053b7c153871891e5f",
+    "outcome": "passing",
+    "tests": {
+      "tests": 129,
+      "suites": 0,
+      "passed": 129,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "integrity": {
+      "passed": true,
+      "changedPaths": []
+    },
+    "timing": {
+      "snapshotMs": 166.824626,
+      "copyMs": 54.40705399999999,
+      "runtimeMs": 1385.138014,
+      "integrityMs": 89.57649500000002,
+      "verificationOverheadMs": 91.66824199999996,
+      "wallMs": 1698.9677350000002
+    }
+  },
+  "stages": [
+    {
+      "name": "courier",
+      "wallMs": 100.83189700000001,
+      "exitCode": 0
+    },
+    {
+      "name": "forge",
+      "wallMs": 1257.2526349999998,
+      "exitCode": 0
+    },
+    {
+      "name": "repository-verification",
+      "wallMs": 1741.458749,
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "The courier worker is a real local fixture process, not an external model or an independent Council seat.",
+    "The kernel observation verifies exact report bytes and explicitly tested statuses; it does not establish market demand or public deployment.",
+    "No human-labor baseline,3600-fold speedup or autonomous constitutional modification is claimed."
+  ],
+  "reportReceipt": {
+    "algorithm": "sha256",
+    "digest": "794d897c67a65c71efb059155f590a2512c366b695ab120a2bb369ece6b5f090",
+    "size": 3230
+  },
+  "kernel": {
+    "revision": 5,
+    "work": {
+      "action": "preserve-local-execution-report",
+      "adjudicationId": "meteor-adjudicate",
+      "claimId": "meteor-claim",
+      "claimantId": "local-engineering",
+      "executionEventId": "meteor-execute",
+      "executionId": "meteor-report-execution",
+      "grantId": "meteor-report-grant",
+      "id": "meteor-local-exercise",
+      "observationId": "meteor-observe",
+      "observationPassed": true,
+      "observedBy": "local-report-verifier",
+      "outputs": [
+        {
+          "algorithm": "sha256",
+          "digest": "794d897c67a65c71efb059155f590a2512c366b695ab120a2bb369ece6b5f090",
+          "size": 3230
+        }
+      ],
+      "stage": "accepted",
+      "subject": {
+        "id": "meteor-execution-report",
+        "version": 1
+      }
+    },
+    "head": "350a748957f33bea7dee148e4f174a3388aa5fb80bc4ed8551bbc519e9989c5f"
+  },
+  "wallMs": 3118.3628980000003
+}

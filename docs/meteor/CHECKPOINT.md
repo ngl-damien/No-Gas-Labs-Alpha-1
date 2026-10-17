@@ -1,5 +1,7 @@
 # Meteor continuation checkpoint
 
+**Continuation completed locally:** the pending frame issues were investigated and repaired, full147-test/institutional verification and seven browser journeys passed, and evidence is archived. See REPORT.md for final measured outcomes and remaining external/file-policy limits. The original checkpoint below is preserved as historical failure/resumption evidence; its pending list is no longer the current work queue.
+
 Mission remains active: complete the Meteor Commission, including the playable world and one-button Caveman Launchpad. Founder: Damien Featherstone. Branch `meteor/2026-10-17`. Starting baseline `facee282ae0c0a56031e7bf00a038eac3ebe4926` had59 passing tests. Core mechanisms are committed at `dcfd734`; contracts/baseline at `9c115e8`. The commit containing this checkpoint preserves the remaining integration work as work in progress, not as fully verified completion.
 
 ## What survived and what ran

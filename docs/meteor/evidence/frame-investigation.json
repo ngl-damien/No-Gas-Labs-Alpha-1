@@ -1,0 +1,173 @@
+{
+  "schema": "ngl.frame-investigation.v1",
+  "scope": "Local Chromium execution; finite trials, not a browser-engine proof.",
+  "childPaintMatrix": [
+    {
+      "journey": "phone-1",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "journey": "phone-2",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "journey": "phone-3",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "journey": "desktop-1",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "journey": "desktop-2",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "journey": "desktop-3",
+      "passed": true,
+      "errors": []
+    }
+  ],
+  "trustedTouch": [
+    {
+      "journey": "touch-1",
+      "passed": true,
+      "events": [
+        {
+          "type": "pointerdown",
+          "trusted": true,
+          "pointerType": "touch"
+        },
+        {
+          "type": "touchstart",
+          "trusted": true,
+          "pointerType": null
+        },
+        {
+          "type": "pointerup",
+          "trusted": true,
+          "pointerType": "touch"
+        },
+        {
+          "type": "touchend",
+          "trusted": true,
+          "pointerType": null
+        },
+        {
+          "type": "click",
+          "trusted": true,
+          "pointerType": "touch"
+        }
+      ]
+    }
+  ],
+  "failedEagerOnlyHypothesis": [
+    {
+      "journey": "eager-independent-320-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "width": 320,
+      "trial": 2,
+      "error": "Locator.evaluate: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#artifact-frame\").content_frame.locator(\"iframe\").first.content_frame.locator(\"img\").first\n"
+    },
+    {
+      "journey": "eager-independent-412-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "eager-independent-412-2",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    }
+  ],
+  "templateMatrix": [
+    {
+      "journey": "stage-320-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "stage-320-2",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "stage-320-3",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "stage-412-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "stage-412-2",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "stage-412-3",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    }
+  ],
+  "templateIndependentMatrix": [
+    {
+      "journey": "eager-independent-320-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "eager-independent-320-2",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "eager-independent-412-1",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    },
+    {
+      "journey": "eager-independent-412-2",
+      "passed": true,
+      "artifacts": 3,
+      "checks": 6,
+      "errors": []
+    }
+  ],
+  "identifierNote": "Independent probe journey IDs retained their eager-independent prefix after changing source to template; matrix mode is given by these record keys.",
+  "failureInterpretation": "The failed screenshot visibly renders a nested comic header although Playwright cannot attach/locate its image. No claim that the browser failed to render a context."
+}
