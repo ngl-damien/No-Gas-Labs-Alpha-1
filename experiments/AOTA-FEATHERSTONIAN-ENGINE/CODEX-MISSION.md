@@ -1,4 +1,4 @@
-# CODEX MISSION — AOTA² / FEATHERSTONIAN ENGINE / T.R.U. / FOUNDER GATE
+# CODEX MISSION — ALPHA 1 / AOTA² / T.R.U. / FOUNDER GATE
 
 **Commissioning authority:** Damien Featherstone, the Neophyte Founder™ of No_Gas_Labs™  
 **Institution:** No_Gas_Labs™ | **Operating regime:** MPPT™  
@@ -7,9 +7,9 @@
 
 ## One mission; several irreducible capabilities
 
-Establish an **operational, evidence-bearing institutional improvement loop** in which a real, authenticated, time-sensitive decision is waiting at a remotely reachable Founder Gate. No subordinate demonstration, document, test, local UI, or unverified URL counts as completion.
+Establish an **AI-amplified institution that can complete consequential work, improve its own reusable production machinery, and demonstrably apply that improvement to a second real task**, preserving direction and protected decisions for the Neophyte Founder™. The live authenticated Founder Gate is the actionable governance checkpoint of that institutional cycle, **not** the institution itself or its entire completion criterion. See [ALPHA1-INSTITUTIONAL-THESIS.md](ALPHA1-INSTITUTIONAL-THESIS.md) for the stronger evidence-based Alpha 1 success test.
 
-This requirement does NOT erase the underlying independent disciplines. Keep the original competitive-evolution experiment, temporal reconnaissance, evidence verification, provenance archive, decision authority, and deployment operations separately inspectable. Their interfaces must compose; their responsibilities must not blur.
+The institution also contains research that changes its build decisions, persistent responsibility and recovery, useful outputs, and a world/Witness interface. These are separate capability tracks, not rhetoric or collateral consequences of a gate. This requirement does NOT erase the underlying independent disciplines. Keep the original competitive-evolution experiment, temporal reconnaissance, evidence verification, provenance archive, decision authority, and deployment operations separately inspectable. Their interfaces must compose; their responsibilities must not blur.
 
 ### Distinct components and boundaries
 
@@ -41,6 +41,8 @@ Every edge must have a recorded producer, consumer, schema, validation rule, and
 
 Inspect `main`, `meteor/2026-10-17` (reference delivery commit `cab8dfb0d6ae41626db8010ae300210ccd0ca7a2`), kernel, ledger, courier, Forge, game implementation, CI, existing Founder Key/Gate implementations, and available authorized hosting. Do not presume the files' architectural claims are correct. Inventory implemented versus aspirational features; identify reusable interfaces and duplicate semantics before writing new code. Do not blindly merge branches or deploy.
 
+Institutional thesis and two-task transfer protocol: `ALPHA1-INSTITUTIONAL-THESIS.md`. Codex MUST complete and report Task A, candidate machinery M0→M1 evaluation, and Task B using the improved machinery under predeclared criteria; carry out clean-context continuity recovery and a bounded RPG/Witness interface test. A merely working Founder Gate does not pass the institutional experiment.
+
 Existing handoff inputs:
 - `engine.py`, `test_engine.py`, `example_claims.json`: local Python evidence inventory v0.4 with **21 source-defined tests**, all to be executed and independently checked. Its `VERIFIED` label means local evidence-kind coverage only.
 - `TRU/core.mjs`, `TRU/test.mjs`, `TRU/index.html`, `TRU/README.md`: JS temporal evidence workbench with **14 source-defined tests**; browser-only interface currently creates **unauthorized local proposal packets**, not real decisions.
@@ -66,10 +68,18 @@ An apparent missing credential, domain, hosting facility, or permission is a **d
 
 A time-sensitive deadline must be a genuine operational review interval grounded in current policy or explicitly authorized by the Founder, never an invented emergency.
 
+## Alpha 1 compounding test — not optional
+
+Complete at least two distinct consequential tasks, with a reusable change to the machinery between them. For Task A preserve a usable artifact and work trace; compare M0 to M1 on a controlled workload with negative cases; for Task B predeclare independent criteria and establish whether M1 actually transfers an improvement. Record baseline and after metrics, observed Founder interventions, failures and resource costs. Perform a fresh-context continuity handoff and prove evidence survives restart. Exercise the RPG/TownSquare representation and permission model without inventing Witness participation. If evidence of transfer is absent, classify institutional self-amplification INCONCLUSIVE or NOT DEMONSTRATED, not successful. The Gate must present a real decision arising from this execution path.
+
 ## Acceptance matrix — all mandatory
 
 | Condition | Required externally inspectable proof |
 | --- | --- |
+| Real work beyond demos | Usable Task A and Task B artifacts; real constraints, tests, provenance and truthful public accessibility |
+| Measurable reusable improvement | M0/M1 machinery comparison plus transfer test on previously untuned Task B and measured Founder-intervention burden |
+| Continuity across contexts | Fresh-context recovery of institutional role, evidence, open work and next executable action; restart persistence |
+| Research and world tracks | Source-grounded research influencing choices; RPG/TownSquare objects and permission tests for projects, disputes, witnesses and decisions |
 | Existing assets reconciled | Repository/branch inventory, provenance and disposition for both engines and relevant NGL modules |
 | Two evaluations | Real incumbent and real candidate executed on identical workload; negative and regression tests preserved |
 | T.R.U. contributes | Reconstructed real source/state lineage including unknowns, contradictions and simulated-vs-observed boundary |
@@ -81,12 +91,12 @@ A time-sensitive deadline must be a genuine operational review interval grounded
 
 An intermediate result may truthfully be BUILT, LOCALLY_TESTED, VERIFIED_EXECUTION, DEPLOYED, or EXTERNALLY_CONFIRMED only when its actual evidence warrants that description. Original legacy statuses remain compatibility labels in the Python inventory, not canonical trust conclusions.
 
-## Single completion token
+## Completion semantics — distinguish a live invitation from institutional success
 
-The **only** successful completion message is substantively:
+The founder-facing **live decision notification**, valid only after independently checking the endpoint, is substantively:
 
 > Founder: go to [ACTUAL VERIFIED HTTPS URL]. A genuine time-sensitive No_Gas_Labs™ Founder Gate decision [REAL ID] awaits your authenticated decision before [REAL DEADLINE]. The independently checked deployment and evidence references are [REAL REFERENCES].
 
-Print that only after all acceptance conditions are verified. A localhost view, mockup, fabricated web address, generated JSON, test count, commit, or report is not the token. An unresolved or confirmed blocker is never the token.
+Print that invitation only when the live decision and authentication have been verified. Do not withhold a genuine pending founder decision while other institutional tracks are incomplete; explicitly label which milestones passed and failed. **Do not claim Alpha 1 institutional success** unless consequential Task A, reproducible M0/M1 improvement, transferable gains on Task B, continuity recovery, Gate operation and the required interface foundation all meet the institutional thesis acceptance criteria. A localhost view, mockup, fabricated URL, generated JSON, test count, commit or report is not an institutional success token. An unresolved or confirmed blocker is never completion.
 
-**End state:** real temporal reconnaissance, independent adversarial improvement evaluation, evidence preservation, and Founder-controlled consequential choice function together **without any component pretending to be another**.
+**End state:** an institution that measurably produces valuable work, improves a reusable capability, uses the improvement on another task, preserves its identity and work between contexts, supports the emerging inhabited world, and brings genuine consequential decisions to its Founder—without collapsing separate authorities or pretending one cycle proves perpetual self-improvement.
