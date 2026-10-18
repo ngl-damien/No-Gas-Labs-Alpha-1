@@ -1,0 +1,12 @@
+{
+  "schema": "ngl.component-profile.v1",
+  "id": "tru-temporal-workbench",
+  "entryPoint": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html",
+  "files": [
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/test.mjs","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/test.mjs"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/README.md","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/README.md"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/examples/real-lineage.case.json","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/examples/real-lineage.case.json"}
+  ]
+}
