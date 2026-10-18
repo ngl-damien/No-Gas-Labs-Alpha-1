@@ -1,0 +1,1 @@
+NGL-342 INDEXSEAM research record. Date 2026-10-18. Synthetic tests: 500. JS/Python disagreements: 0. Node assertions: 30. Browser assertions: 39. Market HOLD; Quality bounded PASS; Evidence partial PASS. No customer trials, checkout, sales, or revenue claimed. Executable not published here. ZIP SHA256: 1b38ed6777dd847dcae652332848f2afb1d46ec22bb9776fa0bdc4ba61c98cac
