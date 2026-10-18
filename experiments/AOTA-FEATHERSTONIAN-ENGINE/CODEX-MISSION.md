@@ -11,6 +11,18 @@ Inspect the actual repository, current `main`, `meteor/2026-10-17` (delivery com
 ## The discovery to preserve
 The proposed force multiplier is not more agents or more review passes. It is **competitive institutional evolution**: propose alternative implementations, evaluate them on the same real workload, independently verify correctness/security/resource costs, and promote only founder-authorized improvements while preserving rollback and evidence. AOTA² comprises a creation circuit and an adversarial elimination circuit. A reduction in code, agents, or steps is not automatically a gain.
 
+## T.R.U. workbench now included in this handoff
+
+A second, executable candidate exists at `TRU/`:
+- `TRU/core.mjs` — temporal case assessment and decision-packet generation.
+- `TRU/test.mjs` — 14 Node tests (run them; local pre-handoff run passed 14/14).
+- `TRU/index.html` — functional browser interface with local case import/export.
+- `TRU/README.md` — usage, known limits, and integration boundaries.
+
+**Integrate and reconcile this workbench** with the AOTA evidence system, NGL ledger/Forge/kernel, and the authenticated Founder Gate. Compare schemas and invariants; avoid duplicating the same capability. Treat timeline modes as epistemic labels, not proof of physical time travel. T.R.U. 2041 activation remains authored fiction. Produce a tested trace from real evidence through timeline reconstruction, evaluation, and a legitimate decision record.
+
+This static prototype cannot satisfy the completion token by itself. The target is a verified live authenticated time-sensitive Founder Gate with a genuine actionable founder decision; a local decision packet is only preparatory work. Before labeling a dependency blocked, investigate available authorized zero-cost alternatives and establish evidence of an actual blocker.
+
 ## Your integrated assignment
 1. Inventory and reconcile existing implementations before introducing duplicates. Preserve valuable work on `main` and Meteor; do not blindly merge.
 2. Run and critique this local evidence inventory (v0.4; 21 regression tests). Treat the labels VERIFIED and EXTERNALLY_CONFIRMED as compatibility labels, never authenticated status. Identify the gap between byte integrity, authentic execution receipts, independent witness, authorization, and truth.
