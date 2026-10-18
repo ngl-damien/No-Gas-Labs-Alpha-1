@@ -26,6 +26,14 @@ The proposed force multiplier is not more agents or more review passes. It is **
 - Demonstrate that a malicious candidate cannot promote itself by modifying its own evaluator or authorization policy. Put promotion enforcement outside candidate-controlled code, backed by protected branch rules and independent status checks.
 - Distinguish a CI job reported green from evidence that the intended test actually executed.
 
+## Completion criterion: live Founder Gate
+A passing demonstration, code commit, or report is not completion. Deliver an actual remotely reachable HTTPS interface containing a real pending time-sensitive Founder decision, authenticated access, actionable controls, persistent evidence and audit history, and tested denial of unauthorized or expired actions. The final message must supply the verified working URL and decision details. Do not fabricate URLs or urgency.
+
+## Dependency investigation and blocker confirmation
+Missing credentials, hosting, and permissions are hypotheses, not automatic blockers. Inspect available infrastructure and authority, attempt safe authorized zero-cost alternatives, verify failures and their material impact, and continue independent work. Escalate a specific founder action only when evidence shows it is necessary. A confirmed blocker must include reproducible evidence and exhausted applicable authorized alternatives. Never represent a blocker or demo as the completion token.
+
+Founder authorization remains mandatory for protected decisions and deployment actions that require it. Never bypass authentication or claim authority not granted.
+
 ## Acceptance criteria
 - Actual repository inspection and explicit integration disposition for this package.
 - Reproducible test commands and results, including failures.
