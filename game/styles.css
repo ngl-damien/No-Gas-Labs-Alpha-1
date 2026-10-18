@@ -8,3 +8,4 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .portal.portal-loading::after{content:'Opening your creation…';position:absolute;inset:0;display:grid;place-items:center;background:#faf3df;color:#7a8468;font:12px system-ui;z-index:1;pointer-events:auto}
 .portal.portal-loading>.portal-header,.portal.portal-loading>footer{position:relative;z-index:2;background:var(--paper)}
+.field-card{overflow-wrap:anywhere}.field-card pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:10px/1.6 monospace}.field-card small{overflow-wrap:anywhere}

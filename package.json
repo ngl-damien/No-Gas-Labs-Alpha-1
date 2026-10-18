@@ -11,6 +11,9 @@
     "verify": "node scripts/verify.mjs",
     "meteor": "node scripts/meteor-demo.mjs",
     "courier": "node scripts/courier.mjs",
-    "forge": "node scripts/forge.mjs"
+    "forge": "node scripts/forge.mjs",
+    "package:component": "node scripts/package-component.mjs",
+    "compounding": "python3 scripts/run-compounding.py",
+    "recover:institution": "node scripts/recover-institution.mjs"
   }
 }

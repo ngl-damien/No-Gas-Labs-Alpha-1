@@ -1,6 +1,17 @@
 {
   "claims": [
     {
+      "id": "local-inspector-source",
+      "declared": "BUILT",
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "engine.py",
+          "sha256": "f1ddf4ff9416045e09deaf4bc6b8d0a1b42bbe4e7870a45743a1a02146cca4c4"
+        }
+      ]
+    },
+    {
       "id": "meteor-local-source",
       "declared": "BUILT",
       "evidence": []

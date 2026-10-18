@@ -4,6 +4,14 @@
 
 No_Gas_Labs™ = Damien Featherstone + AI + R&D + social commentary + multi-agent orchestration + WIP.
 
+## Institutional transfer experiment
+
+The revised [Alpha1 thesis](experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md) tests consequential work, a reusable machinery improvement, transfer to a different task, continuity, grounded Witness interfaces and a live Founder Gate. A Gate alone does not establish institutional self-amplification. Implementation and measured limitations are tracked in [the execution plan](docs/institution/compounding/PLAN.md).
+
+The AOTA inspector and T.R.U. workbench are separate useful components. `npm run compounding` compares the exact Meteor exporter against a declared component exporter on frozen Task A/B profiles and runs the extracted deliverables. This tests new component-delivery coverage, not a speedup between unequal outputs. `npm run recover:institution` reads the durable continuity record in a new process. The exporter requires Linux procfs and Node24; validation also requires Python3.9+ standard library, with no pip dependencies.
+
+In shared play, TownSquare and Journal → Projects, evidence and Founder Gate expose installed project records. Set `NGL_INSTITUTION_REPORT` to the retained experiment JSON to install that read-only projection. Reports grant no XP or authority. Founder-only decision APIs reuse the authenticated session, retain exact evaluation bytes and enforce server deadlines, revisions and request idempotency. They record dispositions without promoting code. No operational policy or pending decision is created by default. The authorized first review window is24hours and starts only after verified HTTPS reachability and real evidence readiness. Local fixtures do not start it.
+
 ## Play and operate Alpha1
 
 The Meteor Commission adds **The Common Ground**, a walkable institution-building world, and **Caveman Launchpad**. The big button makes three real playable creations, checks their bytes and builds a portable exhibition. Ordinary private play needs no account, API key or paid model call. A shared service supports real Witness sessions, contributions, retained versions and authenticated Founder publication.

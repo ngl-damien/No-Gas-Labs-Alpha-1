@@ -51,6 +51,11 @@ test('an uninterrupted route still interacts once when it reaches its destinatio
   for(let i=0;i<100;i++)view.update(.045,i*45);
   assert.deepEqual(interactions,[{type:'workbench',id:'workbench'}]);
 });
+test('TownSquare is an accessible institutional destination rather than a fabricated game achievement',t=>{
+ const {view,interactions}=makeView(t);view.setPlayer({x:1000,y:500});view.goTo('town-square');
+ for(let i=0;i<80;i++)view.update(.045,i*45);
+ assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
+});
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
   assert.equal(isWalkable(850,360,[]),true);

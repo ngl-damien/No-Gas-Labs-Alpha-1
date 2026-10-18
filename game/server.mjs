@@ -7,6 +7,8 @@ import { createWorld, applyAction, publicWorld, validateWorld } from './model.mj
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
+import { openDecisions } from '../src/institution/decisions.mjs';
+import { projectProjection } from '../src/institution/project-projection.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -21,7 +23,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'world-view', 'model', 'artifacts', 'launchpad'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
@@ -144,11 +146,13 @@ async function getFounderKey(dataDir, provided) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const key = await getFounderKey(dataDir, founderKey);
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
+  let decisions,projects;
+  try{projects=projectProjection(institutionReport);decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -225,6 +229,8 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session = sessionFor(request, response);
       if (request.method === 'GET') {
+        if(path==='/api/projects')return json(response,200,projects);
+        if(path==='/api/decisions')return json(response,200,await decisions.snapshot({id:session.actor.id,role:session.actor.role}));
         if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
         if (path === '/api/institution') return json(response, 200, institution());
         if (path === '/api/events') {
@@ -248,6 +254,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       if (request.method !== 'POST') fail('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       sameOrigin(request); const input = await body(request);
+      if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
+        if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
+      }
       if (path === '/api/login') {
         exact(input, ['key', 'name']);
         if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
@@ -295,7 +305,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       for (const stream of streams) stream.response.end();
       await serial;
       try { if (server.listening) await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose())); }
-      finally { server.closeAllConnections(); await store.close(); }
+      finally{server.closeAllConnections();try{await decisions.close();}finally{await store.close();}}
     })();
     return closePromise;
   };
@@ -308,7 +318,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || '127.0.0.1';
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined });
+    const institutionReport=process.env.NGL_INSTITUTION_REPORT?JSON.parse(await readFile(resolve(process.env.NGL_INSTITUTION_REPORT),'utf8')):null;
+    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
     await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
     const address = server.address();
     console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
