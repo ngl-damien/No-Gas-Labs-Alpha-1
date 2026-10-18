@@ -51,7 +51,7 @@ def _artifact_check(root, evidence):
         if not resolved.is_relative_to(root) or not resolved.is_file():
             check["reason"] = "missing, unsafe or non-file artifact"
             return check, None
-        if resolved.stat().st_size > MAX_ARTIFACT_BYTES:
+        if not resolved.is_file():\n            check["reason"] = "not a regular file"\n            return check, None\n        if resolved.stat().st_size > MAX_ARTIFACT_BYTES:
             check["reason"] = "artifact too large"
             return check, None
         data = resolved.read_bytes()
@@ -111,10 +111,10 @@ def audit(claims, evidence_root):
         for evidence in claim.get("evidence", []):
             check, artifact = _artifact_check(root, evidence)
             if artifact is not None:
-                if artifact in seen_artifacts:
+                if artifact[0] in seen_artifacts or artifact[1] in seen_artifacts:
                     check["reason"] = "duplicate artifact cannot satisfy another evidence kind"
                 else:
-                    seen_artifacts.add(artifact)
+                    seen_artifacts.update(artifact)
                     valid.add(evidence["kind"])
             checks.append(check)
         possible = max(i for i, state in enumerate(LEVELS) if REQUIRED[state] <= valid)
