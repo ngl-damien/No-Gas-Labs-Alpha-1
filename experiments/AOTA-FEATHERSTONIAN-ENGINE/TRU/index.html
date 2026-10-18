@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T.R.U. — Temporal Reconnaissance Unit</title>
+<style>
+:root{font-family:system-ui,sans-serif;color-scheme:dark;background:#081320;color:#e7f4fb}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#173c58,#081320 60%)}main{max-width:1250px;margin:auto;padding:20px}header{display:flex;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #356078;padding:15px 0}.brand{font-size:38px;font-weight:900;letter-spacing:.13em}.muted{color:#9bb7c8}.warning{color:#f3d38c}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{border:1px solid #31516a;border-radius:12px;padding:17px;background:#0e2234}.wide{grid-column:1/-1}button,input{border:1px solid #548398;border-radius:8px;padding:10px;background:#18384f;color:white}button{cursor:pointer}button:hover{background:#265570}h1{font-size:clamp(30px,4vw,52px);margin-bottom:4px}h2{font-size:14px;text-transform:uppercase;letter-spacing:.15em;color:#a6ddf0}h3{margin-bottom:5px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.tag{display:inline-block;border:1px solid #3e718e;border-radius:20px;padding:3px 8px;margin:4px;font-size:11px}.item{padding:12px 0;border-bottom:1px solid #2c455a}.date{color:#e7c987;font-size:12px}p{line-height:1.6;color:#b6ccd9}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:340px;overflow:auto}#error{color:#ffc4c4}#digest{font-size:12px}input[type=file]{display:none}@media(max-width:740px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}} </style>
+</head><body><main><header><div><div class="brand">T.R.U.</div><div class="muted">TEMPORAL RECONNAISSANCE UNIT · No_Gas_Labs™</div></div><div class="warning">LOCAL WORKBENCH · NOT FOUNDER AUTHENTICATION</div></header>
+<h1>Investigate what changed.<br>Interrogate what comes next.</h1>
+<p>Reconstruct timestamped events, distinguish fictional and simulated states from observation, compare incumbent and candidate systems, and stage an explicitly unauthorized Founder decision packet.</p>
+<div class="toolbar"><button id="reset">Reset</button><button id="import">Import JSON</button><button id="export">Export case</button><button id="receipt">Export assessment</button><input type="file" id="file" accept=".json,application/json"></div>
+<div id="error"></div><div class="muted" id="digest"></div>
+<div class="grid">
+<section class="panel"><h2>Temporal reconstruction</h2><div id="timeline"></div></section>
+<section class="panel"><h2>Incumbent / candidate comparison</h2><div id="comparison"></div></section>
+<section class="panel"><h2>Evidence manifest</h2><div id="evidence"></div></section>
+<section class="panel"><h2>Contradictions and epistemic boundaries</h2><div id="issues"></div></section>
+<section class="panel wide"><h2>Founder decision staging — not an authorization gate</h2><p>This browser-only interface does not authenticate identity, enforce deadlines, deploy changes, or approve institutional action. Exported packets are untrusted proposals.</p><label for="deadline">Proposed review deadline (UTC)</label> <input type="datetime-local" id="deadline"><button id="packet">Generate packet</button><button id="download" disabled>Download packet</button><pre id="output"></pre></section>
+</div><p class="muted">2041 T.R.U. activation is authored future-history, not a real-world claim. No temporal travel capability, independent attestation, persistent gate, or external AI participation is implied.</p>
+</main><script type="module">
+import {example,assertCase,assess,sha256,makeDecisionPacket} from './core.mjs';
+const el=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let current=structuredClone(example),packet=null;
+function download(name,data){const u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+async function render(){const a=assess(current);el('error').textContent='';el('digest').textContent='Local case SHA-256: '+await sha256(current);
+el('timeline').innerHTML=a.events.map(x=>`<div class="item"><span class="date">${esc(x.at)}</span><span class="tag">${esc(x.mode)}</span><p>${esc(x.description)}</p></div>`).join('');
+el('comparison').innerHTML=a.scored.map(x=>`<div class="item"><h3>${esc(x.name)} <span class="tag">${esc(x.role)}</span></h3><span class="tag">PASS ${x.pass}</span><span class="tag">FAIL ${x.fail}</span><span class="tag">UNKNOWN ${x.unknown}</span><p>${esc(x.confidence)} · recorded evidence ${x.recordedEvidence} · independent labels ${x.independent}</p></div>`).join('');
+el('evidence').innerHTML=current.evidence.map(x=>`<div class="item"><strong>${esc(x.id)}</strong><span class="tag">${esc(x.kind)}</span><span class="tag">${esc(x.assurance)}</span><p>${esc(x.description)}</p></div>`).join('');
+el('issues').innerHTML=a.issues.map(x=>`<div class="item"><span class="tag">${esc(x.severity)}</span><p>${esc(x.text)}</p></div>`).join('')||'No structural flags; not proof of truth.';
+}
+const showError=e=>{el('error').textContent=e.message||String(e)};
+el('reset').onclick=()=>{current=structuredClone(example);packet=null;el('download').disabled=true;el('output').textContent='';render().catch(showError)};
+el('import').onclick=()=>el('file').click();
+el('file').onchange=async e=>{try{const f=e.target.files?.[0];if(!f)return;if(f.size>1000000)throw Error('Case exceeds 1 MB');const x=JSON.parse(await f.text());assertCase(x);current=x;packet=null;el('download').disabled=true;await render()}catch(err){showError(err)}finally{e.target.value=''}};
+el('export').onclick=()=>download('tru-case.json',current);
+el('receipt').onclick=async()=>download('tru-assessment.json',{caseFingerprint:await sha256(current),generatedAt:new Date().toISOString(),warning:'Locally generated, not independent attestation',assessment:assess(current)});
+el('packet').onclick=async()=>{try{const c=current.candidates.find(x=>x.role==='CANDIDATE');if(!c)throw Error('No candidate');const v=el('deadline').value;if(!v)throw Error('Enter a proposed deadline');const utc=new Date(v+'Z');if(!Number.isFinite(utc.getTime()))throw Error('Invalid deadline');packet=makeDecisionPacket(current,c.id,utc.toISOString());packet.caseFingerprint=await sha256(current);packet.packetFingerprint=await sha256(packet);el('output').textContent=JSON.stringify(packet,null,2);el('download').disabled=false}catch(e){showError(e)}};
+el('download').onclick=()=>{if(packet)download('tru-founder-decision-UNAUTHORIZED.json',packet)};
+render().catch(showError);
+</script></body></html>
