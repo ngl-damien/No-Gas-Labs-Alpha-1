@@ -1,0 +1,208 @@
+{
+  "schema": "ngl.compounding-experiment.v1",
+  "id": "alpha1-transfer-20261018",
+  "recordedAt": "2026-10-18T07:12:06Z",
+  "harness": {
+    "path": "scripts/run-compounding.py",
+    "sha256": "6d923a25444b66a00927da4f9d1822f958f29b5e9ef0e497b72863ce87ee676b",
+    "python": "Python 3.12.14",
+    "node": "v24.19.0",
+    "platform": "Linux"
+  },
+  "source": {
+    "commit": "68b042daeefc155690ef34af87767ca2cef5a5b7",
+    "specification": "a9d4389fa9c3431c561311399980d6504f7b530a",
+    "profileFreeze": "137c9c7",
+    "snapshotDigest": "140b9706a6bc909b979a0e14e7d3947af490573d63e6529aa6c423614b653ffd",
+    "M0": "cab8dfb0d6ae41626db8010ae300210ccd0ca7a2"
+  },
+  "classification": "TRANSFER_OBSERVED_COMPONENT_DELIVERY",
+  "criterion": "Exact required-file coverage plus actual extracted component tests and entry points, without integrity regression. Capability expansion; unequal outputs are not a speed comparison.",
+  "tasks": {
+    "A": {
+      "title": "AOTA local evidence inspector",
+      "requiredFiles": 4,
+      "profileSHA256": "2889a287c232be92b48fef44c393a3eebc1a662834a76461138bade9d279dcd2",
+      "m0": {
+        "archiveSHA256": "acacb41d568bcb16eef035e04126850e7217c5c5317921054ad8ca46d4736b30",
+        "archiveBytes": 2344288,
+        "integrity": true,
+        "requiredFiles": 4,
+        "matchedFiles": 0,
+        "errors": [
+          "ZIP membership differs from frozen component profile",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/test_engine.py",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/example_claims.json",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/README.md"
+        ],
+        "accepted": false,
+        "componentChecks": "NOT_RUN: declared component files absent; M0 retains its original game-export capability."
+      },
+      "m1": {
+        "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+        "archiveBytes": 10795,
+        "integrity": true,
+        "requiredFiles": 4,
+        "matchedFiles": 4,
+        "errors": [],
+        "accepted": true,
+        "tests": {
+          "command": [
+            "python3",
+            "-m",
+            "unittest",
+            "-v",
+            "test_engine.py"
+          ],
+          "exitCode": 0,
+          "wallMs": 646.8466579972301,
+          "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSHA256": "c333c80a3bc7d2314cd26e9778ac0be817c85b22e3e5249b46d12a9f523a3ae2",
+          "count": 47
+        },
+        "entryPoint": {
+          "command": [
+            "python3",
+            "engine.py",
+            "example_claims.json",
+            "--root",
+            "."
+          ],
+          "exitCode": 0,
+          "wallMs": 28.356296999845654,
+          "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+          "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "artifact": "dist/compounding/aota-evidence-inspector.zip"
+    },
+    "B": {
+      "title": "T.R.U. temporal evidence workbench",
+      "requiredFiles": 5,
+      "profileSHA256": "f78c354976e12f429194e760f362595d8408b6a55936bd968952e67dcacc225e",
+      "m0": {
+        "archiveSHA256": "acacb41d568bcb16eef035e04126850e7217c5c5317921054ad8ca46d4736b30",
+        "archiveBytes": 2344288,
+        "integrity": true,
+        "requiredFiles": 5,
+        "matchedFiles": 0,
+        "errors": [
+          "ZIP membership differs from frozen component profile",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/test.mjs",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/README.md",
+          "Missing declared component file: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/examples/real-lineage.case.json"
+        ],
+        "accepted": false,
+        "componentChecks": "NOT_RUN: declared component files absent; M0 retains its original game-export capability."
+      },
+      "m1": {
+        "archiveSHA256": "5cafe45651e7919c50952434b6f9ee10da1b1036313b54c5c14c9a65a8c00088",
+        "archiveBytes": 17847,
+        "integrity": true,
+        "requiredFiles": 5,
+        "matchedFiles": 5,
+        "errors": [],
+        "accepted": true,
+        "tests": {
+          "command": [
+            "node",
+            "--test",
+            "test.mjs"
+          ],
+          "exitCode": 0,
+          "wallMs": 358.9022380037932,
+          "stdoutSHA256": "93335a2df7a5115ae367e274294630fa4a888565ee8f85c490948030d5e37110",
+          "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "count": 40
+        },
+        "kernelSmoke": {
+          "command": [
+            "node",
+            "--input-type=module",
+            "-e",
+            "import{readFile}from'node:fs/promises';import{assertCase,assess}from'./core.mjs';const c=assertCase(JSON.parse(await readFile('examples/real-lineage.case.json','utf8')));console.log(JSON.stringify({caseId:c.caseId,eventCount:assess(c).events.length,authorization:'NOT_GRANTED'}))"
+          ],
+          "exitCode": 0,
+          "wallMs": 36.127264000242576,
+          "stdoutSHA256": "dedb35778494e6db2b0c77825de2762b80f09dc29f9d0d46295f6986de3d5b99",
+          "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "entryPoint": {
+          "passed": true,
+          "entryPoint": "index.html over loopback HTTP from the extracted ZIP",
+          "viewport": 390,
+          "checks": [
+            "HTTP 200",
+            "module executed and digest rendered",
+            "real lineage imported: three events",
+            "exported case exact equality",
+            "no page errors"
+          ],
+          "wallMs": 796.647615992697
+        }
+      },
+      "artifact": "dist/compounding/tru-temporal-workbench.zip"
+    }
+  },
+  "negative": {
+    "tamperedZIPRejected": true,
+    "errors": [
+      "Manifest mismatch: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html",
+      "Changed declared component bytes: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html"
+    ],
+    "undeclaredPrivateMemberRejected": true,
+    "injectedErrors": [
+      "Private ZIP member: .runtime/secret",
+      "ZIP membership differs from manifest",
+      "ZIP membership differs from frozen component profile"
+    ]
+  },
+  "sourceIntegrity": true,
+  "baselineExporterExecution": {
+    "command": [
+      "node",
+      "--input-type=module",
+      "-e",
+      "const {buildGame}=await import(process.argv[3]);console.log(JSON.stringify(await buildGame({rootDir:process.argv[1],outDir:process.argv[2]})))",
+      "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-5b_4d4fi/source",
+      "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-5b_4d4fi/m0-game",
+      "file:///workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-5b_4d4fi/m0-tool/scripts/build-game.mjs"
+    ],
+    "exitCode": 0,
+    "wallMs": 306.129978998797,
+    "stdoutSHA256": "7f4cd98043b1639016fc13a1bd7f60f2e0f01cd040e491c9ac6b9ed77fdbb111",
+    "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "founderBurden": {
+    "baselineHumanInterventions": null,
+    "observedPolicyResponses": 1,
+    "policyResponse": "24 hours, starting only after authenticated HTTPS reachability and evidence readiness",
+    "automatedPackagingInvocations": 2,
+    "conclusion": "INCONCLUSIVE: automated steps are not an observed before/after human-intervention baseline."
+  },
+  "governance": {
+    "operationalDecisionCreated": false,
+    "reviewWindowHours": 24,
+    "clockStarted": false,
+    "promotion": "NOT_AUTHORIZED_AUTOMATICALLY"
+  },
+  "contradictions": [
+    {
+      "statement": "The imported Python source defined 21 tests but could not be imported because of a syntax error.",
+      "disposition": "Original import retained in Git; repaired executable tested separately."
+    },
+    {
+      "statement": "Original T.R.U. input labels and PASS counts could suggest review despite missing comparable evidence.",
+      "disposition": "Repaired schema/comparison boundaries; local imported labels remain untrusted."
+    }
+  ],
+  "limitations": [
+    "M0 was a game/source exporter, not a generic component exporter; this demonstrates a new declared operation, not a defect in its original purpose.",
+    "Task B profile was frozen before machinery implementation; worker isolation was procedural, not a hostile-process security boundary.",
+    "A single transfer is not sustained institutional growth.",
+    "No live HTTPS Gate, external users, cloud restoration or human-burden reduction is established."
+  ]
+}

@@ -1,0 +1,22 @@
+✔ SHA256 known digest (7.70207ms)
+✔ stable canonicalization (6.802216ms)
+✔ report temporal ordering (1.511384ms)
+✔ fiction not promoted into reality (0.261283ms)
+✔ unverified candidate cannot auto-promote (0.198909ms)
+✔ fails closed on failed test (0.262304ms)
+✔ invalid evidence type rejected (0.311038ms)
+✔ duplicate ids rejected (0.157157ms)
+✔ invalid timelines rejected (0.267192ms)
+✔ missing links flagged (0.35228ms)
+✔ digest reuse flagged (0.380533ms)
+✔ decision packet is expressly unauthorized (0.567754ms)
+✔ invalid deadline rejected (0.123626ms)
+✔ unknown candidate rejected (0.097397ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 73.168043

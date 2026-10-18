@@ -1,0 +1,50 @@
+[
+  {
+    "journey": "desktop",
+    "passed": true,
+    "errors": []
+  },
+  {
+    "journey": "phone",
+    "passed": true,
+    "errors": []
+  },
+  {
+    "journey": "two-session-shared",
+    "passed": true,
+    "errors": [],
+    "version": 2,
+    "kernelAccepted": 2
+  },
+  {
+    "journey": "one-button-320",
+    "passed": true,
+    "artifacts": 3,
+    "checks": 6,
+    "errors": []
+  },
+  {
+    "journey": "one-button-412",
+    "passed": true,
+    "artifacts": 3,
+    "checks": 6,
+    "errors": []
+  },
+  {
+    "journey": "standalone-file",
+    "status": "blocked",
+    "reason": "Managed Chromium administrator policy blocks file navigation."
+  },
+  {
+    "journey": "standalone-exact-bytes",
+    "passed": true,
+    "artifacts": 3,
+    "checks": 6,
+    "errors": []
+  },
+  {
+    "journey": "shared-restart",
+    "passed": true,
+    "retainedVersion": 2
+  }
+]

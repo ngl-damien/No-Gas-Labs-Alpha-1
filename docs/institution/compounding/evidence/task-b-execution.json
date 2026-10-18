@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "command": [
+      "node",
+      "--test",
+      "test.mjs"
+    ],
+    "exitCode": 0,
+    "wallMs": 364.29122401750647,
+    "stdoutSHA256": "bce35840913718846cde15483f12d556b82e6388d9b3851c0c0ce03aff586911",
+    "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "✔ SHA256 known digest (10.490934ms)\n✔ stable canonicalization (0.356466ms)\n✔ report temporal ordering (3.297792ms)\n✔ fiction not promoted into reality (0.696127ms)\n✔ unverified candidate cannot auto-promote (0.536407ms)\n✔ fails closed on failed test (0.514484ms)\n✔ invalid evidence type rejected (0.487914ms)\n✔ duplicate ids rejected (0.176506ms)\n✔ invalid timelines rejected (0.349055ms)\n✔ missing links flagged (0.428625ms)\n✔ digest reuse flagged (0.390658ms)\n✔ decision packet is expressly unauthorized (0.921827ms)\n✔ invalid deadline rejected (0.275574ms)\n✔ unknown candidate rejected (0.207081ms)\n✔ case id is a bounded identifier (0.75108ms)\n✔ candidate roles are explicit and baseline is unique (0.788606ms)\n✔ evidence references must be arrays of unique identifiers (0.965503ms)\n✔ event references cannot silently cite missing evidence (0.84419ms)\n✔ all known text fields reject empty, coercible and oversized values (1.308018ms)\n✔ rollback is required before staging a proposal (0.481084ms)\n✔ imported assurance never authenticates a witness or makes reviewable evidence (0.41811ms)\n✔ equal pass counts with unequal test IDs are an invalid comparison (0.685511ms)\n✔ different workload IDs are an invalid comparison (0.536137ms)\n✔ undeclared workloads cannot establish a comparable evaluation (0.315645ms)\n✔ duplicate test names or IDs are rejected instead of counting more passes (0.477799ms)\n✔ missing reference errors block reviewable proposals (0.237377ms)\n✔ canonical object ordering uses code units, independent of locale (0.35863ms)\n✔ canonical integer-like keys retain code-unit ordering (0.093671ms)\n✔ timeline equal-time ordering is deterministic by identifier (0.400462ms)\n✔ digest casing cannot hide reuse of the same bytes (0.475064ms)\n✔ oversized extensions and deep metadata are bounded in the kernel (0.931361ms)\n✔ successful import clears visible packet and disables download (21.194372ms)\n✔ deadline edits invalidate the staged packet (13.075412ms)\n✔ reset while hashing cannot restore a stale staged packet (32.900678ms)\n✔ failed import invalidates a previously staged packet (13.72801ms)\n✔ an older file read cannot replace a newer import (13.160109ms)\n✔ an assessment export interrupted by import never mixes case revisions (33.128607ms)\n✔ an older render cannot repaint a newer case after hashing (43.81261ms)\n✔ failed import repaints the retained case after cancelling an in-flight render (44.575083ms)\n✔ real lineage example imports as untrusted source history without execution claims (13.984821ms)\nℹ tests 40\nℹ suites 0\nℹ pass 40\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 326.61115\n",
+    "stderr": ""
+  },
+  "entryPoint": {
+    "command": [
+      "node",
+      "--input-type=module",
+      "-e",
+      "import{readFile}from'node:fs/promises';import{assertCase,assess}from'./core.mjs';const c=assertCase(JSON.parse(await readFile('examples/real-lineage.case.json','utf8')));console.log(JSON.stringify({caseId:c.caseId,eventCount:assess(c).events.length,authorization:'NOT_GRANTED'}))"
+    ],
+    "exitCode": 0,
+    "wallMs": 41.28549399320036,
+    "stdoutSHA256": "dedb35778494e6db2b0c77825de2762b80f09dc29f9d0d46295f6986de3d5b99",
+    "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "{\"caseId\":\"NGL-PINNED-LINEAGE-2026-10-18\",\"eventCount\":3,\"authorization\":\"NOT_GRANTED\"}\n",
+    "stderr": ""
+  }
+}

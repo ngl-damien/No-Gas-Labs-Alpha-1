@@ -1,0 +1,74 @@
+{
+  "schema": "ngl.fresh-process-recovery.v1",
+  "passed": true,
+  "principal": "Damien Featherstone",
+  "authority": "The Neophyte Founder retains institutional decisions. AI labor may inspect/build/test; hashes, imported labels and local evaluator IDs do not confer independent authority. No automatic promotion.",
+  "assignments": [
+    {
+      "role": "Founder",
+      "task": "Review the first real machinery-improvement disposition only after authenticated HTTPS reachability and evidence readiness; authorized interval 24 hours.",
+      "status": "NOT_ACTIVATED"
+    },
+    {
+      "role": "Codex executor",
+      "task": "Preserve and verify delivered Task A/B, reusable M1, local Gate and RPG projection.",
+      "status": "LOCAL_EXECUTION_RECORDED"
+    },
+    {
+      "role": "Next executor",
+      "task": "Provision authorized durable HTTPS service, test real Founder access and recovery; measure routine human burden across the next comparable task cycle.",
+      "status": "OPEN"
+    }
+  ],
+  "machinery": {
+    "M0": {
+      "source": "cab8dfb0d6ae41626db8010ae300210ccd0ca7a2",
+      "operation": "Original game/source exporter, working in original scope; no declared A/B component delivery."
+    },
+    "M1": {
+      "source": "68b042daeefc155690ef34af87767ca2cef5a5b7",
+      "operation": "Explicit-file public component packaging",
+      "status": "EXPERIMENTAL_CANDIDATE",
+      "comparison": "Both exact declared components accepted; no speed or human-burden claim.",
+      "evaluationCommit": "907ce814f023ef3bd40ea57bfa536914bb67e27b"
+    }
+  },
+  "openFailures": [
+    "No configured hosting/deployment capability or externally verified authenticated HTTPS origin; M7 not demonstrated.",
+    "No observed M0 human-intervention baseline; Founder burden improvement remains INCONCLUSIVE.",
+    "No fresh cloud restoration or independently participating external Witness established.",
+    "Original five conversation/two Sites readers absent; package used without claiming original access.",
+    "One observed delivery transfer does not establish sustained institutional growth."
+  ],
+  "taskB": {
+    "status": "TRANSFER_OBSERVED_COMPONENT_DELIVERY",
+    "tests": 40,
+    "entryPoint": "Extracted index.html tested in real Chromium over loopback HTTP",
+    "artifact": "dist/compounding/tru-temporal-workbench.zip"
+  },
+  "founderDecision": {
+    "reviewWindowHours": 24,
+    "clockStarted": false,
+    "operationalDecisionCreated": false,
+    "activationPrerequisites": [
+      "Authenticated HTTPS Gate reachable by the actual Founder",
+      "Real evaluation evidence ready and byte receipts retained"
+    ],
+    "noAutomaticPromotion": true
+  },
+  "nextAction": "Read docs/institution/compounding/REPORT.md, run npm run recover:institution, verify retained source/evidence. Continue with durable HTTPS Gate and a measured real task cycle; do not start the operational 24-hour clock before its prerequisites.",
+  "rollback": "Preserve cab8dfb Meteor branch and 52c6443 original package import. M1 is a separate operation; stop using it without modifying kernel invariants or rolling back unrelated source. Keep runtime owners stopped before offline recovery; never delete locks blindly.",
+  "recovered": [
+    "experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md",
+    "docs/institution/compounding/PLAN.md",
+    "docs/institution/compounding/REVIEW-POLICY.md",
+    "docs/institution/compounding/task-a.profile.json",
+    "docs/institution/compounding/task-b.profile.json",
+    "docs/institution/compounding/evidence/experiment.json",
+    "src/production/component-package.mjs",
+    "src/institution/decisions.mjs",
+    "experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py",
+    "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs"
+  ],
+  "scope": "New Node process using durable files only; not a fresh cloud/environment restoration."
+}

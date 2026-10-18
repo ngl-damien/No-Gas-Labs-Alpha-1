@@ -1,0 +1,32 @@
+{
+  "source": "52c6443",
+  "importedFrom": "a9d4389fa9c3431c561311399980d6504f7b530a",
+  "runs": [
+    {
+      "id": "aota",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "-v",
+        "test_engine.py"
+      ],
+      "cwd": "experiments/AOTA-FEATHERSTONIAN-ENGINE",
+      "status": 1,
+      "signal": null,
+      "error": null
+    },
+    {
+      "id": "tru",
+      "command": [
+        "node",
+        "--test",
+        "test.mjs"
+      ],
+      "cwd": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU",
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ]
+}

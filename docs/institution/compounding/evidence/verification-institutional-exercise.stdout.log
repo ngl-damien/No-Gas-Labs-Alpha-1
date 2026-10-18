@@ -1,0 +1,11 @@
+{
+  "outDir": "/workspace/No-Gas-Labs-Alpha-1/.runtime/verification-4xSF2N/exercise",
+  "report": "/workspace/No-Gas-Labs-Alpha-1/.runtime/verification-4xSF2N/exercise/exercise.json",
+  "wallMs": 4595.510414,
+  "outcomes": [
+    "passing",
+    "failed",
+    "timed_out"
+  ],
+  "courierStatus": "RESPONDED"
+}

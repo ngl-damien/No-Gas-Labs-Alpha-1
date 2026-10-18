@@ -75,3 +75,7 @@ experiment report still requires its own run.
 Local browser acceptance does not establish
 a deployed HTTPS Gate, independent Witness participation, persistent residents,
 cloud restoration, or reduced human intervention.
+
+## Actual retained experiment acceptance
+
+The frozen harness ran against the actual `experiment.json` from source `907ce814f023ef3bd40ea57bfa536914bb67e27b`: **8/8 journeys passed**, report SHA-256 `421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307`, no page errors or external requests, all source hashes unchanged. Final results and five screenshots are in `evidence/`. Gate credentials, policy and proposal were disposable fixtures; the operational clock remains stopped. The existing Meteor browser runner separately passed seven journeys with the direct-file navigation check still policy-blocked.
