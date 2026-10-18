@@ -1,0 +1,17 @@
+{
+  "claims": [
+    {
+      "id": "meteor-local-source",
+      "declared": "BUILT",
+      "evidence": []
+    },
+    {
+      "id": "external-ai-execution",
+      "declared": "OPERATIONAL",
+      "dependencies": [
+        "meteor-local-source"
+      ],
+      "evidence": []
+    }
+  ]
+}

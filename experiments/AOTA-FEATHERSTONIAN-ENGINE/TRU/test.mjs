@@ -1,0 +1,17 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {example,assess,sha256,assertCase,makeDecisionPacket,canonical} from './core.mjs';
+test('SHA256 known digest', async()=>assert.equal(await sha256('abc'),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'));
+test('stable canonicalization',()=>assert.equal(canonical({b:2,a:1}),canonical({a:1,b:2})));
+test('report temporal ordering',()=>assert.deepEqual(assess(example).events.map(x=>x.id),['t1','t2','t3']));
+test('fiction not promoted into reality',()=>assert.ok(assess(example).issues.some(x=>x.text.includes('Fictional'))));
+test('unverified candidate cannot auto-promote',()=>assert.equal(assess(example).decisions[0].recommendation,'INCONCLUSIVE'));
+test('fails closed on failed test',()=>{const c=structuredClone(example); c.candidates[1].testResults.push({name:'Security',outcome:'FAIL'});assert.equal(assess(c).decisions[0].recommendation,'REJECT')});
+test('invalid evidence type rejected',()=>{const c=structuredClone(example);c.evidence[0].assurance='MAGIC';assert.throws(()=>assertCase(c))});
+test('duplicate ids rejected',()=>{const c=structuredClone(example);c.evidence[0].id='t1';assert.throws(()=>assertCase(c))});
+test('invalid timelines rejected',()=>{const c=structuredClone(example);c.events[0].at='yesterday';assert.throws(()=>assertCase(c))});
+test('missing links flagged',()=>{const c=structuredClone(example);c.candidates[0].evidenceIds=['missing'];assert.ok(assess(c).issues.some(x=>x.severity==='ERROR'))});
+test('digest reuse flagged',()=>{const c=structuredClone(example);c.evidence[0].digest='a'.repeat(64);c.evidence[1].digest='a'.repeat(64);assert.ok(assess(c).issues.some(x=>x.text.includes('Identical payload'))) });
+test('decision packet is expressly unauthorized',()=>{const p=makeDecisionPacket(example,'cand','2026-10-19T00:00:00Z');assert.match(p.authorization,/NOT GRANTED/);assert.match(p.gateStatus,/NOT AUTHENTICATED/) });
+test('invalid deadline rejected',()=>assert.throws(()=>makeDecisionPacket(example,'cand','not a date')));
+test('unknown candidate rejected',()=>assert.throws(()=>makeDecisionPacket(example,'inc','2026-10-19T00:00:00Z')));
