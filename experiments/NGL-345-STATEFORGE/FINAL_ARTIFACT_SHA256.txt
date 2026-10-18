@@ -1,0 +1,2 @@
+NGL-345 STATEFORGE final ZIP SHA256: a95b96e99aef66fc06b7a330c5acc617c4aebed1e9dd94910bee4b55b6501ea1
+Supersedes the earlier README digest. Market validation: HOLD. This branch is a research receipt, not a source release.
