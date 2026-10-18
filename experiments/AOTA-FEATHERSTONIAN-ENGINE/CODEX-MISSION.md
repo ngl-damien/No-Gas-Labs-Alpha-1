@@ -13,7 +13,7 @@ The proposed force multiplier is not more agents or more review passes. It is **
 
 ## Your integrated assignment
 1. Inventory and reconcile existing implementations before introducing duplicates. Preserve valuable work on `main` and Meteor; do not blindly merge.
-2. Run and critique this local evidence inventory (v0.3; 18 regression tests). Treat the labels VERIFIED and EXTERNALLY_CONFIRMED as compatibility labels, never authenticated status. Identify the gap between byte integrity, authentic execution receipts, independent witness, authorization, and truth.
+2. Run and critique this local evidence inventory (v0.4; 21 regression tests). Treat the labels VERIFIED and EXTERNALLY_CONFIRMED as compatibility labels, never authenticated status. Identify the gap between byte integrity, authentic execution receipts, independent witness, authorization, and truth.
 3. Build the smallest **reusable, real** institutional primitive that can compare incumbent and candidate capabilities under identical reproducible workloads, recording costs, failures, provenance, and a rollback path.
 4. Connect that primitive to existing NGL kernel/Forge/ledger interfaces where evidence supports doing so. Prefer native Node implementation or a justified adapter over creating a disconnected Python subsystem.
 5. Exercise it on at least one existing NGL capability. A passing test alone is not proof of improvement: record baseline, candidate, environment, results, and an adversarial negative case.
