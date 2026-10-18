@@ -1,0 +1,10 @@
+{
+  "schema": "ngl.qualification-transfer-profile.v1",
+  "id": "report-consistency-to-continuity",
+  "baseline": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "taskA": "Reject contradictory report acceptance at the public project projection; retain valid reported-local results without awarding authority or XP.",
+  "taskB": "A fresh-process continuity check must also reject a referenced experiment report with internally contradictory acceptance even when its file SHA-256 matches the continuity reference.",
+  "cases": ["accepted as a nonboolean string", "accepted with zero tests", "accepted with failed test exit", "accepted with invalid integrity", "valid retained report"],
+  "acceptance": "Reuse the unchanged Task A validator in Task B, reject four inconsistent inputs and recover the valid input; preserve byte verification. This checks internal coherence, not independent truth or human-burden reduction.",
+  "authority": "Local reversible qualification only. No automatic protected adoption or Founder disposition."
+}
