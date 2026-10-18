@@ -1,7 +1,7 @@
 # Reconciliation Contract — Preserve the Distinctions
 
 **Status:** specification, NOT evidence of runtime integration, passing tests, founder access or deployment.  
-**Canonical mission:** [CODEX-MISSION.md](CODEX-MISSION.md).  
+**Canonical mission:** [CODEX-MISSION.md](CODEX-MISSION.md). **Institutional acceptance:** [ALPHA1-INSTITUTIONAL-THESIS.md](ALPHA1-INSTITUTIONAL-THESIS.md).  
 **Principle:** Reconcile interfaces. Do not collapse independently testable duties.
 
 ## 1. Roles / authority
@@ -122,6 +122,11 @@ This shape is **illustrative**. Sample timestamps are not actual decisions or de
 | Founder authentication | Existing founder authority provider | Founder Gate server | Reject unauthenticated/wrong actor |
 | Authorized action | Founder Gate | Authorized effect handler | Idempotency, expiry, audit, rollback |
 | Public endpoint | Deployment/runtime | Founder browser | Fresh HTTPS retrieval and live end-to-end checks |
+| Consequential task A | Research/production organ | Reusable machinery analysis | Independent artifact acceptance and actual trace |
+| Machinery improvement | AOTA² evaluator | Subsequent task runner | Frozen M0/M1 baseline, reproducible negative cases and rollback |
+| Transfer task B | Improved machinery M1 | EvidenceOS / decision service | Distinct task, preregistered metrics, M0 control, usable output |
+| Clean-context recovery | Durable institutional state | New execution session | Restore task lineage, assignments, contradictions and next action without chat memory |
+| Witness world projection | RPG/TownSquare | Viewer/resident/Founder roles | Tested permission-specific project, dispute, accomplishment and gate views |
 
 ## 5. Disposition and reconciliation ledger
 
@@ -130,8 +135,8 @@ For every discovered pre-existing NGL module and both handoff prototypes, record
 
 Do not delete, merge or rename projects merely because their labels overlap. Tests establish **behavior**, while diagrams establish **intent**. Keep both.
 
-## 6. Completion and blockers
+## 6. Completion, compounding and blockers
 
-The final completion token is a **verified actual HTTPS Founder Gate with a legitimate pending time-sensitive decision** for the Neophyte Founder™, with authenticated access and server-validated consequences, independently checked evidence and recovery. Intermediate tests are necessary, never sufficient.
+The **Founder decision invitation** requires a verified actual HTTPS Founder Gate with a legitimate pending time-sensitive decision for the Neophyte Founder™, authenticated access and server-validated consequences, independently checked evidence and recovery. This alone is NOT the Alpha 1 institutional success condition. The **institutional completion** also requires verified consequential Task A output, a reproducible reusable machinery improvement M0→M1, verified transfer to distinct Task B with predeclared criteria and a documented Founder-intervention burden, clean-context continuity and a tested RPG/Witness interface foundation. See the institutional thesis for exact milestone and evidence distinctions. One two-task transfer is a first demonstration, not proof of sustained autonomous growth. Intermediate tests are necessary, never sufficient.
 
 For suspected missing hosting, access, identity or secrets, maintain `dependency | hypothesis | observations | authorized alternatives attempted | result | next independent work | founder action (if truly necessary)`. Mark a blocker confirmed only after observing material obstruction and exhausting applicable safe authorized paths; report it as incomplete, not success.
