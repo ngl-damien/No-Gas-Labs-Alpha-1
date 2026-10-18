@@ -32,7 +32,7 @@ class GateTests(unittest.TestCase):
   x=audit([self.claim(evidence=[self.proof(path='absent')])],self.root)
   self.assertEqual(x['results']['a']['ceiling'],'PLANNED')
  def test_dependency_caps(self):
-  claims=[self.claim('BUILT',[self.proof()],id='a'),self.claim('VERIFIED',[self.proof('source'),self.proof('test')],['a'],id='b')]
+  claims=[self.claim('BUILT',[self.proof()],id='a'),self.claim('VERIFIED',[self.proof('source'),self.proof('test',digest=self.test_digest,path='test.txt')],['a'],id='b')]
   self.assertEqual(audit(claims,self.root)['results']['b']['ceiling'],'BUILT')
  def test_cycle(self):
   with self.assertRaisesRegex(ValueError,'cycle'): audit([self.claim(dependencies=['b'],id='a'),self.claim(dependencies=['a'],id='b')],self.root)
@@ -69,4 +69,14 @@ class GateTests(unittest.TestCase):
   result=audit([self.claim(evidence=[self.proof('source'),self.proof('test',digest=self.test_digest,path='test.txt')])],self.root)
   self.assertEqual(result['results']['a']['ceiling'],'VERIFIED')
   self.assertIn('local byte integrity',audit([self.claim()],self.root)['warning'])
+ def test_identical_bytes_separate_files_rejected(self):
+  (self.root/'copy.txt').write_bytes(b'hello')
+  result=audit([self.claim(evidence=[self.proof('source'),self.proof('test',path='copy.txt')])],self.root)
+  self.assertEqual(result['results']['a']['ceiling'],'BUILT')
+ def test_nul_path_rejected(self):
+  result=audit([self.claim(evidence=[self.proof(path='bad\\x00file')])],self.root)
+  self.assertEqual(result['results']['a']['ceiling'],'PLANNED')
+ def test_valid_sha256_regex(self):
+  result=audit([self.claim(state='BUILT',evidence=[self.proof()])],self.root)
+  self.assertEqual(result['results']['a']['ceiling'],'BUILT')
 if __name__=='__main__': unittest.main()
