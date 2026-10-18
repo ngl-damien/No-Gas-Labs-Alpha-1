@@ -1,0 +1,502 @@
+{
+  "schema": "ngl.qualification.engineering-continuity.v1",
+  "observedAt": "2026-10-18T20:15:59.207Z",
+  "reviewer": "INTERNAL_AI",
+  "baseline": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "scope": "Disposable same-host source extraction and fake-key stores; not fresh-cloud restoration, independent human review, or certification.",
+  "probes": [
+    {
+      "id": "Q-ENG-P01",
+      "claim": "The retained canonical continuity record and focused controls run on this runtime.",
+      "recovery": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "/tmp/ngl-qualification-engineering-qga0C8/source/scripts/recover-institution.mjs"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "{\n  \"schema\": \"ngl.fresh-process-recovery.v1\",\n  \"passed\": true,\n  \"principal\": \"Damien Featherstone\",\n  \"authority\": \"The Neophyte Founder retains institutional decisions. AI labor may inspect/build/test; hashes, imported labels and local evaluator IDs do not confer independent authority. No automatic promotion.\",\n  \"assignments\": [\n    {\n      \"role\": \"Founder\",\n      \"task\": \"Review the first real machinery-improvement disposition only after authenticated HTTPS reachability and evidence readiness; authorized interval 24 hours.\",\n      \"status\": \"NOT_ACTIVATED\"\n    },\n    {\n      \"role\": \"Codex executor\",\n      \"task\": \"Preserve and verify delivered Task A/B, reusable M1, local Gate and RPG projection.\",\n      \"status\": \"LOCAL_EXECUTION_RECORDED\"\n    },\n    {\n      \"role\": \"Next executor\",\n      \"task\": \"Provision authorized durable HTTPS service, test real Founder access and recovery; measure routine human burden across the next comparable task cycle.\",\n      \"status\": \"OPEN\"\n    }\n  ],\n  \"machinery\": {\n    \"M0\": {\n      \"source\": \"cab8dfb0d6ae41626db8010ae300210ccd0ca7a2\",\n      \"operation\": \"Original game/source exporter, working in original scope; no declared A/B component delivery.\"\n    },\n    \"M1\": {\n      \"source\": \"68b042daeefc155690ef34af87767ca2cef5a5b7\",\n      \"operation\": \"Explicit-file public component packaging\",\n      \"status\": \"EXPERIMENTAL_CANDIDATE\",\n      \"comparison\": \"Both exact declared components accepted; no speed or human-burden claim.\",\n      \"evaluationCommit\": \"907ce814f023ef3bd40ea57bfa536914bb67e27b\"\n    }\n  },\n  \"openFailures\": [\n    \"No configured hosting/deployment capability or externally verified authenticated HTTPS origin; M7 not demonstrated.\",\n    \"No observed M0 human-intervention baseline; Founder burden improvement remains INCONCLUSIVE.\",\n    \"No fresh cloud restoration or independently participating external Witness established.\",\n    \"Original five conversation/two Sites readers absent; package used without claiming original access.\",\n    \"One observed delivery transfer does not establish sustained institutional growth.\"\n  ],\n  \"taskB\": {\n    \"status\": \"TRANSFER_OBSERVED_COMPONENT_DELIVERY\",\n    \"tests\": 40,\n    \"entryPoint\": \"Extracted index.html tested in real Chromium over loopback HTTP\",\n    \"artifact\": \"dist/compounding/tru-temporal-workbench.zip\"\n  },\n  \"founderDecision\": {\n    \"reviewWindowHours\": 24,\n    \"clockStarted\": false,\n    \"operationalDecisionCreated\": false,\n    \"activationPrerequisites\": [\n      \"Authenticated HTTPS Gate reachable by the actual Founder\",\n      \"Real evaluation evidence ready and byte receipts retained\"\n    ],\n    \"noAutomaticPromotion\": true\n  },\n  \"nextAction\": \"Read docs/institution/compounding/REPORT.md, run npm run recover:institution, verify retained source/evidence. Continue with durable HTTPS Gate and a measured real task cycle; do not start the operational 24-hour clock before its prerequisites.\",\n  \"rollback\": \"Preserve cab8dfb Meteor branch and 52c6443 original package import. M1 is a separate operation; stop using it without modifying kernel invariants or rolling back unrelated source. Keep runtime owners stopped before offline recovery; never delete locks blindly.\",\n  \"recovered\": [\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md\",\n    \"docs/institution/compounding/PLAN.md\",\n    \"docs/institution/compounding/REVIEW-POLICY.md\",\n    \"docs/institution/compounding/task-a.profile.json\",\n    \"docs/institution/compounding/task-b.profile.json\",\n    \"docs/institution/compounding/evidence/experiment.json\",\n    \"src/production/component-package.mjs\",\n    \"src/institution/decisions.mjs\",\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py\",\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs\"\n  ],\n  \"scope\": \"New Node process using durable files only; not a fresh cloud/environment restoration.\"\n}\n",
+        "stderr": ""
+      },
+      "focused": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "--test",
+          "test/institution-continuity.test.mjs",
+          "test/game-package.test.mjs",
+          "test/game-decisions.test.mjs"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "✔ HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay and recovers after restart (109.289625ms)\n✔ project projection has no synthetic accomplishments or implicit authority when no report is installed (8.778618ms)\n✔ standalone carries recursive modules, styles and unchanged original assets (34.865158ms)\n✔ distribution is independently readable ZIP, excludes runtime and includes verifiable manifest (15.531589ms)\n✔ module escaping game source fails instead of packaging private bytes (11.04624ms)\n✔ standalone supplies its own network-denying host policy without a server header (8.934283ms)\n✔ runtime data nested beneath source roots never enters a public source archive (28.977198ms)\n✔ a new process recovers assignments, authority, evidence and unfinished work from durable files (62.449495ms)\n✔ recovery rejects a receipt whose current bytes differ (55.404291ms)\n✔ recovery does not accept traversal references or incomplete responsibility (78.004844ms)\n✔ recovery rejects missing machinery, unfinished work or Founder decision (151.426849ms)\nℹ tests 11\nℹ suites 0\nℹ pass 11\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 408.403738\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "Q-ENG-P02",
+      "claim": "Recovery rejects non-actionable responsibility, authority, rollback and Founder-decision shapes.",
+      "finding": "Q-ENG-002",
+      "input": {
+        "schema": "ngl.institution-continuity.v1",
+        "principal": "Damien Featherstone",
+        "references": [
+          {
+            "path": "package.json",
+            "sha256": "344673b6e889e161d1e138e53aea667f2fdfb7ceabd0fcfd1157134958ff0445"
+          }
+        ],
+        "assignments": [
+          null
+        ],
+        "authority": true,
+        "nextAction": true,
+        "rollback": true,
+        "machinery": {
+          "M0": true,
+          "M1": true
+        },
+        "openFailures": [],
+        "taskB": true,
+        "founderDecision": true
+      },
+      "result": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "/tmp/ngl-qualification-engineering-qga0C8/source/scripts/recover-institution.mjs",
+          "/tmp/ngl-qualification-engineering-qga0C8/malformed-continuity.json"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "{\n  \"schema\": \"ngl.fresh-process-recovery.v1\",\n  \"passed\": true,\n  \"principal\": \"Damien Featherstone\",\n  \"authority\": true,\n  \"assignments\": [\n    null\n  ],\n  \"machinery\": {\n    \"M0\": true,\n    \"M1\": true\n  },\n  \"openFailures\": [],\n  \"taskB\": true,\n  \"founderDecision\": true,\n  \"nextAction\": true,\n  \"rollback\": true,\n  \"recovered\": [\n    \"package.json\"\n  ],\n  \"scope\": \"New Node process using durable files only; not a fresh cloud/environment restoration.\"\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "Q-ENG-P03",
+      "claim": "A changed referenced byte digest is rejected.",
+      "result": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "/tmp/ngl-qualification-engineering-qga0C8/source/scripts/recover-institution.mjs",
+          "/tmp/ngl-qualification-engineering-qga0C8/malformed-continuity.json"
+        ],
+        "status": 1,
+        "signal": null,
+        "error": null,
+        "stdout": "",
+        "stderr": "Recovery reference changed: package.json\n"
+      }
+    },
+    {
+      "id": "Q-ENG-P04",
+      "claim": "Two source builds produce identical ZIP bytes with matching member hashes.",
+      "finding": "Q-ENG-003",
+      "fileCount": 170,
+      "zipSha256": "211f5bc53980692c86edc4e457c595e91d8e979aaccce14bb4ba2b9be85aea6b",
+      "secondZipSha256": "348f0bc6440e23a1bacd6398ac1ab4af4b4677693b56eacdbb3c38a1c2f579f0",
+      "manifestMismatches": [],
+      "changedMembers": [
+        {
+          "path": "exhibition.html",
+          "firstSha256": "e895840ce48da56b2995233723d76812fa6a424ef4635bd31caabf94535624a3",
+          "secondSha256": "6513ba898cb84d6e66c1698fcaf861434bbcf5b5ecb74aecf3d6914c7741a6d0"
+        },
+        {
+          "path": "launch-checks.json",
+          "firstSha256": "2149362621a5b3e08b2e3dc17cd89297c67c4b39ab94cc670840e1ce3cc5a2eb",
+          "secondSha256": "b4d886921e24cf7ddd0f2ad11675b3a4f203ec809c253518e3b21c06812bcc99"
+        },
+        {
+          "path": "manifest.json",
+          "firstSha256": "738ed541082cbbbebe6c522300412506f298abb4dbe82faa8f346f92d22c6a9a",
+          "secondSha256": "0f808a7f49463ffcd282671b68ac1f3d85f5237167ca72ea8211a64a6a3c5998"
+        }
+      ],
+      "generatedSummaries": {
+        "first": {
+          "schema": "ngl.launch-rehearsal.v1",
+          "title": "One person. A world in progress.",
+          "createdAt": "2026-10-18T20:15:59.882Z",
+          "ready": true,
+          "artifactCount": 3,
+          "checks": [
+            {
+              "id": "published",
+              "label": "Published creations loaded",
+              "passed": true,
+              "detail": "3 current creations; private drafts stay in the workshop."
+            },
+            {
+              "id": "artifact-bytes",
+              "label": "Original artifact fingerprints match",
+              "passed": true,
+              "detail": "3 / 3 current and historical packages match their SHA-256 and UTF-8 size."
+            },
+            {
+              "id": "history",
+              "label": "Version history is recoverable",
+              "passed": true,
+              "detail": "Prior versions retain their own bytes; rehearsal awards no XP."
+            },
+            {
+              "id": "local-checks",
+              "label": "Declared package checks passed",
+              "passed": true,
+              "detail": "Packaging checks do not prove that every interaction works."
+            },
+            {
+              "id": "documents",
+              "label": "Complete HTML instruments present",
+              "passed": true,
+              "detail": "The stage opens actual artifacts in isolated frames."
+            },
+            {
+              "id": "portable-assets",
+              "label": "Known comic artwork packed for offline sharing",
+              "passed": true,
+              "detail": "The exhibition carries the supplied artwork it needs."
+            }
+          ],
+          "artifacts": [
+            {
+              "id": "creation-b92cb053-bea9-4832-9be2-148353d3b548",
+              "title": "America’s Got Problems",
+              "kind": "comic",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "e607800a2b96a5e7accc3c9ad8ed2a970f7f831482b28366b144fa0214c7005c",
+                "size": 978611
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "e607800a2b96a5e7accc3c9ad8ed2a970f7f831482b28366b144fa0214c7005c",
+                "size": 978611
+              }
+            },
+            {
+              "id": "creation-a5c3df88-1931-4739-9a19-d12cd12c36b5",
+              "title": "The Sentence Loom",
+              "kind": "loom",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "8fbf5c81b470fb5bc4f110efe82ad2c413624e0e1314232350d68f26dcc38d8a",
+                "size": 4629
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "8fbf5c81b470fb5bc4f110efe82ad2c413624e0e1314232350d68f26dcc38d8a",
+                "size": 4629
+              }
+            },
+            {
+              "id": "creation-e6b3853a-1d27-465c-b041-183dfc717a25",
+              "title": "The Source Observatory",
+              "kind": "observatory",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "76fc434d5715c6cdc034541178469ea5063eef104f0ad182d8d15404ef704efd",
+                "size": 4385
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "76fc434d5715c6cdc034541178469ea5063eef104f0ad182d8d15404ef704efd",
+                "size": 4385
+              }
+            }
+          ],
+          "limitations": [
+            "This is a technical launch rehearsal, not audience, demand or revenue evidence.",
+            "No public post, deployment or external AI request was made.",
+            "Original and portable-package hashes identify bytes; neither establishes truth or independent human review."
+          ]
+        },
+        "second": {
+          "schema": "ngl.launch-rehearsal.v1",
+          "title": "One person. A world in progress.",
+          "createdAt": "2026-10-18T20:16:00.393Z",
+          "ready": true,
+          "artifactCount": 3,
+          "checks": [
+            {
+              "id": "published",
+              "label": "Published creations loaded",
+              "passed": true,
+              "detail": "3 current creations; private drafts stay in the workshop."
+            },
+            {
+              "id": "artifact-bytes",
+              "label": "Original artifact fingerprints match",
+              "passed": true,
+              "detail": "3 / 3 current and historical packages match their SHA-256 and UTF-8 size."
+            },
+            {
+              "id": "history",
+              "label": "Version history is recoverable",
+              "passed": true,
+              "detail": "Prior versions retain their own bytes; rehearsal awards no XP."
+            },
+            {
+              "id": "local-checks",
+              "label": "Declared package checks passed",
+              "passed": true,
+              "detail": "Packaging checks do not prove that every interaction works."
+            },
+            {
+              "id": "documents",
+              "label": "Complete HTML instruments present",
+              "passed": true,
+              "detail": "The stage opens actual artifacts in isolated frames."
+            },
+            {
+              "id": "portable-assets",
+              "label": "Known comic artwork packed for offline sharing",
+              "passed": true,
+              "detail": "The exhibition carries the supplied artwork it needs."
+            }
+          ],
+          "artifacts": [
+            {
+              "id": "creation-67adeaf0-d598-4760-8e9a-39bc7306e900",
+              "title": "America’s Got Problems",
+              "kind": "comic",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "e607800a2b96a5e7accc3c9ad8ed2a970f7f831482b28366b144fa0214c7005c",
+                "size": 978611
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "e607800a2b96a5e7accc3c9ad8ed2a970f7f831482b28366b144fa0214c7005c",
+                "size": 978611
+              }
+            },
+            {
+              "id": "creation-23adb1ee-a70d-4bba-8fe0-ceffd54aa65c",
+              "title": "The Sentence Loom",
+              "kind": "loom",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "8fbf5c81b470fb5bc4f110efe82ad2c413624e0e1314232350d68f26dcc38d8a",
+                "size": 4629
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "8fbf5c81b470fb5bc4f110efe82ad2c413624e0e1314232350d68f26dcc38d8a",
+                "size": 4629
+              }
+            },
+            {
+              "id": "creation-7becbe1a-136d-4feb-abf5-1f2b78e8c1c7",
+              "title": "The Source Observatory",
+              "kind": "observatory",
+              "version": 1,
+              "originalReceipt": {
+                "algorithm": "sha256",
+                "digest": "76fc434d5715c6cdc034541178469ea5063eef104f0ad182d8d15404ef704efd",
+                "size": 4385
+              },
+              "portableReceipt": {
+                "algorithm": "sha256",
+                "digest": "76fc434d5715c6cdc034541178469ea5063eef104f0ad182d8d15404ef704efd",
+                "size": 4385
+              }
+            }
+          ],
+          "limitations": [
+            "This is a technical launch rehearsal, not audience, demand or revenue evidence.",
+            "No public post, deployment or external AI request was made.",
+            "Original and portable-package hashes identify bytes; neither establishes truth or independent human review."
+          ]
+        }
+      }
+    },
+    {
+      "id": "Q-ENG-P05",
+      "claim": "The actual distributed source runs its documented recovery and real Node/Python tests.",
+      "recovery": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "scripts/recover-institution.mjs"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "{\n  \"schema\": \"ngl.fresh-process-recovery.v1\",\n  \"passed\": true,\n  \"principal\": \"Damien Featherstone\",\n  \"authority\": \"The Neophyte Founder retains institutional decisions. AI labor may inspect/build/test; hashes, imported labels and local evaluator IDs do not confer independent authority. No automatic promotion.\",\n  \"assignments\": [\n    {\n      \"role\": \"Founder\",\n      \"task\": \"Review the first real machinery-improvement disposition only after authenticated HTTPS reachability and evidence readiness; authorized interval 24 hours.\",\n      \"status\": \"NOT_ACTIVATED\"\n    },\n    {\n      \"role\": \"Codex executor\",\n      \"task\": \"Preserve and verify delivered Task A/B, reusable M1, local Gate and RPG projection.\",\n      \"status\": \"LOCAL_EXECUTION_RECORDED\"\n    },\n    {\n      \"role\": \"Next executor\",\n      \"task\": \"Provision authorized durable HTTPS service, test real Founder access and recovery; measure routine human burden across the next comparable task cycle.\",\n      \"status\": \"OPEN\"\n    }\n  ],\n  \"machinery\": {\n    \"M0\": {\n      \"source\": \"cab8dfb0d6ae41626db8010ae300210ccd0ca7a2\",\n      \"operation\": \"Original game/source exporter, working in original scope; no declared A/B component delivery.\"\n    },\n    \"M1\": {\n      \"source\": \"68b042daeefc155690ef34af87767ca2cef5a5b7\",\n      \"operation\": \"Explicit-file public component packaging\",\n      \"status\": \"EXPERIMENTAL_CANDIDATE\",\n      \"comparison\": \"Both exact declared components accepted; no speed or human-burden claim.\",\n      \"evaluationCommit\": \"907ce814f023ef3bd40ea57bfa536914bb67e27b\"\n    }\n  },\n  \"openFailures\": [\n    \"No configured hosting/deployment capability or externally verified authenticated HTTPS origin; M7 not demonstrated.\",\n    \"No observed M0 human-intervention baseline; Founder burden improvement remains INCONCLUSIVE.\",\n    \"No fresh cloud restoration or independently participating external Witness established.\",\n    \"Original five conversation/two Sites readers absent; package used without claiming original access.\",\n    \"One observed delivery transfer does not establish sustained institutional growth.\"\n  ],\n  \"taskB\": {\n    \"status\": \"TRANSFER_OBSERVED_COMPONENT_DELIVERY\",\n    \"tests\": 40,\n    \"entryPoint\": \"Extracted index.html tested in real Chromium over loopback HTTP\",\n    \"artifact\": \"dist/compounding/tru-temporal-workbench.zip\"\n  },\n  \"founderDecision\": {\n    \"reviewWindowHours\": 24,\n    \"clockStarted\": false,\n    \"operationalDecisionCreated\": false,\n    \"activationPrerequisites\": [\n      \"Authenticated HTTPS Gate reachable by the actual Founder\",\n      \"Real evaluation evidence ready and byte receipts retained\"\n    ],\n    \"noAutomaticPromotion\": true\n  },\n  \"nextAction\": \"Read docs/institution/compounding/REPORT.md, run npm run recover:institution, verify retained source/evidence. Continue with durable HTTPS Gate and a measured real task cycle; do not start the operational 24-hour clock before its prerequisites.\",\n  \"rollback\": \"Preserve cab8dfb Meteor branch and 52c6443 original package import. M1 is a separate operation; stop using it without modifying kernel invariants or rolling back unrelated source. Keep runtime owners stopped before offline recovery; never delete locks blindly.\",\n  \"recovered\": [\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md\",\n    \"docs/institution/compounding/PLAN.md\",\n    \"docs/institution/compounding/REVIEW-POLICY.md\",\n    \"docs/institution/compounding/task-a.profile.json\",\n    \"docs/institution/compounding/task-b.profile.json\",\n    \"docs/institution/compounding/evidence/experiment.json\",\n    \"src/production/component-package.mjs\",\n    \"src/institution/decisions.mjs\",\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py\",\n    \"experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs\"\n  ],\n  \"scope\": \"New Node process using durable files only; not a fresh cloud/environment restoration.\"\n}\n",
+        "stderr": ""
+      },
+      "nodeTests": {
+        "command": [
+          "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+          "--test"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "✔ SHA256 known digest (7.885914ms)\n✔ stable canonicalization (0.297016ms)\n✔ report temporal ordering (2.03386ms)\n✔ fiction not promoted into reality (0.316897ms)\n✔ unverified candidate cannot auto-promote (0.279801ms)\n✔ fails closed on failed test (0.387463ms)\n✔ invalid evidence type rejected (0.30549ms)\n✔ duplicate ids rejected (0.168664ms)\n✔ invalid timelines rejected (0.189345ms)\n✔ missing links flagged (0.507032ms)\n✔ digest reuse flagged (0.340342ms)\n✔ decision packet is expressly unauthorized (0.656909ms)\n✔ invalid deadline rejected (0.186691ms)\n✔ unknown candidate rejected (0.192179ms)\n✔ case id is a bounded identifier (0.569857ms)\n✔ candidate roles are explicit and baseline is unique (0.599041ms)\n✔ evidence references must be arrays of unique identifiers (0.532321ms)\n✔ event references cannot silently cite missing evidence (0.296827ms)\n✔ all known text fields reject empty, coercible and oversized values (1.433307ms)\n✔ rollback is required before staging a proposal (0.154573ms)\n✔ imported assurance never authenticates a witness or makes reviewable evidence (0.340232ms)\n✔ equal pass counts with unequal test IDs are an invalid comparison (0.257578ms)\n✔ different workload IDs are an invalid comparison (0.215815ms)\n✔ undeclared workloads cannot establish a comparable evaluation (0.255775ms)\n✔ duplicate test names or IDs are rejected instead of counting more passes (0.314072ms)\n✔ missing reference errors block reviewable proposals (0.229676ms)\n✔ canonical object ordering uses code units, independent of locale (0.078598ms)\n✔ canonical integer-like keys retain code-unit ordering (0.067681ms)\n✔ timeline equal-time ordering is deterministic by identifier (0.177126ms)\n✔ digest casing cannot hide reuse of the same bytes (0.289997ms)\n✔ oversized extensions and deep metadata are bounded in the kernel (0.265539ms)\n✔ successful import clears visible packet and disables download (23.206005ms)\n✔ deadline edits invalidate the staged packet (14.426757ms)\n✔ reset while hashing cannot restore a stale staged packet (35.119956ms)\n✔ failed import invalidates a previously staged packet (21.502562ms)\n✔ an older file read cannot replace a newer import (12.707019ms)\n✔ an assessment export interrupted by import never mixes case revisions (35.885623ms)\n✔ an older render cannot repaint a newer case after hashing (48.257787ms)\n✔ failed import repaints the retained case after cancelling an in-flight render (48.220683ms)\n✔ real lineage example imports as untrusted source history without execution claims (15.766692ms)\nGENESIS VERIFIED: OBSERVED is admitted only when resolved bytes reproduce the declared digest and size.\n✔ genesis.test.mjs (38.285052ms)\nREGRESSION VERIFIED: labels, claimed digests, and missing resolvers cannot manufacture OBSERVED state.\n✔ reconstitution/known-weakness-origin-label.test.mjs (38.815821ms)\n✔ exports exactly declared public bytes, including JSON, with matching SHA-256 manifest (26.331427ms)\n✔ strict profile rejects unknown schema, fields, malformed entries and missing entry points (4.434792ms)\n✔ rejects traversal, absolute paths, NUL, backslash and ambiguous segments in either path (2.27912ms)\n✔ rejects duplicate sources, targets, case aliases and file-directory ZIP collisions (2.349055ms)\n✔ rejects known credential and runtime paths rather than trusting declarations (7.227635ms)\n✔ rejects PEM private-key material even under a public JSON filename (13.454553ms)\n✔ rejects leaf and directory symlinks, including links to a file inside the root (4.844689ms)\n✔ rejects hardlink aliases to private or public files (7.484321ms)\n✔ rejects directories and nonregular source files (14.40214ms)\n✔ enforces 8 MiB per source and 32 MiB total limits (255.593231ms)\n✔ requires a fresh output directory and leaves existing contents untouched (7.129788ms)\n✔ rejects output symlink components and selected source collisions (5.484552ms)\n✔ failed output validation closes all directory descriptors (18.035675ms)\n✔ detects source mutation between reading bytes and final verification (4.501493ms)\n✔ CLI accepts profile and fresh output paths and prints the API result as JSON (361.50858ms)\n✔ CLI rejects malformed profiles without echoing their content (88.621679ms)\n✔ CLI rejects nonregular profiles promptly and caps profile bytes at 4 MiB (142.85014ms)\n✔ enrolled key authorizes exact decision (1.263461ms)\n✔ changing capability after signature invalidates ruling (0.16001ms)\n✔ changing expected output after signature invalidates ruling (0.127632ms)\n✔ unenrolled key cannot exercise Founder authority (0.614314ms)\n✔ expired exact signature is still not current authority (0.197637ms)\n✔ verified artifact bytes can mint world consequences (1.909894ms)\n✔ a VERIFIED-looking label without artifact bytes cannot mint XP (0.206721ms)\n✔ mutated artifact bytes invalidate the receipt (0.160902ms)\n✔ forged digest invalidates the receipt (0.221684ms)\n✔ executor claim alone cannot create a world consequence (0.887175ms)\n✔ verified authorized artifact can cross adjudication into gameplay (0.758041ms)\n✔ mutated bytes defeat executor success claim (0.842818ms)\n✔ result cannot be laundered into another authorization (0.149385ms)\n✔ valid receipt for wrong artifact identity cannot substitute (0.223476ms)\n✔ resolver receives artifact identity and exact request binding (0.156816ms)\n✔ Forge runs actual correct and incorrect candidates in disjoint copies and retains verifiable evidence (433.756643ms)\n✔ Forge enforces real child timeout and output limits with retained bounded logs (641.605144ms)\n✔ Forge rejects protected paths, traversal, arbitrary commands and unbounded requests before creating outputs (75.211814ms)\n✔ Forge snapshots tracked and nonignored source bytes, omits runtime and credentials, refuses symlinks (275.993556ms)\n✔ Forge task identities are deterministic for source bytes and overlays and compares only correct candidates (852.007062ms)\n✔ Forge CLI demo executes fixture candidates and writes a report without a shell (1271.660772ms)\n✔ Forge rejects a candidate that changes copied constitutional bytes and strips inherited secret variables (253.312219ms)\n✔ Forge excludes tracked ignored files and common credential configuration names from every copy (188.588593ms)\n✔ Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers (263.918583ms)\n✔ Forge resolves output ancestor symlinks before guarding source writes and accepts physical ignored runtime outputs (169.617073ms)\n✔ Repository Forge executes explicit copied tests and retains actual TAP counts without recursive Forge discovery (179.625633ms)\n✔ Repository Forge records real test failures and rejects copied source mutation even after passing assertions (313.142075ms)\n✔ Repository Forge enforces timeout, rejects arbitrary commands and does not claim a zero-test run (354.408597ms)\n✔ Repository Forge supports bounded public-source packages without fabricating Git history (130.942039ms)\n✔ Repository Forge CLI verifies only a disposable repository fixture and preserves failure exit status (394.968643ms)\n✔ Repository Forge reports snapshot errors explicitly and rejects skipped-only execution (170.834459ms)\n✔ Forge comparison and copied CLI demo execute Gitless public-source packages with null revision (929.627186ms)\n✔ Forge does not disguise corrupt Git metadata as a public-source package (25.585946ms)\n✔ HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay and recovers after restart (119.316171ms)\n✔ project projection has no synthetic accomplishments or implicit authority when no report is installed (13.170276ms)\n✔ keyboard movement cancels a pending destination without opening it (6.095642ms)\n✔ touch movement cancels a pending destination without opening it (4.765751ms)\n✔ restoring player coordinates cancels an old arrival target (0.939674ms)\n✔ an uninterrupted route still interacts once when it reaches its destination (4.123794ms)\n✔ TownSquare is an accessible institutional destination rather than a fabricated game achievement (0.686033ms)\n✔ river is real collision with two walkable bridges and bounded world (0.279251ms)\n✔ a route between banks crosses a bridge without entering water (7.240909ms)\n✔ new creations physically block movement and routes go around them (1.895101ms)\n✔ routing from a bank edge never rounds the player into water (0.851221ms)\n✔ private drafts stay private; immutable publication has verified bytes and game-only XP (14.492604ms)\n✔ repair retains verified v1, stale publication fails and v2 earns only one game reward (2.976018ms)\n✔ Unicode notes/reports/discoveries are attributed, bounded and never manufacture XP (2.030816ms)\n✔ imports reject tampered bytes, invalid reward totals and oversized custom documents (3.84817ms)\n✔ standalone carries recursive modules, styles and unchanged original assets (71.752118ms)\n✔ distribution is independently readable ZIP, excludes runtime and includes verifiable manifest (34.555551ms)\n✔ module escaping game source fails instead of packaging private bytes (16.73231ms)\n✔ standalone supplies its own network-denying host policy without a server header (17.026469ms)\n✔ runtime data nested beneath source roots never enters a public source archive (26.639912ms)\n✔ unknown sessions are Witness; role/reward injection, cross-origin and invalid bodies are rejected (144.943736ms)\n✔ draft privacy, exact publication bytes, stale version rejection and real institution records (54.909425ms)\n✔ SSE filters drafts per viewer and logout/login rotation demotes an existing stream (81.077418ms)\n✔ presence is bounded, belongs to real connected sessions, and clears on disconnect (63.546782ms)\n✔ published world and accepted kernel history survive restart; generated key stays private (105.820246ms)\n✔ failed atomic persistence adopts neither world nor institutional acceptance (39.198182ms)\n✔ stored history tampering fails closed and static routes never serve source, keys or traversal (90.957413ms)\n✔ concurrent publication accepts once; repairs retain artifact history and launch checks pack actual assets without XP (183.317047ms)\n✔ recomputed envelope checksums cannot conceal version, retained-byte or actor-history tampering (85.920614ms)\n✔ an exclusive store lease rejects a second writer and is released by closeGame (27.88165ms)\n✔ the direct CLI starts the HTTP service and releases its exclusive writer lease on SIGTERM without logging secrets (133.766914ms)\n✔ the host CSP permits authored srcdoc instrument scripts while its iframe remains opaque (35.342035ms)\n✔ room renders projected truth rather than optimistic UI state (0.900726ms)\n✔ proposal opens a route to Decision Chamber but not the Forge (0.231118ms)\n✔ authorization changes proposal state without fabricating completion (0.915588ms)\n✔ capability roster reports fit but grants no authority (2.555475ms)\n✔ a new process recovers assignments, authority, evidence and unfinished work from durable files (89.225257ms)\n✔ recovery rejects a receipt whose current bytes differ (85.211628ms)\n✔ recovery does not accept traversal references or incomplete responsibility (132.580298ms)\n✔ recovery rejects missing machinery, unfinished work or Founder decision (410.66869ms)\n✔ dispatch remains unexecuted until enrolled key signs ack and response; restart preserves dissent (56.647571ms)\n✔ signature authentication rejects wrong-key, content tamper, and request swaps before any state change (24.692652ms)\n✔ all exact request fields and reply bytes are signed and bound (31.199021ms)\n✔ duplicate exact dispatch and receipts are idempotent; conflicting identities and receipts reject (22.371681ms)\n✔ expiry, unavailable seats and local failure are explicit and cannot produce completed work (25.080425ms)\n✔ responses require an ack and each council seat keeps its independent response and dissent (24.554985ms)\n✔ concurrent operations serialize and fail closed on persisted tampering (46.843962ms)\n✔ plain JSON inputs are bounded, detached, and reject ambiguous values (4.372198ms)\n✔ CLI fixture demonstrates a real signed worker child without an external provider claim (276.165794ms)\n✔ CLI dispatch, export, import and status perform real independent file handoff across processes (622.218372ms)\n✔ state validation rechecks historic signatures even when a tamperer recomputes the checksum (31.792334ms)\n✔ snapshot revision reflects persisted expiration and concurrent dispatch options are detached (9.944803ms)\n✔ full-size valid input can receive a signed acknowledgment without losing request binding (53.993188ms)\n✔ restart rejects cross-request rebinding of valid signed receipts with a recomputed checksum (16.066123ms)\n✔ restart rejects cross-seat rebinding of valid signed receipts with a recomputed checksum (16.509731ms)\n✔ concurrent clients preserve stale lock and state until explicit recovery; normal clients serialize (443.535342ms)\n✔ starts unconfigured instead of inventing an operational policy or pending decision (20.743189ms)\n✔ only the host-bound exact Founder identity can set a review policy (10.499668ms)\n✔ rejects missing, invented and excessively long policy fields (5.779456ms)\n✔ creates a real byte-bound proposal with server-derived time and captured policy (11.080901ms)\n✔ verifies actual UTF-8 bytes, exact receipt schema and bounded proposal fields (10.813179ms)\n✔ policy and proposal IDs are immutable, with exact duplicate creates idempotent (13.779974ms)\n✔ Founder disposition is explicit and records no automatic promotion or execution (7.687726ms)\n✔ serializes competing decisions so an exact expected revision permits only one winner (7.548647ms)\n✔ exact decision request retry returns the original result before expiry or revision checks (15.737149ms)\n✔ expiry is enforced exactly at the deadline and durably audits the rejected request (6.575233ms)\n✔ snapshot observes expiry durably without inventing Founder intent (4.571168ms)\n✔ DEFER is terminal and never silently extends the authorized review window (8.288551ms)\n✔ policy changes do not rewrite deadlines or evidence on existing proposals (6.603305ms)\n✔ redacts private policy basis, evidence bytes, scope, risks and rollback from non-Founder snapshots (3.145603ms)\n✔ durable restart replays policy, exact evaluation and disposition without relying on chat state (7.282737ms)\n✔ mutating caller inputs or returned snapshots cannot alter queued or durable authority (5.920468ms)\n✔ rejects tampered disk envelope even when an attacker recomputes the outer digest (11.369015ms)\n✔ rejects broken record-chain links and does not leave a lock after failed recovery (21.250543ms)\n✔ one-writer lock is exclusive and stale locks require explicit manual recovery (3.800608ms)\n✔ failed persistence does not expose a committed decision and fences the writer until recovery (14.206616ms)\n✔ clock rollback cannot reopen a deadline and malformed requests cannot expand action scope (3.678314ms)\n✔ close waits for accepted queued work and rejects later writes or reads (3.752326ms)\n✔ receipt algorithm, digest and byte size are verified rather than trusting a positive label (4.584508ms)\n✔ a failed revision request is durably idempotent and cannot later change its action (10.225885ms)\n✔ replay checks event authority even if all chain and outer hashes are recalculated (7.924253ms)\n✔ does not follow a symbolic-link envelope to load another private file (2.29928ms)\n✔ every concurrent close caller waits until the writer lease is actually released (3.314768ms)\n✔ exports an executable institutional transition API (2.500473ms)\n✔ five stages accept exact output bytes and replay canonically (4.601965ms)\n✔ authority comes from configured roster rather than event role labels (1.487588ms)\n✔ grant must match the exact subject, version, action and separated roles (0.724189ms)\n✔ ordering and global revisions reject stale writes (0.504259ms)\n✔ identical event retry is idempotent and conflicting IDs reject (0.453633ms)\n✔ execution requires actual bytes matching every receipt (2.009503ms)\n✔ observation rejects self-observation and swapped execution, subject, grant or outputs (2.466812ms)\n✔ adjudication requires the exact observation and positive observation for acceptance (1.990455ms)\n✔ expired and revoked grants cannot execute (0.661825ms)\n✔ accepted subject version cannot be claimed again and history cannot go backward in time (1.049399ms)\n✔ canonical input rejects undefined, nonfinite values and prototype keys (0.393261ms)\n✔ ordinary IDs that overlap inherited object methods remain valid own records (1.018052ms)\n✔ competing subject claims cannot both accept the same next version (2.228563ms)\n✔ durable ledger serializes concurrent appends, persists bytes and replays after restart (44.299606ms)\n✔ ledger rejects competing writers and rejects use after close (2.561545ms)\n✔ stale queued append rejects without poisoning the serialized writer (5.229458ms)\n✔ durable append failure never adopts an uncommitted projection (4.371057ms)\n✔ load rejects event-chain tampering and does not trust saved projection (8.072982ms)\n✔ load verifies persisted artifact bytes and trusted roster (23.801325ms)\n✔ rehearsal checks actual published bytes; altered bytes fail readiness (9.701177ms)\n✔ one-button exhibition preserves usable instruments, excludes drafts, escapes host markup (3.111832ms)\n✔ empty, inconsistent version history and claims without checked bytes cannot pass (1.183231ms)\n✔ portable exhibition inlines only known comic assets and records changed package bytes (2.256214ms)\n✔ source-save rehearsal resolves embedded artwork after transfer into standalone workshop (1.358624ms)\n✔ coarse location is default (1.360186ms)\n✔ precise requires explicit selection (0.156716ms)\n✔ rejects invalid coordinates (0.293572ms)\n✔ rejects invalid precision (0.11297ms)\n✔ no request occurs without user call (0.251689ms)\n✔ permission errors propagate (0.576458ms)\n✔ high accuracy is opt-in (0.291188ms)\n✔ consent required for location evidence (1.098563ms)\n✔ location observation is explicitly unverified (0.145609ms)\n✔ quest surfaces observation but does not authorize or complete (0.287463ms)\n✔ world grants no XP from location observation (0.360743ms)\n✔ realm routes location evidence to archive (0.918431ms)\n✔ unrelated quests cannot see location observations (1.567488ms)\n✔ definition alone earns nothing (1.368239ms)\n✔ authorization is not completion (0.309546ms)\n✔ executor-shaped claim cannot complete quest (0.221743ms)\n✔ partial accepted evidence remains in progress (1.24931ms)\n✔ all acceptance conditions require accepted adjudications (0.216486ms)\n✔ rejected evidence cannot satisfy acceptance (0.185169ms)\n✔ partial restore cannot silently initialize a missing decision or world store (34.045625ms)\n✔ an initialized layout detects deletion of both stores and preserves its anchor (5.804885ms)\n✔ an intact prior two-store runtime can be adopted and reopened without changing either store (7.460915ms)\n✔ a self-certifying claim cannot mutate canonical world state (19.214789ms)\n✔ authorized executed observed outcome can project a world consequence (11.582727ms)\n✔ replay is idempotent (2.151357ms)\n✔ changed artifact bytes cannot award canonical progress (0.391599ms)\n✔ approval text without authority cannot mutate state (0.247733ms)\n✔ failures remain history and never award success (0.657098ms)\n✔ unresolved parents are rejected instead of silently rewriting lineage (3.375699ms)\n✔ malformed receipt references cannot award progress (0.274153ms)\n✔ revoked grants cannot produce future world consequences (0.919133ms)\n✔ projection can be rebuilt from event history (0.417639ms)\n✔ an observation without authorization cannot award progress (0.156436ms)\n✔ authorization without observation cannot award progress (0.161543ms)\n✔ MMORPG realm derives avatar and quests from canonical projection (0.39904ms)\n✔ an unverified observation cannot mint canonical progress (0.140922ms)\n✔ institutional traversal is constrained by the realm graph (0.38557ms)\n✔ same canonical history reconstructs identical institutional state (8.499799ms)\n✔ tampered consequence produces a different state hash (5.779626ms)\n✔ history cannot reference a future or missing parent (0.560884ms)\n✔ duplicate event identities are rejected instead of silently replayed (0.254974ms)\nℹ tests 241\nℹ suites 0\nℹ pass 241\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 7259.710609\n",
+        "stderr": ""
+      },
+      "pythonTests": {
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "-v",
+          "test_engine.py"
+        ],
+        "status": 0,
+        "signal": null,
+        "error": null,
+        "stdout": "",
+        "stderr": "test_absolute_path (test_engine.GateTests.test_absolute_path) ... ok\ntest_changed_file_fails_even_if_read_bytes_match_declared_digest (test_engine.GateTests.test_changed_file_fails_even_if_read_bytes_match_declared_digest) ... ok\ntest_claim_count_bounded (test_engine.GateTests.test_claim_count_bounded) ... ok\ntest_cli_deep_invalid_fields_are_clean_bounded_errors (test_engine.GateTests.test_cli_deep_invalid_fields_are_clean_bounded_errors) ... ok\ntest_cli_example_uses_actual_source_bytes (test_engine.GateTests.test_cli_example_uses_actual_source_bytes) ... ok\ntest_cli_fifo_manifest_does_not_block (test_engine.GateTests.test_cli_fifo_manifest_does_not_block) ... ok\ntest_cli_invalid_utf8_is_a_clean_error (test_engine.GateTests.test_cli_invalid_utf8_is_a_clean_error) ... ok\ntest_cli_malformed_input_errors_without_traceback (test_engine.GateTests.test_cli_malformed_input_errors_without_traceback) ... ok\ntest_cli_manifest_size_is_bounded (test_engine.GateTests.test_cli_manifest_size_is_bounded) ... ok\ntest_cli_manifest_symlink_rejected (test_engine.GateTests.test_cli_manifest_symlink_rejected) ... ok\ntest_cli_missing_root_is_a_clean_error (test_engine.GateTests.test_cli_missing_root_is_a_clean_error) ... ok\ntest_cli_overflowed_json_number_is_rejected (test_engine.GateTests.test_cli_overflowed_json_number_is_rejected) ... ok\ntest_cycle (test_engine.GateTests.test_cycle) ... ok\ntest_dependency_caps (test_engine.GateTests.test_dependency_caps) ... ok\ntest_dependency_depth_bounded (test_engine.GateTests.test_dependency_depth_bounded) ... ok\ntest_dependency_depth_limit_does_not_depend_on_input_order (test_engine.GateTests.test_dependency_depth_limit_does_not_depend_on_input_order) ... ok\ntest_direct_api_rejects_nonfinite_input_before_echoing_it (test_engine.GateTests.test_direct_api_rejects_nonfinite_input_before_echoing_it) ... ok\ntest_directory_artifact_rejected (test_engine.GateTests.test_directory_artifact_rejected) ... ok\ntest_distinct_files_still_do_not_prove_execution (test_engine.GateTests.test_distinct_files_still_do_not_prove_execution) ... ok\ntest_duplicate_id (test_engine.GateTests.test_duplicate_id) ... ok\ntest_evidence_count_bounded (test_engine.GateTests.test_evidence_count_bounded) ... ok\ntest_fifo_artifact_does_not_block (test_engine.GateTests.test_fifo_artifact_does_not_block) ... ok\ntest_hardlink_cannot_supply_a_second_kind (test_engine.GateTests.test_hardlink_cannot_supply_a_second_kind) ... ok\ntest_identical_bytes_separate_files_rejected (test_engine.GateTests.test_identical_bytes_separate_files_rejected) ... ok\ntest_invalid_claim_shape (test_engine.GateTests.test_invalid_claim_shape) ... ok\ntest_invalid_evidence_shape (test_engine.GateTests.test_invalid_evidence_shape) ... ok\ntest_invalid_field_objects_are_not_echoed_in_report (test_engine.GateTests.test_invalid_field_objects_are_not_echoed_in_report) ... ok\ntest_invalid_sha256 (test_engine.GateTests.test_invalid_sha256) ... ok\ntest_invalid_state_type_is_a_validation_error (test_engine.GateTests.test_invalid_state_type_is_a_validation_error) ... ok\ntest_large_artifact (test_engine.GateTests.test_large_artifact) ... ok\ntest_matching_evidence (test_engine.GateTests.test_matching_evidence) ... ok\ntest_missing (test_engine.GateTests.test_missing) ... ok\ntest_nul_path_rejected (test_engine.GateTests.test_nul_path_rejected) ... ok\ntest_parent_directory_symlink_rejected (test_engine.GateTests.test_parent_directory_symlink_rejected) ... ok\ntest_parent_traversal (test_engine.GateTests.test_parent_traversal) ... ok\ntest_real_nul_path_returns_invalid_path (test_engine.GateTests.test_real_nul_path_returns_invalid_path) ... ok\ntest_root_must_be_directory (test_engine.GateTests.test_root_must_be_directory) ... ok\ntest_same_file_cannot_satisfy_two_kinds (test_engine.GateTests.test_same_file_cannot_satisfy_two_kinds) ... ok\ntest_sha256_requires_exact_hex_without_suffix (test_engine.GateTests.test_sha256_requires_exact_hex_without_suffix) ... ok\ntest_source_only_caps_verified (test_engine.GateTests.test_source_only_caps_verified) ... ok\ntest_symlink_rejected (test_engine.GateTests.test_symlink_rejected) ... ok\ntest_tampering (test_engine.GateTests.test_tampering) ... ok\ntest_unknown_dependency (test_engine.GateTests.test_unknown_dependency) ... ok\ntest_unknown_kind (test_engine.GateTests.test_unknown_kind) ... ok\ntest_unsafe_portable_paths (test_engine.GateTests.test_unsafe_portable_paths) ... ok\ntest_uppercase_sha256_accepted (test_engine.GateTests.test_uppercase_sha256_accepted) ... ok\ntest_valid_sha256_regex (test_engine.GateTests.test_valid_sha256_regex) ... ok\n\n----------------------------------------------------------------------\nRan 47 tests in 0.633s\n\nOK\n"
+      }
+    },
+    {
+      "id": "Q-ENG-P06",
+      "claim": "A partially restored previously populated institution must detect omitted durable stores rather than initialize replacement history.",
+      "finding": "Q-ENG-001",
+      "omitted": "decisions/decisions.json",
+      "startup": "REJECTED",
+      "before": {
+        "worldRevision": 2,
+        "creations": 1,
+        "decisionRevision": 3,
+        "decisionCount": 1,
+        "decisionStatus": "REJECTED"
+      },
+      "code": "INCOMPLETE_RUNTIME",
+      "message": "Initialized runtime is incomplete: required store missing. Restore the complete runtime offline; missing stores must not be initialized as a new institution.",
+      "replacementWritten": false
+    },
+    {
+      "id": "Q-ENG-P07",
+      "claim": "A partially restored previously populated institution must detect omitted durable stores rather than initialize replacement history.",
+      "finding": "Q-ENG-001",
+      "omitted": "service.json",
+      "startup": "REJECTED",
+      "before": {
+        "worldRevision": 2,
+        "creations": 1,
+        "decisionRevision": 3,
+        "decisionCount": 1,
+        "decisionStatus": "REJECTED"
+      },
+      "code": "INCOMPLETE_RUNTIME",
+      "message": "Initialized runtime is incomplete: required store missing. Restore the complete runtime offline; missing stores must not be initialized as a new institution.",
+      "replacementWritten": false
+    },
+    {
+      "id": "Q-ENG-P08",
+      "claim": "Present but corrupt decision bytes fail closed; the server does not substitute empty history.",
+      "startup": "REJECTED",
+      "code": "DECISIONS_TAMPERED",
+      "message": "Cannot validate saved decision history: INVALID_JSON"
+    },
+    {
+      "id": "Q-ENG-P10",
+      "claim": "Present but inconsistent world envelope bytes fail closed.",
+      "startup": "REJECTED",
+      "code": null,
+      "message": "Service store integrity check failed"
+    },
+    {
+      "id": "Q-ENG-P09",
+      "claim": "A complete stopped-store copy preserves the two independent histories.",
+      "sameHostOnly": true,
+      "worldRevision": 2,
+      "creations": 1,
+      "decisionRevision": 3,
+      "decisionCount": 1,
+      "decisionStatus": "REJECTED"
+    },
+    {
+      "id": "Q-ENG-P11",
+      "claim": "A failed initial configuration attempt can be retried after correcting the key without manual store recovery.",
+      "first": {
+        "startup": "REJECTED",
+        "code": null,
+        "message": "Founder key must be 16–1024 bytes"
+      },
+      "second": {
+        "startup": "REJECTED",
+        "code": "INCOMPLETE_RUNTIME",
+        "message": "Initialized runtime is incomplete: required store missing. Restore the complete runtime offline; missing stores must not be initialized as a new institution."
+      },
+      "anchorPresent": true
+    }
+  ],
+  "limitations": [
+    "No power-loss, media-loss, remote backup or fresh-cloud restoration was executed.",
+    "A filesystem owner remains trusted; these probes simulate operator omission and local corruption, not an external attack.",
+    "Hashes identify bytes; they do not authenticate authorship or authority."
+  ],
+  "source": {
+    "mode": "Git tracked source archive",
+    "commit": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+    "archiveSha256": "f954eb3acf450c9239f996468afadcc8715241b61c2078a89e80df8659f75592",
+    "workingTreeOverlay": [
+      {
+        "path": "game/server.mjs",
+        "sha256": "e706afdd18be1adb83f83719a8b2417ca5317c0ae4fe43f36ed7f3f2119eae6b"
+      },
+      {
+        "path": "game/runtime-layout.mjs",
+        "sha256": "38d207c4abec169009d89906ced6954e684d6c4f9c6105fdc2f8299f33a40f1d"
+      },
+      {
+        "path": "scripts/build-game.mjs",
+        "sha256": "40b84f14ddf2260d6d340d4f4e3e400732f5ea8d3f5e738d7ea16f8b9d196ec0"
+      },
+      {
+        "path": "test/runtime-layout.test.mjs",
+        "sha256": "d2b376b9a625e2ed752e551ec9ff3391820b4ced637acc1dad2e8b95ddb60f6d"
+      }
+    ]
+  },
+  "phase": "candidate",
+  "harnessSha256": "8803b07a7f16fc628f8877d4acd93ca36abdf5437a0a7a890b40ae605d26226d",
+  "findings": [
+    {
+      "id": "Q-ENG-001",
+      "classification": "REPRODUCED",
+      "severity": "HIGH",
+      "status": "ORIGINAL_OMISSION_CONTAINED_IN_CANDIDATE",
+      "probes": [
+        "Q-ENG-P06",
+        "Q-ENG-P07"
+      ]
+    },
+    {
+      "id": "Q-ENG-002",
+      "classification": "REPRODUCED",
+      "severity": "MEDIUM",
+      "status": "OPEN",
+      "probes": [
+        "Q-ENG-P02"
+      ]
+    },
+    {
+      "id": "Q-ENG-003",
+      "classification": "REPRODUCED",
+      "severity": "LOW",
+      "status": "OPEN_REPRODUCIBILITY_LIMITATION",
+      "probes": [
+        "Q-ENG-P04"
+      ]
+    }
+  ],
+  "qualificationPassed": false,
+  "executed": true
+}

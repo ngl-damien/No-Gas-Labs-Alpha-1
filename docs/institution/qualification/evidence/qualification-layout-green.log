@@ -1,0 +1,25 @@
+✔ HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay and recovers after restart (118.264803ms)
+✔ project projection has no synthetic accomplishments or implicit authority when no report is installed (15.716522ms)
+✔ unknown sessions are Witness; role/reward injection, cross-origin and invalid bodies are rejected (97.850319ms)
+✔ draft privacy, exact publication bytes, stale version rejection and real institution records (41.360856ms)
+✔ SSE filters drafts per viewer and logout/login rotation demotes an existing stream (31.893478ms)
+✔ presence is bounded, belongs to real connected sessions, and clears on disconnect (49.152052ms)
+✔ published world and accepted kernel history survive restart; generated key stays private (27.189799ms)
+✔ failed atomic persistence adopts neither world nor institutional acceptance (18.528725ms)
+✔ stored history tampering fails closed and static routes never serve source, keys or traversal (38.641944ms)
+✔ concurrent publication accepts once; repairs retain artifact history and launch checks pack actual assets without XP (86.534996ms)
+✔ recomputed envelope checksums cannot conceal version, retained-byte or actor-history tampering (24.902511ms)
+✔ an exclusive store lease rejects a second writer and is released by closeGame (17.222338ms)
+✔ the direct CLI starts the HTTP service and releases its exclusive writer lease on SIGTERM without logging secrets (108.839651ms)
+✔ the host CSP permits authored srcdoc instrument scripts while its iframe remains opaque (8.065575ms)
+✔ partial restore cannot silently initialize a missing decision or world store (34.886843ms)
+✔ an initialized layout detects deletion of both stores and preserves its anchor (13.356861ms)
+✔ an intact prior two-store runtime can be adopted and reopened without changing either store (23.231192ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 668.01966

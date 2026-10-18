@@ -1,0 +1,29 @@
+✔ a new process recovers assignments, authority, evidence and unfinished work from durable files (50.62137ms)
+✔ recovery rejects a receipt whose current bytes differ (47.515621ms)
+✔ recovery does not accept traversal references or incomplete responsibility (79.110828ms)
+✔ recovery rejects missing machinery, unfinished work or Founder decision (153.017007ms)
+✖ recovery rejects present but meaningless responsibility and decision fields (45.601709ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 439.14899
+
+✖ failing tests:
+
+test at test/institution-continuity.test.mjs:15:1
+✖ recovery rejects present but meaningless responsibility and decision fields (45.601709ms)
+  AssertionError [ERR_ASSERTION]: {"assignments":[null]}
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-continuity.test.mjs:15:349)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

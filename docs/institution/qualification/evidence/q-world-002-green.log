@@ -1,0 +1,31 @@
+✔ verified artifact bytes can mint world consequences (1.099134ms)
+✔ valid artifact bytes with absent observation verification cannot mint world consequences (0.621175ms)
+✔ valid artifact bytes with UNVERIFIED observation verification cannot mint world consequences (0.153331ms)
+✔ valid artifact bytes with an invalid string observation verification cannot mint world consequences (0.122735ms)
+✔ valid artifact bytes with an invalid type observation verification cannot mint world consequences (0.163366ms)
+✔ a VERIFIED-looking label without artifact bytes cannot mint XP (0.175605ms)
+✔ mutated artifact bytes invalidate the receipt (0.210987ms)
+✔ forged digest invalidates the receipt (0.15948ms)
+✔ a self-certifying claim cannot mutate canonical world state (1.01021ms)
+✔ authorized executed observed outcome can project a world consequence (0.311709ms)
+✔ replay is idempotent (0.236836ms)
+✔ changed artifact bytes cannot award canonical progress (1.039424ms)
+✔ approval text without authority cannot mutate state (0.16005ms)
+✔ failures remain history and never award success (0.241313ms)
+✔ unresolved parents are rejected instead of silently rewriting lineage (0.4651ms)
+✔ malformed receipt references cannot award progress (0.168454ms)
+✔ revoked grants cannot produce future world consequences (0.782978ms)
+✔ projection can be rebuilt from event history (0.302846ms)
+✔ an observation without authorization cannot award progress (0.131598ms)
+✔ authorization without observation cannot award progress (0.113831ms)
+✔ MMORPG realm derives avatar and quests from canonical projection (0.294112ms)
+✔ an unverified observation cannot mint canonical progress (0.134092ms)
+✔ institutional traversal is constrained by the realm graph (0.359521ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 70.435991

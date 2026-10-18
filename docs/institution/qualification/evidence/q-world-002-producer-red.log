@@ -1,0 +1,88 @@
+✔ executor claim alone cannot create a world consequence (0.8977ms)
+✖ verified authorized artifact can cross adjudication into gameplay (1.166415ms)
+✔ accepted adjudication with missing verification cannot be upgraded by the world adapter (0.790259ms)
+✖ accepted adjudication with UNVERIFIED verification cannot be upgraded by the world adapter (0.25915ms)
+✔ failed executions remain accepted failures without a verified-byte marker or success consequences (0.285159ms)
+✔ mutated bytes defeat executor success claim (0.177747ms)
+✔ result cannot be laundered into another authorization (4.462534ms)
+✔ valid receipt for wrong artifact identity cannot substitute (0.172349ms)
+✔ resolver receives artifact identity and exact request binding (0.17264ms)
+✖ same canonical history reconstructs identical institutional state (3.555149ms)
+✔ tampered consequence produces a different state hash (7.460264ms)
+✔ history cannot reference a future or missing parent (0.553773ms)
+✔ duplicate event identities are rejected instead of silently replayed (0.246411ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 10
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 106.984781
+
+✖ failing tests:
+
+test at test/execution-mesh.test.js:13:1
+✖ verified authorized artifact can cross adjudication into gameplay (1.166415ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'VERIFIED'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/execution-mesh.test.js:15:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'VERIFIED',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/execution-mesh.test.js:23:3
+✖ accepted adjudication with UNVERIFIED verification cannot be upgraded by the world adapter (0.25915ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'UNVERIFIED'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/execution-mesh.test.js:27:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'UNVERIFIED',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/world-spine.test.js:12:1
+✖ same canonical history reconstructs identical institutional state (3.555149ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 100
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/world-spine.test.js:16:79)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 100,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

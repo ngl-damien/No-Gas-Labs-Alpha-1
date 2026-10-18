@@ -12,9 +12,35 @@ test("executor claim alone cannot create a world consequence",()=>{ assert.equal
 
 test("verified authorized artifact can cross adjudication into gameplay",()=>{
   const a=adjudicateExecution({request,result,resolveArtifact:resolve}); assert.equal(a.status,"ACCEPTED");
+  assert.equal(a.observation_verification,"VERIFIED");
   const event=toWorldEvent({event_id:"e1",request,adjudication:a,world_effect:{xp:10,inventory:{execution_receipt:1}}});
+  assert.equal(event.observation_verification,"VERIFIED");
   const world=projectWorld([event],undefined,{resolveArtifact:r=>resolve({artifact_id:"apk",receipt:r})});
   assert.equal(world.xp,10); assert.equal(world.inventory.execution_receipt,1);
+});
+
+for (const verification of [undefined, "UNVERIFIED"]) {
+  test(`accepted adjudication with ${verification ?? "missing"} verification cannot be upgraded by the world adapter`,()=>{
+    const adjudication={status:"ACCEPTED",observed_outcome:"SUCCEEDED",receipts:result.artifacts.map(a=>a.receipt)};
+    if (verification !== undefined) adjudication.observation_verification=verification;
+    const event=toWorldEvent({event_id:"forged-accepted",request,adjudication,world_effect:{xp:10,inventory:{execution_receipt:1},world:{forgeOpen:true}}});
+    assert.equal(event.observation_verification,verification);
+    const world=projectWorld([event],undefined,{resolveArtifact:r=>resolve({artifact_id:"apk",receipt:r})});
+    assert.equal(world.xp,0);
+    assert.deepEqual(world.inventory,{});
+    assert.deepEqual(world.world,{});
+  });
+}
+
+test("failed executions remain accepted failures without a verified-byte marker or success consequences",()=>{
+  const failed=recordExecution({request,executor_id:"github-actions",outcome:"FAILED"});
+  const adjudication=adjudicateExecution({request,result:failed,resolveArtifact:resolve});
+  assert.deepEqual(adjudication,{status:"ACCEPTED",observed_outcome:"FAILED",receipts:[]});
+  const event=toWorldEvent({event_id:"failed",request,adjudication,world_effect:{xp:10}});
+  assert.equal(event.observation_verification,undefined);
+  const world=projectWorld([event],undefined,{resolveArtifact:r=>resolve({artifact_id:"apk",receipt:r})});
+  assert.equal(world.quests.q1.status,"FAILED");
+  assert.equal(world.xp,0);
 });
 
 test("mutated bytes defeat executor success claim",()=>{ assert.deepEqual(adjudicateExecution({request,result,resolveArtifact:()=>Buffer.from("tampered")}),{status:"REJECTED",reason:"EVIDENCE_NOT_VERIFIED"}); });

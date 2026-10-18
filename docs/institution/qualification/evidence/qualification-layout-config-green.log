@@ -1,0 +1,12 @@
+✔ partial restore cannot silently initialize a missing decision or world store (29.390397ms)
+✔ an initialized layout detects deletion of both stores and preserves its anchor (5.215558ms)
+✔ an intact prior two-store runtime can be adopted and reopened without changing either store (9.506967ms)
+✔ invalid startup configuration does not poison a fresh runtime directory (6.975847ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 155.394548

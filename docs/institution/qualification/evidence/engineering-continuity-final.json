@@ -1,0 +1,57 @@
+{
+  "schema": "ngl.qualification.engineering-continuity-final.v1",
+  "observedAt": "2026-10-18T20:17:41.906Z",
+  "reviewer": "INTERNAL_AI",
+  "scope": "Current public module hashes, disposable local fake-key fixtures; no complete suite or cloud restore rerun.",
+  "source": [
+    {
+      "path": "game/server.mjs",
+      "sha256": "559ebabc0a47e3044ce22da7cf4ab8235faad1e2e6177804e8ba3d4f57553298"
+    },
+    {
+      "path": "game/runtime-layout.mjs",
+      "sha256": "38d207c4abec169009d89906ced6954e684d6c4f9c6105fdc2f8299f33a40f1d"
+    },
+    {
+      "path": "scripts/build-game.mjs",
+      "sha256": "40b84f14ddf2260d6d340d4f4e3e400732f5ea8d3f5e738d7ea16f8b9d196ec0"
+    },
+    {
+      "path": "test/runtime-layout.test.mjs",
+      "sha256": "01cf71976a0d8b235c8fe480888f5595ee882b85d90c7e5b96563683315a3222"
+    },
+    {
+      "path": "test/session-capacity.test.mjs",
+      "sha256": "8b52a426e18a59a985520ca1e631a284a2712851926e17f905268554ae4ea9dc"
+    }
+  ],
+  "probes": [
+    {
+      "id": "invalid-explicit-key",
+      "first": "REJECTED",
+      "message": "Founder key must be 16\u20131024 bytes",
+      "anchorBeforeRetry": false,
+      "correctedRetry": "SUCCEEDED"
+    },
+    {
+      "id": "invalid-report",
+      "first": "REJECTED",
+      "message": "Invalid institutional experiment report: schema",
+      "anchorBeforeRetry": false,
+      "correctedRetry": "SUCCEEDED"
+    }
+  ],
+  "focused": {
+    "command": [
+      "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+      "--test",
+      "test/runtime-layout.test.mjs",
+      "test/session-capacity.test.mjs"
+    ],
+    "status": 0,
+    "stdout": "\u2714 partial restore cannot silently initialize a missing decision or world store (31.515081ms)\n\u2714 an initialized layout detects deletion of both stores and preserves its anchor (6.220429ms)\n\u2714 an intact prior two-store runtime can be adopted and reopened without changing either store (9.321847ms)\n\u2714 invalid startup configuration does not poison a fresh runtime directory (9.735188ms)\n\u2714 anonymous session turnover does not evict an authenticated Founder (921.156863ms)\n\u2139 tests 5\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 1007.152901\n",
+    "stderr": ""
+  },
+  "configPoisonContained": true,
+  "sourceHashesUnchangedAfter": true
+}

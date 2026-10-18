@@ -1,0 +1,370 @@
+TAP version 13
+# Subtest: both retained reports remain usable without making execution or authority claims
+ok 1 - both retained reports remain usable without making execution or authority claims
+  ---
+  duration_ms: 4.155693
+  type: 'test'
+  ...
+# Subtest: a consistent INCONCLUSIVE report can retain failed executions and zero tests
+ok 2 - a consistent INCONCLUSIVE report can retain failed executions and zero tests
+  ---
+  duration_ms: 0.520673
+  type: 'test'
+  ...
+# Subtest: an accepted baseline remains representable without claiming transfer
+ok 3 - an accepted baseline remains representable without claiming transfer
+  ---
+  duration_ms: 0.364088
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate accepted string false
+ok 4 - report guard rejects candidate accepted string false
+  ---
+  duration_ms: 0.668096
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate accepted numeric one
+ok 5 - report guard rejects candidate accepted numeric one
+  ---
+  duration_ms: 0.496777
+  type: 'test'
+  ...
+# Subtest: report guard rejects baseline accepted string false
+ok 6 - report guard rejects baseline accepted string false
+  ---
+  duration_ms: 0.382466
+  type: 'test'
+  ...
+# Subtest: report guard rejects zero accepted tests
+ok 7 - report guard rejects zero accepted tests
+  ---
+  duration_ms: 0.344628
+  type: 'test'
+  ...
+# Subtest: report guard rejects negative tests
+ok 8 - report guard rejects negative tests
+  ---
+  duration_ms: 0.295725
+  type: 'test'
+  ...
+# Subtest: report guard rejects unsafe test count
+ok 9 - report guard rejects unsafe test count
+  ---
+  duration_ms: 0.2453
+  type: 'test'
+  ...
+# Subtest: report guard rejects fractional tests
+ok 10 - report guard rejects fractional tests
+  ---
+  duration_ms: 0.570429
+  type: 'test'
+  ...
+# Subtest: report guard rejects string test count
+ok 11 - report guard rejects string test count
+  ---
+  duration_ms: 0.315204
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing test count
+ok 12 - report guard rejects missing test count
+  ---
+  duration_ms: 0.173931
+  type: 'test'
+  ...
+# Subtest: report guard rejects failed tests
+ok 13 - report guard rejects failed tests
+  ---
+  duration_ms: 0.156144
+  type: 'test'
+  ...
+# Subtest: report guard rejects string test exit
+ok 14 - report guard rejects string test exit
+  ---
+  duration_ms: 0.174253
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing test exit
+ok 15 - report guard rejects missing test exit
+  ---
+  duration_ms: 0.197187
+  type: 'test'
+  ...
+# Subtest: report guard rejects tests explicitly failed
+ok 16 - report guard rejects tests explicitly failed
+  ---
+  duration_ms: 0.20573
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate integrity failed
+ok 17 - report guard rejects candidate integrity failed
+  ---
+  duration_ms: 0.263196
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate integrity string
+ok 18 - report guard rejects candidate integrity string
+  ---
+  duration_ms: 0.127232
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing integrity
+ok 19 - report guard rejects missing integrity
+  ---
+  duration_ms: 0.215705
+  type: 'test'
+  ...
+# Subtest: report guard rejects accepted with retained error
+ok 20 - report guard rejects accepted with retained error
+  ---
+  duration_ms: 0.139159
+  type: 'test'
+  ...
+# Subtest: report guard rejects errors string
+ok 21 - report guard rejects errors string
+  ---
+  duration_ms: 0.223115
+  type: 'test'
+  ...
+# Subtest: report guard rejects non-string error
+ok 22 - report guard rejects non-string error
+  ---
+  duration_ms: 0.21919
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing errors
+ok 23 - report guard rejects missing errors
+  ---
+  duration_ms: 0.243126
+  type: 'test'
+  ...
+# Subtest: report guard rejects zero task required files
+ok 24 - report guard rejects zero task required files
+  ---
+  duration_ms: 0.124687
+  type: 'test'
+  ...
+# Subtest: report guard rejects unsafe required files
+ok 25 - report guard rejects unsafe required files
+  ---
+  duration_ms: 0.121853
+  type: 'test'
+  ...
+# Subtest: report guard rejects fractional required files
+ok 26 - report guard rejects fractional required files
+  ---
+  duration_ms: 0.108003
+  type: 'test'
+  ...
+# Subtest: report guard rejects string required files
+ok 27 - report guard rejects string required files
+  ---
+  duration_ms: 0.103286
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate file requirement differs
+ok 28 - report guard rejects candidate file requirement differs
+  ---
+  duration_ms: 0.367152
+  type: 'test'
+  ...
+# Subtest: report guard rejects baseline file requirement differs
+ok 29 - report guard rejects baseline file requirement differs
+  ---
+  duration_ms: 0.160091
+  type: 'test'
+  ...
+# Subtest: report guard rejects no matched files
+ok 30 - report guard rejects no matched files
+  ---
+  duration_ms: 0.12576
+  type: 'test'
+  ...
+# Subtest: report guard rejects negative matched files
+ok 31 - report guard rejects negative matched files
+  ---
+  duration_ms: 0.110436
+  type: 'test'
+  ...
+# Subtest: report guard rejects excess matched files
+ok 32 - report guard rejects excess matched files
+  ---
+  duration_ms: 0.8977
+  type: 'test'
+  ...
+# Subtest: report guard rejects string matched files
+ok 33 - report guard rejects string matched files
+  ---
+  duration_ms: 0.170076
+  type: 'test'
+  ...
+# Subtest: report guard rejects failed build
+ok 34 - report guard rejects failed build
+  ---
+  duration_ms: 0.131628
+  type: 'test'
+  ...
+# Subtest: report guard rejects build explicitly failed
+ok 35 - report guard rejects build explicitly failed
+  ---
+  duration_ms: 0.203406
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing build exit
+ok 36 - report guard rejects missing build exit
+  ---
+  duration_ms: 0.137086
+  type: 'test'
+  ...
+# Subtest: report guard rejects null build
+ok 37 - report guard rejects null build
+  ---
+  duration_ms: 0.108213
+  type: 'test'
+  ...
+# Subtest: report guard rejects failed command entry point
+ok 38 - report guard rejects failed command entry point
+  ---
+  duration_ms: 0.109665
+  type: 'test'
+  ...
+# Subtest: report guard rejects failed browser entry point
+ok 39 - report guard rejects failed browser entry point
+  ---
+  duration_ms: 0.114231
+  type: 'test'
+  ...
+# Subtest: report guard rejects string browser passed
+ok 40 - report guard rejects string browser passed
+  ---
+  duration_ms: 0.109895
+  type: 'test'
+  ...
+# Subtest: report guard rejects false browser passed despite zero exit
+ok 41 - report guard rejects false browser passed despite zero exit
+  ---
+  duration_ms: 0.205069
+  type: 'test'
+  ...
+# Subtest: report guard rejects true browser passed despite failed exit
+ok 42 - report guard rejects true browser passed despite failed exit
+  ---
+  duration_ms: 0.172139
+  type: 'test'
+  ...
+# Subtest: report guard rejects explicit failed entry point flag
+ok 43 - report guard rejects explicit failed entry point flag
+  ---
+  duration_ms: 0.158619
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing entry point
+ok 44 - report guard rejects missing entry point
+  ---
+  duration_ms: 0.134011
+  type: 'test'
+  ...
+# Subtest: report guard rejects empty entry point
+ok 45 - report guard rejects empty entry point
+  ---
+  duration_ms: 0.116546
+  type: 'test'
+  ...
+# Subtest: report guard rejects TRANSFER with accepted baseline
+ok 46 - report guard rejects TRANSFER with accepted baseline
+  ---
+  duration_ms: 0.167421
+  type: 'test'
+  ...
+# Subtest: report guard rejects TRANSFER with failed baseline integrity
+ok 47 - report guard rejects TRANSFER with failed baseline integrity
+  ---
+  duration_ms: 0.158248
+  type: 'test'
+  ...
+# Subtest: report guard rejects TRANSFER with failed source integrity
+ok 48 - report guard rejects TRANSFER with failed source integrity
+  ---
+  duration_ms: 0.124688
+  type: 'test'
+  ...
+# Subtest: report guard rejects TRANSFER with rejected candidate
+ok 49 - report guard rejects TRANSFER with rejected candidate
+  ---
+  duration_ms: 0.12006
+  type: 'test'
+  ...
+# Subtest: report guard rejects unknown classification
+ok 50 - report guard rejects unknown classification
+  ---
+  duration_ms: 0.185068
+  type: 'test'
+  ...
+# Subtest: report guard rejects wrong schema
+ok 51 - report guard rejects wrong schema
+  ---
+  duration_ms: 0.121233
+  type: 'test'
+  ...
+# Subtest: report guard rejects blank report id
+ok 52 - report guard rejects blank report id
+  ---
+  duration_ms: 0.101954
+  type: 'test'
+  ...
+# Subtest: report guard rejects non-object tasks
+ok 53 - report guard rejects non-object tasks
+  ---
+  duration_ms: 0.131678
+  type: 'test'
+  ...
+# Subtest: report guard rejects missing second task
+ok 54 - report guard rejects missing second task
+  ---
+  duration_ms: 0.104327
+  type: 'test'
+  ...
+# Subtest: report guard rejects non-string contradiction
+ok 55 - report guard rejects non-string contradiction
+  ---
+  duration_ms: 0.191077
+  type: 'test'
+  ...
+# Subtest: report guard rejects negative archive bytes
+ok 56 - report guard rejects negative archive bytes
+  ---
+  duration_ms: 0.151689
+  type: 'test'
+  ...
+# Subtest: report guard rejects non-finite duration
+ok 57 - report guard rejects non-finite duration
+  ---
+  duration_ms: 0.118659
+  type: 'test'
+  ...
+# Subtest: report guard rejects invalid command metadata
+ok 58 - report guard rejects invalid command metadata
+  ---
+  duration_ms: 0.154993
+  type: 'test'
+  ...
+# Subtest: report guard rejects invalid digest metadata
+ok 59 - report guard rejects invalid digest metadata
+  ---
+  duration_ms: 0.136545
+  type: 'test'
+  ...
+# Subtest: null reports continue to project no accomplishments
+ok 60 - null reports continue to project no accomplishments
+  ---
+  duration_ms: 0.065138
+  type: 'test'
+  ...
+1..60
+# tests 60
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 106.617145

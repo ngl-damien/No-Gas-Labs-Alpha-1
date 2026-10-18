@@ -1,0 +1,1223 @@
+{
+  "schema": "ngl.qualification.utility-world.v1",
+  "recordedAt": "2026-10-18T20:12:53.461Z",
+  "reviewer": "Internal AI qualification worker; no independent human certification",
+  "baseline": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "observedHead": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "sourceReceipts": [
+    {
+      "path": "src/institution/project-projection.mjs",
+      "sha256": "a961e6b5be363fcf458e9fdf2e87d3a964ac2cc728b01c0f9ecb1acd40f46c76",
+      "size": 2094
+    },
+    {
+      "path": "src/world/project.js",
+      "sha256": "645fd45946ec0d0b2739fc40ad04854aa78923e8c3781fa0270fd7b27c4b3fb9",
+      "size": 2420
+    },
+    {
+      "path": "game/server.mjs",
+      "sha256": "5255307263d2f39fdaf250ff1fa6369f49c0c533f362654979b35359fa4aabe6",
+      "size": 30232
+    },
+    {
+      "path": "scripts/run-compounding.py",
+      "sha256": "7b70e8c9a9badfbfc3fc30fd268953b52dc997ddc158e909ad5c93552975be50",
+      "size": 14482
+    },
+    {
+      "path": "docs/institution/compounding/evidence/experiment.json",
+      "sha256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307",
+      "size": 10601
+    },
+    {
+      "path": "docs/institution/compounding/task-a.profile.json",
+      "sha256": "2889a287c232be92b48fef44c393a3eebc1a662834a76461138bade9d279dcd2",
+      "size": 701
+    },
+    {
+      "path": "docs/institution/compounding/task-b.profile.json",
+      "sha256": "f78c354976e12f429194e760f362595d8408b6a55936bd968952e67dcacc225e",
+      "size": 884
+    }
+  ],
+  "scope": {
+    "realKeysRead": false,
+    "customerDataRead": false,
+    "externalProviderCalls": 0,
+    "externalMessages": 0,
+    "deployment": false,
+    "providerSpendAuthorized": false,
+    "fixtureStorage": "OS temporary directory, removed in finally"
+  },
+  "projection": {
+    "valid": {
+      "schema": "ngl.institution-projects.v1",
+      "projects": [
+        {
+          "id": "alpha1-transfer-20261018",
+          "title": "Alpha 1 · transferable component delivery",
+          "status": "TRANSFER_OBSERVED_COMPONENT_DELIVERY",
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e"
+        }
+      ],
+      "accomplishments": [
+        {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        {
+          "id": "alpha1-transfer-20261018-B",
+          "title": "T.R.U. temporal evidence workbench",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e",
+          "requiredFiles": 5,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        }
+      ],
+      "disputes": [
+        {
+          "id": "alpha1-transfer-20261018-dispute-0",
+          "statement": "The imported Python source defined 21 tests but could not be imported because of a syntax error.",
+          "disposition": "Original import retained in Git; repaired executable tested separately.",
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e"
+        },
+        {
+          "id": "alpha1-transfer-20261018-dispute-1",
+          "statement": "Original T.R.U. input labels and PASS counts could suggest review despite missing comparable evidence.",
+          "disposition": "Repaired schema/comparison boundaries; local imported labels remain untrusted.",
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e"
+        }
+      ],
+      "decisions": [
+        {
+          "id": "alpha1-transfer-20261018-adoption",
+          "title": "Whether to adopt the experimental component exporter",
+          "status": "AWAITING_OPERATIONAL_GATE",
+          "reviewWindowHours": 24,
+          "clockStarted": false,
+          "evidenceDigest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e",
+          "limitation": "The authorized clock starts only after verified HTTPS reachability and evidence readiness."
+        }
+      ],
+      "witnessParticipation": "UNVERIFIED",
+      "roles": {
+        "viewer": "Read-only records.",
+        "resident": "Persistent resident accounts are not implemented; Witness sessions are ephemeral.",
+        "founder": "Authenticated scoped decisions."
+      },
+      "limitations": [
+        "Fingerprints identify bytes, not truth or independent witnesses.",
+        "These records grant no XP, promotion or authority."
+      ],
+      "reportReceipt": {
+        "algorithm": "sha256",
+        "digest": "e11d86e2d897ba8ce901afa0f22c62e7859f7a6239fd9fc3f495670427fd459e",
+        "size": 8436
+      }
+    },
+    "negative": [
+      {
+        "name": "accepted-string-false",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": "false",
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "a3eb4e751e097cfff334f7cd2e0bda109d451169208c998dc40eb6b12aaa0c92",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": "false",
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-number-one",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": 1,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "4c0f4ff18b1b04503cd58154091301200f630bc1a44c7601648030f6c718d34f",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": 1,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-zero-tests",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 0
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "2bb5e1ab463bca611f420e14636bdf392363437b42bd322f9c5f28a42cad7312",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-failed-tests",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 1,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "65954067a0f53ade847d96750804353ddb9a50ec9cbe5ea25a5dbd6d3d1a8324",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-failed-entry",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 1,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "passed": false
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "8716e8ffaea4276ebd6b02eb7021488db81ba2b3b303c48cabf12e79dc92b212",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-integrity-false",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": false,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [
+              "synthetic ZIP integrity failure"
+            ],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "d355a51f88ae0cf79f353acf43d5ea8e3de7fa5b0b683eb56efcba646100d2ea",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-build-failed",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 1,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "f255207830c70ade7c2740d66d799aa79848a6fe6bec5850e6c902b09e081ec9",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      },
+      {
+        "name": "accepted-true-file-coverage-short",
+        "fixture": {
+          "task": "A",
+          "m1": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 0,
+            "errors": [],
+            "accepted": true,
+            "build": {
+              "command": [
+                "node",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source/scripts/package-component.mjs",
+                "--profile",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/profile-A.json",
+                "--out",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/task-a",
+                "--root",
+                "/workspace/No-Gas-Labs-Alpha-1/.runtime/transfer-_3i_9xxx/source"
+              ],
+              "exitCode": 0,
+              "wallMs": 56.738432002021,
+              "stdoutSHA256": "0d52c1266dfd7b535d6318bfb6c1f521c7c37f2f76203202866557e85986e343",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "tests": {
+              "command": [
+                "python3",
+                "-m",
+                "unittest",
+                "-v",
+                "test_engine.py"
+              ],
+              "exitCode": 0,
+              "wallMs": 713.0040269985329,
+              "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "stderrSHA256": "b51efc8bf421bad813c65994bb6ac8d35281feada627aff3744cc1494f22d3bf",
+              "count": 47
+            },
+            "entryPoint": {
+              "command": [
+                "python3",
+                "engine.py",
+                "example_claims.json",
+                "--root",
+                "."
+              ],
+              "exitCode": 0,
+              "wallMs": 31.741134996991605,
+              "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+              "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        },
+        "rejected": false,
+        "accomplishment": {
+          "id": "alpha1-transfer-20261018-A",
+          "title": "AOTA local evidence inspector",
+          "status": "LOCALLY_TESTED",
+          "evidenceDigest": "120c9e1c0252bdd970b6cf51f4417a75bc85e067d58e5a325593d6f72496007e",
+          "requiredFiles": 4,
+          "baselineAccepted": false,
+          "candidateAccepted": true,
+          "limitation": "Retained local report; external use is unverified."
+        },
+        "unsafeLocalTested": true
+      }
+    ]
+  },
+  "legacyWorld": {
+    "event": {
+      "event_id": "qualification-local-reward",
+      "event_type": "SYSTEM_EVENT",
+      "subject": "qualification-fixture",
+      "admission": "ACCEPTED",
+      "authority": "AUTHORIZED",
+      "execution": "EXECUTED",
+      "evidence": "OBSERVED",
+      "outcome": "SUCCEEDED",
+      "receipts": [
+        {
+          "algorithm": "sha256",
+          "digest": "923464c7d76f891cf38648054c3c1c43e36bc7e86b909174aff22fc1a0ff5bbc",
+          "size": 70
+        }
+      ],
+      "world_effect": {
+        "xp": 999,
+        "world": {
+          "forgeOpen": true
+        }
+      }
+    },
+    "negative": [
+      {
+        "verification": "ABSENT",
+        "xp": 999,
+        "status": "COMPLETED",
+        "world": {
+          "forgeOpen": true
+        },
+        "unsafeReward": true
+      },
+      {
+        "verification": "UNVERIFIED",
+        "xp": 999,
+        "status": "COMPLETED",
+        "world": {
+          "forgeOpen": true
+        },
+        "unsafeReward": true
+      }
+    ],
+    "control": {
+      "noResolverXP": 0,
+      "changedBytesXP": 0
+    }
+  },
+  "runtime": {
+    "initialRole": "witness",
+    "reportOnlyXP": 0,
+    "reportOnlyAcceptedKernelWorks": 0,
+    "witnessDraft": 403,
+    "forgedRole": 400,
+    "witnessPolicy": 403,
+    "privateDraftHidden": true,
+    "publishedAction": "preserve-artifact-bytes",
+    "publishedXP": 100,
+    "contributionXP": 100,
+    "afterLogoutDraft": 403,
+    "externalProviders": {
+      "configured": false,
+      "detail": "No authenticated external AI providers are configured by this service."
+    },
+    "witnessParticipation": "UNVERIFIED",
+    "roles": {
+      "viewer": "Read-only records.",
+      "resident": "Persistent resident accounts are not implemented; Witness sessions are ephemeral.",
+      "founder": "Authenticated scoped decisions."
+    },
+    "limitations": [
+      "The executor and byte verifier are distinct local process identities in one service, not independent humans or independent AI providers.",
+      "Accepted preservation verifies exact published bytes; it does not establish usefulness, truth, demand, revenue or public deployment."
+    ],
+    "independentWitnessesCreated": 0
+  },
+  "delivery": {
+    "A": {
+      "archive": "dist/compounding/aota-evidence-inspector.zip",
+      "inspection": {
+        "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+        "archiveBytes": 10795,
+        "integrity": true,
+        "requiredFiles": 4,
+        "matchedFiles": 4,
+        "errors": [],
+        "accepted": true
+      },
+      "tests": {
+        "exitCode": 0,
+        "wallMs": 723.616862000199,
+        "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSHA256": "91f1abac80692bc20d93931b92180ddb10cf52c3013badd061ee8c3fffe999dd",
+        "count": 47
+      },
+      "coherentManifestRewrite": {
+        "archiveSHA256": "0a809843fc75202edc77842c488f90dd13ae76e6248a17c9768196794285d1c1",
+        "archiveBytes": 10838,
+        "integrity": true,
+        "requiredFiles": 4,
+        "matchedFiles": 3,
+        "errors": [
+          "Changed declared component bytes: experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py"
+        ],
+        "accepted": false
+      },
+      "entryPoint": {
+        "exitCode": 0,
+        "wallMs": 30.450454010860994,
+        "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+        "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "report": {
+          "schema": "ngl.aota.local-artifact-ceiling.v3",
+          "warning": "Untrusted labels. Digest match proves local byte integrity only; not test execution, witness independence, authorization, or truth. Descriptor traversal rejects symlinks, but a filesystem owner can still mutate evidence; detected read changes fail closed. No authenticated provenance or cross-file snapshot is established.",
+          "results": {
+            "local-inspector-source": {
+              "declared": "BUILT",
+              "ceiling": "BUILT",
+              "missing_verified_kinds": [],
+              "dependencies": [],
+              "artifact_checks": [
+                {
+                  "kind": "source",
+                  "path": "engine.py",
+                  "digest_matches": true,
+                  "reason": "sha256 match (local bytes only)"
+                }
+              ]
+            },
+            "meteor-local-source": {
+              "declared": "BUILT",
+              "ceiling": "PLANNED",
+              "missing_verified_kinds": [
+                "source"
+              ],
+              "dependencies": [],
+              "artifact_checks": []
+            },
+            "external-ai-execution": {
+              "declared": "OPERATIONAL",
+              "ceiling": "PLANNED",
+              "missing_verified_kinds": [
+                "runtime",
+                "source",
+                "test"
+              ],
+              "dependencies": [
+                "meteor-local-source"
+              ],
+              "artifact_checks": []
+            }
+          }
+        }
+      },
+      "malformedInput": {
+        "exitCode": 2,
+        "wallMs": 32.06383201177232,
+        "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSHA256": "de327ef14ec9cb6a02ae1496c164f0792ea8d42891aeae815c30e4cca22eabd3",
+        "stderr": "usage: engine.py [-h] [--root ROOT] claims\nengine.py: error: invalid JSON constant NaN\n"
+      }
+    },
+    "B": {
+      "archive": "dist/compounding/tru-temporal-workbench.zip",
+      "inspection": {
+        "archiveSHA256": "5cafe45651e7919c50952434b6f9ee10da1b1036313b54c5c14c9a65a8c00088",
+        "archiveBytes": 17847,
+        "integrity": true,
+        "requiredFiles": 5,
+        "matchedFiles": 5,
+        "errors": [],
+        "accepted": true
+      },
+      "tests": {
+        "exitCode": 0,
+        "wallMs": 382.54195800982416,
+        "stdoutSHA256": "bcae3864ce379a559d44c481d906c13b1935c6be614daeb9ba72fcc8863fcac6",
+        "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "count": 40
+      },
+      "coherentManifestRewrite": {
+        "archiveSHA256": "e303e312f153f7dd46151fff0cc591616cc6f0b0592a272484b0cfb8e1a4944e",
+        "archiveBytes": 17838,
+        "integrity": true,
+        "requiredFiles": 5,
+        "matchedFiles": 4,
+        "errors": [
+          "Changed declared component bytes: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html"
+        ],
+        "accepted": false
+      },
+      "browserEntry": {
+        "passed": true,
+        "entryPoint": "index.html over loopback HTTP from the extracted ZIP",
+        "viewport": 390,
+        "checks": [
+          "HTTP 200",
+          "module executed and digest rendered",
+          "real lineage imported: three events",
+          "exported case exact equality",
+          "no page errors"
+        ],
+        "wallMs": 834.9916820006911
+      }
+    }
+  },
+  "cost": {
+    "providerCallsInThisHarness": 0,
+    "totalInstitutionOperatingCost": "UNKNOWN",
+    "paidModelTokens": "NOT_MEASURED",
+    "hostAndStorageCost": "NOT_MEASURED",
+    "humanReviewAndSupportCost": "NOT_MEASURED",
+    "revenue": "NO_EXTERNAL_REVENUE_EVIDENCE_INSPECTED",
+    "limitation": "No additional provider call in this harness does not imply zero total cost, positive margin, demand, or market viability."
+  },
+  "gates": {
+    "A": {
+      "utility": "Local component delivery extends the actual M0 exporter coverage; no comparative economic or customer outcome.",
+      "world": "Report-only projection adds records without XP or kernel acceptance; negative semantic failures reproduced."
+    },
+    "B": {
+      "utility": "NOT_ESTABLISHED: needs authorized actual users, task acceptance, measured costs and operating requirements.",
+      "world": "NOT_ESTABLISHED: imported-report truthfulness and legacy admission issues remain; no independent human review."
+    },
+    "C": {
+      "utility": "PARTIAL: coherent ZIP mutation detected, failures retained; no provider outage/budget/support recovery exercise.",
+      "world": "PARTIAL: local role denial and logout observed; report semantics and legacy projection require disposition and recovery evidence."
+    }
+  },
+  "limitations": [
+    "Tests exercise local artifacts and synthetic participants; no customer, revenue, market, independent Witness, or external specialist review is fabricated.",
+    "Legacy projectWorld is not the current game service strict kernel. No exposed remote route to label-driven legacy rewards was demonstrated.",
+    "Imported report digests identify bytes, not truth or authenticated execution. Strict validation cannot defeat a coherent false report from its trusted operator.",
+    "Preserved script imports the current checkout. Source receipts identify the observed implementation; reruns after repair produce new observations and must use a separate --out path to preserve baseline failures."
+  ],
+  "followupObservations": [
+    {
+      "recordedAt": "2026-10-18T20:15:23.530Z",
+      "scope": "Fresh temporary component rebuild and current-checkout rerun after another lane changed legacy observation verification; original failures above remain unchanged",
+      "sourceReceipts": [
+        {
+          "path": "src/institution/project-projection.mjs",
+          "sha256": "a961e6b5be363fcf458e9fdf2e87d3a964ac2cc728b01c0f9ecb1acd40f46c76",
+          "size": 2094
+        },
+        {
+          "path": "src/world/project.js",
+          "sha256": "5fee7dca4dad9d4f7f54633ab154214b658b090b4158a212f2f3966ea8c9d0aa",
+          "size": 2467
+        },
+        {
+          "path": "game/server.mjs",
+          "sha256": "8ce8f6c2569c28e5db9f6b098c07ee0af9f443ad3e0c29823dc034437c1af795",
+          "size": 30330
+        },
+        {
+          "path": "scripts/run-compounding.py",
+          "sha256": "7b70e8c9a9badfbfc3fc30fd268953b52dc997ddc158e909ad5c93552975be50",
+          "size": 14482
+        },
+        {
+          "path": "scripts/qualification/utility-world.mjs",
+          "sha256": "5b65b6317e4e61b1ca9d9b75f1ae7e35ea004cef75dcd96691b959157a358c9e",
+          "size": 15260
+        },
+        {
+          "path": "docs/institution/compounding/evidence/experiment.json",
+          "sha256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307",
+          "size": 10601
+        },
+        {
+          "path": "docs/institution/compounding/task-a.profile.json",
+          "sha256": "2889a287c232be92b48fef44c393a3eebc1a662834a76461138bade9d279dcd2",
+          "size": 701
+        },
+        {
+          "path": "docs/institution/compounding/task-b.profile.json",
+          "sha256": "f78c354976e12f429194e760f362595d8408b6a55936bd968952e67dcacc225e",
+          "size": 884
+        }
+      ],
+      "projectionNegative": [
+        {
+          "name": "accepted-string-false",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-number-one",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-zero-tests",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-failed-tests",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-failed-entry",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-integrity-false",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-build-failed",
+          "unsafeLocalTested": true,
+          "rejected": false
+        },
+        {
+          "name": "accepted-true-file-coverage-short",
+          "unsafeLocalTested": true,
+          "rejected": false
+        }
+      ],
+      "legacyWorld": {
+        "event": {
+          "event_id": "qualification-local-reward",
+          "event_type": "SYSTEM_EVENT",
+          "subject": "qualification-fixture",
+          "admission": "ACCEPTED",
+          "authority": "AUTHORIZED",
+          "execution": "EXECUTED",
+          "evidence": "OBSERVED",
+          "outcome": "SUCCEEDED",
+          "receipts": [
+            {
+              "algorithm": "sha256",
+              "digest": "923464c7d76f891cf38648054c3c1c43e36bc7e86b909174aff22fc1a0ff5bbc",
+              "size": 70
+            }
+          ],
+          "world_effect": {
+            "xp": 999,
+            "world": {
+              "forgeOpen": true
+            }
+          }
+        },
+        "negative": [
+          {
+            "verification": "ABSENT",
+            "xp": 0,
+            "world": {},
+            "unsafeReward": false
+          },
+          {
+            "verification": "UNVERIFIED",
+            "xp": 0,
+            "world": {},
+            "unsafeReward": false
+          }
+        ],
+        "control": {
+          "noResolverXP": 0,
+          "changedBytesXP": 0
+        }
+      },
+      "delivery": {
+        "A": {
+          "archive": "dist/compounding/aota-evidence-inspector.zip",
+          "archiveOrigin": "fresh temporary build",
+          "inspection": {
+            "archiveSHA256": "8ffb3c97745286959953c8bad44f3fbe606e839935cc8e4ddb35f7d8a86184dc",
+            "archiveBytes": 10795,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 4,
+            "errors": [],
+            "accepted": true
+          },
+          "tests": {
+            "exitCode": 0,
+            "wallMs": 690.1738900050987,
+            "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSHA256": "8078b4966e16e4d2e86452f4b1194406e78b161b8e64718fe18a93e36036d07e",
+            "count": 47
+          },
+          "coherentManifestRewrite": {
+            "archiveSHA256": "29fa9ddd0ac3d5883727b64e7c0f4c184b77ea3d42c21e05ee0993291c05c168",
+            "archiveBytes": 10838,
+            "integrity": true,
+            "requiredFiles": 4,
+            "matchedFiles": 3,
+            "errors": [
+              "Changed declared component bytes: experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py"
+            ],
+            "accepted": false
+          },
+          "entryPoint": {
+            "exitCode": 0,
+            "wallMs": 36.80981101933867,
+            "stdoutSHA256": "6fbe88b96f7776ea33fce8c9469601d5e1ab2a21761a3fcca683629affd883c7",
+            "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "report": {
+              "schema": "ngl.aota.local-artifact-ceiling.v3",
+              "warning": "Untrusted labels. Digest match proves local byte integrity only; not test execution, witness independence, authorization, or truth. Descriptor traversal rejects symlinks, but a filesystem owner can still mutate evidence; detected read changes fail closed. No authenticated provenance or cross-file snapshot is established.",
+              "results": {
+                "local-inspector-source": {
+                  "declared": "BUILT",
+                  "ceiling": "BUILT",
+                  "missing_verified_kinds": [],
+                  "dependencies": [],
+                  "artifact_checks": [
+                    {
+                      "kind": "source",
+                      "path": "engine.py",
+                      "digest_matches": true,
+                      "reason": "sha256 match (local bytes only)"
+                    }
+                  ]
+                },
+                "meteor-local-source": {
+                  "declared": "BUILT",
+                  "ceiling": "PLANNED",
+                  "missing_verified_kinds": [
+                    "source"
+                  ],
+                  "dependencies": [],
+                  "artifact_checks": []
+                },
+                "external-ai-execution": {
+                  "declared": "OPERATIONAL",
+                  "ceiling": "PLANNED",
+                  "missing_verified_kinds": [
+                    "runtime",
+                    "source",
+                    "test"
+                  ],
+                  "dependencies": [
+                    "meteor-local-source"
+                  ],
+                  "artifact_checks": []
+                }
+              }
+            }
+          },
+          "malformedInput": {
+            "exitCode": 2,
+            "wallMs": 33.39027601759881,
+            "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSHA256": "de327ef14ec9cb6a02ae1496c164f0792ea8d42891aeae815c30e4cca22eabd3",
+            "stderr": "usage: engine.py [-h] [--root ROOT] claims\nengine.py: error: invalid JSON constant NaN\n"
+          }
+        },
+        "B": {
+          "archive": "dist/compounding/tru-temporal-workbench.zip",
+          "archiveOrigin": "fresh temporary build",
+          "inspection": {
+            "archiveSHA256": "5cafe45651e7919c50952434b6f9ee10da1b1036313b54c5c14c9a65a8c00088",
+            "archiveBytes": 17847,
+            "integrity": true,
+            "requiredFiles": 5,
+            "matchedFiles": 5,
+            "errors": [],
+            "accepted": true
+          },
+          "tests": {
+            "exitCode": 0,
+            "wallMs": 351.24493498005904,
+            "stdoutSHA256": "838779e1925ec477fce45416853b41901dacc07caed75c9d8765096d1837fc15",
+            "stderrSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "count": 40
+          },
+          "coherentManifestRewrite": {
+            "archiveSHA256": "a07b4464635c2e15722c5b58d7fc12679ee563d893a45496afb36b3a3fd0047c",
+            "archiveBytes": 17838,
+            "integrity": true,
+            "requiredFiles": 5,
+            "matchedFiles": 4,
+            "errors": [
+              "Changed declared component bytes: experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html"
+            ],
+            "accepted": false
+          },
+          "browserEntry": {
+            "passed": true,
+            "entryPoint": "index.html over loopback HTTP from the extracted ZIP",
+            "viewport": 390,
+            "checks": [
+              "HTTP 200",
+              "module executed and digest rendered",
+              "real lineage imported: three events",
+              "exported case exact equality",
+              "no page errors"
+            ],
+            "wallMs": 778.4566649934277
+          }
+        }
+      },
+      "runtime": {
+        "initialRole": "witness",
+        "reportOnlyXP": 0,
+        "reportOnlyAcceptedKernelWorks": 0,
+        "witnessDraft": 403,
+        "forgedRole": 400,
+        "witnessPolicy": 403,
+        "privateDraftHidden": true,
+        "publishedAction": "preserve-artifact-bytes",
+        "publishedXP": 100,
+        "contributionXP": 100,
+        "afterLogoutDraft": 403,
+        "externalProviders": {
+          "configured": false,
+          "detail": "No authenticated external AI providers are configured by this service."
+        },
+        "witnessParticipation": "UNVERIFIED",
+        "roles": {
+          "viewer": "Read-only records.",
+          "resident": "Persistent resident accounts are not implemented; Witness sessions are ephemeral.",
+          "founder": "Authenticated scoped decisions."
+        },
+        "limitations": [
+          "The executor and byte verifier are distinct local process identities in one service, not independent humans or independent AI providers.",
+          "Accepted preservation verifies exact published bytes; it does not establish usefulness, truth, demand, revenue or public deployment."
+        ],
+        "independentWitnessesCreated": 0
+      },
+      "limit": "This is a bounded rerun, not independent human evaluation or the coordinating repair-cycle disposition."
+    }
+  ]
+}

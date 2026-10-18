@@ -1,0 +1,10 @@
+✔ anonymous session turnover does not evict an authenticated Founder (952.692624ms)
+✔ expired authenticated sessions do not reserve capacity forever (998.044462ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2040.90436

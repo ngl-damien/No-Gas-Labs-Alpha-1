@@ -98,7 +98,7 @@ async function publicSourcePaths(sourceDir) {
       }
     } else if (info.isFile() && /\.(?:mjs|js|html|css|md|py|json|jpg|png)$/.test(path)) paths.push(path);
   }
-  for (const path of ['README.md', 'package.json', 'core.mjs', 'evidence.mjs', 'genesis.test.mjs', 'manifest.json', 'src', 'test', 'fixtures', 'scripts', 'game', 'docs/meteor', 'reconstitution']) await walk(path);
+  for (const path of ['README.md', 'package.json', 'core.mjs', 'evidence.mjs', 'genesis.test.mjs', 'manifest.json', 'src', 'test', 'fixtures', 'scripts', 'game', 'docs/meteor', 'reconstitution', 'docs/institution/compounding/evidence/experiment.json', 'docs/institution/compounding/evidence/experiment-initial.json']) await walk(path);
   return paths.sort();
 }
 async function sourceSnapshot(sourceDir, { requiredFiles = [TARGET, BENCHMARK, VERIFY], allowPublicSource = false } = {}) {

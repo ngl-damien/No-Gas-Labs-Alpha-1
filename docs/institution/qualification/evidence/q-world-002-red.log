@@ -1,0 +1,138 @@
+✔ verified artifact bytes can mint world consequences (1.11635ms)
+✖ valid artifact bytes with absent observation verification cannot mint world consequences (0.938963ms)
+✖ valid artifact bytes with UNVERIFIED observation verification cannot mint world consequences (0.22634ms)
+✖ valid artifact bytes with an invalid string observation verification cannot mint world consequences (0.204037ms)
+✖ valid artifact bytes with an invalid type observation verification cannot mint world consequences (0.174863ms)
+✔ a VERIFIED-looking label without artifact bytes cannot mint XP (0.149465ms)
+✔ mutated artifact bytes invalidate the receipt (1.281448ms)
+✔ forged digest invalidates the receipt (0.204748ms)
+✔ a self-certifying claim cannot mutate canonical world state (1.140065ms)
+✔ authorized executed observed outcome can project a world consequence (0.330988ms)
+✔ replay is idempotent (1.106455ms)
+✔ changed artifact bytes cannot award canonical progress (0.188494ms)
+✔ approval text without authority cannot mutate state (0.129014ms)
+✔ failures remain history and never award success (0.129725ms)
+✔ unresolved parents are rejected instead of silently rewriting lineage (0.409756ms)
+✔ malformed receipt references cannot award progress (0.188383ms)
+✔ revoked grants cannot produce future world consequences (0.68452ms)
+✔ projection can be rebuilt from event history (0.327943ms)
+✔ an observation without authorization cannot award progress (0.122634ms)
+✔ authorization without observation cannot award progress (0.104337ms)
+✔ MMORPG realm derives avatar and quests from canonical projection (0.330838ms)
+✖ an unverified observation cannot mint canonical progress (0.819203ms)
+✔ institutional traversal is constrained by the realm graph (0.369676ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 18
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 76.476042
+
+✖ failing tests:
+
+test at test/evidence-gated-gameplay.test.js:28:3
+✖ valid artifact bytes with absent observation verification cannot mint world consequences (0.938963ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  100 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/evidence-gated-gameplay.test.js:33:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 100,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/evidence-gated-gameplay.test.js:28:3
+✖ valid artifact bytes with UNVERIFIED observation verification cannot mint world consequences (0.22634ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  100 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/evidence-gated-gameplay.test.js:33:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 100,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/evidence-gated-gameplay.test.js:28:3
+✖ valid artifact bytes with an invalid string observation verification cannot mint world consequences (0.204037ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  100 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/evidence-gated-gameplay.test.js:33:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 100,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/evidence-gated-gameplay.test.js:28:3
+✖ valid artifact bytes with an invalid type observation verification cannot mint world consequences (0.174863ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  100 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/evidence-gated-gameplay.test.js:33:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 100,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/world-projection.test.js:131:1
+✖ an unverified observation cannot mint canonical progress (0.819203ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  25 !== 0
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/world-projection.test.js:134:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 25,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

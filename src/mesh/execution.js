@@ -24,10 +24,10 @@ export function adjudicateExecution({ request, result, resolveArtifact }) {
   const ids=result.artifacts.map(a=>a.artifact_id);
   if (ids.length !== request.outputs.length || ids.some((id,i)=>id !== request.outputs[i])) return Object.freeze({ status:"REJECTED", reason:"OUTPUT_BINDING_MISMATCH" });
   if (!result.artifacts.every(a => verifyReceipt(a.receipt, receipt => resolveArtifact?.({ artifact_id:a.artifact_id, receipt, request_id:request.request_id })))) return Object.freeze({ status:"REJECTED", reason:"EVIDENCE_NOT_VERIFIED" });
-  return Object.freeze({ status:"ACCEPTED", observed_outcome:"SUCCEEDED", receipts:result.artifacts.map(a=>a.receipt) });
+  return Object.freeze({ status:"ACCEPTED", observed_outcome:"SUCCEEDED", observation_verification:"VERIFIED", receipts:result.artifacts.map(a=>a.receipt) });
 }
 
 export function toWorldEvent({ event_id, request, adjudication, world_effect = {} }) {
   if (adjudication?.status !== "ACCEPTED") throw new Error("only accepted adjudication can project");
-  return Object.freeze({ event_id, event_type:"EXECUTION_ADJUDICATION", subject:request.quest_id, grant_id:request.grant_id, admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED", evidence:"OBSERVED", outcome:adjudication.observed_outcome, receipts:adjudication.receipts, world_effect });
+  return Object.freeze({ event_id, event_type:"EXECUTION_ADJUDICATION", subject:request.quest_id, grant_id:request.grant_id, admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED", evidence:"OBSERVED", observation_verification:adjudication.observation_verification, outcome:adjudication.observed_outcome, receipts:adjudication.receipts, world_effect });
 }

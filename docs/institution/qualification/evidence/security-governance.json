@@ -1,0 +1,178 @@
+{
+  "schema": "ngl.qualification.security-governance.v1",
+  "type": "INTERNAL_AI_ADVERSARIAL_QUALIFICATION",
+  "startedAt": "2026-10-18T20:12:50.811Z",
+  "completedAt": "2026-10-18T20:12:51.795Z",
+  "runtime": "v24.19.0",
+  "sourceHead": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "command": "node scripts/qualification/security-governance.mjs",
+  "exitCode": 0,
+  "safety": {
+    "disposableStateRemoved": true,
+    "explicitFakeFounderKey": true,
+    "generatedInMemoryProviderKeys": true,
+    "externalRequests": 0,
+    "productionCodeModified": false
+  },
+  "interpretation": "A zero exit means the controls and bounded reproductions matched assertions; confirmed weaknesses remain failures of the tested claims.",
+  "checks": [
+    {
+      "id": "HTTP-BOUNDARIES",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "checks": [
+        {
+          "label": "wrong-key",
+          "status": 401,
+          "code": "UNAUTHENTICATED"
+        },
+        {
+          "label": "payload-founder-spoof",
+          "status": 400,
+          "code": "INVALID_FIELDS"
+        },
+        {
+          "label": "witness-policy",
+          "status": 403,
+          "code": "FORBIDDEN"
+        },
+        {
+          "label": "witness-draft",
+          "status": 403,
+          "code": "FORBIDDEN"
+        },
+        {
+          "label": "cross-origin",
+          "status": 403,
+          "code": "CROSS_ORIGIN"
+        },
+        {
+          "label": "null-origin",
+          "status": 403,
+          "code": "CROSS_ORIGIN"
+        },
+        {
+          "label": "fetch-cross-site",
+          "status": 403,
+          "code": "CROSS_ORIGIN"
+        },
+        {
+          "label": "content-type",
+          "status": 415,
+          "code": "CONTENT_TYPE"
+        },
+        {
+          "label": "oversized-body",
+          "status": 413,
+          "code": "TOO_LARGE"
+        }
+      ]
+    },
+    {
+      "id": "PRIVATE-REDACTION",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "witnessDecisionFields": [
+        "createdAt",
+        "createdBy",
+        "disposition",
+        "expiredAt",
+        "expiresAt",
+        "id",
+        "policy",
+        "revision",
+        "status",
+        "title"
+      ],
+      "privateEvaluationVisibleToFounder": true,
+      "witnessExportPrivateDraftAbsent": true
+    },
+    {
+      "id": "LOGOUT-REVOCATION",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "replayStatus": 403,
+      "replayCode": "FORBIDDEN"
+    },
+    {
+      "id": "RESTART-REVOCATION",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "staleCookieStatus": 403
+    },
+    {
+      "id": "Q-SEC-001",
+      "classification": "REPRODUCED",
+      "outcome": "CONFIRMED_FAILURE",
+      "beforeRole": "founder",
+      "unauthenticatedSuccessfulRequests": 512,
+      "afterRole": "witness",
+      "failure": "512 cookie-less state reads evict an authenticated Founder session through the global 512-session FIFO"
+    },
+    {
+      "id": "DECISION-PARTIAL-TAMPER",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "code": "DECISIONS_TAMPERED"
+    },
+    {
+      "id": "Q-GOV-001",
+      "classification": "REPRODUCED",
+      "outcome": "CONFIRMED_FAILURE",
+      "originalDisposition": "REJECTED",
+      "rewrittenDisposition": "APPROVED",
+      "attributedActor": "damien",
+      "originalHead": "558b14272f71803bf197c4507b9c754f334992919685a6ff658dba08ec4a8a12",
+      "rewrittenHead": "36c0d43ce040b0ae433ceeaffe49a3513a3d7df2e0b536d1a539864dbe05d6bc",
+      "prerequisite": "Offline write access to the decision envelope; no authentication key access needed",
+      "failure": "Consistent hash-chain/projection rewrite changes a recorded Founder rejection into an accepted Founder approval"
+    },
+    {
+      "id": "Q-GOV-002",
+      "classification": "REPRODUCED",
+      "outcome": "CONFIRMED_FAILURE",
+      "oldRevision": 3,
+      "restoredRevision": 2,
+      "terminalDispositionLost": "PENDING",
+      "prerequisite": "Restore an older valid envelope while service is stopped",
+      "failure": "Restart accepts a valid pre-disposition snapshot without a monotonic external head check"
+    },
+    {
+      "id": "DECISION-RECOVERY",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "restoredKnownGoodDisposition": "REJECTED"
+    },
+    {
+      "id": "COURIER-SIGNATURE-CONTROL",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "wrongKey": "INVALID_SIGNATURE",
+      "correctKey": "RESPONDED"
+    },
+    {
+      "id": "Q-SEC-002",
+      "classification": "REPRODUCED",
+      "outcome": "CONFIRMED_FAILURE",
+      "oldFingerprint": "4eecea7fc72ba1b8336afc3771488c936372114ba46736d8edf3b7fd09268c1a",
+      "acceptedFingerprint": "40669bf4551000adc0e6efd0bf709ab116709e341a06a1b6ed98338b9dfd112d",
+      "existingConfiguredInstanceAcceptedRegistryDrift": true,
+      "reopeningWithoutExternalPins": "RESPONDED",
+      "reopeningWithOriginalPins": "IDENTITY_CONFLICT",
+      "prerequisite": "Write access to courier.json and a newly generated attacker key; no enrolled private key access",
+      "failure": "Enrollment and signed receipts can be replaced together; transaction validation uses mutable disk enrollment rather than the configured original registry"
+    },
+    {
+      "id": "COURIER-RECOVERY",
+      "classification": "CONFIRMED",
+      "outcome": "PASS",
+      "originalRegistryRestored": true
+    }
+  ],
+  "limits": [
+    "No live records, real key files, deployment, third-party attacks or network exposure tested.",
+    "HTTP probes use Node fetch on a loopback server; browser/TLS/reverse-proxy behavior is untested.",
+    "Disk attacks assume write access to disposable state; this is not a remote unauthenticated exploit.",
+    "No independent human security or governance review; no certification claim."
+  ]
+}

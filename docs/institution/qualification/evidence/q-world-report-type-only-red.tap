@@ -1,0 +1,1202 @@
+TAP version 13
+# Subtest: both retained reports remain usable without making execution or authority claims
+not ok 1 - both retained reports remain usable without making execution or authority claims
+  ---
+  duration_ms: 3.090119
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:11:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /report consistency.*not independent verification/i. Input:
+    
+    'Retained local report; external use is unverified.'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'Retained local report; external use is unverified.'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:20:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.start (node:internal/test_runner/test:1242:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: a consistent INCONCLUSIVE report can retain failed executions and zero tests
+ok 2 - a consistent INCONCLUSIVE report can retain failed executions and zero tests
+  ---
+  duration_ms: 0.574124
+  type: 'test'
+  ...
+# Subtest: an accepted baseline remains representable without claiming transfer
+ok 3 - an accepted baseline remains representable without claiming transfer
+  ---
+  duration_ms: 0.415976
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate accepted string false
+ok 4 - report guard rejects candidate accepted string false
+  ---
+  duration_ms: 0.441895
+  type: 'test'
+  ...
+# Subtest: report guard rejects candidate accepted numeric one
+ok 5 - report guard rejects candidate accepted numeric one
+  ---
+  duration_ms: 0.304628
+  type: 'test'
+  ...
+# Subtest: report guard rejects baseline accepted string false
+ok 6 - report guard rejects baseline accepted string false
+  ---
+  duration_ms: 0.226771
+  type: 'test'
+  ...
+# Subtest: report guard rejects zero accepted tests
+not ok 7 - report guard rejects zero accepted tests
+  ---
+  duration_ms: 0.340382
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects negative tests
+not ok 8 - report guard rejects negative tests
+  ---
+  duration_ms: 0.311889
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects unsafe test count
+not ok 9 - report guard rejects unsafe test count
+  ---
+  duration_ms: 0.400623
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects fractional tests
+not ok 10 - report guard rejects fractional tests
+  ---
+  duration_ms: 0.454314
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects string test count
+not ok 11 - report guard rejects string test count
+  ---
+  duration_ms: 0.338079
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing test count
+not ok 12 - report guard rejects missing test count
+  ---
+  duration_ms: 0.246591
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects failed tests
+not ok 13 - report guard rejects failed tests
+  ---
+  duration_ms: 0.248193
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects string test exit
+not ok 14 - report guard rejects string test exit
+  ---
+  duration_ms: 0.247142
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing test exit
+not ok 15 - report guard rejects missing test exit
+  ---
+  duration_ms: 0.302926
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects tests explicitly failed
+not ok 16 - report guard rejects tests explicitly failed
+  ---
+  duration_ms: 0.25254
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects candidate integrity failed
+not ok 17 - report guard rejects candidate integrity failed
+  ---
+  duration_ms: 0.222234
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects candidate integrity string
+not ok 18 - report guard rejects candidate integrity string
+  ---
+  duration_ms: 0.1993
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing integrity
+not ok 19 - report guard rejects missing integrity
+  ---
+  duration_ms: 0.207162
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects accepted with retained error
+not ok 20 - report guard rejects accepted with retained error
+  ---
+  duration_ms: 0.191779
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects errors string
+not ok 21 - report guard rejects errors string
+  ---
+  duration_ms: 0.201493
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects non-string error
+not ok 22 - report guard rejects non-string error
+  ---
+  duration_ms: 0.216676
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing errors
+not ok 23 - report guard rejects missing errors
+  ---
+  duration_ms: 0.200061
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects zero task required files
+not ok 24 - report guard rejects zero task required files
+  ---
+  duration_ms: 0.38573
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects unsafe required files
+not ok 25 - report guard rejects unsafe required files
+  ---
+  duration_ms: 0.216125
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects fractional required files
+not ok 26 - report guard rejects fractional required files
+  ---
+  duration_ms: 0.277117
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects string required files
+not ok 27 - report guard rejects string required files
+  ---
+  duration_ms: 0.204057
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects candidate file requirement differs
+not ok 28 - report guard rejects candidate file requirement differs
+  ---
+  duration_ms: 0.255274
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects baseline file requirement differs
+not ok 29 - report guard rejects baseline file requirement differs
+  ---
+  duration_ms: 0.187602
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects no matched files
+not ok 30 - report guard rejects no matched files
+  ---
+  duration_ms: 4.179338
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects negative matched files
+not ok 31 - report guard rejects negative matched files
+  ---
+  duration_ms: 0.233702
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects excess matched files
+not ok 32 - report guard rejects excess matched files
+  ---
+  duration_ms: 0.22621
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects string matched files
+not ok 33 - report guard rejects string matched files
+  ---
+  duration_ms: 0.209826
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects failed build
+not ok 34 - report guard rejects failed build
+  ---
+  duration_ms: 0.174864
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects build explicitly failed
+not ok 35 - report guard rejects build explicitly failed
+  ---
+  duration_ms: 0.197948
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing build exit
+not ok 36 - report guard rejects missing build exit
+  ---
+  duration_ms: 0.192199
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects null build
+not ok 37 - report guard rejects null build
+  ---
+  duration_ms: 0.203626
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects failed command entry point
+not ok 38 - report guard rejects failed command entry point
+  ---
+  duration_ms: 0.164938
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects failed browser entry point
+not ok 39 - report guard rejects failed browser entry point
+  ---
+  duration_ms: 0.162704
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects string browser passed
+not ok 40 - report guard rejects string browser passed
+  ---
+  duration_ms: 0.177117
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects false browser passed despite zero exit
+not ok 41 - report guard rejects false browser passed despite zero exit
+  ---
+  duration_ms: 0.182575
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects true browser passed despite failed exit
+not ok 42 - report guard rejects true browser passed despite failed exit
+  ---
+  duration_ms: 0.19918
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects explicit failed entry point flag
+not ok 43 - report guard rejects explicit failed entry point flag
+  ---
+  duration_ms: 0.16621
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing entry point
+not ok 44 - report guard rejects missing entry point
+  ---
+  duration_ms: 0.242374
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects empty entry point
+not ok 45 - report guard rejects empty entry point
+  ---
+  duration_ms: 0.188864
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects TRANSFER with accepted baseline
+not ok 46 - report guard rejects TRANSFER with accepted baseline
+  ---
+  duration_ms: 0.253211
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects TRANSFER with failed baseline integrity
+not ok 47 - report guard rejects TRANSFER with failed baseline integrity
+  ---
+  duration_ms: 0.188824
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects TRANSFER with failed source integrity
+not ok 48 - report guard rejects TRANSFER with failed source integrity
+  ---
+  duration_ms: 0.174012
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects TRANSFER with rejected candidate
+not ok 49 - report guard rejects TRANSFER with rejected candidate
+  ---
+  duration_ms: 0.180942
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects unknown classification
+not ok 50 - report guard rejects unknown classification
+  ---
+  duration_ms: 0.175364
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects wrong schema
+ok 51 - report guard rejects wrong schema
+  ---
+  duration_ms: 0.170576
+  type: 'test'
+  ...
+# Subtest: report guard rejects blank report id
+not ok 52 - report guard rejects blank report id
+  ---
+  duration_ms: 0.250507
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects non-object tasks
+not ok 53 - report guard rejects non-object tasks
+  ---
+  duration_ms: 0.358039
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /Invalid institutional experiment report/. Input:
+    
+    'Error: Incomplete institutional task report'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: 'Incomplete institutional task report'
+  stack: |-
+    projectProjection (file:///tmp/q-world-project-projection-type-only.mjs:7:124)
+    file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:25
+    getActual (node:assert:611:5)
+    strict.throws (node:assert:759:24)
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects missing second task
+not ok 54 - report guard rejects missing second task
+  ---
+  duration_ms: 0.23245
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /Invalid institutional experiment report/. Input:
+    
+    'Error: Incomplete institutional task report'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: 'Incomplete institutional task report'
+  stack: |-
+    projectProjection (file:///tmp/q-world-project-projection-type-only.mjs:7:124)
+    file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:25
+    getActual (node:assert:611:5)
+    strict.throws (node:assert:759:24)
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects non-string contradiction
+not ok 55 - report guard rejects non-string contradiction
+  ---
+  duration_ms: 0.207662
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects negative archive bytes
+not ok 56 - report guard rejects negative archive bytes
+  ---
+  duration_ms: 0.187362
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects non-finite duration
+not ok 57 - report guard rejects non-finite duration
+  ---
+  duration_ms: 0.218488
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects invalid command metadata
+not ok 58 - report guard rejects invalid command metadata
+  ---
+  duration_ms: 0.189104
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: report guard rejects invalid digest metadata
+not ok 59 - report guard rejects invalid digest metadata
+  ---
+  duration_ms: 0.216466
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:109:3'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected exception.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'throws'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+    Test.postRun (node:internal/test_runner/test:1522:19)
+    Test.run (node:internal/test_runner/test:1447:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+  ...
+# Subtest: null reports continue to project no accomplishments
+ok 60 - null reports continue to project no accomplishments
+  ---
+  duration_ms: 0.08685
+  type: 'test'
+  ...
+1..60
+# tests 60
+# suites 0
+# pass 7
+# fail 53
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 118.447418

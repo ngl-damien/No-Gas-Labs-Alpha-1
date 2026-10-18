@@ -1,0 +1,14 @@
+✔ standalone carries recursive modules, styles and unchanged original assets (29.917974ms)
+✔ distribution is independently readable ZIP, excludes runtime and includes verifiable manifest (11.484381ms)
+✔ module escaping game source fails instead of packaging private bytes (8.738298ms)
+✔ standalone supplies its own network-denying host policy without a server header (11.024297ms)
+✔ runtime data nested beneath source roots never enters a public source archive (13.962363ms)
+✔ anonymous session turnover does not evict an authenticated Founder (951.529231ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1059.284226

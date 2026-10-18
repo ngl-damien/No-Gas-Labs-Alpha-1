@@ -1,0 +1,63 @@
+{
+  "schema": "ngl.qualification.methodology.v1",
+  "baseline": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+  "scope": "Internal AI provenance/coherence checks, not re-observation of historical processes or independent specialist certification.",
+  "reportSHA256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307",
+  "records": [
+    {
+      "id": "Q-SCI-001-harness-binding",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-002-A-frozen-profile-binding",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-003-A-changed-profile-negative",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-AI-001-A-scoped-transfer-consistency",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-004-A-delivered-byte-binding",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-002-B-frozen-profile-binding",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-003-B-changed-profile-negative",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-AI-001-B-scoped-transfer-consistency",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-004-B-delivered-byte-binding",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-SCI-005-negative-tests-recorded",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-AI-002-no-human-speedup-inference",
+      "outcome": "PASS"
+    },
+    {
+      "id": "Q-AI-003-no-fabricated-operational-gate",
+      "outcome": "PASS"
+    }
+  ],
+  "limitations": [
+    "The prior experiment measures declared delivery capability against a narrower incumbent, not comparable elapsed speed.",
+    "Source tests and the evaluator remain controlled by one institution; pins identify bytes but do not establish an independent functional oracle.",
+    "Worker isolation was procedural. No cross-provider operation or sustained autonomy is established.",
+    "No historical human-intervention baseline or external-user acceptance is available.",
+    "The separate delegated methodology turn failed at a tool safety boundary; its unexecuted candidate-output concern remains a hypothesis, not a confirmed finding."
+  ]
+}

@@ -1,0 +1,31 @@
+✖ anonymous session turnover does not evict an authenticated Founder (894.89396ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 988.404614
+
+✖ failing tests:
+
+test at test/session-capacity.test.mjs:7:1
+✖ anonymous session turnover does not evict an authenticated Founder (894.89396ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'witness'
+  - 'founder'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/session-capacity.test.mjs:12:76)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'witness',
+    expected: 'founder',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

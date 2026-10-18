@@ -1,0 +1,52 @@
+test_absolute_path (test_engine.GateTests.test_absolute_path) ... ok
+test_changed_file_fails_even_if_read_bytes_match_declared_digest (test_engine.GateTests.test_changed_file_fails_even_if_read_bytes_match_declared_digest) ... ok
+test_claim_count_bounded (test_engine.GateTests.test_claim_count_bounded) ... ok
+test_cli_deep_invalid_fields_are_clean_bounded_errors (test_engine.GateTests.test_cli_deep_invalid_fields_are_clean_bounded_errors) ... ok
+test_cli_example_uses_actual_source_bytes (test_engine.GateTests.test_cli_example_uses_actual_source_bytes) ... ok
+test_cli_fifo_manifest_does_not_block (test_engine.GateTests.test_cli_fifo_manifest_does_not_block) ... ok
+test_cli_invalid_utf8_is_a_clean_error (test_engine.GateTests.test_cli_invalid_utf8_is_a_clean_error) ... ok
+test_cli_malformed_input_errors_without_traceback (test_engine.GateTests.test_cli_malformed_input_errors_without_traceback) ... ok
+test_cli_manifest_size_is_bounded (test_engine.GateTests.test_cli_manifest_size_is_bounded) ... ok
+test_cli_manifest_symlink_rejected (test_engine.GateTests.test_cli_manifest_symlink_rejected) ... ok
+test_cli_missing_root_is_a_clean_error (test_engine.GateTests.test_cli_missing_root_is_a_clean_error) ... ok
+test_cli_overflowed_json_number_is_rejected (test_engine.GateTests.test_cli_overflowed_json_number_is_rejected) ... ok
+test_cycle (test_engine.GateTests.test_cycle) ... ok
+test_dependency_caps (test_engine.GateTests.test_dependency_caps) ... ok
+test_dependency_depth_bounded (test_engine.GateTests.test_dependency_depth_bounded) ... ok
+test_dependency_depth_limit_does_not_depend_on_input_order (test_engine.GateTests.test_dependency_depth_limit_does_not_depend_on_input_order) ... ok
+test_direct_api_rejects_nonfinite_input_before_echoing_it (test_engine.GateTests.test_direct_api_rejects_nonfinite_input_before_echoing_it) ... ok
+test_directory_artifact_rejected (test_engine.GateTests.test_directory_artifact_rejected) ... ok
+test_distinct_files_still_do_not_prove_execution (test_engine.GateTests.test_distinct_files_still_do_not_prove_execution) ... ok
+test_duplicate_id (test_engine.GateTests.test_duplicate_id) ... ok
+test_evidence_count_bounded (test_engine.GateTests.test_evidence_count_bounded) ... ok
+test_fifo_artifact_does_not_block (test_engine.GateTests.test_fifo_artifact_does_not_block) ... ok
+test_hardlink_cannot_supply_a_second_kind (test_engine.GateTests.test_hardlink_cannot_supply_a_second_kind) ... ok
+test_identical_bytes_separate_files_rejected (test_engine.GateTests.test_identical_bytes_separate_files_rejected) ... ok
+test_invalid_claim_shape (test_engine.GateTests.test_invalid_claim_shape) ... ok
+test_invalid_evidence_shape (test_engine.GateTests.test_invalid_evidence_shape) ... ok
+test_invalid_field_objects_are_not_echoed_in_report (test_engine.GateTests.test_invalid_field_objects_are_not_echoed_in_report) ... ok
+test_invalid_sha256 (test_engine.GateTests.test_invalid_sha256) ... ok
+test_invalid_state_type_is_a_validation_error (test_engine.GateTests.test_invalid_state_type_is_a_validation_error) ... ok
+test_large_artifact (test_engine.GateTests.test_large_artifact) ... ok
+test_matching_evidence (test_engine.GateTests.test_matching_evidence) ... ok
+test_missing (test_engine.GateTests.test_missing) ... ok
+test_nul_path_rejected (test_engine.GateTests.test_nul_path_rejected) ... ok
+test_parent_directory_symlink_rejected (test_engine.GateTests.test_parent_directory_symlink_rejected) ... ok
+test_parent_traversal (test_engine.GateTests.test_parent_traversal) ... ok
+test_real_nul_path_returns_invalid_path (test_engine.GateTests.test_real_nul_path_returns_invalid_path) ... ok
+test_root_must_be_directory (test_engine.GateTests.test_root_must_be_directory) ... ok
+test_same_file_cannot_satisfy_two_kinds (test_engine.GateTests.test_same_file_cannot_satisfy_two_kinds) ... ok
+test_sha256_requires_exact_hex_without_suffix (test_engine.GateTests.test_sha256_requires_exact_hex_without_suffix) ... ok
+test_source_only_caps_verified (test_engine.GateTests.test_source_only_caps_verified) ... ok
+test_symlink_rejected (test_engine.GateTests.test_symlink_rejected) ... ok
+test_tampering (test_engine.GateTests.test_tampering) ... ok
+test_unknown_dependency (test_engine.GateTests.test_unknown_dependency) ... ok
+test_unknown_kind (test_engine.GateTests.test_unknown_kind) ... ok
+test_unsafe_portable_paths (test_engine.GateTests.test_unsafe_portable_paths) ... ok
+test_uppercase_sha256_accepted (test_engine.GateTests.test_uppercase_sha256_accepted) ... ok
+test_valid_sha256_regex (test_engine.GateTests.test_valid_sha256_regex) ... ok
+
+----------------------------------------------------------------------
+Ran 47 tests in 0.587s
+
+OK

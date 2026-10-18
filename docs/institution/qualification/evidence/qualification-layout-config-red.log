@@ -1,0 +1,26 @@
+✔ partial restore cannot silently initialize a missing decision or world store (25.737155ms)
+✔ an initialized layout detects deletion of both stores and preserves its anchor (5.916944ms)
+✔ an intact prior two-store runtime can be adopted and reopened without changing either store (10.407787ms)
+✖ invalid startup configuration does not poison a fresh runtime directory (2.834025ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 142.953467
+
+✖ failing tests:
+
+test at test/runtime-layout.test.mjs:22:1
+✖ invalid startup configuration does not poison a fresh runtime directory (2.834025ms)
+  Error: Initialized runtime is incomplete: required store missing. Restore the complete runtime offline; missing stores must not be initialized as a new institution.
+      at fail (file:///workspace/No-Gas-Labs-Alpha-1/game/runtime-layout.mjs:4:42)
+      at ensureRuntimeLayout (file:///workspace/No-Gas-Labs-Alpha-1/game/runtime-layout.mjs:13:30)
+      at async createGameServer (file:///workspace/No-Gas-Labs-Alpha-1/game/server.mjs:152:3)
+      at async TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/runtime-layout.test.mjs:23:245)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'INCOMPLETE_RUNTIME'
+  }

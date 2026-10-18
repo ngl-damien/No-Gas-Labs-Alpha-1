@@ -1,0 +1,1105 @@
+✖ both retained reports remain usable without making execution or authority claims (3.566977ms)
+✔ a consistent INCONCLUSIVE report can retain failed executions and zero tests (0.682016ms)
+✔ an accepted baseline remains representable without claiming transfer (0.347873ms)
+✖ report guard rejects candidate accepted string false (0.435155ms)
+✖ report guard rejects candidate accepted numeric one (0.290948ms)
+✖ report guard rejects baseline accepted string false (0.233992ms)
+✖ report guard rejects zero accepted tests (0.233882ms)
+✖ report guard rejects negative tests (0.276656ms)
+✖ report guard rejects unsafe test count (0.372741ms)
+✖ report guard rejects fractional tests (0.421975ms)
+✖ report guard rejects string test count (0.397368ms)
+✖ report guard rejects missing test count (0.299431ms)
+✖ report guard rejects failed tests (0.260632ms)
+✖ report guard rejects string test exit (0.323326ms)
+✖ report guard rejects missing test exit (0.21283ms)
+✖ report guard rejects tests explicitly failed (0.261644ms)
+✖ report guard rejects candidate integrity failed (0.190006ms)
+✖ report guard rejects candidate integrity string (0.196065ms)
+✖ report guard rejects missing integrity (0.271739ms)
+✖ report guard rejects accepted with retained error (0.253261ms)
+✖ report guard rejects errors string (0.189805ms)
+✖ report guard rejects non-string error (0.202845ms)
+✖ report guard rejects missing errors (0.194743ms)
+✖ report guard rejects zero task required files (0.476106ms)
+✖ report guard rejects unsafe required files (0.222074ms)
+✖ report guard rejects fractional required files (0.19916ms)
+✖ report guard rejects string required files (0.492511ms)
+✖ report guard rejects candidate file requirement differs (0.222234ms)
+✖ report guard rejects baseline file requirement differs (0.323787ms)
+✖ report guard rejects no matched files (0.867866ms)
+✖ report guard rejects negative matched files (0.24595ms)
+✖ report guard rejects excess matched files (0.198189ms)
+✖ report guard rejects string matched files (0.188804ms)
+✖ report guard rejects failed build (0.410157ms)
+✖ report guard rejects build explicitly failed (0.205539ms)
+✖ report guard rejects missing build exit (0.18569ms)
+✖ report guard rejects null build (0.172519ms)
+✖ report guard rejects failed command entry point (0.161032ms)
+✖ report guard rejects failed browser entry point (0.292701ms)
+✖ report guard rejects string browser passed (0.233251ms)
+✖ report guard rejects false browser passed despite zero exit (0.192279ms)
+✖ report guard rejects true browser passed despite failed exit (0.16662ms)
+✖ report guard rejects explicit failed entry point flag (0.212109ms)
+✖ report guard rejects missing entry point (0.181954ms)
+✖ report guard rejects empty entry point (0.182144ms)
+✖ report guard rejects TRANSFER with accepted baseline (0.293962ms)
+✖ report guard rejects TRANSFER with failed baseline integrity (0.228304ms)
+✖ report guard rejects TRANSFER with failed source integrity (0.183767ms)
+✖ report guard rejects TRANSFER with rejected candidate (0.170696ms)
+✖ report guard rejects unknown classification (0.169305ms)
+✔ report guard rejects wrong schema (0.363587ms)
+✖ report guard rejects blank report id (0.207852ms)
+✖ report guard rejects non-object tasks (0.280292ms)
+✖ report guard rejects missing second task (0.215534ms)
+✖ report guard rejects non-string contradiction (0.391359ms)
+✖ report guard rejects negative archive bytes (0.262215ms)
+✖ report guard rejects non-finite duration (0.191288ms)
+✖ report guard rejects invalid command metadata (0.329586ms)
+✖ report guard rejects invalid digest metadata (0.187132ms)
+✔ null reports continue to project no accomplishments (0.114242ms)
+ℹ tests 60
+ℹ suites 0
+ℹ pass 4
+ℹ fail 56
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 125.170964
+
+✖ failing tests:
+
+test at test/institution-report.test.mjs:11:1
+✖ both retained reports remain usable without making execution or authority claims (3.566977ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /report consistency.*not independent verification/i. Input:
+  
+  'Retained local report; external use is unverified.'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:20:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Retained local report; external use is unverified.',
+    expected: /report consistency.*not independent verification/i,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects candidate accepted string false (0.435155ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects candidate accepted numeric one (0.290948ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects baseline accepted string false (0.233992ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects zero accepted tests (0.233882ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects negative tests (0.276656ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects unsafe test count (0.372741ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects fractional tests (0.421975ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects string test count (0.397368ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing test count (0.299431ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects failed tests (0.260632ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects string test exit (0.323326ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing test exit (0.21283ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects tests explicitly failed (0.261644ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects candidate integrity failed (0.190006ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects candidate integrity string (0.196065ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing integrity (0.271739ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects accepted with retained error (0.253261ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects errors string (0.189805ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects non-string error (0.202845ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing errors (0.194743ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects zero task required files (0.476106ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects unsafe required files (0.222074ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects fractional required files (0.19916ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects string required files (0.492511ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects candidate file requirement differs (0.222234ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects baseline file requirement differs (0.323787ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects no matched files (0.867866ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects negative matched files (0.24595ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects excess matched files (0.198189ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects string matched files (0.188804ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects failed build (0.410157ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects build explicitly failed (0.205539ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing build exit (0.18569ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects null build (0.172519ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects failed command entry point (0.161032ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects failed browser entry point (0.292701ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects string browser passed (0.233251ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects false browser passed despite zero exit (0.192279ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects true browser passed despite failed exit (0.16662ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects explicit failed entry point flag (0.212109ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing entry point (0.181954ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects empty entry point (0.182144ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects TRANSFER with accepted baseline (0.293962ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects TRANSFER with failed baseline integrity (0.228304ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects TRANSFER with failed source integrity (0.183767ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects TRANSFER with rejected candidate (0.170696ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects unknown classification (0.169305ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects blank report id (0.207852ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects non-object tasks (0.280292ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Invalid institutional experiment report/. Input:
+  
+  'Error: Incomplete institutional task report'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: Incomplete institutional task report
+        at projectProjection (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/project-projection.mjs:7:124)
+        at file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:25
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1382:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+        at Test.postRun (node:internal/test_runner/test:1522:19)
+        at Test.run (node:internal/test_runner/test:1447:12),
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects missing second task (0.215534ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Invalid institutional experiment report/. Input:
+  
+  'Error: Incomplete institutional task report'
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: Incomplete institutional task report
+        at projectProjection (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/project-projection.mjs:7:124)
+        at file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:25
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1382:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+        at Test.postRun (node:internal/test_runner/test:1522:19)
+        at Test.run (node:internal/test_runner/test:1447:12),
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects non-string contradiction (0.391359ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects negative archive bytes (0.262215ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects non-finite duration (0.191288ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects invalid command metadata (0.329586ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/institution-report.test.mjs:109:3
+✖ report guard rejects invalid digest metadata (0.187132ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:112:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid institutional experiment report/,
+    operator: 'throws',
+    diff: 'simple'
+  }

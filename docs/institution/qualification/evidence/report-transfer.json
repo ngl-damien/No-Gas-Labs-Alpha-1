@@ -1,0 +1,28 @@
+{
+  "schema": "ngl.qualification.report-transfer.v1",
+  "profileFreeze": "0202138",
+  "validatorPath": "src/institution/experiment-report.mjs",
+  "frozenSHA256": "39538f55b4933c7a811bc9b9b5ae583091528b00f1ad995a1fa4a7d2703b51aa",
+  "actualSHA256": "39538f55b4933c7a811bc9b9b5ae583091528b00f1ad995a1fa4a7d2703b51aa",
+  "taskA": {
+    "scope": "Public project report admission",
+    "originalPass": 5,
+    "typeOnlyPass": 8,
+    "sharedValidatorPass": 61,
+    "cases": 61
+  },
+  "taskB": {
+    "scope": "Fresh-process continuity recovery of byte-matching report",
+    "originalValidPass": 1,
+    "originalContradictionsAccepted": 4,
+    "afterValidPass": 1,
+    "afterContradictionsRejected": 4,
+    "validatorChanged": false
+  },
+  "classification": "TRANSFER_OBSERVED_INTERNAL_REPORT_CONSISTENCY",
+  "limits": [
+    "Independent entrypoints and process contexts, not independent people or proof that report claims are true.",
+    "No measured before/after Founder workload baseline.",
+    "No operational Founder disposition or protected adoption."
+  ]
+}

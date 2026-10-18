@@ -1,0 +1,30 @@
+✔ anonymous session turnover does not evict an authenticated Founder (962.885519ms)
+✖ expired authenticated sessions do not reserve capacity forever (1038.480843ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2119.151675
+
+✖ failing tests:
+
+test at test/session-capacity.test.mjs:15:1
+✖ expired authenticated sessions do not reserve capacity forever (1038.480843ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  429 !== 200
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/session-capacity.test.mjs:21:57)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 429,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

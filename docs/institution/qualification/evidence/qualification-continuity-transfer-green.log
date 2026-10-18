@@ -1,0 +1,18 @@
+✔ a new process recovers assignments, authority, evidence and unfinished work from durable files (56.393055ms)
+✔ recovery rejects a receipt whose current bytes differ (46.888519ms)
+✔ recovery does not accept traversal references or incomplete responsibility (93.984782ms)
+✔ recovery rejects missing machinery, unfinished work or Founder decision (164.951264ms)
+✔ recovery rejects present but meaningless responsibility and decision fields (334.026955ms)
+✔ fresh-process recovery retains a byte-matching consistent experiment (61.813616ms)
+✔ fresh-process recovery rejects byte-matching string acceptance (49.574621ms)
+✔ fresh-process recovery rejects byte-matching zero tests (52.155876ms)
+✔ fresh-process recovery rejects byte-matching failed tests (54.543823ms)
+✔ fresh-process recovery rejects byte-matching failed integrity (47.205506ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 765.013502

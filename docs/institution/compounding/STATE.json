@@ -18,6 +18,11 @@
       "role": "Next executor",
       "task": "Provision authorized durable HTTPS service, test real Founder access and recovery; measure routine human burden across the next comparable task cycle.",
       "status": "OPEN"
+    },
+    {
+      "role": "Next executor",
+      "task": "Read the qualification dossier, preserve its remaining host/caller trust limitations, and establish a real authenticated Founder qualification Gate only through authorized hosting.",
+      "status": "OPEN_OPERATIONAL_DEPENDENCY"
     }
   ],
   "machinery": {
@@ -54,9 +59,12 @@
     "No observed M0 human-intervention baseline; Founder burden improvement remains INCONCLUSIVE.",
     "No fresh cloud restoration or independently participating external Witness established.",
     "Original five conversation/two Sites readers absent; package used without claiming original access.",
-    "One observed delivery transfer does not establish sustained institutional growth."
+    "One observed delivery transfer does not establish sustained institutional growth.",
+    "Directive001 is incomplete: no real qualification Gate/Founder disposition or independent human specialist assessment.",
+    "Host-owned coherent decision rewrite/rollback and courier registry drift remain outside current integrity guarantees.",
+    "Legacy world admission still trusts caller labels; the new verification check is necessary, not authenticated independence."
   ],
-  "nextAction": "Read docs/institution/compounding/REPORT.md, run npm run recover:institution, verify retained source/evidence. Continue with durable HTTPS Gate and a measured real task cycle; do not start the operational 24-hour clock before its prerequisites.",
+  "nextAction": "Read docs/institution/qualification/REPORT.md and its offline proposal, run npm run recover:institution and npm run verify, then continue unresolved qualification work. No public launch or operational deadline is authorized by a local test.",
   "rollback": "Preserve cab8dfb Meteor branch and 52c6443 original package import. M1 is a separate operation; stop using it without modifying kernel invariants or rolling back unrelated source. Keep runtime owners stopped before offline recovery; never delete locks blindly.",
   "references": [
     {
@@ -98,6 +106,42 @@
     {
       "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs",
       "sha256": "5dba219ce6d1958db94c8b0d47b84f6ff36c4094f78d73a6e23129a224ee0d2c"
+    },
+    {
+      "path": "docs/institution/qualification/FOUNDER-DIRECTIVE-001.md",
+      "sha256": "1f843b20874b3262af198623487f2cbeaee7fa45c242c7b07628b00d3b54e1f1"
+    },
+    {
+      "path": "docs/institution/qualification/REPORT.md",
+      "sha256": "d39bd33299615e3806e3a6a86adb2138ed33a7123e9639103a7c1bdffd8a0dea"
+    },
+    {
+      "path": "docs/institution/qualification/FOUNDER-DECISION-PROPOSAL.json",
+      "sha256": "d00549f4fe859f626f67ecddb0263637d2b24f9ab19b04e788be51cf517d0221"
+    },
+    {
+      "path": "docs/institution/qualification/evidence/report-transfer.json",
+      "sha256": "48b48c73043fabef0977f46b198ebd58f64c437e718ecb76931f364beac63609"
+    },
+    {
+      "path": "docs/institution/qualification/evidence/verification-final.json",
+      "sha256": "e826297f55aacec80d3268a145735e5726115b313fa5c9735058627728b0e35d"
+    },
+    {
+      "path": "src/institution/experiment-report.mjs",
+      "sha256": "39538f55b4933c7a811bc9b9b5ae583091528b00f1ad995a1fa4a7d2703b51aa"
+    },
+    {
+      "path": "game/runtime-layout.mjs",
+      "sha256": "38d207c4abec169009d89906ced6954e684d6c4f9c6105fdc2f8299f33a40f1d"
     }
-  ]
+  ],
+  "qualification": {
+    "status": "LOCAL_HARDENING_RECORDED_DIRECTIVE_INCOMPLETE",
+    "entryPoint": "docs/institution/qualification/REPORT.md",
+    "baseline": "3d8485a7a5bf592dbc30d64691848f63e54b2211",
+    "proposal": "docs/institution/qualification/FOUNDER-DECISION-PROPOSAL.json",
+    "operationalURL": null,
+    "clockStarted": false
+  }
 }

@@ -1,0 +1,28 @@
+{
+  "schema": "ngl.qualification-proposal.v1",
+  "status": "UNACTIVATED_OFFLINE_PROPOSAL",
+  "decisionId": "qualification-001-controlled-specialist-review",
+  "operationalURL": null,
+  "reviewDeadline": null,
+  "clockStarted": false,
+  "evaluation": {
+    "path": "docs/institution/qualification/REPORT.md",
+    "receipt": {
+      "algorithm": "sha256",
+      "digest": "d39bd33299615e3806e3a6a86adb2138ed33a7123e9639103a7c1bdffd8a0dea",
+      "size": 11645
+    }
+  },
+  "choices": [
+    "AUTHORIZE CONTROLLED EXTERNAL SPECIALIST REVIEW",
+    "REQUIRE FURTHER HARDENING",
+    "REJECT THE PRESENT QUALIFICATION"
+  ],
+  "risks": [
+    "Internal AI review is not independent specialist certification",
+    "Trusted-host and caller-label boundaries remain",
+    "Public HTTPS, actual Founder access and human workload baseline are absent"
+  ],
+  "rollback": "Preserve 3d8485a and all original failure receipts. Revert individual patches only with their known weaknesses recorded; stop runtime owners before recovery.",
+  "authority": "Founder-only protected disposition; no default approval or automatic publication/promotion"
+}

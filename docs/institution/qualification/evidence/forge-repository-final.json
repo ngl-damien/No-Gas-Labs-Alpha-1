@@ -1,0 +1,2392 @@
+{
+  "schema": "ngl.forge-repository-report.v1",
+  "taskId": "0b3e9b55ed0b93026086dd3a0414297d060c5f7a6c6fd94dbea654a241425497",
+  "workloadId": "repository-tests-v1",
+  "createdAt": "2026-10-18T20:22:20.589Z",
+  "limits": {
+    "timeoutMs": 30000,
+    "maxOutputBytes": 1048576,
+    "concurrency": 2
+  },
+  "source": {
+    "schema": "ngl.forge-source.v1",
+    "snapshotMode": "git",
+    "revision": {
+      "head": "0202138e6ab3cfb98cc2a83e37ac7b4d0d56c0d4",
+      "dirty": true
+    },
+    "digest": "0e5254979b89190caedc737a90c062671216da213a2f61a82340f1db40972d0c",
+    "files": [
+      {
+        "path": ".github/workflows/genesis.yml",
+        "size": 428,
+        "sha256": "3e07d64b664d258b7b71f63f7f296efc7b3545c0479c02b5f99ff924fdc02c86"
+      },
+      {
+        "path": ".github/workflows/verify.yml",
+        "size": 372,
+        "sha256": "d9f4b02f9e7edc6790237224bb5247337ae8104fb3028ba5ef1bb8ebe7af3c57"
+      },
+      {
+        "path": ".gitignore",
+        "size": 37,
+        "sha256": "8a2921786b364fd3f9cbc50cea455638afd511b595686903a668d5d6dbc218dc"
+      },
+      {
+        "path": "README.md",
+        "size": 6283,
+        "sha256": "5a0a139000e442e693dc471364558526b6de65b11513062f9de562c2f8e6204d"
+      },
+      {
+        "path": "authority/index.html",
+        "size": 10033,
+        "sha256": "ccb31c0bfd1e149ea9065b768e0a3cb292220a6c528191ef73894009d6c2e91d"
+      },
+      {
+        "path": "core.mjs",
+        "size": 1320,
+        "sha256": "0a2ac9be1f392084d80bde97859e017381ca892f1abc24462dd9b31f90fe3d05"
+      },
+      {
+        "path": "docs/WORLD_PROJECTION_CONTRACT.md",
+        "size": 1181,
+        "sha256": "84802e996e6baf587041b9203d8524ea272b27f09973075fd1534b8cababb12e"
+      },
+      {
+        "path": "docs/institution/compounding/INTAKE.md",
+        "size": 5716,
+        "sha256": "a615e1a55ecd67b9718633e67dcc5a2604283208bcfdf1185e387eb4f6297cea"
+      },
+      {
+        "path": "docs/institution/compounding/PLAN.md",
+        "size": 7071,
+        "sha256": "02700bf6247dffb40f92a15830c6c13a2ae993affa669f1f26340b764c99a5b3"
+      },
+      {
+        "path": "docs/institution/compounding/REPORT.md",
+        "size": 10406,
+        "sha256": "8204f89b65bbc4616c4152fe85670601d49100826281fbd632f07bd554f44eb9"
+      },
+      {
+        "path": "docs/institution/compounding/REVIEW-POLICY.md",
+        "size": 823,
+        "sha256": "89af520f681072028ee7ef3185ca8e7b4941037f5dd34a683670be3f246b1ce6"
+      },
+      {
+        "path": "docs/institution/compounding/STATE.json",
+        "size": 4864,
+        "sha256": "a2127fa175d9e7f831762cc340b998c778fa7054071136cdedc4c7f4ae848010"
+      },
+      {
+        "path": "docs/institution/compounding/browser-review.md",
+        "size": 5126,
+        "sha256": "925b5d1570d9ea787c5a7212fb66c269280c307febd808c577a50d04168df81c"
+      },
+      {
+        "path": "docs/institution/compounding/decisions.md",
+        "size": 9528,
+        "sha256": "7cc26fff93229851922458d33452ac585b51b66b31e92496fdd022aabe277efc"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/baseline-aota.stderr.log",
+        "size": 1841,
+        "sha256": "fb250c90e0c9c2168e0068378b157447bcb00f4f5456eb39821ad7b43fdce98e"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/baseline-aota.stdout.log",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/baseline-tru.stderr.log",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/baseline-tru.stdout.log",
+        "size": 743,
+        "sha256": "cb1f1ad36cbbb63ccd685112b26715f746549218ded507179fb27466bb22d45e"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/baseline.json",
+        "size": 605,
+        "sha256": "9257c5d3e9fb37f5e6e5eddfc47c526734f0317e9e69a5c5e632d6da7906e3ad"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/browser-initial.json",
+        "size": 5611,
+        "sha256": "57c8664f8b9f0a9a3bb1b7941dd5af8f78bf257e77c1eb55f63a454cc73e6e39"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/browser.json",
+        "size": 5613,
+        "sha256": "bd97d522d3380b1428027d6823043907546d412560857f16ccd21a6bad8cee19"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/continuity.json",
+        "size": 3880,
+        "sha256": "43da8519ed505762266ad6398072659090ef0b7e43a6e48d30edc0a1f10e1474"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/experiment-initial.json",
+        "size": 9046,
+        "sha256": "7ccf67b8eaa03f7767d0f1373dd6a64a64b6999367db10604e3ff59ef61887ba"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/experiment.json",
+        "size": 10601,
+        "sha256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/forge-repository-execution.json",
+        "size": 77308,
+        "sha256": "c9e9e1e001c82d88e2b523f6ece7ac4ae6d7cd0cda0aa778345d4ba6da1eba44"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/founder-desktop-private-evaluation.png",
+        "size": 435046,
+        "sha256": "7a8fb8fba8642ed544a9bdb7f7a8cfdae5eab9357a9c04d42aebd0beac7d3cf9"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/founder-phone-private-evaluation.png",
+        "size": 80350,
+        "sha256": "3a3976e0aac55ed5537ee3f91e6a7c9e7daa0c42fc34c80165a77d5918e55a6b"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/legacy-browser.json",
+        "size": 859,
+        "sha256": "c90e8f444b605d23fe4b22228e77f05e1b89822bb42f49da22f304797857e75b"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/package-review.json",
+        "size": 5103,
+        "sha256": "20c6956a38f883cd026c4a2b6302c5fd7c5163e97a7649576fb3bce74bdadf8d"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/restarted-founder-desktop.png",
+        "size": 437135,
+        "sha256": "c6d77f6901426017c3f04737f9180feb48460f4c81cd23edd6867a2fff88cbe1"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/startup-config.json",
+        "size": 396,
+        "sha256": "d4e35e64294cf5f158b2b3fdac739554a4d4026b7f7fbc57a18ea53afa3221f0"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/task-a-execution.json",
+        "size": 6919,
+        "sha256": "20282960d0d345d7a340366cfbbcb18c9a9cf174254c7fe66d11dbb951b7eb0d"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/task-b-execution.json",
+        "size": 3884,
+        "sha256": "61615067816e926f90124612f807e9d47c98b29e8b36682faccd89f3ff6ccdc5"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-initial-failure.json",
+        "size": 1384,
+        "sha256": "f421f27d63a3584c2229b23a4fc9d39f5a0a3257289ed49210d5fec008086f6a"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-institutional-exercise.stdout.log",
+        "size": 308,
+        "sha256": "2a4f9dd843001957045d39e73551be6f24a4a5d20d6d66faf668f098e072c7ac"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-package.stdout.log",
+        "size": 148,
+        "sha256": "49e06864fe38848754c593b175a1cb2d368b97f157d0c3427757d5b5daf96f3c"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-python-inspector.stderr.log",
+        "size": 4694,
+        "sha256": "8fbfd030d8036ac658b1069a165c7f6619fb0d7a66ce6ecee5a8f92d6210a900"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-python-inspector.stdout.log",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-tests.stderr.log",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification-tests.stdout.log",
+        "size": 20598,
+        "sha256": "cdcdb8222beedd1ac073459042ef12dc95a6ea226d7e152ac8e9e3167f3a8a73"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/verification.json",
+        "size": 1378,
+        "sha256": "1d7d5e46b63a136ce33ea463d59d91d29265c466b68e177f4d0bb80b7bd41dcb"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/witness-phone-records.png",
+        "size": 77713,
+        "sha256": "5fd40096032d65f95069e2170a92630bc1fef4c9d3da1b7b8f53703c103a5349"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/witness-phone-redacted-gate.png",
+        "size": 72964,
+        "sha256": "289a9f879a7769e53fc750562188564d0a4901185693d5a5a45021708344f9f9"
+      },
+      {
+        "path": "docs/institution/compounding/evidence/world-desktop.png",
+        "size": 676037,
+        "sha256": "3d70f46911b9b329772f6714fc5cd117cf4a65fc8832eacfade1860e1fbcfe6f"
+      },
+      {
+        "path": "docs/institution/compounding/machinery.md",
+        "size": 6542,
+        "sha256": "4884085566e9f95954af075de09ff0a9a33bd1087b1713f2239e986bda3fcc07"
+      },
+      {
+        "path": "docs/institution/compounding/task-a.md",
+        "size": 8334,
+        "sha256": "de1d556492399d73f9b5588847211c2096bc80b6ef04efa8d94fceaf0daa75cf"
+      },
+      {
+        "path": "docs/institution/compounding/task-a.profile.json",
+        "size": 701,
+        "sha256": "2889a287c232be92b48fef44c393a3eebc1a662834a76461138bade9d279dcd2"
+      },
+      {
+        "path": "docs/institution/compounding/task-b.md",
+        "size": 7585,
+        "sha256": "4d3c8b1fc6d131fdb391881d5d55b68f4ed36f3e757c48f5c8df30e040836f8a"
+      },
+      {
+        "path": "docs/institution/compounding/task-b.profile.json",
+        "size": 884,
+        "sha256": "f78c354976e12f429194e760f362595d8408b6a55936bd968952e67dcacc225e"
+      },
+      {
+        "path": "docs/institution/qualification/FOUNDER-DIRECTIVE-001.md",
+        "size": 12465,
+        "sha256": "1f843b20874b3262af198623487f2cbeaee7fa45c242c7b07628b00d3b54e1f1"
+      },
+      {
+        "path": "docs/institution/qualification/PLAN.md",
+        "size": 1856,
+        "sha256": "47aceeb316eea65e85fca5a7e33677fce00dfb841620b7e0fb6188c372532c72"
+      },
+      {
+        "path": "docs/institution/qualification/engineering-continuity.md",
+        "size": 27003,
+        "sha256": "39a2c34f226358b664a3c98e023c501c9aec64eebfd3b14519b4316eb75a6cb3"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/engineering-continuity-after.json",
+        "size": 53901,
+        "sha256": "75164fdb225ad4fe78bc3f4d66ea0c8b2a075f61b64a2c13cb3722cfee4cc957"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/engineering-continuity-final.json",
+        "size": 2381,
+        "sha256": "8e717c0e69c7582f572d72138d73a8c21192a33934bed6ee6b4ee4b775dcced9"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/engineering-continuity.json",
+        "size": 52227,
+        "sha256": "d6d82bc603fbdb1782d032d1b454855bdf7fc62aef53695cc0f1f83028ae87b6"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/forge-repository.json",
+        "size": 88668,
+        "sha256": "0fedc763e78ffe5499182d5972fb956a14776409fbc8bcda2c552b7aa629fd2a"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/methodology-autonomy.json",
+        "size": 2070,
+        "sha256": "24f497990e07044584b6cd56a538fcdff80738777610884fc08e85a24b21c5a0"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-alternatives.json",
+        "size": 8196,
+        "sha256": "ee8550601a7281cfe4aa927c9b5b2fa2ef439b60f6c0bc73ca19ac851ae7d73d"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-alternatives.mjs",
+        "size": 3698,
+        "sha256": "b3c316cfa9cfcdf3558ff121c1391599332d0f74de295fc95422bf90db9087d0"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-baseline.log",
+        "size": 1455,
+        "sha256": "9776b8c7550a1271e91a3bbe68cf2e4ca2a76c54c2462ec8e541112342f94cb7"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-broader.log",
+        "size": 4824,
+        "sha256": "30fcd94f8d8c77eddbcf88a26917eee8483d8b82830a268645388de1445a8333"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-green.log",
+        "size": 1903,
+        "sha256": "c40e7d79bec393f0a32db7320f978d8ba1a8bc0446d86e32b272e023349d561d"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-producer-green.log",
+        "size": 2985,
+        "sha256": "c1677ad5dd488da9637bde230ada0aaae0a8b3162b52a74a2e95f8c9aabf7650"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-producer-red.log",
+        "size": 3786,
+        "sha256": "ec081dd7c77d65423086a2868aa0600e8de42df6ce1f20d0a2af0a98fcb12cc2"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-002-red.log",
+        "size": 6414,
+        "sha256": "9c6063decc579ce8fb18056673a6a4843657045659b5980454f05040596b6e45"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-baseline-red.tap",
+        "size": 54235,
+        "sha256": "19638322d11c90149e223e3abcd8601b33fdeafa17ceef721fcb168d2a9c48cb"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-final-green.tap",
+        "size": 10041,
+        "sha256": "330dff615f0bdcfdaff6dd978f84b2aefea90422286ad004a71be1a6f2bad7c8"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-full-suite-final.log",
+        "size": 25907,
+        "sha256": "c4091c13e2cd6be2233ac295aa0f70afca777b7ed763197eeb0b4785a88c7fa9"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-original-comparison.tap",
+        "size": 52566,
+        "sha256": "59353aeac095d9bf8d8069e9d8c35d4d8fb4a63c07a008808369d153f0ce52b9"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-shared-green.tap",
+        "size": 9831,
+        "sha256": "b436e380ed859cb51695d66ec383e016ca0bcb548fcdc02a616270828e7fd97f"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-signal-red.tap",
+        "size": 1430,
+        "sha256": "468af20722f5f05cc3338a11f53ba8c337c2ec30702d38c109db7f004ab5cf30"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-type-only-comparison.tap",
+        "size": 50378,
+        "sha256": "c5d82e97ce343441e331eb9a2e0d36ae3dbc303e97ea4e76f7be8c81041b26e9"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/q-world-report-type-only-red.tap",
+        "size": 50172,
+        "sha256": "2a6416ac55a57c703e73f5994dfd548be80cd35a5bc7998285707768dda462fe"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-capacity-green.log",
+        "size": 687,
+        "sha256": "4bc55e599c8f7da83245e5160c0c2315f9dc8c00e708a21b78f5e35393585985"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-capacity-red.log",
+        "size": 977,
+        "sha256": "933855f7766965a77fd9fde78f0399434a7f4fcbf981d316c5ac0c94b6857128"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-continuity-shape-red.log",
+        "size": 1206,
+        "sha256": "d640ecf6529b3e4c25d3a109361e6039fb11540d4ca1707cbfdd5fe4d94aca9e"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-continuity-transfer-green.log",
+        "size": 979,
+        "sha256": "381e289230ae69a57841b0969aae65d57677f5e080c0c031f1d35c2b3feb9e57"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-layout-config-green.log",
+        "size": 504,
+        "sha256": "ea549ccc72dca122979c8044615e9c6e707d33f66f429efaf1bd6989536088d2"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-layout-config-red.log",
+        "size": 1398,
+        "sha256": "587511e5aec797f94de3962d036773400b5d409769257b9ca64d339fb4e16bad"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-layout-green.log",
+        "size": 1978,
+        "sha256": "5b4794f9756ce0034a115ad81638db16d5c99e28d8f2dd9b1f130e8c40e1555b"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-layout-red.log",
+        "size": 2462,
+        "sha256": "0f081b1926abaa7334b51be12eb5a6f1811be7c899700a85bae13c6956bea6ca"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/qualification-report-transfer-red.log",
+        "size": 3039,
+        "sha256": "fc253c7b652823d3c7c7510fc78d72df3ba2cf33d9df689d68ecd3b9463c9f08"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/report-transfer.json",
+        "size": 1055,
+        "sha256": "48b48c73043fabef0977f46b198ebd58f64c437e718ecb76931f364beac63609"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/security-governance.json",
+        "size": 5869,
+        "sha256": "dca21be0c962a7d9127e8827bcc43de87a30bc6c822a272c84908adab2c0ba33"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/utility-world.json",
+        "size": 47216,
+        "sha256": "4f24482e0393f04f6e63349a51ad1b9e9bf9b89dc73e89a9ca74935786fc6255"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/verification-institutional-exercise.stdout.log",
+        "size": 308,
+        "sha256": "e45b30c2129fcccd5f38bb346d5944e62a909e37b9d8c9c2594324293222a3a1"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/verification-python-inspector.stderr.log",
+        "size": 4694,
+        "sha256": "4d3f6738ac0529c0f3075f8f7cb13f73a8acd648f759b4bb6727e689817c2661"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/verification-tests.stdout.log",
+        "size": 26189,
+        "sha256": "c4f128a868b22669035d29036d5fc2f46402a5e47e55bcdeaebf3a8e2da94e6b"
+      },
+      {
+        "path": "docs/institution/qualification/evidence/verification.json",
+        "size": 1395,
+        "sha256": "4bfe40f2a402300ac1b4dd3f1434459559db7c278f08271421db49e72c37653c"
+      },
+      {
+        "path": "docs/institution/qualification/legacy-repair.md",
+        "size": 9855,
+        "sha256": "769fffed9126e1e48bc6b0b671bd115ef24380dc8eaacefc8f746eef5bda96f9"
+      },
+      {
+        "path": "docs/institution/qualification/methodology-autonomy.md",
+        "size": 3762,
+        "sha256": "e05699c0862f66b0236fbbc46e16a7e0fe057fa7b2631c25fa6d4885f72fc37f"
+      },
+      {
+        "path": "docs/institution/qualification/report-repair.md",
+        "size": 11333,
+        "sha256": "cc4bef65f135e3ea034611d8a9911ab3f3c0c4ed46ac0718a452a26e4e3060a6"
+      },
+      {
+        "path": "docs/institution/qualification/report-transfer-profile.json",
+        "size": 1030,
+        "sha256": "bda6abb3c3077a5e361cf0575d097519c7d3c101e8c5cf2cb6bf09350e18decd"
+      },
+      {
+        "path": "docs/institution/qualification/security-governance.md",
+        "size": 4858,
+        "sha256": "7f3c05460ff0bfff48afe6e514faf2e88895141574eced730f3389eb3eba13e6"
+      },
+      {
+        "path": "docs/institution/qualification/utility-world.md",
+        "size": 22898,
+        "sha256": "49bed9e79df2d4ddac808bb7d97e99e4202b10e7b0c9d02b7b751055592dc34d"
+      },
+      {
+        "path": "docs/meteor/ASSET_PROVENANCE.md",
+        "size": 1515,
+        "sha256": "d7c72fbbaeec272fef8ec3d605a2294cfce1fd9f89834e7b9f45dd0158884e58"
+      },
+      {
+        "path": "docs/meteor/CHECKPOINT.md",
+        "size": 5758,
+        "sha256": "13dd6c9092a0ec711c832f560b2e461d4bebf8267310aacc77440132670edce0"
+      },
+      {
+        "path": "docs/meteor/CONTRACT.md",
+        "size": 8717,
+        "sha256": "27c3eed7328f65c04eb00d7b987d78adad1f784ab6b3d00aebfa9e41701e772b"
+      },
+      {
+        "path": "docs/meteor/PERFORMANCE.md",
+        "size": 8297,
+        "sha256": "970b19c21e5f160e61728721831bd00e4ecc384c81d6cf2c8172e792c5f4947e"
+      },
+      {
+        "path": "docs/meteor/PLAN.md",
+        "size": 3773,
+        "sha256": "a6916b66afbdbc1dff6b5b575c62664f094e1c8557dd41168d2258fdabc69bac"
+      },
+      {
+        "path": "docs/meteor/RECOVERY.md",
+        "size": 5109,
+        "sha256": "056d6df8b0d127693324fbb6b6169f3539bd393c64a5f8a1003e1458aa469358"
+      },
+      {
+        "path": "docs/meteor/REPORT.md",
+        "size": 9697,
+        "sha256": "1f8392600c0c4d8cd3fd0c90c7496618009674685079f1daadf01f125fad214e"
+      },
+      {
+        "path": "docs/meteor/REVIEW.md",
+        "size": 7823,
+        "sha256": "e5beb970519fc12c2309f18b9f706d344a8caee5f30cd4f24819e663be78e802"
+      },
+      {
+        "path": "docs/meteor/WEB_REVIEW.md",
+        "size": 6361,
+        "sha256": "e0b62d7fbb306824b2dfd5050ed25dfed31604ea02016156d5c5c55bc4186e85"
+      },
+      {
+        "path": "docs/meteor/courier.md",
+        "size": 10565,
+        "sha256": "73b3fc14d1bec90324db946a3fd5b16e47be89c197fb61afc4e6986d3063086e"
+      },
+      {
+        "path": "docs/meteor/evidence/browser.json",
+        "size": 860,
+        "sha256": "168d4603d0b61d1e9fcf7546b99a53ec661c0562de5a06f134484418a70114fd"
+      },
+      {
+        "path": "docs/meteor/evidence/desktop.png",
+        "size": 674224,
+        "sha256": "dc89589051725628031e187d6967a42063e5381157034303d18e5c4cdedbb6cd"
+      },
+      {
+        "path": "docs/meteor/evidence/evidence-index.json",
+        "size": 521,
+        "sha256": "5c8967a3d7be5024d42a33c2b92c0585ba53e5a942dcfc02393b047d23e6a328"
+      },
+      {
+        "path": "docs/meteor/evidence/failed-stage-320.png",
+        "size": 49429,
+        "sha256": "167c0416cd1b95512716febb88707eb0ad5ca4d83f59efad046325724be99f59"
+      },
+      {
+        "path": "docs/meteor/evidence/frame-investigation.json",
+        "size": 3768,
+        "sha256": "a7f30d4c73945a575fcf715d69af7829e3a5203f5b60819d72e66d60d0496b76"
+      },
+      {
+        "path": "docs/meteor/evidence/institutional-exercise.json",
+        "size": 4318,
+        "sha256": "8882934868a259df3a17df4e7f0d25897e0cd4f15a671bbf723907ebcc3d7b68"
+      },
+      {
+        "path": "docs/meteor/evidence/one-button-320-world.png",
+        "size": 145953,
+        "sha256": "735d9e99e59acbdc5532fe60e79d2ebbdc826ebcfb3325894138762276de8df2"
+      },
+      {
+        "path": "docs/meteor/evidence/one-button-412-stage.png",
+        "size": 61300,
+        "sha256": "41def4975cfd216bd58a5c054b258ccd0c1142d4a86d70e8c983b031a208eb05"
+      },
+      {
+        "path": "docs/meteor/evidence/package-review.json",
+        "size": 5771,
+        "sha256": "d4f59705f52d473ad283face2c0b1a74e282058eb368f7cf3b5ec1f02a11af4d"
+      },
+      {
+        "path": "docs/meteor/evidence/phone.png",
+        "size": 191989,
+        "sha256": "bcc9dc100b8d63b3c344f3e0b978b68e5e58d52b75f43d561b099f321c7143a6"
+      },
+      {
+        "path": "docs/meteor/evidence/shared-desktop.png",
+        "size": 678835,
+        "sha256": "5117226d180a19ba7844b0fbe5d0ad151c8b87a3a520a72f4af0a7aaac62baa4"
+      },
+      {
+        "path": "docs/meteor/evidence/shared-phone.png",
+        "size": 178160,
+        "sha256": "352c3f7c7c32e466969c74ec07c6d83732a89ce5c3e3c528a8b23d3fdb07c190"
+      },
+      {
+        "path": "docs/meteor/evidence/test-output.txt",
+        "size": 13097,
+        "sha256": "61bec74f6854b2a60626887315e3fb8d5af55dcdd7a4b54b0d051ad9a96bf27d"
+      },
+      {
+        "path": "docs/meteor/evidence/throughput.json",
+        "size": 2662,
+        "sha256": "695f170e8fc7426f52214df71e9a2d6bae77d2322da7904dee8379af1ccedfd3"
+      },
+      {
+        "path": "docs/meteor/evidence/verification.json",
+        "size": 1086,
+        "sha256": "fbac8ff6847e20ceb51936f7d7f1539769903d7516b2387b6d0068aa8256978d"
+      },
+      {
+        "path": "docs/meteor/forge.md",
+        "size": 13959,
+        "sha256": "b03fd45d6949f4353b2b0469ed3028ba6a2ab0fa434b9aa1b076c47c287f86fe"
+      },
+      {
+        "path": "docs/meteor/frame-fix.md",
+        "size": 7429,
+        "sha256": "84bbc2ba073e7768165b145d9451a02d37fd3d351c5a09d04e6c7c53e9e24253"
+      },
+      {
+        "path": "docs/meteor/kernel.md",
+        "size": 6488,
+        "sha256": "268afa51759b62283aa3ae1d64b65d41ccfc7e1b528523ce06ef51a45b984680"
+      },
+      {
+        "path": "docs/meteor/movement-fix.md",
+        "size": 1883,
+        "sha256": "e08fbd0e0e92dc3a4751fed454e07cd54607a9ea142f973e9f79c95ae21812a7"
+      },
+      {
+        "path": "docs/meteor/server.md",
+        "size": 8981,
+        "sha256": "6b37eca35edb9ea026ffc39808a3ebb9a9c09b728e134c577a1b1c3b1a6cfca1"
+      },
+      {
+        "path": "docs/meteor/world.md",
+        "size": 8873,
+        "sha256": "5c2eee674e5bd6898614dd170f376c4a91cfcb1e06e63ac758e73e0770d82e7b"
+      },
+      {
+        "path": "evidence.mjs",
+        "size": 793,
+        "sha256": "7aa0af9996fd525fc5d52247876a58bc5053102e8bf76d9677d818a0eefc0d50"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md",
+        "size": 9762,
+        "sha256": "6ce32dbac55b2fc25215bab6add49d8b55aba5a75913e483c220db6ea71ca7a7"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/CODEX-MISSION.md",
+        "size": 14295,
+        "sha256": "15df31ea0555472b5653c8a03c9dccf9f8e5491d404eda0a0fde4bb2714a8fa3"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/README.md",
+        "size": 5512,
+        "sha256": "d2a42c42e63e90d1fcd24aaac11a24d9b25d7454794882e974486944434c90df"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/RECONCILIATION-CONTRACT.md",
+        "size": 9268,
+        "sha256": "6ce1ed17e039548071e2dd2b196f95074bab16e7962d66f17a8b067f9ef3d9d9"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/README.md",
+        "size": 5742,
+        "sha256": "c8befa3ba65666fa5fc6e59698a8cfa59054c731d3bdbb0c4eda98b47902874d"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs",
+        "size": 12067,
+        "sha256": "5dba219ce6d1958db94c8b0d47b84f6ff36c4094f78d73a6e23129a224ee0d2c"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/examples/real-lineage.case.json",
+        "size": 5273,
+        "sha256": "efdcaabb6e650ba93802203862a254905b9e3a5df43e9d905adcd83a7a436bd0"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/index.html",
+        "size": 8456,
+        "sha256": "89374ce1a4e496efe30263697c09df4ee449e5491c986b5bbb74610fecfb8145"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/test.mjs",
+        "size": 13224,
+        "sha256": "0cc68736397662f95087d2a5b92b71bad80e04548014bbca796ecea3deaca548"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py",
+        "size": 10438,
+        "sha256": "f1ddf4ff9416045e09deaf4bc6b8d0a1b42bbe4e7870a45743a1a02146cca4c4"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/example_claims.json",
+        "size": 556,
+        "sha256": "32ab9dea06d00d2f52d6ab4b0f8e1c062a94da16a60137b7759ae6f8b2d0db79"
+      },
+      {
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/test_engine.py",
+        "size": 13841,
+        "sha256": "084daf870bcc30c195bcf5d0a72b7a6688e5c86d672116d0662c1cb330a84fd3"
+      },
+      {
+        "path": "experiments/tfe/2026-10-07-authority-adversary-invocation.md",
+        "size": 3148,
+        "sha256": "ea09785d0a9e2e1a595ba15f48dfda3c0a956ed1abb76228c396fd7a8c433cb2"
+      },
+      {
+        "path": "fixtures/forge/candidates/correct.mjs",
+        "size": 111,
+        "sha256": "d7ec045214939af161a11e026bd7e9da7d85b52c256c8b9b1c04f241badd48e8"
+      },
+      {
+        "path": "fixtures/forge/candidates/timeout.mjs",
+        "size": 121,
+        "sha256": "8d900bb682c0fd60ede3120dbef18f7d33990483ad4305941a8609ab0cde3c6a"
+      },
+      {
+        "path": "fixtures/forge/candidates/wrong.mjs",
+        "size": 122,
+        "sha256": "e55a97160f4b48ec72f2731aae38009d253bc3260939a4aab3dc924115321b79"
+      },
+      {
+        "path": "fixtures/forge/workload/benchmark.mjs",
+        "size": 326,
+        "sha256": "30229cc5f85ea0e8cee5fd68e5130a75078fc9171ffce56742d03a7638164803"
+      },
+      {
+        "path": "fixtures/forge/workload/candidate.mjs",
+        "size": 111,
+        "sha256": "d7ec045214939af161a11e026bd7e9da7d85b52c256c8b9b1c04f241badd48e8"
+      },
+      {
+        "path": "fixtures/forge/workload/verify.mjs",
+        "size": 1342,
+        "sha256": "f513133706396acdeaf7c90180370cb425a78b0bd0ca96c3ecb9d2c33aa3bbf8"
+      },
+      {
+        "path": "game/artifacts.mjs",
+        "size": 11472,
+        "sha256": "d0c68faff664e2ccb69c1d48fa6c27af95b31ae5f9b31eb7273072650fcd9354"
+      },
+      {
+        "path": "game/assets/comic/cover_a.jpg",
+        "size": 145147,
+        "sha256": "93d9ae971ba9876d0186380db034b8d1c44eb97c4f6823ca7458b69dbbe3495d"
+      },
+      {
+        "path": "game/assets/comic/p10.jpg",
+        "size": 120271,
+        "sha256": "f4be1f3f04fd590539b5ec7414d81c84d7c6bdbf1d319436c184cafe001d11f3"
+      },
+      {
+        "path": "game/assets/comic/p13.jpg",
+        "size": 110839,
+        "sha256": "76ff0b5604e7e17deb75c36bb6fc589825c6b29d5f8529cc59a449485842d6df"
+      },
+      {
+        "path": "game/assets/comic/p3.jpg",
+        "size": 110084,
+        "sha256": "a179e44d5f447a39225e0bfba9186b55423a5bf6ea2dca6b01ca41359bac6472"
+      },
+      {
+        "path": "game/assets/comic/p4.jpg",
+        "size": 125352,
+        "sha256": "cc7f17f9c136a1279436e3e1a8ecb3628f20e342338887a4db3199c25e4dacf4"
+      },
+      {
+        "path": "game/assets/comic/p5.jpg",
+        "size": 119036,
+        "sha256": "30738a0a3e335d10401cd4d02289cd5f5392978b1e5d21dbb525d6c95430b1c9"
+      },
+      {
+        "path": "game/client.mjs",
+        "size": 39439,
+        "sha256": "2e5cd95c519716d3f264661bf2a8f333709ac972625d042f0bf75de8761e6510"
+      },
+      {
+        "path": "game/index.html",
+        "size": 6096,
+        "sha256": "d6175ba67d3e475274ff7a569a092405a9eee423061ba3ed06644bb42f3b60f8"
+      },
+      {
+        "path": "game/institution-view.mjs",
+        "size": 2206,
+        "sha256": "5c76c50bd3ebbdd8618d230a4e7d6ae83219b97a10e495b4096b82008df1443e"
+      },
+      {
+        "path": "game/launchpad.mjs",
+        "size": 9708,
+        "sha256": "29a5f882645b52b2c3bac5fab78bbce79defdd0acee00602476997ecbf49be82"
+      },
+      {
+        "path": "game/model.mjs",
+        "size": 11998,
+        "sha256": "23a3d828b332f7214de0baa9374c68e10daf8d5001dcacedf5741e55f35bc260"
+      },
+      {
+        "path": "game/runtime-layout.mjs",
+        "size": 1864,
+        "sha256": "38d207c4abec169009d89906ced6954e684d6c4f9c6105fdc2f8299f33a40f1d"
+      },
+      {
+        "path": "game/server.mjs",
+        "size": 30836,
+        "sha256": "be60a27f5b66f9ac6f886d26041f765d1427625b2853601a7df354fc2c19164b"
+      },
+      {
+        "path": "game/service-store.mjs",
+        "size": 2830,
+        "sha256": "5959d35b92be80d673ca3f9f93855d870284dd6b7d57185b901f86e7fbd439d8"
+      },
+      {
+        "path": "game/styles.css",
+        "size": 19028,
+        "sha256": "cc0f5e1abbac2a15328d6b59295571b278069dfcd2286d9502fa4484ca8881de"
+      },
+      {
+        "path": "game/world-view.mjs",
+        "size": 20038,
+        "sha256": "1ca16ee220984e069cfa543420311f660289a8faba547d9c292b07e3451d1859"
+      },
+      {
+        "path": "genesis.test.mjs",
+        "size": 1079,
+        "sha256": "a3068090d00b2a22b576f81544bbee263a7e93630de832cb45e7f8a1f03fac43"
+      },
+      {
+        "path": "location/index.html",
+        "size": 4107,
+        "sha256": "24d92396d70c2122aa0db2f3f3caf082e37922fbdacdb19e2d5a582907ece688"
+      },
+      {
+        "path": "package.json",
+        "size": 640,
+        "sha256": "344673b6e889e161d1e138e53aea667f2fdfb7ceabd0fcfd1157134958ff0445"
+      },
+      {
+        "path": "products/authority-adversary/v0.2/README.md",
+        "size": 1126,
+        "sha256": "6abd38a1ad215da36e03a38c2a57ed0af91ca778c88ac3a1bce2e3a5dfea5a18"
+      },
+      {
+        "path": "products/authority-adversary/v0.2/acceptance-tests.json",
+        "size": 800,
+        "sha256": "8d5d6cfb6a29c35fa149435339f923c673a82a0fe4ce8169fa91956a8fcd22b6"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-02-evidence-is-not-authority-the-neophyte-principle.md",
+        "size": 3037,
+        "sha256": "2b62ef1b3f21be97bae7825fb00ea5f4858f33e87e1f64ecdfb4a2f7ad493474"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-03-the-run-happened-the-state-did-not-move.md",
+        "size": 2739,
+        "sha256": "d720129441c92a39b516867c51320f14e16f7f05df653e5995def28da6c0de3d"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-04-a-green-checkmark-is-not-a-state-transition.md",
+        "size": 2793,
+        "sha256": "cd6120bc87731fd2386267996061f3e711df01c8e7bd0db6291624c517336cde"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-05-the-button-is-live-the-authority-is-not.md",
+        "size": 7914,
+        "sha256": "21c13ccaa9838b039051092628428e18152adca7717690f91b4edd0f91a52752"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-06-the-key-can-sign-it-still-cannot-rule.md",
+        "size": 7731,
+        "sha256": "f46f7435dcbeee48dcc0744eb7caf6be97ec74bcf255bc03bd3f25d172347136"
+      },
+      {
+        "path": "publications/experiment-001/2026-10-07-the-model-should-be-allowed-to-fail.md",
+        "size": 8597,
+        "sha256": "ae98fa565e7341ea0c728868d8b3c86c562f0b592ab3e4cd5c310c115281c0ea"
+      },
+      {
+        "path": "publications/experiment-001/README.md",
+        "size": 2285,
+        "sha256": "f1fa9d3b521ea0234c4aeefeeae5cd191b05ca54ec1837ebc4a0548540deefc7"
+      },
+      {
+        "path": "quests/reconstitute-alpha-1.json",
+        "size": 694,
+        "sha256": "1460beb89c287321e2c336633c44c2db256d8187c828582a8d986b29a63090bf"
+      },
+      {
+        "path": "reconstitution/LEDGER-001.md",
+        "size": 1787,
+        "sha256": "06fef043d3225915447caa4aea55d4e95ffdd58b157369c031378a285c450c4a"
+      },
+      {
+        "path": "reconstitution/capability-graph.v1.json",
+        "size": 3503,
+        "sha256": "046dee39ab1f9d60f2fe93f3fe9ac6724f517428c84349087ecf041971fb0937"
+      },
+      {
+        "path": "reconstitution/known-weakness-origin-label.test.mjs",
+        "size": 1474,
+        "sha256": "17f9968c7881f63401b474087f950d1f52b6a1f898879dfc2df2b5377bec7410"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.github/dependabot.yml",
+        "size": 205,
+        "sha256": "809da9d0ea9595244c52f7d547f908861d41cae872725aa43a20decd115bdf48"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.github/workflows/ci.yml",
+        "size": 490,
+        "sha256": "d5a0ccc20679416b7b9f73324c4137ca4f427eb6ea5fcf6382554019a66e3c9f"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.github/workflows/ip-protection.yml",
+        "size": 2553,
+        "sha256": "a7fa5ea5e7ed419a3c0fce18d92f924799313f7a1f38376e8fe220ba2ca2dd76"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.github/workflows/org-ci.yml",
+        "size": 460,
+        "sha256": "c305b1237c85d01be35321fdf002123ff5f6658605c3be51ae0e3605b22a7c8c"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.github/workflows/ralph-validation.yml",
+        "size": 5121,
+        "sha256": "667ba2d9188a6961f9befa05f49bad5a109ce24e76b8e7ba697a38425d08b6d6"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.gitignore",
+        "size": 67,
+        "sha256": "7f3b982ac4f0d7fad59b9e5751078fe19dc6f549190b61fc266faaefeb795dfa"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.replit",
+        "size": 813,
+        "sha256": "eaa7e390362ec72ad159ad243455f2d44698602f139f6583bcbbd43f43a8c6ff"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/.repo-classification.json",
+        "size": 200,
+        "sha256": "f922e3fac23f3b26dc9b461e41f5d3a8656c396412dbfd22b6bb46d49af2cb3d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/AGENTS.md",
+        "size": 1202,
+        "sha256": "2e9e9c1eaf51029ad5bec5adc18b54a30b7efcc2f6218d1143d95c0887b9b6e1"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/CHANGELOG.md",
+        "size": 129,
+        "sha256": "941f990a902bcdcab9995d034b98b22a885803cc2739cfd9da84321553d75c90"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/CODEOWNERS",
+        "size": 256,
+        "sha256": "a3cdfd3dda3e9111a47c466920e28c1dee470a98cc065c021edc748984581484"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/CODE_OF_CONDUCT.md",
+        "size": 382,
+        "sha256": "af4837489dbe6b0f7dc9c52e35e9ea3f8db494fd861d6ec60714531ffa99fe1d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/CONTRIBUTING.md",
+        "size": 778,
+        "sha256": "2ec1abf84cacdeac927049e3c40432493e60f4e221df3c38bf5552ae49ff5715"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/IP-METADATA.json",
+        "size": 1775,
+        "sha256": "e151cc0310181e5d978f1dd7deb9668bb6eb6d8a94fd58f0073aacae6e57a606"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/LICENSE",
+        "size": 2198,
+        "sha256": "07e69ea1ed10137b3888bfabc41c24dd616aad9067a4d0439a1506320b982b03"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/LICENSE.md",
+        "size": 2486,
+        "sha256": "89f90f3cf7813fd883a9fff657bf631eb6502641273592f998191416d7d8781d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/README.md",
+        "size": 418,
+        "sha256": "05a94f522b5e9a05bfbb9f709daae3c20e97ed17c1422c58e320fc906b2bee8c"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/assets/icons.svg",
+        "size": 15302,
+        "sha256": "d8be82131c3e14dd922cea28136fef25c703b408cdf3c1b805b918e1b1383a1b"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Absolutely-here-s-an-expanded-enhanced-and-more-detailed-batch-of-tasks-for-your-Replit-deployme-1754770040839_1754770040841.txt",
+        "size": 5693,
+        "sha256": "32de00e68adab0327c04a1b2fb2a78972ec9d5b586b6f5dd6e9c14ab34ac84bd"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Awesome-diving-in-I-ll-deliver-the-full-project-in-manageable-production-ready-chunks-so-you-can-1754783042946_1754783042947.txt",
+        "size": 12829,
+        "sha256": "20f275cb93e6c48b7cd3b833fc1f67c393201e0ae14b517822f0f0700e61a3f7"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Fantastic-this-is-a-huge-fun-project-I-ll-deliver-a-complete-modular-production-oriented-bluep-1754782952942_1754782952945.txt",
+        "size": 32409,
+        "sha256": "b720d7133178749394e3d165b0e60b7fa533ab2d81da034c18fca97e86a4f690"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Got-it-Here-s-a-complete-end-to-end-web-based-multiplayer-game-called-No-Gas-Slaps-that-you-can-r-1754798400618_1754798400624.txt",
+        "size": 9530,
+        "sha256": "432729b488e23748b52e4d138b3013add1742133a0e8ab78e61229feea397570"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Got-it-I-ll-imagine-guiding-you-through-17-progressive-focused-improvement-rounds-pushing-the-pro-1754770649724_1754770649726.txt",
+        "size": 4432,
+        "sha256": "b40af3fd949af4a52e241314886fb159066855628d99fb107ab86a06b030b13d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Hi-Replit-Build-an-ultra-polished-cutting-edge-production-ready-No-Gas-Slaps-Telegram-Mini-App-g-1754770867624_1754770867626.txt",
+        "size": 4635,
+        "sha256": "54511132156b9a9ec24477b4fdd8b2ddf476cebd1ea88d7116f6e500adc020af"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Sure-Here-is-the-full-one-shot-prompt-with-all-the-code-files-embedded-directly-inside-it-ready-to-1754764228785_1754764228788.txt",
+        "size": 12769,
+        "sha256": "4633a8f906c1bbde5bd776b45fd936eddd752316c2c482d991b202988fc9da99"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Understood-Here-s-a-focused-constructive-master-prompt-you-can-give-to-Replit-to-fix-the-app-not--1754771037791_1754771037794.txt",
+        "size": 3100,
+        "sha256": "ebe8ac634bfcc83d99e085c4677cfd89605e1450d9b42fc88f2433bdde8688c4"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-You-are-GPT-5-an-unparalleled-expert-in-full-stack-game-development-software-architecture-and-qua-1754800155752_1754800155758.txt",
+        "size": 2518,
+        "sha256": "2c49ef060ef2c16b2d52757d68ebbe63abf7746134c56ff623c3be66b33a1b91"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-You-asked-me-to-prove-it-I-ll-prove-it-by-doing-right-now-by-delivering-a-clean-production-rea-1754769784376_1754769784378.txt",
+        "size": 16127,
+        "sha256": "b7350b7453b8cb6929208cad582c4a1aed41f6c19beeab77ea611ec6e355b009"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Relic_Drop_Inventory_1754800281205.csv",
+        "size": 511,
+        "sha256": "2e4c8a0e46c3a6a1d67022ee046d6df7d929f3e4e4ae2f8a23a36289636bd842"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/Shrine_of_TONX_v1_LIVE_1754800281252.html",
+        "size": 4019,
+        "sha256": "7ec11004353293d3ea12aff0dc675f064784bb2ba9416d57c495973585560ab8"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/build-log (1)_1754800281099.txt",
+        "size": 33,
+        "sha256": "8b65a8dc04e3e16887c6d163586cd152700052a078c0531105f57f6da90356ce"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/attached_assets/index_1754800238458.html",
+        "size": 518,
+        "sha256": "14bb734daae586a6ac173cdc2e337731ee76cc9c3ae23ab0174bc8ab40ea24f5"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/assets/icons.svg",
+        "size": 15302,
+        "sha256": "d8be82131c3e14dd922cea28136fef25c703b408cdf3c1b805b918e1b1383a1b"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/index-phaser.html",
+        "size": 4141,
+        "sha256": "59ba040c8bba15b8c181ab512e879b84f3b760b700ddb15ff23ab176d132bfae"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/index.html",
+        "size": 7401,
+        "sha256": "8ced484617106d7b7345bf531d7fd5e439af273afe6caa8c9df64b923b082188"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/localization/en.js",
+        "size": 14702,
+        "sha256": "8f444e4c36546326247721795673e0acd215b9f956777c199fbc395c867e8d64"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/main.js",
+        "size": 14993,
+        "sha256": "70a564107955e3b497e72893d77fea36d56ffcf306b560344329218a173c8947"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/animations.js",
+        "size": 18856,
+        "sha256": "dfcb4fbc869d74ea828a1268d1ba16ec1e2292c3664a3f67ec60383f4a567075"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/audio.js",
+        "size": 13556,
+        "sha256": "ac587b7a27aec339bcf5077dd3aea3f9c306590b71783809a6993508d834a2b6"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/error.js",
+        "size": 10998,
+        "sha256": "ba29f8c6d49d91bf05baac39feb92914f3462408a6fb395c1b3fdf2489c9d1b8"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/leaderboard-api.js",
+        "size": 11788,
+        "sha256": "a16237d14db24959f25a110c9363802dc32d6b94c7882249cd56842e25afb4e1"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/multiplayer.js",
+        "size": 10903,
+        "sha256": "8db64aaada41a98cfe84036a5f4717d159b4dd9fc3dc7ffa6aca9a997153dafb"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/persistence.js",
+        "size": 15412,
+        "sha256": "6544987f7d4ea2ee0de46c212f0354e343c439c847d09680ebb385a82c35a0bf"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/security.js",
+        "size": 14903,
+        "sha256": "06d49c5b5e3875738fa9e471fa50c31eb42aedbfa216be853c8e7d692d4b5b62"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/state.js",
+        "size": 15770,
+        "sha256": "441b37c6a62c56a63699fca9bc0619b3379660d66791735ee7bc0004b1212606"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/telegram-api.js",
+        "size": 8422,
+        "sha256": "322ad3bd7192a7216e66b2dfa9124c7cff698b937564eb2dc94d008766763fb3"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/testing.js",
+        "size": 17138,
+        "sha256": "ba72b488bb7bd13887b4616090ed4d37993f8e80140534c37bbbf2853954333f"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/modules/ui.js",
+        "size": 22435,
+        "sha256": "85c97ebc38937cf1eb91e8e567b5934dcf7e0f4e5545be79809cbc60ebd345ff"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/phaser-game.js",
+        "size": 15178,
+        "sha256": "d5dc182c63bd5cd74db256db7014722af8b7c873a143f7139d5f7e930e41bf04"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/public/fonts/inter.json",
+        "size": 785,
+        "sha256": "cee99ba52d371eb61d312a87a7fcae45d262029f09f45532af37aafadd772c6a"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/public/main.js",
+        "size": 17431,
+        "sha256": "c6fe8f9b84c6600c68ed6eaff8cf01d0d175f90ba1da97f970480f5bb66b2d2d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/App.tsx",
+        "size": 15421,
+        "sha256": "51068409bdf415841300ffdfca15fab9c3ce0c5d4cdf7f158c6eaacba2d5bbdc"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/GameCanvas.tsx",
+        "size": 4993,
+        "sha256": "24dd1a156dcaaf7d37f8c364ab531f8d10f3885cc97a1eddffd0c5e00ae0be7c"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/MobileGame.tsx",
+        "size": 8077,
+        "sha256": "380eb61f0c44056750798e3d0fab7e20eef20b6e2f4b7f189214f4fce2da2043"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/accordion.tsx",
+        "size": 2001,
+        "sha256": "dcbfb3243a26096fc3e5f54039ccb5c4c23d9bb79a4d5846b4be75bf912f07d9"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/alert-dialog.tsx",
+        "size": 4419,
+        "sha256": "311bede35f785d7b1ecd7398986757e26409d1049352a94ccf83586b8603c92d"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/alert.tsx",
+        "size": 1598,
+        "sha256": "5950ac01377e7eedc94b00eb3fee678745e4cc1a72b5343867f0733d07db6660"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/aspect-ratio.tsx",
+        "size": 140,
+        "sha256": "08b0aa0b05efc573c7d63363c03e83d4b101bfeb54140764e96ddea30659cfcc"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/avatar.tsx",
+        "size": 1419,
+        "sha256": "e78b35ed76c67d8ff50603fbe0dfa4fe600097bd860d89e65beea3e16683dad8"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/badge.tsx",
+        "size": 1140,
+        "sha256": "dab689d836ad3292b41e7f4986b4e68e5d45c6903e4aeaae8972a82d4aebec29"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/breadcrumb.tsx",
+        "size": 2712,
+        "sha256": "c3d3dcb0d82fc5e91d8830bac7fead905686fe876f1f42c3ed872bb0a6b6584e"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/button.tsx",
+        "size": 1902,
+        "sha256": "c2b999a96781e6c932632bd089095368e973bf5602e1b1a62156b7d2b43f1e84"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/calendar.tsx",
+        "size": 2935,
+        "sha256": "d62faa4902ae5bdfb80835eb7bd81dcb74ba963e41dd5c93545545c2a51c94b5"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/card.tsx",
+        "size": 1828,
+        "sha256": "525c4bb2c051987be64df0e92e1d90174912b219bf541e24ffbc4a3406de49e8"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/carousel.tsx",
+        "size": 6210,
+        "sha256": "5a4ff73c804e86c873382da80c453f1399006326ef042fb984c24162ec86666e"
+      },
+      {
+        "path": "recovery/public-repos/TaskAgile/client/src/components/ui/chart.tsx",
+        "size": 10481,
+        "sha256": "e30219cedb35c55c2f9069f6470d60514c54c43fe0a3b641615275a2acd25f12"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/.github/workflows/contact-autonomy.yml",
+        "size": 830,
+        "sha256": "b06a4b806968437b143751432c8e46b50ed996aee0954b56a5a7fd4d9a6179ea"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/.github/workflows/deploy.yml",
+        "size": 579,
+        "sha256": "295ce59b3143aa070a562fcdccd3849640f12028d11f5c0f1847edac7432e1cb"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/.gitignore",
+        "size": 334,
+        "sha256": "8b59d5e04a4d3f8af5dfe30f792ea1d4e27120e1687ec2181abf9ae06111cf52"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/README.md",
+        "size": 2257,
+        "sha256": "aea6eb3f1b0149976ee039e08b00f5ddfa308bc73a8eef43e7f9ad80ada737ae"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/SECURITY.md",
+        "size": 771,
+        "sha256": "ae6e78da73c7a8c09479c24f564ba9cb6b7eb9ba3d70e0814d233dfe38cda688"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/activation.txt",
+        "size": 47,
+        "sha256": "618f743702f8700f764e900a9e00071ad3c5ee14d9c1c8fd87df8b1a5a97040e"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/contact/ledger.jsonl",
+        "size": 11862,
+        "sha256": "6f27c43b0869410de64759813f00e8307e6250928b0f65b714ee3cf2e7ab40ae"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/contact/runtime.py",
+        "size": 1911,
+        "sha256": "e26ab107e9737873e95bee67643b8361dfadf231e365dcaa15bf0be886a5232b"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/contact/self-build-acceptance.json",
+        "size": 1213,
+        "sha256": "28641976f61d2e4030043790d8d85ec428d84819873a85cf97c552b0a0c4a5f2"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/contact/state.json",
+        "size": 998,
+        "sha256": "6dc68793cfe9578533b645d55ad3a5c0a5432cdbd3a01be527050b7638434395"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/eslint.config.js",
+        "size": 568,
+        "sha256": "0197d9a843aaae267303c4d1ab1a43afad1afacc7646cdf6cf94a5af6b815fb8"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/index.html",
+        "size": 358,
+        "sha256": "a2a29fa339254f16ed9370ab711adc23ab38f28c862aa1d9048f9645d3abae2f"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/package-lock.json",
+        "size": 102873,
+        "sha256": "98644d43d09a0ee2bebdfc49049aedbb4c70ccc3467d5998db4fb68a373a8645"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/package.json",
+        "size": 629,
+        "sha256": "60846f9ae723de3d81cee49c233a25d5f1871b648ffd6ad14f3983b0f0012fed"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/public/favicon.svg",
+        "size": 9522,
+        "sha256": "61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/public/icons.svg",
+        "size": 5031,
+        "sha256": "b45fa506195cfcdef406ba9f0c77b36ddc1a7c224040926ec70abc2fdea7b93a"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/App.css",
+        "size": 3806,
+        "sha256": "d86f2c9a020b6db80014d43ed159a4ca783b7500021eedd910a9736f00005a90"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/App.jsx",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/assets/react.svg",
+        "size": 4126,
+        "sha256": "35ef61ed53b323ae94a16a8ec659b3d0af3880698791133f23b084085ab1c2e5"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/assets/vite.svg",
+        "size": 8709,
+        "sha256": "5be21acd42eb7b896e517f4e0f0f11eb5c5d9e54fbbcebe9453f033008fcca6f"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/index.css",
+        "size": 2169,
+        "sha256": "fda85fffe7f006d822fb9ab4e774b9e2b8fadffa73a3806b038dc0b8456cbbeb"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/src/main.jsx",
+        "size": 229,
+        "sha256": "4b4b864dbe45253425d0c925337180ec07e204295179f80f59551216f466f618"
+      },
+      {
+        "path": "recovery/public-repos/ngl001-def4us28/vite.config.js",
+        "size": 164,
+        "sha256": "35447dfe3a86c10910902e0ab8bfdec83364be2c6a0307c4041592c11430e2eb"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.github/dependabot.yml",
+        "size": 564,
+        "sha256": "6df9f1437193709f425f86291b746623be501a559dc7ff9bfdf07d20a218d841"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.github/workflows/ci.yml",
+        "size": 2180,
+        "sha256": "8ffb2aaa15a70cc7ba95df0568ae9ba52ef64fa1017b25b133fd7fbbdbcf2306"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.github/workflows/core-ci.yml",
+        "size": 2446,
+        "sha256": "5e515f62341e517ef90e748569a1a2a66fd2ae919bc23b791fd125ee7ebef7b0"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.github/workflows/repo-classification-check.yml",
+        "size": 2570,
+        "sha256": "f37dba0c8db319b534c7faa19d99f342d2a9722163e293b8e4fc7fe34de7d5c4"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.github/workflows/security-core.yml",
+        "size": 1540,
+        "sha256": "e42835747e174ce15c53a0f6a1c45a4d4cec2c865eecbfc5eea9e4a1d53a9724"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.gitignore",
+        "size": 1202,
+        "sha256": "4dd81b39156a0bcf554c2a03098f9963da28ed9b26bba40b2ebf8a1cdee80999"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.gitkeep",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.prettierignore",
+        "size": 42,
+        "sha256": "22816e742d51eac0b9e746ac37ce0ba581ef90c899e2d24f4506bb312e589161"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.prettierrc",
+        "size": 310,
+        "sha256": "087532218269eb851c22dcc3d5234ea46bfa513b494a3d7b167b1c1f48c410c5"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/.repo-classification.json",
+        "size": 200,
+        "sha256": "b0580fde4e26da9db588240edb7b838abb1957266c2058c5c4512a0cdfb50624"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/CODEOWNERS",
+        "size": 256,
+        "sha256": "a3cdfd3dda3e9111a47c466920e28c1dee470a98cc065c021edc748984581484"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/IP-METADATA.json",
+        "size": 1187,
+        "sha256": "1e10745bfb78c542223c4f29f0be2170f712392e915261dd153afcb3007320a7"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/LICENSE",
+        "size": 2198,
+        "sha256": "07e69ea1ed10137b3888bfabc41c24dd616aad9067a4d0439a1506320b982b03"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/LICENSE.md",
+        "size": 2204,
+        "sha256": "88ef906142073ba0218a54cdec01bbc112bf9b92a4abe70bc46926ae5c2f522a"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/README.md",
+        "size": 628,
+        "sha256": "ba43112bccc0e6a872f3d975f99af5f8220babbdd0e602e77553517dac75f43b"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/index.html",
+        "size": 952,
+        "sha256": "223618dcbfa464a298f5b30efe8cc44fe0e5c5b62c8aaa726f1807935c8a72fc"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/public/.gitkeep",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/App.tsx",
+        "size": 1489,
+        "sha256": "36f960be922d562f3bda2816e9bb5b2305fd18e6d27617e562d1b1c5c9e45443"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ErrorBoundary.tsx",
+        "size": 1688,
+        "sha256": "3b0bdb7a19758fcd440138ccfb5f306b96836564f15d7c8c9663d7dd7417e972"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ManusDialog.tsx",
+        "size": 2370,
+        "sha256": "a22b0cb5c1db5cedda6b2c70b3cb4a1a443101e03e90de188ce11156c24c25db"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/Map.tsx",
+        "size": 4932,
+        "sha256": "931413fea95936e68f872bc34733138f9e11a656446b1a56a98fba9532954e22"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/NodeGatePanel.tsx",
+        "size": 6068,
+        "sha256": "79c087cc8f0a39f49b6da518a446b7d11651fb0c0cce6a4ac0170902631e3f82"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/accordion.tsx",
+        "size": 2048,
+        "sha256": "7b96cf50388ad3d07be64924ab33ba5f63b79a6a5749ebe4d31c789c0bc00d44"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/alert-dialog.tsx",
+        "size": 3866,
+        "sha256": "aeecd7967eb0be3bad2753b6633d9a43cc4c08cb35de872ffdc0b9f2b6a9b26c"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/alert.tsx",
+        "size": 1622,
+        "sha256": "eccfc7f6ca9d51407cb413a3ca4b5ac721898ac93d38e95c02c35188ad674abe"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/aspect-ratio.tsx",
+        "size": 269,
+        "sha256": "654f5d6e9ed17472305d7e6fc5de30453875ffae585f5d064aedc9e6945bdbb0"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/avatar.tsx",
+        "size": 1090,
+        "sha256": "c2382ff71d7ef3492096ed6ef35bf82e1fd421a81d55ca80453f5f5138eac360"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/badge.tsx",
+        "size": 1639,
+        "sha256": "51fd797c59e63d164ade736769f19f26e41c157daba29aa0b327b3b226f4d4ac"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/breadcrumb.tsx",
+        "size": 2371,
+        "sha256": "dd84657e30691ea7f14a785c13b660d6cd626c08ba1df8439c3eca858ee3cd7e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/button-group.tsx",
+        "size": 2220,
+        "sha256": "ba1d824f0f4d8b5dd78a80fa766e3543eefb9173143652be2c7cb765af1864f5"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/button.tsx",
+        "size": 2097,
+        "sha256": "b08b4785e03566c7a6063b3d57234deae41649676870cbbb9ab2448d816e1739"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/calendar.tsx",
+        "size": 7663,
+        "sha256": "89308bce82e8b23b611cfbc88bc19f7b341d7109ab9a2838c04cb50922113501"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/card.tsx",
+        "size": 1997,
+        "sha256": "1397e7d264d90162220ea7473b311e434651886267c71e7f58d4488be9d8ff39"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/carousel.tsx",
+        "size": 5603,
+        "sha256": "42f66e6fde568c209df5d58a4ca13c3ae92d120a04fd99f7be695d6a570ef0a9"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/chart.tsx",
+        "size": 10113,
+        "sha256": "47c4de202fe1dc229af94d2c86197251d279bee131d2a6fb75ab9e58cec71aab"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/checkbox.tsx",
+        "size": 1218,
+        "sha256": "4fc309590e66d3c41e3be5fb73f988b0e916e7bf5fff321c22c3a64cd4fe97cf"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/collapsible.tsx",
+        "size": 791,
+        "sha256": "95b5b9ea89a4105045c58b7eba539e57a1f4abc5a54d43ea0f7168f46b645eeb"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/command.tsx",
+        "size": 4838,
+        "sha256": "47910540789d4de9e890de63bfc0046f9cf6bfaa86d496a98c79622900f8520c"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/context-menu.tsx",
+        "size": 8284,
+        "sha256": "fe63c0a0dcabe749874ad19e07dee8418337c62dd64452fc08b5abf27b49b9eb"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/dialog.tsx",
+        "size": 6024,
+        "sha256": "3ffd83bd2940c1191fde091bc47311aebc2b79d78824965a5c446115e58190aa"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/drawer.tsx",
+        "size": 4255,
+        "sha256": "573deecc31f90fcd96f53a37b2e5363eb326fe737cbdb28cac38a5d014734fc8"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/dropdown-menu.tsx",
+        "size": 8434,
+        "sha256": "ede99252b737a29eb1f05370956e2b842be161b6a661f1429155ac561653d029"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/empty.tsx",
+        "size": 2406,
+        "sha256": "c0b612929b15fd498b984d8d98d1b082a3eb294be5aa8eb9cb53b67cf152f465"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/field.tsx",
+        "size": 6057,
+        "sha256": "f093424ca5eadf43d46b020ed780aee7aa5f6d90d0b48fb50c031e3d7b0528c7"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/form.tsx",
+        "size": 3801,
+        "sha256": "0157362d572713567d989b726277879e75c60c24684ade4aef854867dc2fac48"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/hover-card.tsx",
+        "size": 1525,
+        "sha256": "bdfe831708e7de6b9fbb14d8fe5af5a0985f67cff3c2b5755b4b570c3b4e7ad5"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/input-group.tsx",
+        "size": 5066,
+        "sha256": "f62f2be2ad4c2c7711e7b25b0d6c03572f7871cb4022e9f4f6860dcd77dd9e57"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/input-otp.tsx",
+        "size": 2253,
+        "sha256": "45fc7fed882aa5024d8eea52d9b392d13b1d80f2b7f846365bc2586e3d16253d"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/input.tsx",
+        "size": 2728,
+        "sha256": "0aaad971269e84519fb14928a70777db539b4cacf9f145fecd905ba483a199c6"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/item.tsx",
+        "size": 4513,
+        "sha256": "89f2ed48c2270064d63e0a40f755c1da14e99e7db46bceac56d6dee7b45b8798"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/kbd.tsx",
+        "size": 866,
+        "sha256": "4f8f3e521b2b007643b8a2c8f86cf547bd87e703dc2bed067083ca48f901d6ad"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/label.tsx",
+        "size": 602,
+        "sha256": "7fdad17d8e83912ad0cfc372c551a901ab98523ef17c0792a17c592a147db732"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/menubar.tsx",
+        "size": 8405,
+        "sha256": "53fb1c058fabaf0cfb3fb2cfdb9b17ccc8762376d62cc011150d919209b82c1a"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/navigation-menu.tsx",
+        "size": 6680,
+        "sha256": "aafccbe2b05d9f80b7d007301b51aaede4692efc468304c5fb11b21cd0c0ef43"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/pagination.tsx",
+        "size": 2726,
+        "sha256": "8f0d822b4688eb131e37fbf2330e19b269ab6487583be3249b98f3b68bb07928"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/popover.tsx",
+        "size": 1629,
+        "sha256": "5e7bec05904d9091a7b53963f5b49660bf3564b02a057ef8640ab6855d6e32fd"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/progress.tsx",
+        "size": 731,
+        "sha256": "2297e3c13d5b2a04a9164c3900c8cae2e477c07ebed35c4bbda98d1232ab7b7e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/radio-group.tsx",
+        "size": 1459,
+        "sha256": "025f03d81d4e304eb27d94e6517f37072a3941df8f8603ac55cfb42b17cd99ef"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/resizable.tsx",
+        "size": 2023,
+        "sha256": "52e1027a4b4a5f70f0479f69fe40046dfa112952b7e568292727e1618348ee80"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/scroll-area.tsx",
+        "size": 1637,
+        "sha256": "793c5d69e6e5ce8bcbe453b8834d53f3a90839fc8e8e1f9fe5f77e7626566677"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/select.tsx",
+        "size": 6297,
+        "sha256": "40945665ec8363e55ae38f26115ee763cbc5548bed585eed569d406cbc4b7a75"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/separator.tsx",
+        "size": 690,
+        "sha256": "23bbf3f74d01f55533f6f22ebbc2b299137421e07896cb7af21245756a10c27e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/sheet.tsx",
+        "size": 4107,
+        "sha256": "ab22e38f2cf312a31a84fb91f7e912f0da66e809f6e1ae675ec6cf0c8ec0ba61"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/sidebar.tsx",
+        "size": 21947,
+        "sha256": "782ec3ba8a570c9a0f6ec12d7e1c1efdee5e02eb2da7aa46131c734e7f7bbea8"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/skeleton.tsx",
+        "size": 279,
+        "sha256": "1f75b999a5ad2f65e8fb807faa2b3fccef9eb333996fb4c9030575dac7393091"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/slider.tsx",
+        "size": 1988,
+        "sha256": "9c458646597836916678a9bce2f3064d4d5cdb0c65d32d92bc71f57d7569fb6b"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/sonner.tsx",
+        "size": 561,
+        "sha256": "a65fe9ded89363ec546f28401a26caec1a3aa38c52259eb829cfa33723dbe3a5"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/spinner.tsx",
+        "size": 335,
+        "sha256": "ecd836d476573adb4403747c3457339276805433c20eacf3408303b76ec283ff"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/switch.tsx",
+        "size": 1168,
+        "sha256": "688cccb52220e05f6770fb5e8296375f2a784bcf6585eb26a721a9f29361ab60"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/table.tsx",
+        "size": 2445,
+        "sha256": "085566291cf03c9fea590aa9b77339feebf04cf8ce23494a3667f84bf4811e29"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/tabs.tsx",
+        "size": 1963,
+        "sha256": "394b62295cee5185e858bcabfafcd5a7287910944c962fbd9c1c06444b22cedb"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/textarea.tsx",
+        "size": 2613,
+        "sha256": "ffbad961ec02f9ca23f4157daa1a4139960c4477a245c216a793b4692dec142c"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/toggle-group.tsx",
+        "size": 1936,
+        "sha256": "92e7640e30c4ae3ffd775e9a3d845327c26d9ce0f9f39555c2e7cfc2c8671c4d"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/toggle.tsx",
+        "size": 1563,
+        "sha256": "a922c5e0534b9fd556ff8a8b56e25f7d24544be6050472cdd1ea003b8a0f3e47"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/components/ui/tooltip.tsx",
+        "size": 1886,
+        "sha256": "6f0c581e2018d676e43c0b4b5aeb62d3fe68e65907cf748548208d75ac212677"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/const.ts",
+        "size": 643,
+        "sha256": "65400a775381cec4ae19f68373550f1318fb45970313ad91e91a1adc42b0bacc"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/contexts/ThemeContext.tsx",
+        "size": 1467,
+        "sha256": "e025cdb51ad747757235b16dccbb39b5e949cdf93fa9a822ff81ef6e32f65924"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/hooks/useComposition.ts",
+        "size": 2333,
+        "sha256": "674c515075a2f318d4ec2291313ba552488de0b2c1aac7f36f3d71c4e34d434e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/hooks/useMobile.tsx",
+        "size": 584,
+        "sha256": "464e778a9da49481e3c6dac4f92ff589e01349b33063a74c45435cfeed81e1c0"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/hooks/useNodeGate.ts",
+        "size": 3277,
+        "sha256": "bd0ba8ec5ba09091441b483c15618b3102e893bd658294f8b96d4873ff6418d3"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/hooks/usePersistFn.ts",
+        "size": 471,
+        "sha256": "60cc14f39a3f8b212d7baf4beeaf35f81e09a7c78e4154bcca3477e010879511"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/index.css",
+        "size": 6648,
+        "sha256": "bcc30e3d8261c8e6aa35df4dd681225a8e3592fbc333498bc6edf2629be21c90"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/lib/utils.ts",
+        "size": 169,
+        "sha256": "d1f1e0d62cb8d8d1e04c26e14de842d8a151f75812d81b046c65b5d1fe8e4b27"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/main.tsx",
+        "size": 157,
+        "sha256": "29946f51942fba11605c7595fd82b50b0d7e50148e0194fd356dacbc958f18ec"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/pages/Assessment.tsx",
+        "size": 6936,
+        "sha256": "3824ea4b9ae6eddd830afe00e415ed4f6bdf8aaf89307b0e3ec95e67402428fd"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/pages/Dashboard.tsx",
+        "size": 6522,
+        "sha256": "b0c3b54a91ea04d379b26947c77092be643d9045776f99ad4dd15372dc946dd9"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/pages/Home.tsx",
+        "size": 11941,
+        "sha256": "b603f853dac6ea4ffede8081c8b00a247e8d9f7685281ec57ca113b85feca47f"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/pages/Manifesto.tsx",
+        "size": 15130,
+        "sha256": "5b95782d1828c23ac14c568bb263a99ef523bd0e752c3bbe026684c19955fbd9"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/client/src/pages/NotFound.tsx",
+        "size": 1756,
+        "sha256": "8d463442b5f0514d4dacc4b1f195599f7d22254f6240488cead16ec8ac80888f"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/components.json",
+        "size": 388,
+        "sha256": "8be0e54515838be398164884e96319b52bcfcbd52b2e63171d51df4131cfcb03"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/ideas.md",
+        "size": 6176,
+        "sha256": "3c929d05172da263ee9301c2278467ab6d760b727cb485baf40d0874a7e52b73"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/package.json",
+        "size": 3359,
+        "sha256": "daa618eb70ac0010766fda83d5b255adaee9a6f598ab822b4a3f8c7e17b98306"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/patches/wouter@3.7.1.patch",
+        "size": 918,
+        "sha256": "4e16e6ff3fde7d6c1024d3e0c8605dc9eb6afb690d0d49958c2f449091813072"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/pnpm-lock.yaml",
+        "size": 259856,
+        "sha256": "0bc2de9d75bb02983d139524583f78d622f51dad8117fba6f1ca9215c6a568a8"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/server/evidenceos-client.ts",
+        "size": 4239,
+        "sha256": "2ad10224c87be8ecf54b6336c435dcbd55dbdaa107b8a63332dfaf76393d62ce"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/server/index.ts",
+        "size": 4114,
+        "sha256": "16dc42018e26c742eb2273a7adecc2a4db9d20f248ce457c248097990b0b71b9"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/server/node-gate-client.ts",
+        "size": 5563,
+        "sha256": "48801326ea91c649a089d02f6d21a095ebbaf007f5ebac6b7b6de2c97f06c2b9"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/server/routes/evidenceos.ts",
+        "size": 3904,
+        "sha256": "d18fae548dfd59c27fcd2db6e87481aa92a3cee12696d4bdd93b97e0dd008b65"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/server/routes/node-gate.ts",
+        "size": 3412,
+        "sha256": "e8fe3276c7b34c5988f0a3f9ada6df58e18dfab9ff895165ba93db8482b85d1f"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/shared/const.ts",
+        "size": 99,
+        "sha256": "cc8cc322a6549244df90260eb5ec4472c13fb82357b0a2b1002935ea34d2985e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/tsconfig.json",
+        "size": 657,
+        "sha256": "4bea0e0003e3c943f455346abc4854d1666d604adbaa6aa8eda11f94fb8f1396"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/tsconfig.node.json",
+        "size": 479,
+        "sha256": "1a270cb8020d1fa879262423b9c222fa38d94b830ec61164a46b558ea9d2a526"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-command-center/vite.config.ts",
+        "size": 1680,
+        "sha256": "10f473b1c420d5fb540fb000d3098a6676518025d6f894ad9adb696f75d95e30"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-oracle-mvp-v01/.gitignore",
+        "size": 303,
+        "sha256": "513d9721fbcb5fd24fa84f53faccd282303cc3080b6442af1170c2cec462bb93"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-oracle-mvp-v01/README.md",
+        "size": 209,
+        "sha256": "f296a250dbcaa04a3ffff699a7ac6f38f94193115b4fc9304dbdeb30dd1b076e"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-oracle-mvp-v01/SECURITY.md",
+        "size": 782,
+        "sha256": "02efbcfb2a1e4f0508d367efd6d6ab85699de8ab0f8d10b55772a6d7b87d4aca"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs-oracle-mvp-v01/index.html",
+        "size": 19,
+        "sha256": "f21c1a68ae7a456d4456b04a29b420171f204ca0c2952b15d45ece5e72554d2c"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/.gitignore",
+        "size": 303,
+        "sha256": "513d9721fbcb5fd24fa84f53faccd282303cc3080b6442af1170c2cec462bb93"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/AGENT_TASKS.md",
+        "size": 11730,
+        "sha256": "e1d0a53c892c776d5881f15a04a159bf00b1c98958d28e4c6bf09e5a4a950d39"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/CHANGELOG.md",
+        "size": 1682,
+        "sha256": "7d18a294e9c9f9904a0d145dfad2fc9243e2f98dc0d2e85f2954ea51aa0d2f8f"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/EMPERORS_VISION.md",
+        "size": 14660,
+        "sha256": "30a9068fd7fd9cbdb853c6d04cc5dff6e783707d2775fd118e13599872216c33"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/EMPIRE_BLUEPRINT.md",
+        "size": 9536,
+        "sha256": "fda63dc7f39da4b13ff572fdfffb5ee5d1484d6c2948f255235d2c552b603df5"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/HANDOFF.md",
+        "size": 14212,
+        "sha256": "d738fa43b6108841bbd0a8f44b35249349d650215e5c4283ebd2f8770283b793"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/README.md",
+        "size": 3029,
+        "sha256": "acc7608aaa71d54f8799f8e40192f12f248ac0d4ac341bb7822290a948c5493a"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/RECOVERY.md",
+        "size": 1963,
+        "sha256": "0bdf6c81fff6f1ec16fe3c81c60d665ec940963391a538dc25f010f45bc4aac2"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/RESILIENCE_REPORT.md",
+        "size": 6786,
+        "sha256": "27054b4f0c9f4bfb8d2ac784019cd7a248b54e7e61a0dd0a2ff91083648bb74d"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/SECURITY.md",
+        "size": 767,
+        "sha256": "60e27c65bcc69f97d4603148e4a1de49f1eb52aebaccbcdf09383a8126b4c4b0"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/SELL_THIS.md",
+        "size": 4507,
+        "sha256": "185523ae8cdc723611c3b5a77f2c314d79c819348418eb2df5121d402d573d20"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/empire-os.html",
+        "size": 43741,
+        "sha256": "56b02c247e508af08815e295aaf934a35edc224da670ce445cfe2c39f9f647d4"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/index.html",
+        "size": 65911,
+        "sha256": "f849f4d5c026920eee9164e42742a6240468eec0b1f945958ca09ec624418969"
+      },
+      {
+        "path": "recovery/public-repos/no-gas-labs/ngl-sovereign.html",
+        "size": 65350,
+        "sha256": "8e7384697e78050411f5a4e7cc940fd19e3ff35935e1dd77456005a050824413"
+      },
+      {
+        "path": "scripts/build-exhibit.mjs",
+        "size": 2863,
+        "sha256": "a4f701a0c8ae85745c2c5c1dffc5e64b26b2a7083e7ebc686878826442a247dc"
+      },
+      {
+        "path": "scripts/build-game.mjs",
+        "size": 9730,
+        "sha256": "40b84f14ddf2260d6d340d4f4e3e400732f5ea8d3f5e738d7ea16f8b9d196ec0"
+      },
+      {
+        "path": "scripts/courier.mjs",
+        "size": 7188,
+        "sha256": "1e7d4f427e67b0a5511bfcea47e19825d4254d955330386a9a12d481b229dfd4"
+      },
+      {
+        "path": "scripts/forge.mjs",
+        "size": 2044,
+        "sha256": "67d620a87424aab6cfaa2547fe646030604bb0b7320eea3212bbfcd80a2b60bf"
+      },
+      {
+        "path": "scripts/measure-forge.mjs",
+        "size": 3066,
+        "sha256": "16aeb4e57ef735d8c4c053cee992622b6765a9aa3fc52f671d3e5d1b51d5e53b"
+      },
+      {
+        "path": "scripts/meteor-demo.mjs",
+        "size": 5556,
+        "sha256": "8195d3901be01adac6f573970db05e737db62e114840a4944b3103bf24137812"
+      },
+      {
+        "path": "scripts/package-component.mjs",
+        "size": 2375,
+        "sha256": "147c0e517d2e1c56fac7c501f1d68ddf1a753585639377e27122083578854aed"
+      },
+      {
+        "path": "scripts/preserve-evidence.mjs",
+        "size": 2780,
+        "sha256": "1ea1196f7baadd6fed73ca0b3656bfc9cdbe114bf5439d52d510d522fd2388ef"
+      },
+      {
+        "path": "scripts/qualification/engineering-continuity.mjs",
+        "size": 14473,
+        "sha256": "8803b07a7f16fc628f8877d4acd93ca36abdf5437a0a7a890b40ae605d26226d"
+      },
+      {
+        "path": "scripts/qualification/methodology.mjs",
+        "size": 3521,
+        "sha256": "61cb46890f35cfcea4ad424966f132972012ac86ef0e36430850d3a330fd9f01"
+      },
+      {
+        "path": "scripts/qualification/security-governance.mjs",
+        "size": 17773,
+        "sha256": "120bb8f6a3a574216b5015b9c0d6794cf69834f5a69ba7529683778817175b81"
+      },
+      {
+        "path": "scripts/qualification/utility-world.mjs",
+        "size": 15260,
+        "sha256": "5b65b6317e4e61b1ca9d9b75f1ae7e35ea004cef75dcd96691b959157a358c9e"
+      },
+      {
+        "path": "scripts/recover-institution.mjs",
+        "size": 3283,
+        "sha256": "86433694e05f4e9abaf1b336de6f62d3c6ef6cac811f048fc3ec454f49008072"
+      },
+      {
+        "path": "scripts/run-compounding.py",
+        "size": 14482,
+        "sha256": "7b70e8c9a9badfbfc3fc30fd268953b52dc997ddc158e909ad5c93552975be50"
+      },
+      {
+        "path": "scripts/verify-browser.py",
+        "size": 16455,
+        "sha256": "d34e3598f0f2a5d73ea131d97dd7512d0f0b2614188b5317f441243520694e7f"
+      },
+      {
+        "path": "scripts/verify-institution-browser.py",
+        "size": 23240,
+        "sha256": "3bf905657aad90a3af9309cf5022699d2f3a53edd0a7c2eae4a12c81e9d2c02c"
+      },
+      {
+        "path": "scripts/verify.mjs",
+        "size": 2015,
+        "sha256": "662251c0c37b43b8702df36afc25053af7cd06ea5684e79527199be082585815"
+      },
+      {
+        "path": "src/android/guild-hall-view.js",
+        "size": 878,
+        "sha256": "81013d214a1fda5beb63b341599172c0eab0f7a51080f53268fdb14008eaaa60"
+      },
+      {
+        "path": "src/authority/decision.js",
+        "size": 2482,
+        "sha256": "fbbc505176eb483667d3f7a461d2b4ad30fdbb9a9a7397062f86e08ab0f7f8e2"
+      },
+      {
+        "path": "src/evidence/content-addressed.js",
+        "size": 947,
+        "sha256": "563f7e8b89698862c7c78484a3072f3e5d933955c50aaa701d569d39fb03c220"
+      },
+      {
+        "path": "src/forge/runner.mjs",
+        "size": 28460,
+        "sha256": "317ffec168f828c7c6d125f303e41135c7155a029581df27bf875ebb840836ef"
+      },
+      {
+        "path": "src/institution/courier.mjs",
+        "size": 20228,
+        "sha256": "58bab1584fd42286b001b29140c8eb289617b7928993006cbd9f627a0b222863"
+      },
+      {
+        "path": "src/institution/decisions.mjs",
+        "size": 20412,
+        "sha256": "7ee3656cea0ebcd4b831d6d5863e074e5bf13081cb7e3c5eb21eabcb84b38e45"
+      },
+      {
+        "path": "src/institution/experiment-report.mjs",
+        "size": 6497,
+        "sha256": "39538f55b4933c7a811bc9b9b5ae583091528b00f1ad995a1fa4a7d2703b51aa"
+      },
+      {
+        "path": "src/institution/kernel.mjs",
+        "size": 15006,
+        "sha256": "517b6e4ec1efceeeae050ebbede5c0e68f0551dc7c9e67b8474eb4a49a01c5ca"
+      },
+      {
+        "path": "src/institution/ledger.mjs",
+        "size": 7910,
+        "sha256": "8e43620f6b7a6423266e7565a09282236b3804e8cbe2f7edeb591e71e4c65a80"
+      },
+      {
+        "path": "src/institution/project-projection.mjs",
+        "size": 1933,
+        "sha256": "d19a428daacb89aeee9b219d0c71423661b678037b1963c8d2ee1598e31f6a17"
+      },
+      {
+        "path": "src/location/consent.js",
+        "size": 1604,
+        "sha256": "d6adbd56effed8b2c204653b27d0cf96ae0f0bdba375ff5249a440df1ee8b159"
+      },
+      {
+        "path": "src/location/evidence.js",
+        "size": 1288,
+        "sha256": "5b2ccb56cbd913c1e1bf2faaaaa4951f70b957d8b27c975c6e28b60abf63aa35"
+      },
+      {
+        "path": "src/mesh/execution.js",
+        "size": 3168,
+        "sha256": "a4d5670dd2808dd76de2ec954047900fd730328155bc6087df138afcafc96822"
+      },
+      {
+        "path": "src/production/component-package.mjs",
+        "size": 13381,
+        "sha256": "d85793029b8643b5938fcb75c2a04ae03312f22ac1249647b83206b88508ae37"
+      },
+      {
+        "path": "src/quest/engine.js",
+        "size": 2097,
+        "sha256": "f63f44a4b2f0afaf8b38821bc77d2b01f2539a431409de22f20d071a16cb4485"
+      },
+      {
+        "path": "src/world/guild-hall.js",
+        "size": 1811,
+        "sha256": "750c0ba0e333fdd6c57ab5c80cd680155e7fc60074af9f37545d56c096380d59"
+      },
+      {
+        "path": "src/world/project.js",
+        "size": 2467,
+        "sha256": "5fee7dca4dad9d4f7f54633ab154214b658b090b4158a212f2f3966ea8c9d0aa"
+      },
+      {
+        "path": "src/world/realm.js",
+        "size": 2551,
+        "sha256": "f39b782ce335da86d38fd02a013c6b330ef1c3be3c5c31708806ef0ee24eba78"
+      },
+      {
+        "path": "src/world/spine.js",
+        "size": 1542,
+        "sha256": "1ffedf02ebeef36f0b0a288597f1b57e4a4b5f5cf9fe29fe7dce5b5c257155f9"
+      },
+      {
+        "path": "test/component-package.test.mjs",
+        "size": 14258,
+        "sha256": "61445f38d8f70b79b712325f9d9fdd87b7ed93f3b0f85ee744258e562943ad42"
+      },
+      {
+        "path": "test/decision-chamber.test.js",
+        "size": 2591,
+        "sha256": "8988902ec1688a8e4db3427b4ef1e1913493a6fd427b297eb64a51398d21f673"
+      },
+      {
+        "path": "test/evidence-gated-gameplay.test.js",
+        "size": 2372,
+        "sha256": "aa048fd57a28e796aa93e12b7a1972db33d32c7d6fd8d9ef0b82c1951f422587"
+      },
+      {
+        "path": "test/execution-mesh.test.js",
+        "size": 4194,
+        "sha256": "f348575505a0198ec2549dd6c3e46e35e13d549bdba39d1b737b5a70b48a9fad"
+      },
+      {
+        "path": "test/forge-runner.test.mjs",
+        "size": 23656,
+        "sha256": "8e1cf5b2b381ceabfb4a6b8f40918c0978628ea41960e0d87e8d34437d6a6f85"
+      },
+      {
+        "path": "test/game-decisions.test.mjs",
+        "size": 4143,
+        "sha256": "856bebb196e76ffaa7c28827f706d424a3ff76702fe380d546fa9ceee4bb00d2"
+      },
+      {
+        "path": "test/game-geometry.test.mjs",
+        "size": 3980,
+        "sha256": "04e15ef9293a6b8c1190dee24c1c16c441143af95517f8ebeddba0df4f37c91f"
+      },
+      {
+        "path": "test/game-model.test.mjs",
+        "size": 5069,
+        "sha256": "9469eaa9ba58a404093e0e0e845d17d5a3a87bf717dc22a9a4a041ba4a094a88"
+      },
+      {
+        "path": "test/game-package.test.mjs",
+        "size": 4346,
+        "sha256": "aeb23a55d7b3b49eb732dc78ba4b716550c10b0c125068b13543bba6e79f75ee"
+      },
+      {
+        "path": "test/game-server.test.mjs",
+        "size": 19445,
+        "sha256": "6587482ec63038ece7fcc27d5cba0c458d871ce8b2ddcfaa696fb2751194be86"
+      },
+      {
+        "path": "test/guild-hall.test.js",
+        "size": 2186,
+        "sha256": "99d93a786da8f64ce1cfe6d54c3e26c0c074ae25d72973db49f726a464a92194"
+      },
+      {
+        "path": "test/institution-continuity.test.mjs",
+        "size": 3308,
+        "sha256": "8ea8e8aba0637b1925deb053f99cb121cb835fb96b34a11ec0b580e0128b18ec"
+      },
+      {
+        "path": "test/institution-courier.test.mjs",
+        "size": 17594,
+        "sha256": "d18b166750ff2094ab5ea7149f71c62f24efdc37063c1eeba2e151b4b0f564a9"
+      },
+      {
+        "path": "test/institution-decisions.test.mjs",
+        "size": 21093,
+        "sha256": "871e8384b7d2eabf665ee1d6e6df22714afc1dc1d3246bfa25cc93794bfd3d46"
+      },
+      {
+        "path": "test/institution-kernel.test.mjs",
+        "size": 13956,
+        "sha256": "fd9bef7fc82b6bb57e724fab8febe19ab9499e15d37d23ade93008c9cdfea3ea"
+      },
+      {
+        "path": "test/institution-report.test.mjs",
+        "size": 7603,
+        "sha256": "b64918fb36eeda4ff939e745601383a48b465fdd1df6c3954049b6c9a95561ad"
+      },
+      {
+        "path": "test/launchpad.test.mjs",
+        "size": 4012,
+        "sha256": "c9adc1cdd6c5dfabc469da222dd946a22df593047a9be2c57995fbded1c364b4"
+      },
+      {
+        "path": "test/location-consent.test.js",
+        "size": 1378,
+        "sha256": "10d29f6645dae1b600405a399b362a46dddd78aa87cfcdc8583fa9993b46e8cd"
+      },
+      {
+        "path": "test/location-rpg-integration.test.js",
+        "size": 1772,
+        "sha256": "53b31c9cb0195b7248c7f55ed4ec7869c39728a31a6a1bf86281f551939dcc16"
+      },
+      {
+        "path": "test/quest-engine.test.js",
+        "size": 1856,
+        "sha256": "c58bca4288b493db0eaa5dd87545b4a84303758b40e07ac90dc94b9296ef9f54"
+      },
+      {
+        "path": "test/report-continuity-transfer.test.mjs",
+        "size": 2385,
+        "sha256": "6b643048542ca3b068789194d1318d35c0a03cddd362ef8ba2e295b68fe06ba3"
+      },
+      {
+        "path": "test/runtime-layout.test.mjs",
+        "size": 2988,
+        "sha256": "01cf71976a0d8b235c8fe480888f5595ee882b85d90c7e5b96563683315a3222"
+      },
+      {
+        "path": "test/session-capacity.test.mjs",
+        "size": 2352,
+        "sha256": "017dca5d543b6fb2d8892d8675f0a5659249f13021ce88985c2c55a5c3720904"
+      },
+      {
+        "path": "test/world-projection.test.js",
+        "size": 5915,
+        "sha256": "50d64ad907db1ef398a9a54c240c2c24397c7c2f66a358bbc16d25edf03377a6"
+      },
+      {
+        "path": "test/world-spine.test.js",
+        "size": 2367,
+        "sha256": "46ad48ed68b0ea1d9a177a96d2d121058b94626cbe4c9fd2915de0a547e930d3"
+      }
+    ],
+    "totalBytes": 7776381,
+    "excludedPolicy": "Git ignored files, metadata, runtime, dependency/build directories and credential filename patterns; no credential contents inspected."
+  },
+  "sourceError": null,
+  "workspace": "workspace",
+  "outcome": "passing",
+  "correct": true,
+  "reason": "Explicit repository tests passed and copied source bytes are intact",
+  "tests": {
+    "paths": [
+      "genesis.test.mjs",
+      "reconstitution/known-weakness-origin-label.test.mjs",
+      "test/component-package.test.mjs",
+      "test/decision-chamber.test.js",
+      "test/evidence-gated-gameplay.test.js",
+      "test/execution-mesh.test.js",
+      "test/game-decisions.test.mjs",
+      "test/game-geometry.test.mjs",
+      "test/game-model.test.mjs",
+      "test/game-package.test.mjs",
+      "test/game-server.test.mjs",
+      "test/guild-hall.test.js",
+      "test/institution-continuity.test.mjs",
+      "test/institution-courier.test.mjs",
+      "test/institution-decisions.test.mjs",
+      "test/institution-kernel.test.mjs",
+      "test/institution-report.test.mjs",
+      "test/launchpad.test.mjs",
+      "test/location-consent.test.js",
+      "test/location-rpg-integration.test.js",
+      "test/quest-engine.test.js",
+      "test/report-continuity-transfer.test.mjs",
+      "test/runtime-layout.test.mjs",
+      "test/session-capacity.test.mjs",
+      "test/world-projection.test.js",
+      "test/world-spine.test.js"
+    ],
+    "counts": {
+      "tests": 260,
+      "suites": 0,
+      "passed": 260,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "failures": [],
+    "summaryPresent": true,
+    "complete": true
+  },
+  "execution": {
+    "outcome": "passed",
+    "executable": "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+    "args": [
+      "--max-old-space-size=128",
+      "--test",
+      "--test-reporter=tap",
+      "--test-concurrency=2",
+      "genesis.test.mjs",
+      "reconstitution/known-weakness-origin-label.test.mjs",
+      "test/component-package.test.mjs",
+      "test/decision-chamber.test.js",
+      "test/evidence-gated-gameplay.test.js",
+      "test/execution-mesh.test.js",
+      "test/game-decisions.test.mjs",
+      "test/game-geometry.test.mjs",
+      "test/game-model.test.mjs",
+      "test/game-package.test.mjs",
+      "test/game-server.test.mjs",
+      "test/guild-hall.test.js",
+      "test/institution-continuity.test.mjs",
+      "test/institution-courier.test.mjs",
+      "test/institution-decisions.test.mjs",
+      "test/institution-kernel.test.mjs",
+      "test/institution-report.test.mjs",
+      "test/launchpad.test.mjs",
+      "test/location-consent.test.js",
+      "test/location-rpg-integration.test.js",
+      "test/quest-engine.test.js",
+      "test/report-continuity-transfer.test.mjs",
+      "test/runtime-layout.test.mjs",
+      "test/session-capacity.test.mjs",
+      "test/world-projection.test.js",
+      "test/world-spine.test.js"
+    ],
+    "pid": 239522,
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 6596.837936,
+    "stdout": {
+      "path": "verification.stdout.log",
+      "size": 52261,
+      "sha256": "077c54b28e8c64529be538834d78f423520c719c7b50be2dcd7b0dbe3604e45d"
+    },
+    "stderr": {
+      "path": "verification.stderr.log",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "integrity": {
+    "passed": true,
+    "changedPaths": []
+  },
+  "timing": {
+    "snapshotMs": 232.55768200000003,
+    "copyMs": 65.27025099999997,
+    "runtimeMs": 6596.837936,
+    "integrityMs": 249.1174089999995,
+    "verificationOverheadMs": 251.04757300000074,
+    "wallMs": 7146.731213999999
+  },
+  "limitations": [
+    "Trusted repository tests execute as the host user; copied workspaces are not an adversarial OS sandbox.",
+    "Only direct test/*.test.js, test/*.test.mjs, genesis.test.mjs and reconstitution/*.test.js|mjs files are selected; Forge runner tests are excluded to avoid recursive copying.",
+    "TAP exit status, nonzero executed/passing counts and copied source integrity are required; logs retain bounded actual output.",
+    "Public-source snapshots have no Git history and use fixed public roots/extensions rather than claiming Git-ignore evaluation.",
+    "Runtime, source-copy cost and verification overhead are local wall-clock measurements, not a human productivity baseline.",
+    "No merge, deployment, provider call, authority expansion or publication is performed."
+  ]
+}

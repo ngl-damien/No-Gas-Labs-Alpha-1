@@ -1,0 +1,53 @@
+{
+  "schema": "ngl.verification-run.v1",
+  "observedAt": "2026-10-18T20:22:20.652Z",
+  "passed": true,
+  "stages": [
+    {
+      "name": "tests",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "--test"
+      ],
+      "exitCode": 0,
+      "wallMs": 8245.110682999999
+    },
+    {
+      "name": "python-inspector",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "-v",
+        "test_engine.py"
+      ],
+      "exitCode": 0,
+      "wallMs": 705.0639499999997
+    },
+    {
+      "name": "package",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "scripts/build-game.mjs"
+      ],
+      "exitCode": 0,
+      "wallMs": 570.5350589999998
+    },
+    {
+      "name": "institutional-exercise",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "scripts/meteor-demo.mjs",
+        "--out",
+        "/workspace/No-Gas-Labs-Alpha-1/.runtime/verification-C1CEbd/exercise"
+      ],
+      "exitCode": 0,
+      "wallMs": 9061.754508999999
+    }
+  ],
+  "wallMs": 18584.450711,
+  "limitations": [
+    "Browser acceptance is an additional check: python3 scripts/verify-browser.py.",
+    "These local results do not establish external publication, provider execution or independent human review."
+  ]
+}

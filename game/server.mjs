@@ -9,6 +9,7 @@ import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
 import { projectProjection } from '../src/institution/project-projection.mjs';
+import { ensureRuntimeLayout } from './runtime-layout.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -147,12 +148,15 @@ async function getFounderKey(dataDir, provided) {
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
 export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
+  if (founderKey !== undefined) await getFounderKey(dataDir, founderKey);
+  const projects = projectProjection(institutionReport);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  await ensureRuntimeLayout(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
-  let decisions,projects;
-  try{projects=projectProjection(institutionReport);decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
+  let decisions;
+  try{decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -182,7 +186,13 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     let session = token && sessions.get(token);
     if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; }
     if (!session) {
-      if (sessions.size >= 512) { const oldest = sessions.entries().next().value; expireSession(...oldest); }
+      if (sessions.size >= 512) for (const [expiredToken, candidate] of [...sessions]) if (Date.now() - candidate.lastSeen > SESSION_TTL) expireSession(expiredToken, candidate);
+      if (sessions.size >= 512) {
+        let oldest;
+        for (const entry of sessions) if (entry[1].actor.role === 'witness' && (!oldest || entry[1].lastSeen < oldest[1].lastSeen)) oldest = entry;
+        if (!oldest) fail('SESSION_LIMIT', 'Session capacity is reserved for existing authenticated sessions.', 429);
+        expireSession(...oldest);
+      }
       const id = randomBytes(32).toString('base64url'); session = { token: id, presenceId: `presence-${randomUUID()}`, actor: witness(), lastSeen: Date.now() }; sessions.set(id, session);
       response.setHeader('Set-Cookie', `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict${request.socket.encrypted ? '; Secure' : ''}`);
     }

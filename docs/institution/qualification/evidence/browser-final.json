@@ -1,0 +1,186 @@
+{
+  "passed": true,
+  "schema": "ngl.institution-browser-acceptance.v1",
+  "recordedAt": "2026-10-18T20:22:01.912576+00:00",
+  "report": {
+    "path": "/workspace/No-Gas-Labs-Alpha-1/docs/institution/compounding/evidence/experiment.json",
+    "sha256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307",
+    "id": "alpha1-transfer-20261018",
+    "kind": "SUPPLIED_EXPERIMENT_REPORT",
+    "classification": "TRANSFER_OBSERVED_COMPONENT_DELIVERY"
+  },
+  "scope": "Actual local Chromium and disposable server data; fake key and synthetic Gate policy/proposal only. No operational policy, live HTTPS Gate, production promotion or external Witness participation is established.",
+  "sourceHashes": {
+    "game/server.mjs": "be60a27f5b66f9ac6f886d26041f765d1427625b2853601a7df354fc2c19164b",
+    "game/client.mjs": "2e5cd95c519716d3f264661bf2a8f333709ac972625d042f0bf75de8761e6510",
+    "game/world-view.mjs": "1ca16ee220984e069cfa543420311f660289a8faba547d9c292b07e3451d1859",
+    "game/institution-view.mjs": "5c76c50bd3ebbdd8618d230a4e7d6ae83219b97a10e495b4096b82008df1443e",
+    "game/styles.css": "cc0f5e1abbac2a15328d6b59295571b278069dfcd2286d9502fa4484ca8881de",
+    "src/institution/decisions.mjs": "7ee3656cea0ebcd4b831d6d5863e074e5bf13081cb7e3c5eb21eabcb84b38e45",
+    "src/institution/project-projection.mjs": "d19a428daacb89aeee9b219d0c71423661b678037b1963c8d2ee1598e31f6a17",
+    "scripts/verify-institution-browser.py": "3bf905657aad90a3af9309cf5022699d2f3a53edd0a7c2eae4a12c81e9d2c02c"
+  },
+  "nodeVersion": "v24.19.0",
+  "journeys": [
+    {
+      "journey": "fresh-witness-report-projection",
+      "passed": true,
+      "projects": 1,
+      "accomplishments": 2,
+      "disputes": 2,
+      "awaitingOperationalGate": true,
+      "defaultPolicy": null,
+      "game": {
+        "xp": 0,
+        "creations": 0,
+        "kernelAccepted": 0
+      },
+      "viewport": {
+        "viewport": 390,
+        "document": 390,
+        "sheet": {
+          "client": 374,
+          "scroll": 374
+        }
+      }
+    },
+    {
+      "journey": "places-physical-town-square-arrival",
+      "passed": true,
+      "presenceSamples": 6,
+      "firstPosition": {
+        "x": 182.92249999999996,
+        "y": 640
+      },
+      "arrivalPosition": {
+        "x": 1042.9224999873838,
+        "y": 504.7888179189547
+      },
+      "arrivalPositionProbe": "First presence sample after one native keyboard nudge, after the 1.5-second throttle interval",
+      "arrivalOpenedInstitution": true,
+      "viewport": {
+        "viewport": 390,
+        "document": 390,
+        "sheet": {
+          "client": 374,
+          "scroll": 374
+        }
+      }
+    },
+    {
+      "journey": "founder-authenticated-fixture-review",
+      "passed": true,
+      "evaluationReceipt": {
+        "algorithm": "sha256",
+        "digest": "9d9b76bae5b34a2172086dcbc5d398ed105b65ca0b827177d656aa5ddf09713b",
+        "size": 10636
+      },
+      "actions": [
+        "APPROVE",
+        "REJECT",
+        "DEFER"
+      ],
+      "policyFixture": true,
+      "operationalPolicyActivated": false,
+      "viewport": {
+        "viewport": 1440,
+        "document": 1440,
+        "sheet": {
+          "client": 448,
+          "scroll": 448
+        }
+      }
+    },
+    {
+      "journey": "witness-private-redaction-and-denied-writes",
+      "passed": true,
+      "deniedWrites": {
+        "policy": "FORBIDDEN",
+        "proposals": "FORBIDDEN",
+        "choose": "FORBIDDEN"
+      },
+      "viewport": {
+        "viewport": 390,
+        "document": 390,
+        "sheet": {
+          "client": 374,
+          "scroll": 374
+        }
+      }
+    },
+    {
+      "journey": "native-founder-defer-no-auto-promotion",
+      "passed": true,
+      "disposition": {
+        "action": "DEFER",
+        "actorId": "damien",
+        "decidedAt": "2026-10-18T20:22:16.313Z",
+        "requestId": "6e66c62a-e78a-49bf-9caa-ca1a9ada6a46"
+      },
+      "retainedStatus": "DEFERRED",
+      "retainedRevision": 2,
+      "game": {
+        "xp": 0,
+        "creations": 0,
+        "kernelAccepted": 0
+      }
+    },
+    {
+      "journey": "same-cookie-other-page-logout-clears-private-dom",
+      "passed": true,
+      "otherPageDemoted": true,
+      "privateDOMCleared": true,
+      "subsequentWriteStatus": 403
+    },
+    {
+      "journey": "durable-restart-default-witness-then-founder-review",
+      "passed": true,
+      "retainedStatus": "DEFERRED",
+      "retainedReceipt": {
+        "algorithm": "sha256",
+        "digest": "9d9b76bae5b34a2172086dcbc5d398ed105b65ca0b827177d656aa5ddf09713b",
+        "size": 10636
+      },
+      "staleAuthenticatedCookieRole": "witness",
+      "staleAuthenticatedCookieActuallyPresented": true,
+      "staleCookieWriteStatus": 403,
+      "sameDataDirectory": true,
+      "viewport": {
+        "viewport": 1440,
+        "document": 1440,
+        "sheet": {
+          "client": 448,
+          "scroll": 448
+        }
+      },
+      "game": {
+        "xp": 0,
+        "creations": 0,
+        "kernelAccepted": 0
+      }
+    },
+    {
+      "journey": "founder-phone-private-evaluation-layout",
+      "passed": true,
+      "viewport": {
+        "viewport": 390,
+        "document": 390,
+        "sheet": {
+          "client": 374,
+          "scroll": 374
+        }
+      }
+    }
+  ],
+  "screenshots": [
+    "witness-phone-records.png",
+    "founder-desktop-private-evaluation.png",
+    "witness-phone-redacted-gate.png",
+    "restarted-founder-desktop.png",
+    "founder-phone-private-evaluation.png"
+  ],
+  "pageErrors": [],
+  "externalRequests": [],
+  "chromiumVersion": "154.0.8037.57",
+  "sourceUnchangedDuringRun": true
+}

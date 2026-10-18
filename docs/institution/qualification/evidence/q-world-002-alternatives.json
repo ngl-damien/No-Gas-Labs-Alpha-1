@@ -1,0 +1,336 @@
+{
+  "schema": "ngl.q-world-002-alternatives.v1",
+  "scope": "Local direct-function comparison; caller fields are trusted labels; matching arbitrary bytes do not establish observer independence or authenticated admission.",
+  "baseline_commit": "0202138e6ab3cfb98cc2a83e37ac7b4d0d56c0d4",
+  "variants": [
+    {
+      "name": "baseline",
+      "correct": 7,
+      "total": 11,
+      "observations": [
+        {
+          "case": "verified plus matching bytes",
+          "expected_xp": 100,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": true
+        },
+        {
+          "case": "absent marker plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "UNVERIFIED plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "invalid string plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "invalid type plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "VERIFIED without resolver",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus changed bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus forged digest",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus malformed receipt",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus empty receipts",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED without authority",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        }
+      ]
+    },
+    {
+      "name": "marker-only",
+      "correct": 7,
+      "total": 11,
+      "observations": [
+        {
+          "case": "verified plus matching bytes",
+          "expected_xp": 100,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": true
+        },
+        {
+          "case": "absent marker plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "UNVERIFIED plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "invalid string plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "invalid type plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED without resolver",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "VERIFIED plus changed bytes",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "VERIFIED plus forged digest",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "VERIFIED plus malformed receipt",
+          "expected_xp": 0,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": false
+        },
+        {
+          "case": "VERIFIED plus empty receipts",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED without authority",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        }
+      ]
+    },
+    {
+      "name": "marker-plus-existing-byte-check",
+      "correct": 11,
+      "total": 11,
+      "observations": [
+        {
+          "case": "verified plus matching bytes",
+          "expected_xp": 100,
+          "actual_xp": 100,
+          "inventory": {
+            "shard": 1
+          },
+          "world": {
+            "forgeOpen": true
+          },
+          "matches": true
+        },
+        {
+          "case": "absent marker plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "UNVERIFIED plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "invalid string plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "invalid type plus matching bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED without resolver",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus changed bytes",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus forged digest",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus malformed receipt",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED plus empty receipts",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        },
+        {
+          "case": "VERIFIED without authority",
+          "expected_xp": 0,
+          "actual_xp": 0,
+          "inventory": {},
+          "world": {},
+          "matches": true
+        }
+      ]
+    }
+  ]
+}

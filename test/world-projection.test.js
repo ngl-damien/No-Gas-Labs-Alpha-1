@@ -129,11 +129,13 @@ test("MMORPG realm derives avatar and quests from canonical projection", () => {
 
 
 test("an unverified observation cannot mint canonical progress", () => {
-  const unverified = { ...observed, event_id: "e11", observation_verification: undefined };
-  const s = projectWorld([unverified]);
+  const unverified = { ...observed, event_id: "e11", observation_verification: "UNVERIFIED" };
+  const s = projectWorld([claim, unverified], undefined, { resolveArtifact });
   assert.equal(s.xp, 0);
-  assert.equal(s.inventory.verified_shard, undefined);
-  assert.equal(s.world.forgeOpen, undefined);
+  assert.deepEqual(s.inventory, {});
+  assert.deepEqual(s.world, {});
+  assert.equal(s.quests["forge-gate"].status, "PROPOSED");
+  assert.deepEqual(s.history, [claim, unverified]);
 });
 
 test("institutional traversal is constrained by the realm graph", async () => {

@@ -1,0 +1,31 @@
+TAP version 13
+# Subtest: INCONCLUSIVE reports retain a rejected subprocess killed by a signal
+not ok 1 - INCONCLUSIVE reports retain a rejected subprocess killed by a signal
+  ---
+  duration_ms: 2.191217
+  type: 'test'
+  location: '/workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:47:1'
+  failureType: 'testCodeFailure'
+  error: 'Invalid institutional experiment report: tasks.A.m1.tests.exitCode'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    invalid (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/experiment-report.mjs:3:32)
+    count (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/experiment-report.mjs:12:56)
+    execution (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/experiment-report.mjs:26:31)
+    outcome (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/experiment-report.mjs:57:91)
+    validateExperimentReport (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/experiment-report.mjs:85:5)
+    projectProjection (file:///workspace/No-Gas-Labs-Alpha-1/src/institution/project-projection.mjs:6:2)
+    TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/institution-report.test.mjs:53:16)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.start (node:internal/test_runner/test:1242:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 78.212207

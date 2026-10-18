@@ -8,7 +8,7 @@ const receipt = makeReceipt(artifact);
 const event = {
   event_id:"proof-1", event_type:"SYSTEM_EVENT", subject:"forge-gate",
   admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED",
-  evidence:"OBSERVED", outcome:"SUCCEEDED", receipts:[receipt],
+  evidence:"OBSERVED", observation_verification:"VERIFIED", outcome:"SUCCEEDED", receipts:[receipt],
   world_effect:{xp:100, inventory:{proof_shard:1}, world:{forgeOpen:true}}
 };
 
@@ -18,6 +18,25 @@ test("verified artifact bytes can mint world consequences", () => {
   assert.equal(s.inventory.proof_shard,1);
   assert.equal(s.world.forgeOpen,true);
 });
+
+for (const [label, verification] of [
+  ["absent", undefined],
+  ["UNVERIFIED", "UNVERIFIED"],
+  ["an invalid string", "verified"],
+  ["an invalid type", true]
+]) {
+  test(`valid artifact bytes with ${label} observation verification cannot mint world consequences`, () => {
+    const unverified = {...event, event_id:`proof-${label}`};
+    if (verification === undefined) delete unverified.observation_verification;
+    else unverified.observation_verification = verification;
+    const s = projectWorld([unverified], undefined, {resolveArtifact:()=>artifact});
+    assert.equal(s.xp, 0);
+    assert.deepEqual(s.inventory, {});
+    assert.deepEqual(s.world, {});
+    assert.equal(s.quests["forge-gate"], undefined);
+    assert.deepEqual(s.history, [unverified]);
+  });
+}
 
 test("a VERIFIED-looking label without artifact bytes cannot mint XP", () => {
   const forged={...event,event_id:"proof-2",observation_verification:"VERIFIED"};

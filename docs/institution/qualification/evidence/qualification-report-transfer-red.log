@@ -1,0 +1,71 @@
+✔ fresh-process recovery retains a byte-matching consistent experiment (49.01419ms)
+✖ fresh-process recovery rejects byte-matching string acceptance (45.614585ms)
+✖ fresh-process recovery rejects byte-matching zero tests (43.490589ms)
+✖ fresh-process recovery rejects byte-matching failed tests (46.158623ms)
+✖ fresh-process recovery rejects byte-matching failed integrity (43.611771ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 289.808058
+
+✖ failing tests:
+
+test at test/report-continuity-transfer.test.mjs:19:232
+✖ fresh-process recovery rejects byte-matching string acceptance (45.614585ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 0
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/report-continuity-transfer.test.mjs:19:393)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/report-continuity-transfer.test.mjs:19:232
+✖ fresh-process recovery rejects byte-matching zero tests (43.490589ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 0
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/report-continuity-transfer.test.mjs:19:393)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/report-continuity-transfer.test.mjs:19:232
+✖ fresh-process recovery rejects byte-matching failed tests (46.158623ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 0
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/report-continuity-transfer.test.mjs:19:393)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/report-continuity-transfer.test.mjs:19:232
+✖ fresh-process recovery rejects byte-matching failed integrity (43.611771ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 0
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/report-continuity-transfer.test.mjs:19:393)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

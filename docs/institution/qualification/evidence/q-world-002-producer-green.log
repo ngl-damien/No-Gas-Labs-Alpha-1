@@ -1,0 +1,44 @@
+✔ verified artifact bytes can mint world consequences (1.550503ms)
+✔ valid artifact bytes with absent observation verification cannot mint world consequences (0.811421ms)
+✔ valid artifact bytes with UNVERIFIED observation verification cannot mint world consequences (0.233211ms)
+✔ valid artifact bytes with an invalid string observation verification cannot mint world consequences (0.340612ms)
+✔ valid artifact bytes with an invalid type observation verification cannot mint world consequences (0.304919ms)
+✔ a VERIFIED-looking label without artifact bytes cannot mint XP (0.185599ms)
+✔ mutated artifact bytes invalidate the receipt (1.499917ms)
+✔ forged digest invalidates the receipt (0.188073ms)
+✔ executor claim alone cannot create a world consequence (1.31596ms)
+✔ verified authorized artifact can cross adjudication into gameplay (0.933765ms)
+✔ accepted adjudication with missing verification cannot be upgraded by the world adapter (0.952463ms)
+✔ accepted adjudication with UNVERIFIED verification cannot be upgraded by the world adapter (0.246751ms)
+✔ failed executions remain accepted failures without a verified-byte marker or success consequences (0.404669ms)
+✔ mutated bytes defeat executor success claim (0.248544ms)
+✔ result cannot be laundered into another authorization (0.247502ms)
+✔ valid receipt for wrong artifact identity cannot substitute (0.197837ms)
+✔ resolver receives artifact identity and exact request binding (0.307633ms)
+✔ a self-certifying claim cannot mutate canonical world state (1.749703ms)
+✔ authorized executed observed outcome can project a world consequence (0.555156ms)
+✔ replay is idempotent (0.388635ms)
+✔ changed artifact bytes cannot award canonical progress (0.254954ms)
+✔ approval text without authority cannot mutate state (0.257748ms)
+✔ failures remain history and never award success (0.17962ms)
+✔ unresolved parents are rejected instead of silently rewriting lineage (0.526412ms)
+✔ malformed receipt references cannot award progress (0.283867ms)
+✔ revoked grants cannot produce future world consequences (1.079775ms)
+✔ projection can be rebuilt from event history (0.401614ms)
+✔ an observation without authorization cannot award progress (0.178208ms)
+✔ authorization without observation cannot award progress (0.108994ms)
+✔ MMORPG realm derives avatar and quests from canonical projection (0.357028ms)
+✔ an unverified observation cannot mint canonical progress (0.13987ms)
+✔ institutional traversal is constrained by the realm graph (0.508635ms)
+✔ same canonical history reconstructs identical institutional state (2.247962ms)
+✔ tampered consequence produces a different state hash (1.544093ms)
+✔ history cannot reference a future or missing parent (0.373182ms)
+✔ duplicate event identities are rejected instead of silently replayed (0.134622ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 143.525717
