@@ -1,4 +1,6 @@
 import http from 'node:http';
+import https from 'node:https';
+import { createSecureContext } from 'node:tls';
 import { readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +12,7 @@ import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
 import { projectProjection } from '../src/institution/project-projection.mjs';
 import { ensureRuntimeLayout } from './runtime-layout.mjs';
+import { createFounderGate, loadQualificationProposal } from '../src/institution/founder-gate.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -24,6 +27,10 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
+  ['/founder-gate', ['founder-gate.html', 'text/html; charset=utf-8']],
+  ['/founder-gate.html', ['founder-gate.html', 'text/html; charset=utf-8']],
+  ['/founder-gate.css', ['founder-gate.css', 'text/css; charset=utf-8']],
+  ['/founder-gate.mjs', ['founder-gate.mjs', 'text/javascript; charset=utf-8']],
   ...['client', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
@@ -147,7 +154,9 @@ async function getFounderKey(dataDir, provided) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, founderGate = null, founderGateOrigin = null, tls = null } = {}) {
+  if(tls!==null)createSecureContext(tls);
+  if(founderGateOrigin!==null){const origin=new URL(founderGateOrigin);if(origin.protocol!=='https:'||origin.origin!==founderGateOrigin||!tls)throw Error('Founder Gate requires an exact HTTPS origin and direct TLS configuration');}
   if (founderKey !== undefined) await getFounderKey(dataDir, founderKey);
   const projects = projectProjection(institutionReport);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -155,8 +164,8 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const key = await getFounderKey(dataDir, founderKey);
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
-  let decisions;
-  try{decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
+  let decisions,gate;
+  try{decisions=await openDecisions({directory:join(dataDir,'decisions')});gate=founderGate?createFounderGate({decisions,proposal:founderGate}):null;}catch(error){try{await decisions?.close();}finally{await store.close();}throw error;}
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -223,7 +232,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_JSON', 'Request body must be an object.');
     return value;
   }
-  const server = http.createServer(async (request, response) => {
+  const gateReadiness=request=>{const ready=Boolean(gate&&founderGateOrigin&&request.socket.encrypted&&`https://${request.headers.host}`===founderGateOrigin);return {ready,blockedReason:ready?null:'The operational HTTPS Founder Gate is not configured at this address. The review clock has not started.'};};
+  const gateStatus=async(request,session)=>gate?gate.status(session.actor,gateReadiness(request)):{schema:'ngl.founder-gate-page.v1',serverNow:new Date().toISOString(),reviewWindowMs:600000,viewer:session.actor,...gateReadiness(request),decision:null,proposal:null,choices:[],ceremony:{title:'Inaugural Founders Day',date:'2026-10-18',timezone:'America/Chicago',location:'Carter Lake, Iowa',status:'PREPARED'}};
+  const createServer=tls?https.createServer.bind(https,tls):http.createServer;
+  const server = createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
@@ -239,6 +251,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session = sessionFor(request, response);
       if (request.method === 'GET') {
+        if(path==='/api/founder-gate')return json(response,200,await gateStatus(request,session));
         if(path==='/api/projects')return json(response,200,projects);
         if(path==='/api/decisions')return json(response,200,await decisions.snapshot({id:session.actor.id,role:session.actor.role}));
         if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
@@ -264,8 +277,19 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       if (request.method !== 'POST') fail('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
       sameOrigin(request); const input = await body(request);
+      if(['/api/founder-gate/activate','/api/founder-gate/choose'].includes(path)){
+        if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate this Gate.',403);
+        if(path.endsWith('/activate'))exact(input,[]);
+        return await enqueue(async()=>{
+          if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);
+          if(!gateReadiness(request).ready)fail('GATE_NOT_READY','The verified HTTPS address and retained evidence must be ready before this review can begin.',503);
+          try{if(path.endsWith('/activate'))await gate.activate(session.actor);else await gate.choose(session.actor,input);return json(response,200,await gateStatus(request,session));}
+          catch(error){if(error.code)error.status=/FOUNDER_REQUIRED|ACTOR_REQUIRED/.test(error.code)?403:/UNCERTAIN|PERSISTENCE|CAPACITY/.test(error.code)?503:/GATE_CONFLICT|REVISION|REPLAY|EXPIRED|TERMINAL|ID_REUSED/.test(error.code)?409:400;throw error;}
+        });
+      }
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        if(gate&&((path.endsWith('/proposals')&&input.id===founderGate.id)||(path.endsWith('/choose')&&input.decisionId===founderGate.id)))fail('GATE_ROUTE_REQUIRED','This qualification decision must use its dedicated HTTPS Founder Gate.',403);
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
       }
       if (path === '/api/login') {
@@ -329,7 +353,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || '127.0.0.1';
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport=process.env.NGL_INSTITUTION_REPORT?JSON.parse(await readFile(resolve(process.env.NGL_INSTITUTION_REPORT),'utf8')):null;
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
+    let founderGate=null;try{founderGate=await loadQualificationProposal({root:resolve(gameDir,'..')});}catch(error){if(error.code!=='ENOENT')throw error;}
+    const certFile=process.env.NGL_TLS_CERT_FILE,keyFile=process.env.NGL_TLS_KEY_FILE;
+    if(Boolean(certFile)!==Boolean(keyFile))throw Error('Both TLS certificate and private-key file bindings are required');
+    const tls=certFile?{cert:await readFile(resolve(certFile)),key:await readFile(resolve(keyFile))}:null;
+    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport,founderGate,founderGateOrigin:process.env.NGL_FOUNDER_GATE_ORIGIN||null,tls });
     await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
     const address = server.address();
     console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);

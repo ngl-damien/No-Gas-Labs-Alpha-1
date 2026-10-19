@@ -1,0 +1,29 @@
+{
+  "schema": "ngl.founders-day-browser.v1",
+  "passed": true,
+  "journeys": [
+    {
+      "id": "portable-390",
+      "passed": true,
+      "networkRequests": 1,
+      "recordStatus": "PREPARED"
+    },
+    {
+      "id": "portable-1440",
+      "passed": true,
+      "networkRequests": 1,
+      "recordStatus": "PREPARED"
+    },
+    {
+      "id": "http-clock-not-started",
+      "passed": true
+    },
+    {
+      "id": "private-review-logout-clear",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "portableSHA256": "286c30243bd8f459848406e73aa84e6a66ce8e73713c11aa90f67da325a6f5ed",
+  "limits": "Real Chromium portable preview and local HTTP refusal/redaction; native verified-TLS activation is checked separately by Node tests. No public Gate or ceremony performance established."
+}

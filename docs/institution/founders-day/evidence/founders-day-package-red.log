@@ -1,0 +1,25 @@
+✖ delivery includes a self-contained commemorative preview that cannot activate a review (537.979404ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 607.150359
+
+✖ failing tests:
+
+test at test/founders-day-package.test.mjs:7:1
+✖ delivery includes a self-contained commemorative preview that cannot activate a review (537.979404ms)
+  Error: ENOENT: no such file or directory, open '/tmp/ngl-founders-day-delivery-F8ahi4/founders-day.html'
+      at async open (node:internal/fs/promises:697:25)
+      at async readFile (node:internal/fs/promises:1348:14)
+      at async TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/founders-day-package.test.mjs:8:128)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/tmp/ngl-founders-day-delivery-F8ahi4/founders-day.html'
+  }

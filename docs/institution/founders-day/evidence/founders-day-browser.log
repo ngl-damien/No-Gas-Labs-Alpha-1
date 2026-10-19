@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/workspace/No-Gas-Labs-Alpha-1/scripts/verify-founders-day-browser.py", line 38, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/workspace/No-Gas-Labs-Alpha-1/scripts/verify-founders-day-browser.py", line 27, in main
+    await_url=f'http://127.0.0.1:{portable.server_port}/founders-day.html';page.goto(await_url);expect(page.locator('#connection-state')).to_have_text('PREPARED PREVIEW');expect(page.locator('#login-form')).to_be_hidden();assert page.locator('#activate-button').is_disabled();assert page.locator('#decision-controls').is_disabled();assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                                                                                                                                                                                                                                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

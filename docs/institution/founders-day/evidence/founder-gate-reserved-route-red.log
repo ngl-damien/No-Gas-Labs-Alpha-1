@@ -1,0 +1,30 @@
+✖ page status does not start a clock and HTTP cannot activate the operational review (64.946804ms)
+✔ verified TLS session starts one ten-minute review and records a scoped choice (68.635654ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 231.104481
+
+✖ failing tests:
+
+test at test/founder-gate-http.test.mjs:14:1
+✖ page status does not start a clock and HTTP cannot activate the operational review (64.946804ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 403
+  
+      at TestContext.<anonymous> (file:///workspace/No-Gas-Labs-Alpha-1/test/founder-gate-http.test.mjs:19:72)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 403,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

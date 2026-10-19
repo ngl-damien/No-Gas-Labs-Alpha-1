@@ -1,0 +1,41 @@
+{
+  "schema": "ngl.founders-day-delivery.v1",
+  "ceremony": {
+    "date": "2026-10-18",
+    "timezone": "America/Chicago",
+    "location": "Carter Lake, Iowa",
+    "status": "PREPARED"
+  },
+  "reviewWindowMs": 600000,
+  "operationalURL": null,
+  "operationalClockStarted": false,
+  "publicDeploymentVerified": false,
+  "sourceArchive": {
+    "manifestAndCRCPassed": true,
+    "extractedTestsExitCode": 0,
+    "stdout": "\u2714 page status does not start a clock and HTTP cannot activate the operational review (91.272251ms)\n\u2714 verified TLS session starts one ten-minute review and records a scoped choice (73.263901ms)\n\u2714 status is prepared without starting a policy or proposal, with explicit ceremony and choices (17.471598ms)\n\u2714 validates and copies bounded byte-bound proposal before operational initialization (9.410243ms)\n\u2714 only exact host-bound Founder can activate or choose, and Witness views redact private material (9.191429ms)\n\u2714 activation creates exactly one ten-minute proposal and repeated activation preserves its deadline (9.483373ms)\n\u2714 expiry occurs exactly at ten minutes and survives restart without default approval or clock extension (17.231136ms)\n\u2714 choose preserves core retry identity, revision rejection, and terminal DEFER behavior (10.196977ms)\n\u2714 input guards reject coerced types, caller decision IDs, invalid actors and readiness metadata (4.398265ms)\n\u2714 conflicting existing proposal bytes or effect fails closed without changing durable policy (9.473298ms)\n\u2714 a matching existing proposal captured under a 24-hour policy is never relabeled ten-minute (4.8798ms)\n\u2714 qualification policy is explicit and leaves the immutable earlier policy and decision intact (14.623293ms)\n\u2714 a historical Gate policy cannot silently capture a different current policy on retry (10.355936ms)\n\u2714 loads only the fixed qualification manifest and REPORT bytes and verifies the real receipt (2.953081ms)\n\u2714 qualification loader fails closed for modified receipts, arbitrary paths, oversized files and symlinks (15.26609ms)\n\u2714 qualification receipt includes the actual UTF-8 BOM bytes rather than silently stripping them (3.428186ms)\n\u2714 delivery includes a self-contained commemorative preview that cannot activate a review (633.594674ms)\n\u2139 tests 17\n\u2139 suites 0\n\u2139 pass 17\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 709.474448\n",
+    "stderr": ""
+  },
+  "files": [
+    {
+      "path": "dist/founders-day.html",
+      "size": 42455,
+      "sha256": "286c30243bd8f459848406e73aa84e6a66ce8e73713c11aa90f67da325a6f5ed"
+    },
+    {
+      "path": "dist/founders-day-ceremony.pdf",
+      "size": 67624,
+      "sha256": "eaee607706f95119d681e14700fe4b4e38a0f215ca187c72c0d51378dad1ff35"
+    },
+    {
+      "path": "dist/no-gas-labs-meteor.zip",
+      "size": 6599861,
+      "sha256": "a96da8732b8a320841a9c2bd8d1638b958c1fb05fe1dd1acf12d478b857db4e3"
+    },
+    {
+      "path": "docs/institution/founders-day/CEREMONY.md",
+      "size": 5493,
+      "sha256": "ce3384bfec4d6f86f2949bbeab8cf5fc70a2a8d9ad8ceb3de3dbcab6eaa40f03"
+    }
+  ]
+}

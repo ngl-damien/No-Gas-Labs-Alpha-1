@@ -33,10 +33,17 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
   files.set('exhibition.html',await readFile(exhibit.htmlPath));files.set('launch-checks.json',await readFile(exhibit.summaryPath));
  }
  for(const name of ['README.md','package.json','.gitignore','core.mjs','evidence.mjs','genesis.test.mjs','reconstitution/known-weakness-origin-label.test.mjs','game/server.mjs','game/service-store.mjs','game/runtime-layout.mjs']){const p=join(rootDir,name);if(await exists(p))await add(p,name)}
+ let foundersDayHTML=null;
+ if(await exists(join(game,'founder-gate.html'))){
+  const page=(await add(join(game,'founder-gate.html'))).toString(),styles=(await add(join(game,'founder-gate.css'))).toString(),script=(await add(join(game,'founder-gate.mjs'))).toString();
+  foundersDayHTML=page.replace('<link rel="stylesheet" href="./founder-gate.css">',()=>`<style>${styles.replace(/<\/style/gi,'<\\/style')}</style>`).replace('<script type="module" src="./founder-gate.mjs"></script>',()=>`<script>globalThis.NGL_FOUNDER_GATE_PREVIEW = true;</script><script type="module">${script.replace(/<\/script/gi,'<\\/script')}</script>`).replaceAll('href="./"','href="#programme"').replace('Back to the world','Read the ceremony');
+  foundersDayHTML=foundersDayHTML.replace(/<head\b[^>]*>/i,match=>`${match}<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none'">`);
+  files.set('founders-day.html',Buffer.from(foundersDayHTML));
+ }
  // JSON runtime envelopes are not executable source. Only selected or newly generated JSON metadata is included.
  const allowed=/\.(mjs|js|html|css|md|py)$/;
  async function tree(dir){if(!await exists(dir))return;for(const entry of await readdir(dir,{withFileTypes:true})){if(entry.name.startsWith('.')||/^(?:node_modules|__pycache__|dist|runtime|data|state|secrets?|credentials?)$/i.test(entry.name))continue;const path=join(dir,entry.name);if(entry.isDirectory())await tree(path);else if(entry.isFile()&&allowed.test(entry.name)&&!/(?:\.key|\.pem|\.env|keypair|secret)/i.test(entry.name))await add(path)}}
- for(const name of ['src','test','fixtures','scripts','docs/meteor','docs/institution/compounding','docs/institution/qualification','experiments/AOTA-FEATHERSTONIAN-ENGINE'])await tree(join(rootDir,name));
+ for(const name of ['src','test','fixtures','scripts','docs/meteor','docs/institution/compounding','docs/institution/qualification','docs/institution/founders-day','experiments/AOTA-FEATHERSTONIAN-ENGINE'])await tree(join(rootDir,name));
  for(const name of ['report-transfer-profile.json','FOUNDER-DECISION-PROPOSAL.json','evidence/security-governance.json','evidence/engineering-continuity.json','evidence/engineering-continuity-after.json','evidence/engineering-continuity-final.json','evidence/methodology-autonomy.json','evidence/utility-world.json','evidence/report-transfer.json','evidence/verification.json','evidence/verification-final.json','evidence/browser-final.json','evidence/continuity-final.json']){const p=join(rootDir,'docs/institution/qualification',name);if(await exists(p))await add(p);}
  for(const name of ['experiments/AOTA-FEATHERSTONIAN-ENGINE/example_claims.json','experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/examples/real-lineage.case.json','docs/institution/compounding/task-a.profile.json','docs/institution/compounding/task-b.profile.json','docs/institution/compounding/STATE.json','docs/institution/compounding/evidence/experiment.json','docs/institution/compounding/evidence/continuity.json','docs/institution/compounding/evidence/task-a-execution.json','docs/institution/compounding/evidence/task-b-execution.json','docs/institution/compounding/evidence/verification.json','docs/institution/compounding/evidence/browser.json']){const p=join(rootDir,name);if(await exists(p))await add(p);}
  // Individually reviewed public experiment receipts; never archive arbitrary runtime logs.
@@ -47,6 +54,7 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
  files.set('manifest.json',Buffer.from(JSON.stringify(manifest,null,2)+'\n'));
  await mkdir(outDir,{recursive:true});const htmlPath=resolve(outDir,'play.html'),zipPath=resolve(outDir,'no-gas-labs-meteor.zip');
  await writeFile(htmlPath,html);await writeFile(zipPath,zip(files));await writeFile(resolve(outDir,'manifest.json'),files.get('manifest.json'));
+ if(foundersDayHTML!==null)await writeFile(resolve(outDir,'founders-day.html'),foundersDayHTML);
  return{htmlPath,zipPath,fileCount:files.size};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){const r=await buildGame();console.log(JSON.stringify(r))}
