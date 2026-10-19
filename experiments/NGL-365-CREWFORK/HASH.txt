@@ -1,0 +1,6 @@
+NGL-365 CREWFORK v1
+2026-10-19
+ZIP SHA-256 c58dc4bb482ddb7fd30159955c45047800e246087f0425fddf3e83aad6a7ffd1
+HTML SHA-256 2c60971d7c92ccb6a63fd8ac974d90ee0cc721124628e274de7d08fe71d6fa4b
+Internal test: 600 synthetic cases; zero cross-language disagreements.
+Commercial status: unvalidated.
