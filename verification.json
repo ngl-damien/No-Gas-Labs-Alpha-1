@@ -1,0 +1,26 @@
+{
+  "schema": "ngl.pages-static-verification.v1",
+  "sourceCommit": "265207e2847daf9a689350e4661e35a7f9845001",
+  "indexSHA256": "286c30243bd8f459848406e73aa84e6a66ce8e73713c11aa90f67da325a6f5ed",
+  "packageTest": {
+    "command": "node --test test/founders-day-package.test.mjs",
+    "passed": 1,
+    "failed": 0
+  },
+  "browserJourneys": [
+    {
+      "viewportWidth": 390,
+      "passed": true,
+      "requests": 1,
+      "download": "PREPARED; no decision"
+    },
+    {
+      "viewportWidth": 1440,
+      "passed": true,
+      "requests": 1,
+      "download": "PREPARED; no decision"
+    }
+  ],
+  "pageErrors": [],
+  "scope": "Exact publication bytes served under the repository URL path in local Chromium. No GitHub Pages deployment, account eligibility, Founder authentication or operational Gate is established."
+}
