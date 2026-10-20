@@ -1,0 +1,5 @@
+NGL-376 BENCHFORK
+ZIP SHA256 eda332229cd2c0ae795f0e956537e234d0783ec8fc632c03fbc8cbf7865a5f96
+HTML SHA256 38f477926b005fd37a7e9f5306511ad7d186637691cade53a961d0f1bfdd0982
+2026-10-20
+Internal bounded tests only. No buyer or revenue validation.
