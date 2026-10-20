@@ -130,7 +130,7 @@ test("MMORPG realm derives avatar and quests from canonical projection", () => {
 
 test("an unverified observation cannot mint canonical progress", () => {
   const unverified = { ...observed, event_id: "e11", observation_verification: undefined };
-  const s = projectWorld([unverified]);
+  const s = projectWorld([unverified], undefined, { resolveArtifact });
   assert.equal(s.xp, 0);
   assert.equal(s.inventory.verified_shard, undefined);
   assert.equal(s.world.forgeOpen, undefined);
@@ -143,4 +143,19 @@ test("institutional traversal is constrained by the realm graph", async () => {
   assert.equal(canTravel("nowhere", "forge"), false);
   const realm = projectRealm(projectWorld([claim]));
   assert.deepEqual(realm.institutions.guild_hall.exits, ["decision_chamber", "town_square", "academy"]);
+});
+
+
+test("explicitly rejected observation cannot mint progress despite a valid receipt", () => {
+  const rejected = { ...observed, event_id: "e12", observation_verification: "REJECTED" };
+  const s = projectWorld([rejected], undefined, { resolveArtifact });
+  assert.equal(s.xp, 0);
+  assert.equal(s.quests["forge-gate"]?.status, undefined);
+  assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("a verified observation still requires a valid receipt", () => {
+  const s = projectWorld([observed], undefined, { resolveArtifact: () => Buffer.from("wrong bytes") });
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
 });
