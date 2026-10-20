@@ -66,14 +66,16 @@ export async function openInstitution(directory, key) {
     }
   };
 }
-export async function demonstrate(directory,key) {
+export async function demonstrate(directory,key,authorize) {
+  if (typeof authorize !== "function") throw Error("EXTERNAL_AUTHORIZATION_REQUIRED");
   const proposals=competition();
   const winner=proposals.find(p=>p.result.passed===p.result.total);
   if(!winner) throw Error("NO_WINNER");
   const institution=await openInstitution(directory,key);
   if(!institution.snapshot().capabilities["square-v1"]) {
     const decision={kind:"INSTALL",id:"square-v1",strategy:winner.strategy,proof:winner.result};
-    await institution.commit(decision,signDecision(key,decision));
+    const signature=await authorize(structuredClone(decision));
+    await institution.commit(decision,signature);
   }
   return {proposals,capability:institution.snapshot().capabilities["square-v1"]};
 }
