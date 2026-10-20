@@ -74,6 +74,11 @@ export async function openInstitution(directory,verifierPublicKey) {
       const record={...envelope,signature};
       record.hash=hash(record);
       apply(next,record,key);
+      // Detect sequential stale handles before writing; not a concurrent transaction.
+      let persisted;
+      try { persisted=await readFile(path,"utf8"); }
+      catch(e) { if(e.code!=="ENOENT") throw e; persisted=null; }
+      if (persisted===null ? state.sequence!==0 : persisted!==JSON.stringify(state)) throw Error("STALE_STATE");
       const temp=path+".tmp";
       const handle=await open(temp,"wx");
       try {await handle.writeFile(JSON.stringify(next));await handle.sync();}

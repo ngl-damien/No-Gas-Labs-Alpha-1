@@ -49,3 +49,15 @@ test("replayed ledger rejects modifications",()=>temporary(async dir=>{
   await writeFile(path,JSON.stringify(state));
   await assert.rejects(()=>openInstitution(dir,k.publicKey),/UNAUTHORIZED_RECORD/);
 }));
+
+test("a stale handle cannot overwrite a later committed transition",()=>temporary(async dir=>{
+  const k=keys();
+  await demonstrate(dir,k.publicKey,e=>approve(k.privateKey,e));
+  const first=await openInstitution(dir,k.publicKey);
+  const stale=await openInstitution(dir,k.publicKey);
+  const d1={kind:"REUSE",id:"square-v1",nonce:"first",input:3,output:9};
+  await first.commit(d1,approve(k.privateKey,first.proposal(d1)));
+  const d2={kind:"REUSE",id:"square-v1",nonce:"second",input:4,output:16};
+  await assert.rejects(()=>stale.commit(d2,approve(k.privateKey,stale.proposal(d2))),/STALE_STATE/);
+  assert.deepEqual((await openInstitution(dir,k.publicKey)).snapshot().used,["first"]);
+}));
