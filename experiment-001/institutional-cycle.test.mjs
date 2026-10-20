@@ -15,7 +15,7 @@ test("competing strategies face the same adversarial cases",()=>{
   assert.ok(challenge("double").passed < 4);
 });
 test("independent reopening discovers installed capability and reuses it",()=>temporary(async dir=>{
-  const result=await demonstrate(dir,key);
+  const result=await demonstrate(dir,key,decision=>signDecision(key,decision));
   assert.equal(result.capability.strategy,"square");
   const next=await openInstitution(dir,key);
   assert.equal(next.snapshot().capabilities["square-v1"].strategy,"square");
@@ -35,10 +35,17 @@ test("unauthorized and unsupported changes cannot commit",()=>temporary(async di
   assert.equal(institution.snapshot().sequence,0);
 }));
 test("tampered persisted snapshot is rejected on restart",()=>temporary(async dir=>{
-  await demonstrate(dir,key);
+  await demonstrate(dir,key,decision=>signDecision(key,decision));
   const path=join(dir,"institution.json");
   const state=JSON.parse(await readFile(path,"utf8"));
   state.capabilities["square-v1"].strategy="double";
   await writeFile(path,JSON.stringify(state));
   await assert.rejects(()=>openInstitution(dir,key),/LEDGER_MISMATCH/);
+}));
+
+test("demonstration cannot self-authorize without external approval",()=>temporary(async dir=>{
+  await assert.rejects(()=>demonstrate(dir,key),/EXTERNAL_AUTHORIZATION_REQUIRED/);
+  await assert.rejects(()=>demonstrate(dir,key,()=>"model-says-approved"),/UNAUTHORIZED/);
+  const institution=await openInstitution(dir,key);
+  assert.equal(institution.snapshot().sequence,0);
 }));
