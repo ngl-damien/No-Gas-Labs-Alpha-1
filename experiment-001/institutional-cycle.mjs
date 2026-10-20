@@ -1,13 +1,12 @@
-import { mkdir, readFile, writeFile, rename, open } from "node:fs/promises";
+import { mkdir, readFile, rename, open } from "node:fs/promises";
 import { join } from "node:path";
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 
-// Experimental bounded institution, not a general autonomous agent or trusted identity provider.
-// A single process owns the directory. Do not run concurrent writers or use as production storage.
+// Single-writer experiment. Verifier receives only a pinned public key.
+// Signing is performed by a separate actor, never by this module.
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const mac = (key, value) => createHmac("sha256", key).update(JSON.stringify(value)).digest("hex");
-const initial = () => ({version:1, sequence:0, previous:"GENESIS", records:[], capabilities:{}, used:[]});
-export function signDecision(key, decision) { return mac(key, decision); }
+const initial = () => ({version:2, sequence:0, previous:"GENESIS", records:[], capabilities:{}, used:[], invocations:[]});
+const domain = "NGL-INSTITUTIONAL-CYCLE-v2";
 export function challenge(strategy) {
   const cases = [{n:2,out:4},{n:3,out:9},{n:5,out:25},{n:-4,out:16}];
   const implementation = strategy === "square" ? n => n*n : strategy === "double" ? n => 2*n : null;
@@ -17,45 +16,64 @@ export function challenge(strategy) {
 export function competition() {
   return ["double","square"].map(strategy => ({strategy, result:challenge(strategy)}));
 }
-function apply(state, record) {
-  if (record.sequence !== state.sequence+1 || record.previous !== state.previous) throw Error("BROKEN_CHAIN");
-  if (record.hash !== hash({sequence:record.sequence, previous:record.previous, decision:record.decision})) throw Error("BAD_RECORD_HASH");
+const payload=(sequence,previous,decision)=>({domain,sequence,previous,decision});
+function authorized(key,envelope,signature) {
+  if (typeof signature !== "string" || !/^[A-Za-z0-9+/]{86}==$/.test(signature)) return false;
+  const bytes=Buffer.from(signature,"base64");
+  return bytes.length===64 && bytes.toString("base64")===signature &&
+    verify(null,Buffer.from(JSON.stringify(envelope)),key,bytes);
+}
+function apply(state,record,key) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) throw Error("INVALID_RECORD");
+  if (record.sequence!==state.sequence+1 || record.previous!==state.previous) throw Error("BROKEN_CHAIN");
+  const envelope=payload(record.sequence,record.previous,record.decision);
+  if (!authorized(key,envelope,record.signature)) throw Error("UNAUTHORIZED_RECORD");
+  if (record.hash!==hash({...envelope,signature:record.signature})) throw Error("BAD_RECORD_HASH");
   const d=record.decision;
-  if (d.kind === "INSTALL") {
-    if (state.capabilities[d.id]) throw Error("ALREADY_INSTALLED");
+  if (!d || typeof d!=="object" || Array.isArray(d)) throw Error("INVALID_DECISION");
+  if (d.kind==="INSTALL") {
+    if (typeof d.id!=="string" || !d.id || state.capabilities[d.id]) throw Error("ALREADY_INSTALLED");
     const proof=challenge(d.strategy);
-    if (proof.total < 2 || proof.passed !== proof.total || JSON.stringify(proof) !== JSON.stringify(d.proof)) throw Error("PROOF_REJECTED");
+    if (proof.total<2 || proof.passed!==proof.total || JSON.stringify(proof)!==JSON.stringify(d.proof)) throw Error("PROOF_REJECTED");
     state.capabilities[d.id]={strategy:d.strategy,proof,installedAt:record.sequence};
-  } else if (d.kind === "REUSE") {
-    if (!state.capabilities[d.id]) throw Error("CAPABILITY_NOT_FOUND");
-    if (typeof d.nonce !== "string" || !d.nonce || state.used.includes(d.nonce)) throw Error("REPLAY");
+  } else if (d.kind==="REUSE") {
+    const capability=state.capabilities[d.id];
+    if (!capability) throw Error("CAPABILITY_NOT_FOUND");
+    if (typeof d.nonce!=="string" || !d.nonce || state.used.includes(d.nonce)) throw Error("REPLAY");
+    if (!Number.isSafeInteger(d.input) || Math.abs(d.input)>1000000) throw Error("INVALID_INPUT");
+    const output=capability.strategy==="square"?d.input*d.input:capability.strategy==="double"?2*d.input:null;
+    if (d.output!==output) throw Error("OUTPUT_MISMATCH");
     state.used.push(d.nonce);
+    state.invocations.push({id:d.id,nonce:d.nonce,input:d.input,output});
   } else throw Error("UNKNOWN_DECISION");
   state.records.push(record);
   state.sequence=record.sequence;
   state.previous=record.hash;
   return state;
 }
-export async function openInstitution(directory, key) {
-  if (typeof key !== "string" || key.length < 16) throw Error("KEY_REQUIRED");
+export async function openInstitution(directory,verifierPublicKey) {
+  if (!verifierPublicKey) throw Error("PUBLIC_KEY_REQUIRED");
+  const key=createPublicKey(verifierPublicKey);
+  if (key.asymmetricKeyType!=="ed25519") throw Error("ED25519_REQUIRED");
   await mkdir(directory,{recursive:true});
   const path=join(directory,"institution.json");
   let state;
-  try { state=JSON.parse(await readFile(path,"utf8")); }
-  catch(e) { if(e.code !== "ENOENT") throw e; state=initial(); }
-  if (!Array.isArray(state.records)) throw Error("INVALID_LEDGER");
+  try {state=JSON.parse(await readFile(path,"utf8"));}
+  catch(e) {if(e.code!=="ENOENT") throw e;state=initial();}
+  if (!state || state.version!==2 || !Array.isArray(state.records)) throw Error("INVALID_LEDGER");
   const replay=initial();
-  for(const record of state.records) apply(replay,record);
+  for(const record of state.records) apply(replay,record,key);
   if(JSON.stringify(replay)!==JSON.stringify(state)) throw Error("LEDGER_MISMATCH");
   return {
     snapshot:()=>structuredClone(state),
-    async commit(decision, signature) {
-      if(typeof signature !== "string" || !/^[a-f0-9]{64}$/.test(signature) ||
-         !timingSafeEqual(Buffer.from(mac(key,decision),"hex"),Buffer.from(signature,"hex"))) throw Error("UNAUTHORIZED");
+    proposal:decision=>structuredClone(payload(state.sequence+1,state.previous,decision)),
+    async commit(decision,signature) {
+      const envelope=payload(state.sequence+1,state.previous,decision);
+      if (!authorized(key,envelope,signature)) throw Error("UNAUTHORIZED");
       const next=structuredClone(state);
-      const record={sequence:next.sequence+1,previous:next.previous,decision};
+      const record={...envelope,signature};
       record.hash=hash(record);
-      apply(next,record);
+      apply(next,record,key);
       const temp=path+".tmp";
       const handle=await open(temp,"wx");
       try {await handle.writeFile(JSON.stringify(next));await handle.sync();}
@@ -66,16 +84,15 @@ export async function openInstitution(directory, key) {
     }
   };
 }
-export async function demonstrate(directory,key,authorize) {
-  if (typeof authorize !== "function") throw Error("EXTERNAL_AUTHORIZATION_REQUIRED");
+export async function demonstrate(directory,verifierPublicKey,authorize) {
+  if (typeof authorize!=="function") throw Error("EXTERNAL_AUTHORIZATION_REQUIRED");
   const proposals=competition();
   const winner=proposals.find(p=>p.result.passed===p.result.total);
   if(!winner) throw Error("NO_WINNER");
-  const institution=await openInstitution(directory,key);
+  const institution=await openInstitution(directory,verifierPublicKey);
   if(!institution.snapshot().capabilities["square-v1"]) {
     const decision={kind:"INSTALL",id:"square-v1",strategy:winner.strategy,proof:winner.result};
-    const signature=await authorize(structuredClone(decision));
-    await institution.commit(decision,signature);
+    await institution.commit(decision,await authorize(institution.proposal(decision)));
   }
   return {proposals,capability:institution.snapshot().capabilities["square-v1"]};
 }

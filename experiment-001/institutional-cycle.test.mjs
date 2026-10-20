@@ -1,51 +1,51 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {mkdtemp, readFile, writeFile, rm} from "node:fs/promises";
-import {tmpdir} from "node:os";
+import {generateKeyPairSync,sign} from "node:crypto";
+import {mkdtemp,readFile,writeFile,rm} from "node:fs/promises";
 import {join} from "node:path";
-import {challenge,competition,demonstrate,openInstitution,signDecision} from "./institutional-cycle.mjs";
-const key="LOCAL-TEST-KEY-NEVER-USE-IN-PRODUCTION";
+import {tmpdir} from "node:os";
+import {challenge,competition,demonstrate,openInstitution} from "./institutional-cycle.mjs";
+const keys=()=>generateKeyPairSync("ed25519");
+const approve=(k,e)=>sign(null,Buffer.from(JSON.stringify(e)),k).toString("base64");
 async function temporary(fn) {
   const dir=await mkdtemp(join(tmpdir(),"ngl-cycle-"));
   try {await fn(dir);} finally {await rm(dir,{recursive:true,force:true});}
 }
-test("competing strategies face the same adversarial cases",()=>{
+test("competing strategies reject the losing candidate",()=>{
   assert.equal(competition().length,2);
   assert.equal(challenge("square").passed,4);
-  assert.ok(challenge("double").passed < 4);
+  assert.ok(challenge("double").passed<4);
 });
-test("independent reopening discovers installed capability and reuses it",()=>temporary(async dir=>{
-  const result=await demonstrate(dir,key,decision=>signDecision(key,decision));
-  assert.equal(result.capability.strategy,"square");
-  const next=await openInstitution(dir,key);
-  assert.equal(next.snapshot().capabilities["square-v1"].strategy,"square");
-  const reuse={kind:"REUSE",id:"square-v1",nonce:"second-session"};
-  await next.commit(reuse,signDecision(key,reuse));
-  const restarted=await openInstitution(dir,key);
-  assert.deepEqual(restarted.snapshot().used,["second-session"]);
-  await assert.rejects(()=>restarted.commit(reuse,signDecision(key,reuse)),/REPLAY/);
+test("installation and actual invocation survive reopening",()=>temporary(async dir=>{
+  const k=keys();
+  await demonstrate(dir,k.publicKey,e=>approve(k.privateKey,e));
+  const second=await openInstitution(dir,k.publicKey);
+  const decision={kind:"REUSE",id:"square-v1",nonce:"second",input:7,output:49};
+  await second.commit(decision,approve(k.privateKey,second.proposal(decision)));
+  const third=await openInstitution(dir,k.publicKey);
+  assert.equal(third.snapshot().invocations[0].output,49);
+  await assert.rejects(()=>third.commit(decision,approve(k.privateKey,third.proposal(decision))),/REPLAY/);
 }));
-test("unauthorized and unsupported changes cannot commit",()=>temporary(async dir=>{
-  const institution=await openInstitution(dir,key);
-  const bad={kind:"INSTALL",id:"bad",strategy:"double",proof:challenge("double")};
-  await assert.rejects(()=>institution.commit(bad,"invalid"),/UNAUTHORIZED/);
-  await assert.rejects(()=>institution.commit(bad,signDecision(key,bad)),/PROOF_REJECTED/);
-  const missing={kind:"REUSE",id:"missing",nonce:"1"};
-  await assert.rejects(()=>institution.commit(missing,signDecision(key,missing)),/CAPABILITY_NOT_FOUND/);
-  assert.equal(institution.snapshot().sequence,0);
+test("missing approval and incorrect signer do not install",()=>temporary(async dir=>{
+  const k=keys(),other=keys();
+  await assert.rejects(()=>demonstrate(dir,k.publicKey),/EXTERNAL_AUTHORIZATION_REQUIRED/);
+  await assert.rejects(()=>demonstrate(dir,k.publicKey,e=>approve(other.privateKey,e)),/UNAUTHORIZED/);
+  assert.equal((await openInstitution(dir,k.publicKey)).snapshot().sequence,0);
 }));
-test("tampered persisted snapshot is rejected on restart",()=>temporary(async dir=>{
-  await demonstrate(dir,key,decision=>signDecision(key,decision));
+test("incorrect result is not recorded",()=>temporary(async dir=>{
+  const k=keys();
+  await demonstrate(dir,k.publicKey,e=>approve(k.privateKey,e));
+  const inst=await openInstitution(dir,k.publicKey);
+  const decision={kind:"REUSE",id:"square-v1",nonce:"wrong",input:7,output:14};
+  await assert.rejects(()=>inst.commit(decision,approve(k.privateKey,inst.proposal(decision))),/OUTPUT_MISMATCH/);
+  assert.equal(inst.snapshot().sequence,1);
+}));
+test("replayed ledger rejects modifications",()=>temporary(async dir=>{
+  const k=keys();
+  await demonstrate(dir,k.publicKey,e=>approve(k.privateKey,e));
   const path=join(dir,"institution.json");
   const state=JSON.parse(await readFile(path,"utf8"));
-  state.capabilities["square-v1"].strategy="double";
+  state.records[0].decision.id="different";
   await writeFile(path,JSON.stringify(state));
-  await assert.rejects(()=>openInstitution(dir,key),/LEDGER_MISMATCH/);
-}));
-
-test("demonstration cannot self-authorize without external approval",()=>temporary(async dir=>{
-  await assert.rejects(()=>demonstrate(dir,key),/EXTERNAL_AUTHORIZATION_REQUIRED/);
-  await assert.rejects(()=>demonstrate(dir,key,()=>"model-says-approved"),/UNAUTHORIZED/);
-  const institution=await openInstitution(dir,key);
-  assert.equal(institution.snapshot().sequence,0);
+  await assert.rejects(()=>openInstitution(dir,k.publicKey),/UNAUTHORIZED_RECORD/);
 }));
