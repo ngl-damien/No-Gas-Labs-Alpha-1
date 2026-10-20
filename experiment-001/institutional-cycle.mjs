@@ -53,7 +53,7 @@ function apply(state,record,key) {
 }
 export async function openInstitution(directory,verifierPublicKey) {
   if (!verifierPublicKey) throw Error("PUBLIC_KEY_REQUIRED");
-  const key=createPublicKey(verifierPublicKey);
+  const key=verifierPublicKey?.type==="public" ? verifierPublicKey : createPublicKey(verifierPublicKey);
   if (key.asymmetricKeyType!=="ed25519") throw Error("ED25519_REQUIRED");
   await mkdir(directory,{recursive:true});
   const path=join(directory,"institution.json");
