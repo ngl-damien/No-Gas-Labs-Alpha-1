@@ -1,0 +1,7 @@
+NGL-370 LIGHTSHIFT™ — Research fingerprint (2026-10-19)
+Product ZIP SHA-256: e9ff1738995480abda80d405133100ce13e755c48aecb946aede90c2057ce39e
+Standalone HTML SHA-256: c916ded3e8ad5e78057805396a5a328d81b6721474e465a958a64a082af01511
+Index ZIP SHA-256: c2d2832b0503ab0c95e5b8b7ffea4a98e941859eac8f8f3734f6115aafdd4804
+34 published CIEDE2000 cases; 520 synthetic JS/Python differential cases, zero disagreement; 51 browser assertions.
+Market gate HOLD. No verified storefront, checkout, customers, traffic, sales or revenue.
+Executable not hosted here. Artifact is archived in NGL Catalog.
