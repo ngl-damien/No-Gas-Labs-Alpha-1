@@ -1,0 +1,6 @@
+NGL-401 POURSEAM™ | 2026-10-21
+Offline ready-mix ticket-to-site-receipt-to-invoice reconciliation experiment.
+Release ZIP SHA-256: 1403533ae731a3aeeacb3856aa12dcf0ba684660ed64360d86a82f595a039bf1
+Evidence: 500 JS/Python differential cases, zero disagreements; 360 SciPy checks; 150 tampered computational claims rejected.
+Market gate: HOLD. No public checkout, sales, revenue, or buyer validation claimed.
+This file is a research fingerprint only; the executable was not committed to GitHub.
