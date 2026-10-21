@@ -1,0 +1,5 @@
+NGL-401 corrected release fingerprint 2026-10-21
+Corrected ZIP SHA-256: efa4c7d3a3eaa891d1e761f8bbb3c163568e9705905bd9310ffff81628cd46ef
+This supersedes HASH.txt, whose earlier archive hash is obsolete.
+500 JS/Python cases, zero disagreements; 360 SciPy checks; 150 tamper rejections.
+No executable published to GitHub. No checkout, sales, revenue or buyer evidence.
