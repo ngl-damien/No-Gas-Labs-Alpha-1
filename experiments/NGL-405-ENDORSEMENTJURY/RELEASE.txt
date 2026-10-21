@@ -1,0 +1,12 @@
+NGL-405 ENDORSEMENTJURY™ — PUBLIC RESEARCH FINGERPRINT
+Date: 2026-10-21
+Institution: No_Gas_Labs™
+Status: bounded engineering experiment; market demand unvalidated.
+
+Product ZIP SHA-256: 0cf832ae9287937415efba967045efccb1146a1a655805ba0a55eeba5ea6518d
+Product: NGL_405_ENDORSEMENTJURY_v1.zip
+Catalog: /No_Gas_Labs™/Catalog-396-500/NGL-405-ENDORSEMENTJURY
+Experiment: 600 deterministic JS/Python investigations, zero disagreements; 420 independent day-by-day oracles, 208 SciPy optima, 80 Chromium assertions; 100 forged/rehashed computational claims rejected.
+Market gate: HOLD. No authenticated insurer sources, qualified buyer trials, public checkout, sales, or revenue established.
+This hash is a byte fingerprint only. It does not prove code correctness, authenticity of source documents, legal coverage, or customer delivery.
+The executable ZIP is NOT included in this research branch.
