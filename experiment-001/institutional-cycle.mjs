@@ -68,7 +68,10 @@ export async function openInstitution(directory,verifierPublicKey) {
     snapshot:()=>structuredClone(state),
     proposal:decision=>structuredClone(payload(state.sequence+1,state.previous,decision)),
     async commit(decision,signature) {
-      const envelope=payload(state.sequence+1,state.previous,decision);
+      // Do not retain a mutable caller-owned decision inside a signed record.
+      // The signature must authorize the same detached bytes we persist and replay.
+      const detached=structuredClone(decision);
+      const envelope=payload(state.sequence+1,state.previous,detached);
       if (!authorized(key,envelope,signature)) throw Error("UNAUTHORIZED");
       const next=structuredClone(state);
       const record={...envelope,signature};
