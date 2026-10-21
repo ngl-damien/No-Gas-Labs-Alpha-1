@@ -7,6 +7,16 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const initial = () => ({version:2, sequence:0, previous:"GENESIS", records:[], capabilities:{}, used:[], invocations:[]});
 const domain = "NGL-INSTITUTIONAL-CYCLE-v2";
+const exactKeys=(obj,keys)=>Object.keys(obj).sort().join("\0")===keys.slice().sort().join("\0");
+const own=(obj,key)=>Object.hasOwn(obj,key);
+const validId=id=>typeof id==="string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) && !["__proto__","constructor","prototype"].includes(id);
+function validateDecision(d) {
+  if(!d || typeof d!=="object" || Array.isArray(d)) throw Error("INVALID_DECISION");
+  const shapes={INSTALL:["kind","id","strategy","proof"],REUSE:["kind","id","nonce","input","output"]};
+  if(!own(shapes,d.kind)) throw Error("UNKNOWN_DECISION");
+  if(!exactKeys(d,shapes[d.kind])) throw Error("UNSIGNED_DECISION_FIELD");
+  if(!validId(d.id)) throw Error("INVALID_CAPABILITY_ID");
+}
 export function challenge(strategy) {
   const cases = [{n:2,out:4},{n:3,out:9},{n:5,out:25},{n:-4,out:16}];
   const implementation = strategy === "square" ? n => n*n : strategy === "double" ? n => 2*n : null;
@@ -25,19 +35,21 @@ function authorized(key,envelope,signature) {
 }
 function apply(state,record,key) {
   if (!record || typeof record !== "object" || Array.isArray(record)) throw Error("INVALID_RECORD");
+  if (!exactKeys(record,["domain","sequence","previous","decision","signature","hash"])) throw Error("UNSIGNED_RECORD_FIELD");
+  if (record.domain!==domain) throw Error("INVALID_RECORD_DOMAIN");
   if (record.sequence!==state.sequence+1 || record.previous!==state.previous) throw Error("BROKEN_CHAIN");
   const envelope=payload(record.sequence,record.previous,record.decision);
   if (!authorized(key,envelope,record.signature)) throw Error("UNAUTHORIZED_RECORD");
   if (record.hash!==hash({...envelope,signature:record.signature})) throw Error("BAD_RECORD_HASH");
   const d=record.decision;
-  if (!d || typeof d!=="object" || Array.isArray(d)) throw Error("INVALID_DECISION");
+  validateDecision(d);
   if (d.kind==="INSTALL") {
-    if (typeof d.id!=="string" || !d.id || state.capabilities[d.id]) throw Error("ALREADY_INSTALLED");
+    if (typeof d.id!=="string" || !d.id || own(state.capabilities,d.id)) throw Error("ALREADY_INSTALLED");
     const proof=challenge(d.strategy);
     if (proof.total<2 || proof.passed!==proof.total || JSON.stringify(proof)!==JSON.stringify(d.proof)) throw Error("PROOF_REJECTED");
     state.capabilities[d.id]={strategy:d.strategy,proof,installedAt:record.sequence};
   } else if (d.kind==="REUSE") {
-    const capability=state.capabilities[d.id];
+    const capability=own(state.capabilities,d.id) ? state.capabilities[d.id] : null;
     if (!capability) throw Error("CAPABILITY_NOT_FOUND");
     if (typeof d.nonce!=="string" || !d.nonce || state.used.includes(d.nonce)) throw Error("REPLAY");
     if (!Number.isSafeInteger(d.input) || Math.abs(d.input)>1000000) throw Error("INVALID_INPUT");
@@ -55,6 +67,10 @@ export async function openInstitution(directory,verifierPublicKey) {
   if (!verifierPublicKey) throw Error("PUBLIC_KEY_REQUIRED");
   const key=verifierPublicKey?.type==="public" ? verifierPublicKey : createPublicKey(verifierPublicKey);
   if (key.asymmetricKeyType!=="ed25519") throw Error("ED25519_REQUIRED");
+  const expectedPin=process.env.NGL_FOUNDER_ED25519_SPKI_SHA256;
+  if(typeof expectedPin!=="string" || !/^[a-f0-9]{64}$/.test(expectedPin)) throw Error("INDEPENDENT_FOUNDER_PIN_REQUIRED");
+  const actualPin=createHash("sha256").update(key.export({type:"spki",format:"der"})).digest("hex");
+  if(actualPin!==expectedPin) throw Error("UNTRUSTED_FOUNDER_KEY");
   await mkdir(directory,{recursive:true});
   const path=join(directory,"institution.json");
   let state;
@@ -70,6 +86,7 @@ export async function openInstitution(directory,verifierPublicKey) {
     async commit(decision,signature) {
       // Do not retain a mutable caller-owned decision inside a signed record.
       // The signature must authorize the same detached bytes we persist and replay.
+      if(process.env.NGL_FOUNDER_ED25519_SPKI_SHA256!==expectedPin) throw Error("TRUST_ROOT_CHANGED");
       const detached=structuredClone(decision);
       const envelope=payload(state.sequence+1,state.previous,detached);
       if (!authorized(key,envelope,signature)) throw Error("UNAUTHORIZED");
@@ -98,7 +115,7 @@ export async function demonstrate(directory,verifierPublicKey,authorize) {
   const winner=proposals.find(p=>p.result.passed===p.result.total);
   if(!winner) throw Error("NO_WINNER");
   const institution=await openInstitution(directory,verifierPublicKey);
-  if(!institution.snapshot().capabilities["square-v1"]) {
+  if(!own(institution.snapshot().capabilities,"square-v1")) {
     const decision={kind:"INSTALL",id:"square-v1",strategy:winner.strategy,proof:winner.result};
     await institution.commit(decision,await authorize(institution.proposal(decision)));
   }
