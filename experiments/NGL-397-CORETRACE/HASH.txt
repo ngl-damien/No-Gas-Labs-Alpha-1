@@ -1,0 +1,5 @@
+NGL-397 CORETRACE release fingerprint 2026-10-20
+ZIP SHA256 5c760bdd6b4cda5c97be2d0d7652d079b64f8f91e69141d0d7890f9c0d0c2e1a
+HTML SHA256 d7390de559cf87b05f17e027b5274a7667df42ec4773efe8bea7428a6ac91bda
+Benchmark: 500 cases, 1000 JS-Python comparisons, zero disagreements.
+No customer purchases or revenue verified.
