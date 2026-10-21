@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {generateKeyPairSync,sign} from "node:crypto";
+import {generateKeyPairSync,sign,createHash} from "node:crypto";
 import {mkdtemp,readFile,writeFile,rm} from "node:fs/promises";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {challenge,competition,demonstrate,openInstitution} from "./institutional-cycle.mjs";
-const keys=()=>generateKeyPairSync("ed25519");
+const setPin=k=>{process.env.NGL_FOUNDER_ED25519_SPKI_SHA256=createHash("sha256").update(k.publicKey.export({type:"spki",format:"der"})).digest("hex");};
+const keys=()=>{const k=generateKeyPairSync("ed25519");setPin(k);return k;};
 const approve=(k,e)=>sign(null,Buffer.from(JSON.stringify(e)),k).toString("base64");
 async function temporary(fn) {
   const dir=await mkdtemp(join(tmpdir(),"ngl-cycle-"));
@@ -27,7 +28,7 @@ test("installation and actual invocation survive reopening",()=>temporary(async 
   await assert.rejects(()=>third.commit(decision,approve(k.privateKey,third.proposal(decision))),/REPLAY/);
 }));
 test("missing approval and incorrect signer do not install",()=>temporary(async dir=>{
-  const k=keys(),other=keys();
+  const k=keys(),other=keys();setPin(k);
   await assert.rejects(()=>demonstrate(dir,k.publicKey),/EXTERNAL_AUTHORIZATION_REQUIRED/);
   await assert.rejects(()=>demonstrate(dir,k.publicKey,e=>approve(other.privateKey,e)),/UNAUTHORIZED/);
   assert.equal((await openInstitution(dir,k.publicKey)).snapshot().sequence,0);
