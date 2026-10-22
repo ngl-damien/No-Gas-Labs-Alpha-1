@@ -89,3 +89,28 @@ test('missing startup pin fails closed in a clean child process', () => {
   });
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
+
+test('modified proof is rejected even when the modified proposal is signed', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), store = await openStore(lib, join(dir, 'store'), founder), draft = proposal(lib, executor);
+  draft.proof = { ...draft.proof, passed: draft.proof.passed - 1 };
+  await assert.rejects(() => store.commit(draft, approve(lib, draft, founder.privateKey)), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 0);
+}));
+
+test('an INSTALL signature cannot be reused after the capability identity changes', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), store = await openStore(lib, join(dir, 'store'), founder), draft = proposal(lib, executor);
+  const signature = approve(lib, draft, founder.privateKey);
+  const changed = { ...draft, id: 'other-capability' };
+  await assert.rejects(() => store.commit(changed, signature), /UNAUTHORIZED/);
+  assert.equal(store.snapshot().sequence, 0);
+}));
+
+test('REUSE for an unknown capability ID is rejected without consuming the installed grant', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), store = await openStore(lib, join(dir, 'store'), founder);
+  const draft = proposal(lib, executor, { nonce: 'install-nonce-000006', maxUses: 1 });
+  await store.commit(draft, approve(lib, draft, founder.privateKey));
+  const wrongId = { kind: 'REUSE', id: 'missing-capability', nonce: 'reuse-nonce-000006', input: 4, output: 16 };
+  await assert.rejects(() => store.commit(wrongId, receipt(lib, wrongId, executor.privateKey)), /CAPABILITY_NOT_FOUND/);
+  assert.equal(store.snapshot().capabilities[draft.id].uses, 0);
+  assert.equal(store.snapshot().sequence, 1);
+}));
