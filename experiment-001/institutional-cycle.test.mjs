@@ -1,51 +1,65 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import {mkdtemp, readFile, writeFile, rm} from "node:fs/promises";
-import {tmpdir} from "node:os";
-import {join} from "node:path";
-import {challenge,competition,demonstrate,openInstitution,signDecision} from "./institutional-cycle.mjs";
-const key="LOCAL-TEST-KEY-NEVER-USE-IN-PRODUCTION";
-async function temporary(fn) {
-  const dir=await mkdtemp(join(tmpdir(),"ngl-cycle-"));
-  try {await fn(dir);} finally {await rm(dir,{recursive:true,force:true});}
-}
-test("competing strategies face the same adversarial cases",()=>{
-  assert.equal(competition().length,2);
-  assert.equal(challenge("square").passed,4);
-  assert.ok(challenge("double").passed < 4);
-});
-test("independent reopening discovers installed capability and reuses it",()=>temporary(async dir=>{
-  const result=await demonstrate(dir,key,decision=>signDecision(key,decision));
-  assert.equal(result.capability.strategy,"square");
-  const next=await openInstitution(dir,key);
-  assert.equal(next.snapshot().capabilities["square-v1"].strategy,"square");
-  const reuse={kind:"REUSE",id:"square-v1",nonce:"second-session"};
-  await next.commit(reuse,signDecision(key,reuse));
-  const restarted=await openInstitution(dir,key);
-  assert.deepEqual(restarted.snapshot().used,["second-session"]);
-  await assert.rejects(()=>restarted.commit(reuse,signDecision(key,reuse)),/REPLAY/);
-}));
-test("unauthorized and unsupported changes cannot commit",()=>temporary(async dir=>{
-  const institution=await openInstitution(dir,key);
-  const bad={kind:"INSTALL",id:"bad",strategy:"double",proof:challenge("double")};
-  await assert.rejects(()=>institution.commit(bad,"invalid"),/UNAUTHORIZED/);
-  await assert.rejects(()=>institution.commit(bad,signDecision(key,bad)),/PROOF_REJECTED/);
-  const missing={kind:"REUSE",id:"missing",nonce:"1"};
-  await assert.rejects(()=>institution.commit(missing,signDecision(key,missing)),/CAPABILITY_NOT_FOUND/);
-  assert.equal(institution.snapshot().sequence,0);
-}));
-test("tampered persisted snapshot is rejected on restart",()=>temporary(async dir=>{
-  await demonstrate(dir,key,decision=>signDecision(key,decision));
-  const path=join(dir,"institution.json");
-  const state=JSON.parse(await readFile(path,"utf8"));
-  state.capabilities["square-v1"].strategy="double";
-  await writeFile(path,JSON.stringify(state));
-  await assert.rejects(()=>openInstitution(dir,key),/LEDGER_MISMATCH/);
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { generateKeyPairSync, sign as signSignature } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { approvalPayload, executionReceiptPayload, makeInstallationProposal, openInstitution, publicKeyFingerprint } from './institutional-cycle.mjs';
+
+const pair = () => generateKeyPairSync('ed25519');
+const pem = p => p.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+const pin = p => publicKeyFingerprint(pem(p));
+const openStore = (dir, p) => openInstitution(dir, pem(p), pin(p));
+const approve = (decision, key) => signSignature(null, Buffer.from(approvalPayload(decision)), key).toString('base64url');
+const receipt = (decision, key) => signSignature(null, Buffer.from(executionReceiptPayload(decision)), key).toString('base64url');
+const proposal = (executor, extra = {}) => makeInstallationProposal({ executorPublicKeyPem: pem(executor), nonce: 'install-nonce-000001', issuedAt: Date.now(), expiresAt: Date.now() + 60_000, maxUses: 2, ...extra });
+async function temp(fn) { const dir = await mkdtemp(join(tmpdir(), 'ngl-approval-test-')); try { await fn(dir); } finally { await rm(dir, { recursive: true, force: true }); } }
+
+test('proposer cannot install without a separate Founder signature', () => temp(async dir => {
+  const founder = pair(), executor = pair(), store = await openStore(join(dir, 'store'), founder);
+  const draft = proposal(executor);
+  await assert.rejects(() => store.commit(draft), /UNAUTHORIZED/);
+  await assert.rejects(() => store.commit(draft, 'model-says-approved'), /UNAUTHORIZED/);
+  assert.equal(store.snapshot().sequence, 0);
 }));
 
-test("demonstration cannot self-authorize without external approval",()=>temporary(async dir=>{
-  await assert.rejects(()=>demonstrate(dir,key),/EXTERNAL_AUTHORIZATION_REQUIRED/);
-  await assert.rejects(()=>demonstrate(dir,key,()=>"model-says-approved"),/UNAUTHORIZED/);
-  const institution=await openInstitution(dir,key);
-  assert.equal(institution.snapshot().sequence,0);
+test('approved install and signed reuse survive reopening; replay is rejected', () => temp(async dir => {
+  const founder = pair(), executor = pair(), path = join(dir, 'store');
+  const draft = proposal(executor, { nonce: 'install-nonce-000002', maxUses: 1 });
+  const store = await openStore(path, founder);
+  await store.commit(draft, approve(draft, founder.privateKey));
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-nonce-000001', input: 9, output: 81 };
+  await store.commit(use, receipt(use, executor.privateKey));
+  const reopened = await openStore(path, founder);
+  assert.equal(reopened.snapshot().capabilities[draft.id].uses, 1);
+  await assert.rejects(() => reopened.commit(use, receipt(use, executor.privateKey)), /REPLAY/);
+}));
+
+test('capability IDs that overlap inherited object names remain valid', () => temp(async dir => {
+  const founder = pair(), store = await openStore(join(dir, 'store'), founder);
+  for (const [i, id] of ['toString', 'constructor', 'hasOwnProperty'].entries()) {
+    const executor = pair(), draft = proposal(executor, { id, nonce: 'install-prototype-' + i + '-0001', maxUses: 1 });
+    await store.commit(draft, approve(draft, founder.privateKey));
+    assert.equal(Object.hasOwn(store.snapshot().capabilities, id), true);
+    const use = { kind: 'REUSE', id, nonce: 'reuse-prototype-' + i + '-0001', input: 3, output: 9 };
+    await store.commit(use, receipt(use, executor.privateKey));
+    assert.equal(store.snapshot().capabilities[id].uses, 1);
+  }
+}));
+
+test('invalid output and oversized input do not consume a grant', () => temp(async dir => {
+  const founder = pair(), executor = pair(), store = await openStore(join(dir, 'store'), founder);
+  const draft = proposal(executor, { nonce: 'install-nonce-000003', maxUses: 1 });
+  await store.commit(draft, approve(draft, founder.privateKey));
+  const wrong = { kind: 'REUSE', id: draft.id, nonce: 'reuse-nonce-000003', input: 8, output: 63 };
+  await assert.rejects(() => store.commit(wrong, receipt(wrong, executor.privateKey)), /OUTPUT_MISMATCH/);
+  const large = { kind: 'REUSE', id: draft.id, nonce: 'reuse-nonce-000004', input: 1_000_001, output: 1_000_002_000_001 };
+  await assert.rejects(() => store.commit(large, receipt(large, executor.privateKey)), /INPUT_OUT_OF_BOUNDS/);
+  assert.equal(store.snapshot().capabilities[draft.id].uses, 0);
+}));
+
+test('Founder key requires an independently supplied matching fingerprint', () => temp(async dir => {
+  const founder = pair(), attacker = pair();
+  await assert.rejects(() => openInstitution(join(dir, 'store'), pem(founder), pin(attacker)), /FOUNDER_KEY_FINGERPRINT_MISMATCH/);
+  await assert.rejects(() => openInstitution(join(dir, 'store'), pem(founder)), /FOUNDER_KEY_FINGERPRINT_REQUIRED/);
 }));
