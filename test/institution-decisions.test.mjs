@@ -1,0 +1,383 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.mjs';
+
+const decisionsModule = await import('../src/institution/decisions.mjs').catch(error => {
+  if (error.code === 'ERR_MODULE_NOT_FOUND') return {};
+  throw error;
+});
+const founder = { id: 'damien', role: 'founder' };
+const evaluator = { id: 'local-evaluator', role: 'executor' };
+const witness = { id: 'witness:one', role: 'witness' };
+const instant = Date.parse('2026-10-18T12:00:00.000Z');
+const policy = { id: 'policy:synthetic', reviewWindowMs: 1000, basis: 'Synthetic unit-test interval; not an operational review window.' };
+const digest = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
+const copy = value => JSON.parse(JSON.stringify(value));
+function proposal(id = 'decision:one') {
+  const bytes = '{"schema":"test.evaluation.v1","result":"fixture café 🌍"}';
+  return { id, title: 'Synthetic packaging review', evaluation: { bytes, receipt: artifactReceipt(bytes) }, risks: ['Synthetic private risk'], rollback: 'git checkout fixture-baseline', proposedEffect: 'Record fixture M1 review only; no execution.' };
+}
+function request(action = 'APPROVE', overrides = {}) { return { decisionId: 'decision:one', expectedRevision: 1, requestId: 'request:one', action, ...overrides }; }
+async function rejected(promise, code) { await assert.rejects(promise, error => error.code === code, `Expected ${code}`); }
+async function fixture(t, { configured = true } = {}) {
+  assert.equal(typeof decisionsModule.openDecisions, 'function', 'The durable decision service is not implemented');
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-'));
+  let clock = instant;
+  const store = await decisionsModule.openDecisions({ directory, now: () => clock });
+  t.after(async () => { await store.close(); await rm(directory, { recursive: true, force: true }); });
+  if (configured) await store.setPolicy(founder, policy);
+  return { store, directory, setClock: value => { clock = value; } };
+}
+
+test('starts unconfigured instead of inventing an operational policy or pending decision', async t => {
+  const { store } = await fixture(t, { configured: false });
+  const state = await store.snapshot(founder);
+  assert.equal(state.policy, null);
+  assert.deepEqual(state.decisions, []);
+  assert.equal(state.revision, 0);
+  await rejected(store.create(evaluator, proposal()), 'POLICY_UNCONFIGURED');
+});
+
+test('only the host-bound exact Founder identity can set a review policy', async t => {
+  const { store } = await fixture(t, { configured: false });
+  for (const actor of [witness, evaluator, { id: 'impostor', role: 'founder' }, { id: 'damien', role: 'executor' }]) {
+    await rejected(store.setPolicy(actor, policy), 'FOUNDER_REQUIRED');
+  }
+  const saved = await store.setPolicy(founder, policy);
+  assert.equal(saved.basis, policy.basis);
+  assert.equal(saved.revision, 1);
+  assert.equal(saved.setAt, new Date(instant).toISOString());
+});
+
+test('rejects missing, invented and excessively long policy fields', async t => {
+  const { store } = await fixture(t, { configured: false });
+  for (const invalid of [
+    { ...policy, reviewWindowMs: 0 }, { ...policy, reviewWindowMs: -1 }, { ...policy, reviewWindowMs: 1.5 },
+    { ...policy, reviewWindowMs: 30 * 86400000 + 1 }, { ...policy, basis: '   ' }, { ...policy, actor: founder },
+    { ...policy, expiresAt: 'invented' }, { ...policy, id: '__proto__' },
+  ]) await rejected(store.setPolicy(founder, invalid), 'INVALID_POLICY');
+  assert.equal((await store.snapshot(founder)).revision, 0);
+});
+
+test('creates a real byte-bound proposal with server-derived time and captured policy', async t => {
+  const { store } = await fixture(t);
+  const created = await store.create(evaluator, proposal());
+  assert.equal(created.status, 'PENDING');
+  assert.equal(created.revision, 1);
+  assert.equal(created.createdAt, new Date(instant).toISOString());
+  assert.equal(created.expiresAt, new Date(instant + 1000).toISOString());
+  assert.deepEqual(created.policy, { id: policy.id, revision: 1 });
+  assert.deepEqual(created.evaluation, proposal().evaluation);
+  assert.equal(created.disposition, null);
+  await rejected(store.create(witness, proposal('decision:two')), 'CREATOR_REQUIRED');
+  await rejected(store.create({ id: 'other', role: 'executor' }, proposal('decision:two')), 'CREATOR_REQUIRED');
+});
+
+test('verifies actual UTF-8 bytes, exact receipt schema and bounded proposal fields', async t => {
+  const { store } = await fixture(t);
+  const original = proposal();
+  const malformed = [
+    { ...original, actor: founder }, { ...original, createdAt: new Date(instant).toISOString() },
+    { ...original, evaluation: { ...original.evaluation, html: '<b>fake result</b>' } },
+    { ...original, evaluation: { ...original.evaluation, receipt: { ...original.evaluation.receipt, size: original.evaluation.bytes.length } } },
+    { ...original, evaluation: { ...original.evaluation, bytes: 'altered' } },
+    { ...original, evaluation: { bytes: 'a'.repeat(1024 * 1024 + 1), receipt: artifactReceipt('a'.repeat(1024 * 1024 + 1)) } },
+    { ...original, rollback: '' }, { ...original, risks: 'all fine' }, { ...original, risks: [''] },
+    { ...original, proposedEffect: '' },
+  ];
+  for (const item of malformed) await rejected(store.create(evaluator, item), 'INVALID_PROPOSAL');
+  assert.equal((await store.snapshot(founder)).decisions.length, 0);
+});
+
+test('policy and proposal IDs are immutable, with exact duplicate creates idempotent', async t => {
+  const { store } = await fixture(t);
+  const first = await store.create(evaluator, proposal());
+  assert.deepEqual(await store.create(evaluator, proposal()), first);
+  await rejected(store.create(evaluator, { ...proposal(), title: 'replacement scope' }), 'DECISION_ID_REUSED');
+  const revision = (await store.snapshot(founder)).revision;
+  await store.setPolicy(founder, policy);
+  assert.equal((await store.snapshot(founder)).revision, revision);
+  await rejected(store.setPolicy(founder, { ...policy, reviewWindowMs: 2000 }), 'POLICY_ID_REUSED');
+});
+
+test('Founder disposition is explicit and records no automatic promotion or execution', async t => {
+  const { store } = await fixture(t);
+  await store.create(evaluator, proposal());
+  for (const actor of [evaluator, witness, { id: 'impostor', role: 'founder' }]) await rejected(store.decide(actor, request()), 'FOUNDER_REQUIRED');
+  const decided = await store.decide(founder, request());
+  assert.equal(decided.status, 'APPROVED');
+  assert.equal(decided.revision, 2);
+  assert.deepEqual(decided.disposition, { action: 'APPROVE', actorId: founder.id, requestId: 'request:one', decidedAt: new Date(instant).toISOString() });
+  assert.equal(Object.hasOwn(decided, 'executed'), false);
+  assert.equal(decided.proposedEffect, proposal().proposedEffect);
+});
+
+test('serializes competing decisions so an exact expected revision permits only one winner', async t => {
+  const { store } = await fixture(t);
+  await store.create(evaluator, proposal());
+  const settled = await Promise.allSettled([
+    store.decide(founder, request('APPROVE', { requestId: 'request:approve' })),
+    store.decide(founder, request('REJECT', { requestId: 'request:reject' })),
+  ]);
+  assert.equal(settled.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(settled.find(result => result.status === 'rejected').reason.code, 'REVISION_MISMATCH');
+  const state = await store.snapshot(founder);
+  assert.equal(state.decisions[0].status, 'APPROVED');
+  assert.equal(state.audit.filter(event => event.type === 'decision-attempted').length, 2);
+});
+
+test('exact decision request retry returns the original result before expiry or revision checks', async t => {
+  const { store, setClock } = await fixture(t);
+  await store.create(evaluator, proposal());
+  const first = await store.decide(founder, request());
+  const revision = (await store.snapshot(founder)).revision;
+  setClock(instant + 100000);
+  assert.deepEqual(await store.decide(founder, request()), first);
+  assert.equal((await store.snapshot(founder)).revision, revision);
+  await rejected(store.decide(founder, request('REJECT')), 'REQUEST_ID_REUSED');
+  await rejected(store.decide(founder, request('APPROVE', { decisionId: 'decision:other' })), 'REQUEST_ID_REUSED');
+  await rejected(store.decide(founder, request('APPROVE', { expectedRevision: 2 })), 'REQUEST_ID_REUSED');
+});
+
+test('expiry is enforced exactly at the deadline and durably audits the rejected request', async t => {
+  const { store, directory, setClock } = await fixture(t);
+  await store.create(evaluator, proposal());
+  setClock(instant + 1000);
+  await rejected(store.decide(founder, request()), 'DECISION_EXPIRED');
+  const state = await store.snapshot(founder);
+  assert.equal(state.decisions[0].status, 'EXPIRED');
+  assert.equal(state.decisions[0].revision, 2);
+  assert.equal(state.decisions[0].disposition, null);
+  const audit = state.audit.find(event => event.type === 'decision-attempted');
+  assert.equal(audit.outcome.code, 'DECISION_EXPIRED');
+  assert.equal(audit.at, new Date(instant + 1000).toISOString());
+  await store.close();
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant + 2000 });
+  try {
+    await rejected(reopened.decide(founder, request()), 'DECISION_EXPIRED');
+    assert.equal((await reopened.snapshot(founder)).revision, state.revision);
+  } finally { await reopened.close(); }
+});
+
+test('snapshot observes expiry durably without inventing Founder intent', async t => {
+  const { store, setClock } = await fixture(t);
+  await store.create(evaluator, proposal());
+  setClock(instant + 1001);
+  const state = await store.snapshot(witness);
+  assert.equal(state.decisions[0].status, 'EXPIRED');
+  const full = await store.snapshot(founder);
+  const expiry = full.audit.find(event => event.type === 'expiry-observed');
+  assert.equal(expiry.actor.id, 'decision-service');
+  assert.equal(expiry.at, new Date(instant + 1001).toISOString());
+  assert.equal(full.decisions[0].disposition, null);
+});
+
+test('DEFER is terminal and never silently extends the authorized review window', async t => {
+  const { store } = await fixture(t);
+  await store.create(evaluator, proposal());
+  const deferred = await store.decide(founder, request('DEFER'));
+  assert.equal(deferred.status, 'DEFERRED');
+  assert.equal(deferred.expiresAt, new Date(instant + 1000).toISOString());
+  await rejected(store.decide(founder, request('APPROVE', { expectedRevision: 2, requestId: 'request:later' })), 'DECISION_TERMINAL');
+});
+
+test('policy changes do not rewrite deadlines or evidence on existing proposals', async t => {
+  const { store, setClock } = await fixture(t);
+  const first = await store.create(evaluator, proposal());
+  setClock(instant + 20);
+  await store.setPolicy(founder, { ...policy, id: 'policy:second', reviewWindowMs: 5000 });
+  const second = await store.create(founder, proposal('decision:two'));
+  assert.equal(second.expiresAt, new Date(instant + 5020).toISOString());
+  assert.deepEqual((await store.snapshot(founder)).decisions[0], first);
+});
+
+test('redacts private policy basis, evidence bytes, scope, risks and rollback from non-Founder snapshots', async t => {
+  const { store } = await fixture(t);
+  await store.create(evaluator, proposal());
+  for (const actor of [witness, evaluator]) {
+    const publicState = await store.snapshot(actor);
+    const serialized = JSON.stringify(publicState);
+    for (const secret of [policy.basis, proposal().evaluation.bytes, proposal().risks[0], proposal().rollback, proposal().proposedEffect]) assert.equal(serialized.includes(secret), false);
+    assert.equal(publicState.decisions[0].title, proposal().title);
+    assert.equal(Object.hasOwn(publicState, 'audit'), false);
+    assert.equal(Object.hasOwn(publicState.decisions[0], 'evaluation'), false);
+  }
+  await rejected(store.snapshot({ id: 'other', role: 'founder' }), 'ACTOR_REQUIRED');
+});
+
+test('durable restart replays policy, exact evaluation and disposition without relying on chat state', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.decide(founder, request('REJECT'));
+  const before = await store.snapshot(founder);
+  await store.close();
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant });
+  try {
+    assert.deepEqual(await reopened.snapshot(founder), before);
+    assert.deepEqual(await reopened.decide(founder, request('REJECT')), before.decisions[0]);
+  } finally { await reopened.close(); }
+});
+
+test('mutating caller inputs or returned snapshots cannot alter queued or durable authority', async t => {
+  const { store } = await fixture(t);
+  const input = proposal();
+  const actor = copy(evaluator);
+  const pending = store.create(actor, input);
+  input.title = 'raced caller mutation'; input.evaluation.bytes = 'replaced'; actor.id = 'impostor';
+  const created = await pending;
+  assert.equal(created.title, proposal().title);
+  created.evaluation.bytes = 'returned mutation';
+  const state = await store.snapshot(founder);
+  state.decisions[0].status = 'APPROVED';
+  assert.equal((await store.snapshot(founder)).decisions[0].status, 'PENDING');
+  assert.equal((await store.snapshot(founder)).decisions[0].evaluation.bytes, proposal().evaluation.bytes);
+});
+
+test('rejects tampered disk envelope even when an attacker recomputes the outer digest', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const envelope = JSON.parse(await readFile(file, 'utf8'));
+  envelope.payload.projection.decisions[0].status = 'APPROVED';
+  envelope.digest = digest(envelope.payload);
+  await writeFile(file, canonicalStringify(envelope));
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+});
+
+test('rejects broken record-chain links and does not leave a lock after failed recovery', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const original = await readFile(file, 'utf8');
+  const envelope = JSON.parse(original);
+  envelope.payload.records[1].previousHash = '0'.repeat(64);
+  envelope.digest = digest(envelope.payload);
+  await writeFile(file, canonicalStringify(envelope));
+  await rejected(decisionsModule.openDecisions({ directory }), 'DECISIONS_TAMPERED');
+  await writeFile(file, original);
+  const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
+  await recovered.close();
+});
+
+test('one-writer lock is exclusive and stale locks require explicit manual recovery', async t => {
+  const { store, directory } = await fixture(t);
+  await rejected(decisionsModule.openDecisions({ directory }), 'DECISIONS_LOCKED');
+  await store.close();
+  await writeFile(join(directory, '.decisions.lock'), JSON.stringify({ pid: 2147483647, owner: 'synthetic-stale-owner' }));
+  await rejected(decisionsModule.openDecisions({ directory }), 'DECISIONS_LOCKED');
+  await rm(join(directory, '.decisions.lock'));
+  const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
+  await recovered.close();
+});
+
+test('failed persistence does not expose a committed decision and fences the writer until recovery', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  const file = join(directory, 'decisions.json');
+  const backup = join(directory, 'backup.json');
+  await rename(file, backup);
+  await mkdir(file);
+  await rejected(store.decide(founder, request()), 'DECISION_PERSISTENCE_FAILED');
+  await rejected(store.snapshot(founder), 'DECISIONS_UNCERTAIN');
+  await rm(file, { recursive: true });
+  await rename(backup, file);
+  await store.close();
+  const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
+  try {
+    assert.equal((await recovered.snapshot(founder)).decisions[0].status, 'PENDING');
+    assert.equal((await recovered.decide(founder, request())).status, 'APPROVED');
+  } finally { await recovered.close(); }
+});
+
+test('clock rollback cannot reopen a deadline and malformed requests cannot expand action scope', async t => {
+  const { store, setClock } = await fixture(t);
+  await store.create(evaluator, proposal());
+  for (const malformed of [request('EXECUTE'), request('APPROVE', { expectedRevision: 0 }), { ...request(), actor: founder }, { ...request(), expiresAt: 'later' }]) await rejected(store.decide(founder, malformed), 'INVALID_DECISION');
+  setClock(instant - 1);
+  await rejected(store.decide(founder, request()), 'CLOCK_REGRESSION');
+  setClock(instant + 1001);
+  await rejected(store.decide(founder, request()), 'DECISION_EXPIRED');
+});
+
+test('close waits for accepted queued work and rejects later writes or reads', async t => {
+  const { store } = await fixture(t);
+  const creating = store.create(evaluator, proposal());
+  const closing = store.close();
+  assert.equal((await creating).status, 'PENDING');
+  await closing;
+  await rejected(store.create(evaluator, proposal('decision:two')), 'DECISIONS_CLOSED');
+  await rejected(store.snapshot(founder), 'DECISIONS_CLOSED');
+});
+
+test('receipt algorithm, digest and byte size are verified rather than trusting a positive label', async t => {
+  const { store } = await fixture(t);
+  for (const receipt of [
+    { ...proposal().evaluation.receipt, algorithm: 'verified' },
+    { ...proposal().evaluation.receipt, digest: '0'.repeat(64) },
+    { ...proposal().evaluation.receipt, size: -1 },
+    { ...proposal().evaluation.receipt, assurance: 'independent' },
+  ]) await rejected(store.create(evaluator, { ...proposal(), evaluation: { ...proposal().evaluation, receipt } }), 'INVALID_PROPOSAL');
+  assert.equal((await store.snapshot(founder)).decisions.length, 0);
+});
+
+test('a failed revision request is durably idempotent and cannot later change its action', async t => {
+  const { store, directory, setClock } = await fixture(t);
+  await store.create(evaluator, proposal());
+  const stale = request('APPROVE', { expectedRevision: 99 });
+  await rejected(store.decide(founder, stale), 'REVISION_MISMATCH');
+  const revision = (await store.snapshot(founder)).revision;
+  await store.close();
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant + 10 });
+  try {
+    await rejected(reopened.decide(founder, stale), 'REVISION_MISMATCH');
+    assert.equal((await reopened.snapshot(founder)).revision, revision);
+    await rejected(reopened.decide(founder, { ...stale, action: 'REJECT' }), 'REQUEST_ID_REUSED');
+    assert.equal((await reopened.snapshot(founder)).decisions[0].status, 'PENDING');
+  } finally { await reopened.close(); }
+  setClock(instant + 20);
+});
+
+test('replay checks event authority even if all chain and outer hashes are recalculated', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const envelope = JSON.parse(await readFile(file, 'utf8'));
+  envelope.payload.records[0].event.actor = evaluator;
+  let previousHash = envelope.payload.records[0].previousHash;
+  for (const record of envelope.payload.records) {
+    record.previousHash = previousHash;
+    record.hash = digest({ index: record.index, previousHash, event: record.event });
+    previousHash = record.hash;
+  }
+  envelope.digest = digest(envelope.payload);
+  await writeFile(file, canonicalStringify(envelope));
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+});
+
+test('does not follow a symbolic-link envelope to load another private file', async t => {
+  const { store, directory } = await fixture(t);
+  await store.close();
+  const path = join(directory, 'decisions.json');
+  const original = join(directory, 'fixture-original.json');
+  await rename(path, original);
+  await symlink(original, path);
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+  assert.equal(JSON.parse(await readFile(original, 'utf8')).schema, 'ngl.decisions.store.v1');
+});
+
+test('every concurrent close caller waits until the writer lease is actually released', async t => {
+  const { store, directory } = await fixture(t);
+  const firstClose = store.close();
+  await store.close();
+  await assert.rejects(readFile(join(directory, '.decisions.lock')), error => error.code === 'ENOENT');
+  await firstClose;
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant });
+  await reopened.close();
+});

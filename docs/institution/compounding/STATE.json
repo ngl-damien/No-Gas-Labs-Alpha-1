@@ -1,0 +1,103 @@
+{
+  "schema": "ngl.institution-continuity.v1",
+  "principal": "Damien Featherstone",
+  "mission": "alpha1-transfer-20261018",
+  "authority": "The Neophyte Founder retains institutional decisions. AI labor may inspect/build/test; hashes, imported labels and local evaluator IDs do not confer independent authority. No automatic promotion.",
+  "assignments": [
+    {
+      "role": "Founder",
+      "task": "Review the first real machinery-improvement disposition only after authenticated HTTPS reachability and evidence readiness; authorized interval 24 hours.",
+      "status": "NOT_ACTIVATED"
+    },
+    {
+      "role": "Codex executor",
+      "task": "Preserve and verify delivered Task A/B, reusable M1, local Gate and RPG projection.",
+      "status": "LOCAL_EXECUTION_RECORDED"
+    },
+    {
+      "role": "Next executor",
+      "task": "Provision authorized durable HTTPS service, test real Founder access and recovery; measure routine human burden across the next comparable task cycle.",
+      "status": "OPEN"
+    }
+  ],
+  "machinery": {
+    "M0": {
+      "source": "cab8dfb0d6ae41626db8010ae300210ccd0ca7a2",
+      "operation": "Original game/source exporter, working in original scope; no declared A/B component delivery."
+    },
+    "M1": {
+      "source": "68b042daeefc155690ef34af87767ca2cef5a5b7",
+      "operation": "Explicit-file public component packaging",
+      "status": "EXPERIMENTAL_CANDIDATE",
+      "comparison": "Both exact declared components accepted; no speed or human-burden claim.",
+      "evaluationCommit": "907ce814f023ef3bd40ea57bfa536914bb67e27b"
+    }
+  },
+  "taskB": {
+    "status": "TRANSFER_OBSERVED_COMPONENT_DELIVERY",
+    "tests": 40,
+    "entryPoint": "Extracted index.html tested in real Chromium over loopback HTTP",
+    "artifact": "dist/compounding/tru-temporal-workbench.zip"
+  },
+  "founderDecision": {
+    "reviewWindowHours": 24,
+    "clockStarted": false,
+    "operationalDecisionCreated": false,
+    "activationPrerequisites": [
+      "Authenticated HTTPS Gate reachable by the actual Founder",
+      "Real evaluation evidence ready and byte receipts retained"
+    ],
+    "noAutomaticPromotion": true
+  },
+  "openFailures": [
+    "No configured hosting/deployment capability or externally verified authenticated HTTPS origin; M7 not demonstrated.",
+    "No observed M0 human-intervention baseline; Founder burden improvement remains INCONCLUSIVE.",
+    "No fresh cloud restoration or independently participating external Witness established.",
+    "Original five conversation/two Sites readers absent; package used without claiming original access.",
+    "One observed delivery transfer does not establish sustained institutional growth."
+  ],
+  "nextAction": "Read docs/institution/compounding/REPORT.md, run npm run recover:institution, verify retained source/evidence. Continue with durable HTTPS Gate and a measured real task cycle; do not start the operational 24-hour clock before its prerequisites.",
+  "rollback": "Preserve cab8dfb Meteor branch and 52c6443 original package import. M1 is a separate operation; stop using it without modifying kernel invariants or rolling back unrelated source. Keep runtime owners stopped before offline recovery; never delete locks blindly.",
+  "references": [
+    {
+      "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md",
+      "sha256": "6ce32dbac55b2fc25215bab6add49d8b55aba5a75913e483c220db6ea71ca7a7"
+    },
+    {
+      "path": "docs/institution/compounding/PLAN.md",
+      "sha256": "02700bf6247dffb40f92a15830c6c13a2ae993affa669f1f26340b764c99a5b3"
+    },
+    {
+      "path": "docs/institution/compounding/REVIEW-POLICY.md",
+      "sha256": "89af520f681072028ee7ef3185ca8e7b4941037f5dd34a683670be3f246b1ce6"
+    },
+    {
+      "path": "docs/institution/compounding/task-a.profile.json",
+      "sha256": "2889a287c232be92b48fef44c393a3eebc1a662834a76461138bade9d279dcd2"
+    },
+    {
+      "path": "docs/institution/compounding/task-b.profile.json",
+      "sha256": "f78c354976e12f429194e760f362595d8408b6a55936bd968952e67dcacc225e"
+    },
+    {
+      "path": "docs/institution/compounding/evidence/experiment.json",
+      "sha256": "421e4a6dd878a6b7bb1e5ebe7248223374601a171e6a169974ea8af8395fc307"
+    },
+    {
+      "path": "src/production/component-package.mjs",
+      "sha256": "d85793029b8643b5938fcb75c2a04ae03312f22ac1249647b83206b88508ae37"
+    },
+    {
+      "path": "src/institution/decisions.mjs",
+      "sha256": "7ee3656cea0ebcd4b831d6d5863e074e5bf13081cb7e3c5eb21eabcb84b38e45"
+    },
+    {
+      "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py",
+      "sha256": "f1ddf4ff9416045e09deaf4bc6b8d0a1b42bbe4e7870a45743a1a02146cca4c4"
+    },
+    {
+      "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/core.mjs",
+      "sha256": "5dba219ce6d1958db94c8b0d47b84f6ff36c4094f78d73a6e23129a224ee0d2c"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "ngl.commission-evidence.v1",
+  "recordedAt": "2026-10-17T23:52:14.274Z",
+  "sourcePaths": {
+    "verificationDir": "/workspace/No-Gas-Labs-Alpha-1/.runtime/verification-MCCr5T",
+    "browserDir": "/tmp/ngl-meteor-browser-combined",
+    "throughputFile": "/workspace/No-Gas-Labs-Alpha-1/.runtime/throughput-bvSEe0/throughput.json"
+  },
+  "note": "Archived local execution evidence. Original logs and Forge source copies remain private runtime artifacts; these paths may not survive a new cloud instance."
+}

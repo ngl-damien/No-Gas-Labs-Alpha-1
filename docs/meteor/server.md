@@ -1,0 +1,46 @@
+# Shared local world service
+
+`game/server.mjs` exports `await createGameServer({dataDir, founderKey})`. It returns a Node HTTP server with an attached asynchronous `closeGame()` method. The caller selects the listen address and port; the service never starts an external provider or runs a request-supplied machine command.
+
+```js
+import { createGameServer } from './game/server.mjs';
+const server = await createGameServer();
+server.listen(4173, '127.0.0.1');
+// During shutdown: await server.closeGame();
+```
+
+Running `node game/server.mjs` starts the same service directly. `HOST` defaults to `127.0.0.1`, `PORT` to `4173`, and `NGL_DATA_DIR` may select a runtime directory. SIGINT/SIGTERM close active streams and release the store lease. Startup prints its address, never its key.
+
+The default directory is the checkout's `.runtime`. An explicitly supplied `founderKey`, or `NGL_FOUNDER_KEY`, configures the secret. Otherwise the first startup creates `.runtime/founder.key` with random bytes and mode `0600`; later starts reuse it. The service never logs or returns that key. Keep the runtime directory private and out of source archives. The deployment owner may retrieve their local key securely from that file; do not paste it into public reports.
+
+## Authority and live sessions
+
+Every new or unknown cookie starts as a Witness. A correct `POST /api/login {key,name?}` creates a fresh `HttpOnly; SameSite=Strict` session cookie. Login rotation and `POST /api/logout {}` demote the previous session, send its open event streams a Witness-filtered state, and close them so a browser reconnects with its current cookie. Sessions are held in memory; restarting the server requires logging in again. Cookie transport is marked Secure when the server's socket uses TLS.
+
+Only authenticated Founder sessions can draft, repair, publish, or rehearse a shared launch. HTTP input never supplies the trusted actor or role. Action-specific field allowlists reject role, reward, actor, arbitrary command, and extra-field injection. POST requests require JSON, reject malformed objects, and accept at most 256 KiB. Custom HTML has the stricter 128 KiB domain limit. Origin-bearing writes must match the service's scheme and Host; cross-site browser writes are rejected. Origin-free local CLI requests remain available. A reverse proxy must preserve a matching scheme and Host or terminate TLS consistently with this check.
+
+`GET /api/state`, `/api/export`, and the `world` event on `/api/events` return `{world,viewer,presence,mode:'shared',institution}`. The viewer includes its stable per-session `presenceId`; the client uses that identifier to omit its own avatar from the other-session presence overlay while retaining `viewer.id` for actor identity. Each subscriber receives its own viewer-filtered DTO: Witnesses receive neither drafts nor private draft/repair events. `/api/action` adds its domain `result`. SSE sends an initial world event, subsequent accepted changes, presence events, and heartbeat comments.
+
+Presence represents actual connected sessions. Coordinates must remain inside the 1600×1000 world, names are bounded, and positions are included only while that session has an open SSE connection. Disconnecting the last connection clears its position. There are at most 128 SSE streams and 512 retained sessions; no visitor count is fabricated.
+
+## Persistence and exact-byte institutional records
+
+`game/service-store.mjs` keeps one `service.json` envelope containing the complete world, institutional events, publication bindings, and content-addressed artifact bytes. The envelope includes a SHA-256 checksum of canonical JSON. Each update validates a candidate, writes a fresh private temporary file, synchronizes its bytes, and atomically renames it over the current envelope. The service adopts and broadcasts the candidate only after the write succeeds. A failed rename leaves the in-memory world and institutional acceptance unchanged. Writes are serialized, so simultaneous publication attempts cannot both spend the same draft/version. An exclusive `.service.lock` lease rejects a second service using the same data directory; `closeGame()` releases it. A crash can leave a stale lock. There is deliberately no automatic stale-lock recovery: an operator must stop every possible owner and remove the stale file offline before restarting, avoiding competing recovery writers.
+
+On startup and before each commit the service validates current artifacts, every retained version, draft records, event authority and ordering, earned repair methods bound to their exact published version/Founder/intent/time, attributed notes/discoveries, game reward totals, kernel replay, and exact publication/version/receipt bindings. Corrupt or inconsistent persistence fails closed. Envelope checksums detect corruption; they are not signatures, and an attacker who controls the machine can replace the whole valid history. Runtime storage is a local trust boundary, not a remote consensus protocol. Atomic rename protects against partial envelope replacement; this implementation does not promise a hardware-independent power-loss guarantee for directory metadata.
+
+Every successful publication creates the actual strict kernel sequence `claim → authorize → execute → observe → adjudicate`. The exact claim action is `preserve-artifact-bytes`. The authenticated Founder identity `damien` supplies authorization and adjudication. `local-forge` and `local-byte-verifier` are distinct configured local process identities inside this service. Kernel execution and observation recompute the supplied UTF-8 bytes' SHA-256 receipts. The single durable commit contains both the published version and all five accepted kernel events plus its bytes.
+
+These local identities are not independent humans or independent external AI services. Acceptance asserts preservation of those exact bytes; it establishes no usefulness, truth, demand, revenue, constitutional change, public deployment, or external AI execution. XP remains the separately labelled game reward of 100 per accepted published version.
+
+`GET /api/institution` and the state DTO expose the actual accepted records, kernel events, and safe capability summaries. The Forge summary comes from the real runner's `forgeCapabilities()`. Courier CLI support is available, while this service has no enrolled external-provider configuration and performs no provider dispatch. HTTP launch calls `rehearseLaunch` on the current stored world and loads only the six explicitly allowlisted comic assets for portable packaging. It awards no XP and performs no public posting.
+
+## Artifact and static boundary
+
+`GET /api/artifacts/:id?version=N` serves only published current or retained versions, with an exact-byte receipt header. Its CSP sets `sandbox allow-scripts allow-forms allow-downloads`, permits inline artifact scripts/styles and self/data images, allows same-host/about nested frames for authored srcdoc instruments, and denies connections, objects, base changes, and form destinations. The opaque sandbox propagates into nested frames; no same-origin permission is granted. It grants no same-origin sandbox permission. The host's outer iframe must keep the same opaque sandbox permissions. Because srcdoc inherits the host policy, the shell also permits inline scripts; each authored document then constrains its own resources with its artifact CSP. The host renders user labels as text and keeps artifact code inside the opaque sandbox. A Chromium check reproduced the original inherited-policy failure, then verified the original comic at natural width 700 and actual Loom playback with a running AudioContext after this policy correction.
+
+Static serving uses an explicit list: the game index/styles, client/world-view/model/artifacts/launchpad modules, and six comic JPEGs (`cover_a`, `p3`, `p4`, `p5`, `p10`, `p13`). The six public JPEGs permit cross-origin resource embedding so opaque sandbox artifacts can display them; API responses retain same-origin resource policy. There is no directory server. Server modules, institutional source, `.runtime`, keys, `.git`, and traversal paths are not served.
+
+## Focused verification
+
+Run `node --test test/game-server.test.mjs`. The disposable HTTP fixtures cover Witness defaults, injection/origin/body limits, draft/export/SSE privacy, session demotion and rotation, real presence cleanup, exact artifact bytes and CSP, strict institutional acceptance, restart/key secrecy, concurrent stale publication, retained versions/earned methods, exclusive-writer rejection/release, direct CLI startup/SIGTERM/secret-free output, Unicode notes, launch packaging without XP, atomic rename failure, static traversal, the inherited-srcdoc script policy with an opaque outer iframe, and corruption with both unchanged and recomputed envelope checksums. These checks use real listening servers and temporary storage; they make no external provider or network-service calls.

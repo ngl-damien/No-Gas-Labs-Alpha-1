@@ -1,0 +1,136 @@
+{
+  "schema": "tru.case.v1",
+  "caseId": "NGL-PINNED-LINEAGE-2026-10-18",
+  "title": "Pinned NGL source lineage",
+  "subtitle": "Untrusted imported source history. No new executions, authenticated witnesses, signatures, operational deadline or live Gate is established.",
+  "events": [
+    {
+      "id": "t-baseline",
+      "at": "2026-10-08T17:51:51-05:00",
+      "mode": "REPORTED",
+      "description": "Pinned baseline README records the constitutional boundary between claims, authorization, execution, observation and adjudication. Timestamp is the Git committer timestamp, not authenticated observation time.",
+      "evidenceIds": [
+        "e-baseline"
+      ]
+    },
+    {
+      "id": "t-meteor",
+      "at": "2026-10-17T23:56:00Z",
+      "mode": "REPORTED",
+      "description": "Pinned Meteor report describes local delivery and historical checks; this event records the source commit, not a fresh reproduction of those checks. Timestamp is the Git committer timestamp, not authenticated observation time.",
+      "evidenceIds": [
+        "e-meteor"
+      ]
+    },
+    {
+      "id": "t-thesis",
+      "at": "2026-10-18T01:39:25-05:00",
+      "mode": "REPORTED",
+      "description": "Pinned revised thesis specifies two-task compounding, continuity, useful delivery, Witness boundaries and a distinct live Founder Gate milestone. Timestamp is the Git committer timestamp, not authenticated observation time.",
+      "evidenceIds": [
+        "e-thesis"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "e-baseline",
+      "kind": "artifact",
+      "assurance": "UNVERIFIED",
+      "description": "Baseline constitutional inventory. SHA-256 was calculated from the pinned Git blob while authoring this case. Import does not fetch or authenticate those bytes, identity, report contents, or execution.",
+      "digest": "ecfd3a1a322b54f4fbc8dff3a2b969a71875886bc04401357b2350ade88f529e",
+      "source": {
+        "kind": "git-blob",
+        "commit": "facee282ae0c0a56031e7bf00a038eac3ebe4926",
+        "path": "README.md",
+        "gitBlob": "72e8702f1306652e42fb4af94f18236e6d3ef43e",
+        "byteLength": 1403
+      }
+    },
+    {
+      "id": "e-meteor",
+      "kind": "artifact",
+      "assurance": "UNVERIFIED",
+      "description": "Meteor local delivery report. SHA-256 was calculated from the pinned Git blob while authoring this case. Import does not fetch or authenticate those bytes, identity, report contents, or execution.",
+      "digest": "1f8392600c0c4d8cd3fd0c90c7496618009674685079f1daadf01f125fad214e",
+      "source": {
+        "kind": "git-blob",
+        "commit": "cab8dfb0d6ae41626db8010ae300210ccd0ca7a2",
+        "path": "docs/meteor/REPORT.md",
+        "gitBlob": "ff4d770b80b9b277d3c60d29fc8fb424dce09a72",
+        "byteLength": 9697
+      }
+    },
+    {
+      "id": "e-thesis",
+      "kind": "artifact",
+      "assurance": "UNVERIFIED",
+      "description": "Revised Alpha 1 institutional thesis. SHA-256 was calculated from the pinned Git blob while authoring this case. Import does not fetch or authenticate those bytes, identity, report contents, or execution.",
+      "digest": "6ce32dbac55b2fc25215bab6add49d8b55aba5a75913e483c220db6ea71ca7a7",
+      "source": {
+        "kind": "git-blob",
+        "commit": "a9d4389fa9c3431c561311399980d6504f7b530a",
+        "path": "experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md",
+        "gitBlob": "704866f4a08ce05572f95f5aafea4abd95626728",
+        "byteLength": 9762
+      }
+    }
+  ],
+  "candidates": [
+    {
+      "id": "lineage-baseline",
+      "name": "Baseline source inventory",
+      "role": "INCUMBENT",
+      "workloadId": "lineage-inspection-v1",
+      "evidenceIds": [
+        "e-baseline"
+      ],
+      "testResults": [
+        {
+          "id": "source-recheck",
+          "name": "Independently reproduce pinned source-byte checks",
+          "outcome": "UNKNOWN"
+        },
+        {
+          "id": "execution-recheck",
+          "name": "Independently reproduce functional execution evidence",
+          "outcome": "UNKNOWN"
+        },
+        {
+          "id": "founder-gate",
+          "name": "Authenticate live Founder Gate and actual pending decision",
+          "outcome": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "id": "lineage-followup",
+      "name": "Meteor and revised thesis lineage reconstruction",
+      "role": "CANDIDATE",
+      "workloadId": "lineage-inspection-v1",
+      "evidenceIds": [
+        "e-baseline",
+        "e-meteor",
+        "e-thesis"
+      ],
+      "testResults": [
+        {
+          "id": "source-recheck",
+          "name": "Independently reproduce pinned source-byte checks",
+          "outcome": "UNKNOWN"
+        },
+        {
+          "id": "execution-recheck",
+          "name": "Independently reproduce functional execution evidence",
+          "outcome": "UNKNOWN"
+        },
+        {
+          "id": "founder-gate",
+          "name": "Authenticate live Founder Gate and actual pending decision",
+          "outcome": "UNKNOWN"
+        }
+      ]
+    }
+  ],
+  "rollback": "Retain Meteor checkpoint cab8dfb0d6ae41626db8010ae300210ccd0ca7a2 and the pinned source inventory. This local proposal applies no production changes; any restoration or promotion requires separate authorized action."
+}

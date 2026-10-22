@@ -1,0 +1,61 @@
+{
+  "schema": "ngl.throughput-measurement.v1",
+  "observedAt": "2026-10-17T23:52:01.822Z",
+  "workload": "Three correct vector-sum implementations, each200×10000 numbers plus7 correctness/input-preservation cases; identical frozen source bytes.",
+  "samples": [
+    {
+      "trial": 1,
+      "concurrency": 1,
+      "sourceDigest": "5c68a6f00fb95b279c979e6e80d6460f880e30a1e0aef078235e0320525c1fcc",
+      "taskId": "4ec332e6ab496e56c5ec7a591b3139e5839363c6b13e4f6b3396c55f3e12e3c2",
+      "wallMs": 897.427277,
+      "copyAndSnapshotMs": 348.0207130000001,
+      "aggregateRuntimeMs": 129.62250900000004,
+      "aggregateVerificationOverheadMs": 414.4740629999999,
+      "passing": 3
+    },
+    {
+      "trial": 1,
+      "concurrency": 3,
+      "sourceDigest": "5c68a6f00fb95b279c979e6e80d6460f880e30a1e0aef078235e0320525c1fcc",
+      "taskId": "ad8ca1c373c8a50cb37660b2492d042882c6e40f3251c0026e95e8dcfcf31e3d",
+      "wallMs": 406.717046,
+      "copyAndSnapshotMs": 346.1904629999999,
+      "aggregateRuntimeMs": 110.73192399999971,
+      "aggregateVerificationOverheadMs": 470.23615500000005,
+      "passing": 3
+    },
+    {
+      "trial": 2,
+      "concurrency": 3,
+      "sourceDigest": "5c68a6f00fb95b279c979e6e80d6460f880e30a1e0aef078235e0320525c1fcc",
+      "taskId": "ad8ca1c373c8a50cb37660b2492d042882c6e40f3251c0026e95e8dcfcf31e3d",
+      "wallMs": 401.378117,
+      "copyAndSnapshotMs": 312.3749109999999,
+      "aggregateRuntimeMs": 133.65352599999983,
+      "aggregateVerificationOverheadMs": 473.05141899999967,
+      "passing": 3
+    },
+    {
+      "trial": 2,
+      "concurrency": 1,
+      "sourceDigest": "5c68a6f00fb95b279c979e6e80d6460f880e30a1e0aef078235e0320525c1fcc",
+      "taskId": "4ec332e6ab496e56c5ec7a591b3139e5839363c6b13e4f6b3396c55f3e12e3c2",
+      "wallMs": 737.1768099999999,
+      "copyAndSnapshotMs": 266.7665519999996,
+      "aggregateRuntimeMs": 129.48146799999995,
+      "aggregateVerificationOverheadMs": 338.1014279999997,
+      "passing": 3
+    }
+  ],
+  "serialMeanMs": 817.3020435,
+  "parallelMeanMs": 404.0475815,
+  "observedRatio": 2.022786624451061,
+  "ratioMeaning": "Mean sequential wall time / mean three-worker wall time across2 alternating trials. Includes snapshot/copy, Node startup, verification and integrity costs.",
+  "limitations": [
+    "Two local samples per mode, no statistical significance or cross-machine guarantee.",
+    "No measured human-labor baseline; no3600× claim.",
+    "The microbenchmark does not establish year-long institutional development acceleration.",
+    "Correctness is a prerequisite; wrong and timed-out candidates are tested in the separate institutional exercise."
+  ]
+}

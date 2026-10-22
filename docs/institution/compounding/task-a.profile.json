@@ -1,0 +1,11 @@
+{
+  "schema": "ngl.component-profile.v1",
+  "id": "aota-evidence-inspector",
+  "entryPoint": "experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py",
+  "files": [
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/engine.py"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/test_engine.py","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/test_engine.py"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/example_claims.json","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/example_claims.json"},
+    {"source":"experiments/AOTA-FEATHERSTONIAN-ENGINE/README.md","target":"experiments/AOTA-FEATHERSTONIAN-ENGINE/README.md"}
+  ]
+}

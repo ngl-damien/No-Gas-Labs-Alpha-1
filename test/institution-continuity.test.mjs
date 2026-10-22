@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const root=new URL('..',import.meta.url),script=new URL('../scripts/recover-institution.mjs',import.meta.url);
+async function fixture(){const dir=await mkdtemp(join(tmpdir(),'ngl-continuity-'));const bytes=await readFile(new URL('package.json',root));return {dir,state:{schema:'ngl.institution-continuity.v1',principal:'Damien Featherstone',authority:'Founder retains decisions; no automatic adoption',assignments:[{role:'evaluator',task:'verify retained evidence'}],references:[{path:'package.json',sha256:createHash('sha256').update(bytes).digest('hex')}],machinery:{M0:'frozen',M1:'experimental'},openFailures:['HTTPS is unverified'],taskB:{status:'frozen'},founderDecision:{clockStarted:false},nextAction:'Run the retained comparison',rollback:'Keep M0'}};}
+async function run(state,dir){const path=join(dir,'state.json');await writeFile(path,JSON.stringify(state));return spawnSync(process.execPath,[script.pathname,path],{encoding:'utf8',timeout:10000});}
+test('a new process recovers assignments, authority, evidence and unfinished work from durable files',async()=>{const {dir,state}=await fixture();try{const result=await run(state,dir);assert.equal(result.status,0,result.stderr);const recovery=JSON.parse(result.stdout);assert.equal(recovery.passed,true);assert.deepEqual(recovery.assignments,state.assignments);assert.equal(recovery.authority,state.authority);assert.deepEqual(recovery.openFailures,state.openFailures);assert.equal(recovery.founderDecision.clockStarted,false);}finally{await rm(dir,{recursive:true,force:true});}});
+test('recovery rejects a receipt whose current bytes differ',async()=>{const {dir,state}=await fixture();try{state.references[0].sha256='0'.repeat(64);const result=await run(state,dir);assert.notEqual(result.status,0);assert.match(result.stderr,/changed/);}finally{await rm(dir,{recursive:true,force:true});}});
+test('recovery does not accept traversal references or incomplete responsibility',async()=>{const {dir,state}=await fixture();try{state.references[0].path='../outside';assert.notEqual((await run(state,dir)).status,0);delete state.nextAction;assert.notEqual((await run(state,dir)).status,0);}finally{await rm(dir,{recursive:true,force:true});}});
+test('recovery rejects missing machinery, unfinished work or Founder decision',async()=>{const {dir,state}=await fixture();try{for(const key of ['machinery','openFailures','taskB','founderDecision']){const incomplete={...state};delete incomplete[key];assert.notEqual((await run(incomplete,dir)).status,0,key);}}finally{await rm(dir,{recursive:true,force:true});}});

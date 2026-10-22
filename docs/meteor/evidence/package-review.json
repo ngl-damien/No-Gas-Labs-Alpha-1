@@ -1,0 +1,177 @@
+{
+  "schema": "ngl.detached-package-review.v1",
+  "observedAt": "2026-10-17T23:55:21.931221+00:00",
+  "artifact": {
+    "path": "dist/no-gas-labs-meteor.zip",
+    "size": 4473532,
+    "sha256": "30fbb576b8559defffd60812d112410d034bd3728929e50c74355180f875aed7"
+  },
+  "reviewMode": "independent local extraction and actual execution; no source edits",
+  "workspace": "/tmp/ngl-independent-release-qg1dilg0",
+  "checks": {
+    "zip": {
+      "passed": true,
+      "entryCount": 103,
+      "testzip": null,
+      "pathsValidated": true,
+      "symlinks": 0
+    },
+    "manifest": {
+      "passed": true,
+      "fileCount": 102,
+      "hashesVerified": 102,
+      "sizesVerified": 102,
+      "sha256": "fdb077ea7fb22ce005a116a5de1f3f0bdb98e36ac3c529840ce2f3441b4382e2",
+      "detachedManifestMatches": true
+    },
+    "packageBoundaries": {
+      "passed": true,
+      "filenamesInspected": 103,
+      "runtimeOrGitPaths": 0,
+      "credentialFilenames": 0,
+      "privateKeyPemMarkers": 0,
+      "privateServiceOrCredentialJsonEnvelopes": 0
+    },
+    "extractedVerify": {
+      "command": [
+        "npm",
+        "run",
+        "verify"
+      ],
+      "exitCode": 0,
+      "wallMs": 8860.403851,
+      "passed": true,
+      "tests": {
+        "tests": 147,
+        "pass": 147,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "stages": [
+        {
+          "name": "tests",
+          "command": [
+            "node",
+            "--test"
+          ],
+          "exitCode": 0,
+          "wallMs": 5700.575166
+        },
+        {
+          "name": "package",
+          "command": [
+            "node",
+            "scripts/build-game.mjs"
+          ],
+          "exitCode": 0,
+          "wallMs": 424.2844159999995
+        },
+        {
+          "name": "institutional-exercise",
+          "command": [
+            "node",
+            "scripts/meteor-demo.mjs",
+            "--out",
+            "/tmp/ngl-independent-release-qg1dilg0/extracted/.runtime/verification-FxVGQN/exercise"
+          ],
+          "exitCode": 0,
+          "wallMs": 2732.9546339999997
+        }
+      ],
+      "reportedWallMs": 8860.403851,
+      "reportPath": "/tmp/ngl-independent-release-qg1dilg0/extracted/.runtime/verification-FxVGQN/report.json"
+    },
+    "institutionalExercise": {
+      "passed": true,
+      "courier": {
+        "workerPid": 120545,
+        "requestId": "fixture-demonstration",
+        "status": "RESPONDED",
+        "acknowledgmentVerified": true,
+        "responseVerified": true,
+        "dissent": "Fixture computation supplies no external model judgment or Founder approval."
+      },
+      "externalProvidersExecuted": [],
+      "forgeOutcomes": [
+        "passing",
+        "failed",
+        "timed_out"
+      ],
+      "repository": {
+        "taskId": "faee0a02d78a09c1453e444544de2d4eef5c9bea0ef8d734a16bc3874863c084",
+        "outcome": "passing",
+        "tests": {
+          "tests": 129,
+          "suites": 0,
+          "passed": 129,
+          "failed": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "integrity": {
+          "passed": true,
+          "changedPaths": []
+        },
+        "timing": {
+          "snapshotMs": 68.730313,
+          "copyMs": 19.670417999999998,
+          "runtimeMs": 1506.311234,
+          "integrityMs": 29.07663700000012,
+          "verificationOverheadMs": 30.968022999999903,
+          "wallMs": 1626.865141
+        }
+      },
+      "kernelRevision": 5,
+      "kernelStage": "accepted",
+      "wallMs": 2691.323104
+    },
+    "extractedServer": {
+      "passed": true,
+      "command": [
+        "node",
+        "game/server.mjs"
+      ],
+      "disposableDataDirectory": "/tmp/ngl-independent-release-qg1dilg0/disposable-game-data-uqm08yq0",
+      "founderKey": "explicitly fake fixture; not an existing credential",
+      "index": {
+        "status": 200,
+        "exactPackagedBytes": true,
+        "sha256": "d6175ba67d3e475274ff7a569a092405a9eee423061ba3ed06644bb42f3b60f8"
+      },
+      "state": {
+        "status": 200,
+        "role": "witness",
+        "privateDraftCount": 0
+      },
+      "comic": {
+        "status": 200,
+        "contentType": "image/jpeg",
+        "exactPackagedBytes": true,
+        "size": 110084,
+        "sha256": "a179e44d5f447a39225e0bfba9186b55423a5bf6ea2dca6b01ca41359bac6472"
+      },
+      "wallMs": 86.08019599341787
+    },
+    "postExecutionIntegrity": {
+      "passed": true,
+      "packagedEntriesChecked": 102,
+      "changedPaths": [],
+      "originalZipUnchanged": true
+    }
+  },
+  "limitations": [
+    "This receipt is detached and intentionally excluded from the ZIP to avoid self-hashing.",
+    "Filename, structured-envelope and private-key-marker screening is bounded inspection, not a mathematical guarantee that arbitrary source prose contains no secret.",
+    "The supplied Founder key was an explicitly fake, disposable fixture value; no existing runtime directories or credential files were read.",
+    "The courier worker was an actual local fixture, not an external AI provider or independent Council member.",
+    "This local extraction check does not establish public deployment, external delivery, independent human review, or a human-labor speedup.",
+    "Browser interaction is covered by the separate archived browser run, not repeated by this package execution review."
+  ],
+  "reviewHarnessCorrection": "The completed fresh verify run was preserved while the reviewer corrected two receipt-shape assumptions: work.stage is accepted and the HTTP session identity is viewer.role. No package source was changed, no passing pipeline was rerun, and temporary servers were shut down.",
+  "passed": true,
+  "reviewContinuationWallMs": 183.21578500035685
+}
+
