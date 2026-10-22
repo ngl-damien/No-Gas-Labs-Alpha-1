@@ -28,12 +28,22 @@ test('proposer cannot install without a separate Founder signature', () => temp(
   assert.equal(store.snapshot().sequence, 0);
 }));
 
-test('approved install and signed reuse survive reopening; replay is rejected', () => temp(async dir => {
-  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store'), draft = proposal(lib, executor, { nonce: 'install-nonce-000002', maxUses: 1 });
+test('approved install persists and can be reused in a separate Node process; replay is rejected', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  const draft = proposal(lib, executor, { nonce: 'install-nonce-000002', maxUses: 1 });
   const store = await openStore(lib, path, founder);
   await store.commit(draft, approve(lib, draft, founder.privateKey));
   const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-nonce-000001', input: 9, output: 81 };
-  await store.commit(use, receipt(lib, use, executor.privateKey));
+  const workerPath = new URL('./reuse-worker.mjs', import.meta.url).pathname;
+  const child = spawnSync(process.execPath, [workerPath, path, pem(founder), JSON.stringify(use), receipt(lib, use, executor.privateKey)], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const snapshot = JSON.parse(child.stdout.trim());
+  assert.equal(snapshot.sequence, 2);
+  assert.equal(snapshot.capabilities[draft.id].uses, 1);
   const reopened = await openStore(lib, path, founder);
   assert.equal(reopened.snapshot().capabilities[draft.id].uses, 1);
   await assert.rejects(() => reopened.commit(use, receipt(lib, use, executor.privateKey)), /REPLAY/);

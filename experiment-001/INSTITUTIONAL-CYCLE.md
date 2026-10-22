@@ -13,9 +13,9 @@ Run on Node.js 20 (the repository CI runtime): `node --test experiment-001/insti
 - INSTALL approval is a detached Ed25519 signature over the canonical decision. The private signing key must remain outside the proposal-handling runtime; this repository does not implement a separate signing service or prove key custody.
 - The hash chain detects inconsistent record edits, but it is not externally anchored. Someone able to rewrite the complete ledger can recalculate its hashes.
 - Writes use an exclusive lock file, a synced temporary file, atomic rename, and directory sync. Stale-lock recovery is not automatic. A directory-sync failure after rename is reported as `COMMIT_DURABILITY_UNCERTAIN`; the visible file may already have changed.
-- Current reopen coverage is in one Node process. A child-process restart test and a hostile concurrency test remain acceptance work.
+- The test now performs signed REUSE in a child Node process and reopens the ledger in the parent afterward. Concurrency and stale-lock tests remain acceptance work.
 - Do not merge, award in-world XP, or make commercial claims based on this experiment. Keep PR #16 draft until exact-head CI, adversarial review, and cross-process evidence are recorded.
 
 ## Next experiment
 
-Prove durable reuse across a separate Node process, then test concurrent writers and stale-lock recovery. Only after that should the candidate be compared with the real reducer/authority entry points for integration.
+Test concurrent writers and stale-lock recovery, then compare the candidate with the real reducer/authority entry points for integration.
