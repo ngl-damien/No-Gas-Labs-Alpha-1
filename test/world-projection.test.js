@@ -144,3 +144,12 @@ test("institutional traversal is constrained by the realm graph", async () => {
   const realm = projectRealm(projectWorld([claim]));
   assert.deepEqual(realm.institutions.guild_hall.exits, ["decision_chamber", "town_square", "academy"]);
 });
+
+
+test("an explicitly rejected observation cannot mint canonical progress despite a valid receipt", () => {
+  const rejected = { ...observed, event_id: "e12", observation_verification: "REJECTED" };
+  const s = projectWorld([rejected], undefined, { resolveArtifact });
+  assert.equal(s.xp, 0);
+  assert.equal(s.quests["forge-gate"]?.status, undefined);
+  assert.equal(s.world.forgeOpen, undefined);
+});
