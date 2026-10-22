@@ -4,7 +4,7 @@
 
 **Scope:** Competing deterministic example strategies, bounded challenge cases, detached Ed25519 INSTALL approval, persisted hash-chained ledger, capability reuse, and replay/tamper rejection. This is an integration experiment—not multi-agent AI, a general theorem, production security, or independent discovery.
 
-Run on Node.js 20 (the repository CI runtime): `node --test experiment-001/institutional-cycle.test.mjs`.
+Run on Node.js 24 or newer (the current repository CI runtime): `node --test experiment-001/institutional-cycle.test.mjs`.
 
 ## Trust and durability boundaries
 
