@@ -8,6 +8,8 @@ const MAX_INPUT = 1_000_000;
 const MAX_USES = 100;
 const MAX_GRANT_MS = 7 * 24 * 60 * 60 * 1000;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+// Loaded before untrusted proposal handling; do not accept a caller-selected trust pin.
+const TRUSTED_FOUNDER_KEY_FINGERPRINT = process.env.NGL_FOUNDER_KEY_FINGERPRINT ?? null;
 const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function canonical(value) {
@@ -206,8 +208,9 @@ async function syncDirectory(directory) {
   finally { await handle.close(); }
 }
 
-export async function openInstitution(directory, trustedPublicKeyPem, expectedFingerprint) {
+export async function openInstitution(directory, trustedPublicKeyPem) {
   if (typeof trustedPublicKeyPem !== 'string' || !trustedPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('TRUSTED_PUBLIC_KEY_REQUIRED');
+  const expectedFingerprint = TRUSTED_FOUNDER_KEY_FINGERPRINT;
   if (typeof expectedFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(expectedFingerprint)) throw new Error('FOUNDER_KEY_FINGERPRINT_REQUIRED');
   let publicKey;
   try { publicKey = createPublicKey(trustedPublicKeyPem); }
