@@ -8,7 +8,7 @@ const receipt = makeReceipt(artifact);
 const event = {
   event_id:"proof-1", event_type:"SYSTEM_EVENT", subject:"forge-gate",
   admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED",
-  evidence:"OBSERVED", outcome:"SUCCEEDED", receipts:[receipt],
+  evidence:"OBSERVED", observation_verification:"VERIFIED", outcome:"SUCCEEDED", receipts:[receipt],
   world_effect:{xp:100, inventory:{proof_shard:1}, world:{forgeOpen:true}}
 };
 

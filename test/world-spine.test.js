@@ -6,7 +6,7 @@ import {replayInstitution,verifyReplay} from "../src/world/spine.js";
 const quest=defineQuest({quest_id:"reconstitute-alpha-1",title:"Reconstitute Alpha-1",objective:"Build the lab by demonstrated work.",acceptance:["mesh-protocol"],capabilities:["repository.write"]});
 const bytes=Buffer.from("mesh protocol artifact"), receipt=makeReceipt(bytes);
 const auth=authorizeQuest({quest,grant_id:"g1"});
-const done={event_id:"e1",parents:[auth.event_id],event_type:"EXECUTION_ADJUDICATION",subject:quest.quest_id,quest_id:quest.quest_id,grant_id:"g1",admission:"ACCEPTED",authority:"AUTHORIZED",execution:"EXECUTED",evidence:"OBSERVED",outcome:"SUCCEEDED",receipts:[receipt],acceptance_satisfied:["mesh-protocol"],world_effect:{xp:100,inventory:{alpha_1_seal:1},world:{forgeOpen:true}}};
+const done={event_id:"e1",parents:[auth.event_id],event_type:"EXECUTION_ADJUDICATION",subject:quest.quest_id,quest_id:quest.quest_id,grant_id:"g1",admission:"ACCEPTED",authority:"AUTHORIZED",execution:"EXECUTED",evidence:"OBSERVED",observation_verification:"VERIFIED",outcome:"SUCCEEDED",receipts:[receipt],acceptance_satisfied:["mesh-protocol"],world_effect:{xp:100,inventory:{alpha_1_seal:1},world:{forgeOpen:true}}};
 const events=[auth,done], resolve=r=>r.digest===receipt.digest?bytes:null;
 
 test("same canonical history reconstructs identical institutional state",()=>{

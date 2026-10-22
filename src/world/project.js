@@ -10,6 +10,7 @@ const terminalSuccess = (e, resolveArtifact) =>
   e.execution === "EXECUTED" &&
   e.evidence === "OBSERVED" &&
   e.outcome === "SUCCEEDED" &&
+  e.observation_verification === "VERIFIED" &&
   Array.isArray(e.receipts) &&
   e.receipts.length > 0 &&
   e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));

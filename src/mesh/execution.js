@@ -29,5 +29,5 @@ export function adjudicateExecution({ request, result, resolveArtifact }) {
 
 export function toWorldEvent({ event_id, request, adjudication, world_effect = {} }) {
   if (adjudication?.status !== "ACCEPTED") throw new Error("only accepted adjudication can project");
-  return Object.freeze({ event_id, event_type:"EXECUTION_ADJUDICATION", subject:request.quest_id, grant_id:request.grant_id, admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED", evidence:"OBSERVED", outcome:adjudication.observed_outcome, receipts:adjudication.receipts, world_effect });
+  return Object.freeze({ event_id, event_type:"EXECUTION_ADJUDICATION", subject:request.quest_id, grant_id:request.grant_id, admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED", evidence:"OBSERVED", observation_verification:adjudication.observed_outcome === "SUCCEEDED" ? "VERIFIED" : "REJECTED", outcome:adjudication.observed_outcome, receipts:adjudication.receipts, world_effect });
 }
