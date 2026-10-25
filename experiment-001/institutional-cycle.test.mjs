@@ -114,3 +114,50 @@ test('REUSE for an unknown capability ID is rejected without consuming the insta
   assert.equal(store.snapshot().capabilities[draft.id].uses, 0);
   assert.equal(store.snapshot().sequence, 1);
 }));
+
+
+test('concurrent independent store instances preserve a valid ledger and bounded use count', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  const draft = proposal(lib, executor, { nonce: 'install-concurrent-0001', maxUses: 2 });
+  const first = await openStore(lib, path, founder);
+  await first.commit(draft, approve(lib, draft, founder.privateKey));
+  const second = await openStore(lib, path, founder);
+  const decisions = [
+    { kind: 'REUSE', id: draft.id, nonce: 'reuse-concurrent-0001', input: 7, output: 49 },
+    { kind: 'REUSE', id: draft.id, nonce: 'reuse-concurrent-0002', input: 8, output: 64 }
+  ];
+  const outcomes = await Promise.allSettled([
+    first.commit(decisions[0], receipt(lib, decisions[0], executor.privateKey)),
+    second.commit(decisions[1], receipt(lib, decisions[1], executor.privateKey))
+  ]);
+  const accepted = outcomes.filter(result => result.status === 'fulfilled').length;
+  const rejected = outcomes.filter(result => result.status === 'rejected');
+  assert.ok(accepted >= 1, 'at least one concurrent writer should commit');
+  assert.ok(rejected.every(result => /LEDGER_LOCKED/.test(result.reason?.message ?? '')),
+    'only explicit lock contention may reject a concurrent writer');
+  for (let i = 0; i < outcomes.length; i++) {
+    if (outcomes[i].status === 'rejected') {
+      const store = i === 0 ? first : second;
+      await store.commit(decisions[i], receipt(lib, decisions[i], executor.privateKey));
+    }
+  }
+  const reopened = await openStore(lib, path, founder);
+  assert.equal(reopened.snapshot().sequence, 3);
+  assert.equal(reopened.snapshot().capabilities[draft.id].uses, 2);
+  assert.deepEqual(reopened.snapshot().records.slice(1).map(record => record.decision.nonce).sort(),
+    ['reuse-concurrent-0001', 'reuse-concurrent-0002']);
+}));
+
+test('stale lock fails closed and is not silently deleted as crash recovery', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  const draft = proposal(lib, executor, { nonce: 'install-stale-lock-01', maxUses: 1 });
+  const store = await openStore(lib, path, founder);
+  await store.commit(draft, approve(lib, draft, founder.privateKey));
+  const lockPath = join(path, 'institution.json.lock');
+  const { writeFile, readFile } = await import('node:fs/promises');
+  await writeFile(lockPath, 'simulated prior-process lock', { flag: 'wx', mode: 0o600 });
+  const decision = { kind: 'REUSE', id: draft.id, nonce: 'reuse-stale-lock-01', input: 6, output: 36 };
+  await assert.rejects(() => store.commit(decision, receipt(lib, decision, executor.privateKey)), /LEDGER_LOCKED/);
+  assert.equal(await readFile(lockPath, 'utf8'), 'simulated prior-process lock');
+  assert.equal(store.snapshot().sequence, 1);
+}));
