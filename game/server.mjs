@@ -316,7 +316,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let server;
   try {
-    const port = Number(process.env.PORT || 4173), host = process.env.HOST || '127.0.0.1';
+    const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport=process.env.NGL_INSTITUTION_REPORT?JSON.parse(await readFile(resolve(process.env.NGL_INSTITUTION_REPORT),'utf8')):null;
     server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
