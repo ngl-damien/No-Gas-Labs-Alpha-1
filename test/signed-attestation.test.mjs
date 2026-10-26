@@ -111,6 +111,16 @@ test("verification configuration refuses private key material", () => {
   assert.throws(() => worldTrustKeyFingerprint(pem), /PUBLIC_KEY_ONLY/);
 });
 
+test("signed verifier rejects absent, blank, padded, or oversized audience pins", () => {
+  const { config } = setup();
+  for (const expectedAudience of [undefined, "", " padded ", "x".repeat(257)]) {
+    assert.throws(() => createSignedEventVerifier({
+      ...config.observation,
+      expectedAudience
+    }), /WORLD_TRUST_AUDIENCE_REQUIRED/);
+  }
+});
+
 test("world trust refuses missing or reused role roots", () => {
   const { config } = setup();
   assert.throws(() => createWorldTrust({ observation: config.observation }), /ROOTS_NOT_CONFIGURED/);
@@ -141,6 +151,10 @@ test("environment loader pins all three roles to one explicit audience", () => {
     NGL_ADJUDICATOR_ID: config.adjudication.expectedIdentity,
     NGL_WORLD_TRUST_AUDIENCE: "alpha1:world-A"
   };
+  assert.throws(() => createWorldTrustFromEnv({
+    ...env,
+    NGL_WORLD_TRUST_AUDIENCE: ""
+  }), /ROOTS_NOT_CONFIGURED/);
   const wrongWorld = createWorldTrustFromEnv(env);
   assert.equal(wrongWorld.verifyObservation(event), false);
   assert.equal(wrongWorld.verifyAuthorization(event), false);
