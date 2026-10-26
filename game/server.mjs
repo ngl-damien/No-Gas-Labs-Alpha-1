@@ -383,7 +383,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (request.method === 'GET') {
         // Resolve the route before creating a session. Unknown paths must not
         // consume one of the bounded live-session slots or receive a cookie.
-        const knownArtifact = /^\\/api\\/artifacts\\/(creation-[a-zA-Z0-9-]+)$/.test(path);
+        const knownArtifact = /^\/api\/artifacts\/(creation-[a-zA-Z0-9-]+)$/.test(path);
         if (!['/api/projects', '/api/decisions', '/api/state', '/api/export', '/api/institution', '/api/events'].includes(path) && !knownArtifact) {
           fail('NOT_FOUND', 'Not found.', 404);
         }
