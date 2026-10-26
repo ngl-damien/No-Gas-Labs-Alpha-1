@@ -144,8 +144,13 @@ const terminalSuccess = (e, resolveArtifact, verifyObservation, verifyAuthorizat
 export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication, verifyAuthorization } = {}) {
   const state = structuredClone(seed);
   const historyById = new Map();
-  for (const retained of state.history || []) {
-    if (!retained?.event_id) continue;
+  const retainedHistory = state.history === undefined ? [] : state.history;
+  if (!Array.isArray(retainedHistory)) throw new Error("invalid retained event history");
+  for (const retained of retainedHistory) {
+    if (!retained || typeof retained !== "object" || Array.isArray(retained) ||
+        typeof retained.event_id !== "string" || retained.event_id.trim().length === 0) {
+      throw new Error("invalid retained event history");
+    }
     if (historyById.has(retained.event_id)) {
       throw new Error("duplicate event_id in retained history: " + retained.event_id);
     }
