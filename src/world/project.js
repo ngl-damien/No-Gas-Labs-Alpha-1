@@ -22,10 +22,10 @@ const terminalSuccess = (e, resolveArtifact, verifyObservation) =>
   e.evidence === "OBSERVED" &&
   e.outcome === "SUCCEEDED" &&
   e.observation_verification === "VERIFIED" &&
-  independentlyVerifiedObservation(e, verifyObservation) &&
   Array.isArray(e.receipts) &&
   e.receipts.length > 0 &&
-  e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
+  e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact)) &&
+  independentlyVerifiedObservation(e, verifyObservation);
 
 export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation } = {}) {
   const state = structuredClone(seed);
