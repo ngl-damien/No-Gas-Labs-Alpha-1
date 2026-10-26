@@ -1,28 +1,10 @@
-import { isSafeEventPayload, isVerifiedAuthorization } from "./project.js";
-
-function validatedEventList(events) {
-  if (!Array.isArray(events) || Object.getPrototypeOf(events) !== Array.prototype ||
-      Object.keys(events).length !== events.length ||
-      Reflect.ownKeys(events).length !== events.length + 1) {
-    throw new Error("invalid Guild Hall event list");
-  }
-  const result = [];
-  for (let index = 0; index < events.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(events, String(index));
-    if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor) ||
-        !isSafeEventPayload(descriptor.value)) {
-      throw new Error("invalid Guild Hall event payload at index " + index);
-    }
-    result.push(descriptor.value);
-  }
-  return result;
-}
+import { validatedEventList, isVerifiedAuthorization } from "./project.js";
 
 export function projectGuildHall({
   institution, quest_id, events = [], agents = [], verifyAuthorization
 }) {
   if (!institution?.projection) throw new Error("institution projection required");
-  const eventList = validatedEventList(events);
+  const eventList = validatedEventList(events, "Guild Hall event");
   const quest = institution.projection.quests?.[quest_id];
   if (!quest) throw new Error("quest not projected");
 
