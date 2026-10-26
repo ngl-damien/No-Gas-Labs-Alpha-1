@@ -19,13 +19,23 @@ test("state hashing rejects cycles rather than recursing or aliasing them", () =
   assert.throws(() => hashState(cyclic), /cyclic values/);
 });
 
-test("state hashing rejects sparse and decorated arrays", () => {
+test("state hashing rejects sparse, decorated, hidden-property and accessor arrays", () => {
   const sparse = [];
   sparse.length = 1;
   assert.throws(() => hashState(sparse), /sparse or decorated arrays/);
+
   const decorated = [1];
   decorated.extra = true;
   assert.throws(() => hashState(decorated), /sparse or decorated arrays/);
+
+  const hidden = [1];
+  Object.defineProperty(hidden, "hidden", { value: 2 });
+  assert.throws(() => hashState(hidden), /sparse or decorated arrays/);
+
+  const accessor = [];
+  Object.defineProperty(accessor, "0", { enumerable: true, configurable: true, get() { return 1; } });
+  accessor.length = 1;
+  assert.throws(() => hashState(accessor), /accessor properties/);
 });
 
 test("state hashing safely includes own prototype-sensitive data keys", () => {
