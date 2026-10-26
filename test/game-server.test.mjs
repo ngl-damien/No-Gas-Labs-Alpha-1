@@ -366,3 +366,27 @@ test('shared action request IDs replay the original result across lost responses
     await reopened.closeGame();
   }
 });
+
+
+test('unknown API routes are rejected before session allocation', async t => {
+  const f = await fixture(t);
+  for (const path of ['/api/not-a-route', '/api/artifacts/not-a-creation-id']) {
+    const response = await fetch(f.url + path);
+    assert.equal(response.status, 404, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' must not mint a session cookie');
+    await response.text();
+  }
+  const unsupportedPost = await fetch(f.url + '/api/not-a-route', {
+    method: 'POST',
+    headers: { origin: f.url, 'content-type': 'application/json' },
+    body: '{}'
+  });
+  assert.equal(unsupportedPost.status, 404);
+  assert.equal(unsupportedPost.headers.get('set-cookie'), null, 'unsupported POST must not mint a session cookie');
+  await unsupportedPost.text();
+
+  const supported = await fetch(f.url + '/api/state');
+  assert.equal(supported.status, 200);
+  assert.match(supported.headers.get('set-cookie') || '', /^ngl_session=/, 'supported state route still creates a session');
+  await supported.text();
+});
