@@ -78,7 +78,7 @@ test("oversized structured report is rejected before it can be submitted", () =>
   const longAnswers = Object.fromEntries(
     Object.keys(answers).map(key => [key, "x".repeat(140)]),
   );
-  const longCreation = { ...creation, title: "T".repeat(80) };
+  const longCreation = { ...creation, id: "i".repeat(80), title: "T".repeat(80) };
   assert.throws(
     () => formatContradictionReport(longCreation, 1, longAnswers),
     /report limit/,
