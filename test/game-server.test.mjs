@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, rm, rename, mkdir } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, writeFile, rm, rename, mkdir, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -142,10 +142,61 @@ test('published world and accepted kernel history survive restart; generated key
   assert.equal(state.institution.kernel.accepted.length, 1);
   const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
   t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
+  const keyPath = join(secretDir, 'founder.key'); const secret = (await readFile(keyPath, 'utf8')).trim(); assert.ok(secret.length >= 32); assert.equal((await stat(keyPath)).mode & 0o077, 0, 'generated Founder key must not be group/world accessible');
   await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
+  const generatedUrl = `http://127.0.0.1:${generated.address().port}`;
+  const exported = await fetch(generatedUrl + '/api/export');
   assert.equal((await exported.text()).includes(secret), false);
+  const login = await fetch(generatedUrl + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: generatedUrl }, body: JSON.stringify({ key: secret }) });
+  assert.equal(login.status, 200, 'a valid private persisted Founder key must remain usable');
+});
+
+test('persisted Founder key rejects symlinks and group/world-readable files', async t => {
+  const symlinkDir = await mkdtemp(join(tmpdir(), 'ngl-key-symlink-'));
+  const readableDir = await mkdtemp(join(tmpdir(), 'ngl-key-readable-'));
+  t.after(async () => {
+    await rm(symlinkDir, { recursive: true, force: true });
+    await rm(readableDir, { recursive: true, force: true });
+  });
+
+  const target = join(symlinkDir, 'alternate.key');
+  await writeFile(target, KEY + '\n', { mode: 0o600 });
+  await symlink(target, join(symlinkDir, 'founder.key'));
+  await assert.rejects(
+    createGameServer({ dataDir: symlinkDir }),
+    /regular, non-symlink file/
+  );
+
+  const exposedPath = join(readableDir, 'founder.key');
+  await writeFile(exposedPath, KEY + '\n', { mode: 0o600 });
+  await chmod(exposedPath, 0o644);
+  await assert.rejects(
+    createGameServer({ dataDir: readableDir }),
+    /permissions must exclude group and other access/
+  );
+});
+
+test('Founder data directory rejects symlinks and group/world-accessible directories', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-data-directory-'));
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+
+  const target = join(root, 'target');
+  await mkdir(target, { mode: 0o700 });
+  await writeFile(join(target, 'founder.key'), KEY + '\n', { mode: 0o600 });
+  const linked = join(root, 'linked-data');
+  await symlink(target, linked, 'dir');
+  await assert.rejects(
+    createGameServer({ dataDir: linked }),
+    /Founder data directory must be a regular, non-symlink directory/
+  );
+
+  const exposed = join(root, 'exposed-data');
+  await mkdir(exposed, { mode: 0o700 });
+  await chmod(exposed, 0o755);
+  await assert.rejects(
+    createGameServer({ dataDir: exposed }),
+    /Founder data directory permissions must exclude group and other access/
+  );
 });
 
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
@@ -272,3 +323,28 @@ test('the host CSP permits authored srcdoc instrument scripts while its iframe r
   const sandbox = /<iframe[^>]*id="artifact-frame"[^>]*sandbox="([^"]+)"/.exec(page.body)?.[1];
   assert.ok(sandbox?.includes('allow-scripts')); assert.ok(!sandbox?.includes('allow-same-origin'));
 });
+
+test('generated Founder key is retained across a clean server restart', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-key-restart-'));
+  const first = await createGameServer({ dataDir });
+  const keyPath = join(dataDir, 'founder.key');
+  const firstKey = (await readFile(keyPath, 'utf8')).trim();
+  await first.closeGame();
+
+  const second = await createGameServer({ dataDir });
+  t.after(async () => {
+    await second.closeGame();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  assert.equal((await readFile(keyPath, 'utf8')).trim(), firstKey, 'restart must reuse the persisted key');
+
+  await new Promise(resolve => second.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${second.address().port}`;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: firstKey })
+  });
+  assert.equal(login.status, 200, 'the persisted Founder credential must remain usable after restart');
+});
+
