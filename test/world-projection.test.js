@@ -86,6 +86,26 @@ test("unresolved parents are rejected instead of silently rewriting lineage", ()
   assert.throws(() => projectWorld([orphan], undefined, { resolveArtifact, verifyObservation, verifyAuthorization }), /unresolved parent/);
 });
 
+test("malformed parent metadata cannot be coerced into a root event", () => {
+  const malformedParents = ["e1", null, {}, [7], [""], ["e1", "e1"]];
+  for (const [index, parents] of malformedParents.entries()) {
+    const malformed = { ...observed, event_id: "bad-parent-" + index, parents };
+    assert.throws(
+      () => projectWorld([malformed], undefined, { resolveArtifact, verifyObservation, verifyAuthorization }),
+      /invalid parents|invalid parent reference|duplicate parent/
+    );
+  }
+});
+
+test("a seen event ID without retained bytes cannot serve as a parent", () => {
+  const seed = { ...projectWorld([claim]), history: [], seen: ["e1"] };
+  const orphan = { ...observed, event_id: "orphan-from-seen-only", parents: ["e1"] };
+  assert.throws(
+    () => projectWorld([orphan], seed, { resolveArtifact, verifyObservation, verifyAuthorization }),
+    /unresolved parent/
+  );
+});
+
 test("malformed receipt references cannot award progress", () => {
   const malformed = { ...observed, event_id: "e6", receipts: [""] };
   const s = projectWorld([malformed], undefined, { resolveArtifact, verifyObservation, verifyAuthorization });
