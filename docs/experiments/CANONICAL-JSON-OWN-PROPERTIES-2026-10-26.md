@@ -33,3 +33,13 @@ The canonical serializer's stated contract is to reject lossy or non-JSON values
 4. Keep all branches unmerged absent Founder authorization.
 
 No merge, deployment, release, spending, key provisioning, rotation, or revocation occurred.
+
+## Verification follow-up — 2026-10-26 UTC
+
+Observed exact code/test head before this documentation-only update: `ced6c7944484bc5c16b37615a85fb2ac75a443d1`.
+
+- [Full verification — run 40324999523](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40324999523): **success**; the world-projection job's test, package-build, and bounded institutional exercise step passed.
+- [Genesis Evidence Invariant — run 40324999415](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40324999415): **success**.
+- [Browser acceptance — run 40324999374](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40324999374): **success**; the playable-world job and browser receipt preservation completed.
+
+PR [#67](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/67) remains draft/open/unmerged. This checkpoint-only commit changes the branch head; recheck the new exact-head workflows before treating the branch as fully verified. No local test execution is claimed.
