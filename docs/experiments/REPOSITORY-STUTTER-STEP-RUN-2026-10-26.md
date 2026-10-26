@@ -92,3 +92,22 @@ Code/test head: `f59dda5292474b1f61d9e14b6e79abccc404dc65`.
 - The checkpoint commit changes the branch head; recheck exact-head Actions after the update. No local test execution is claimed.
 
 No production trust roots were provisioned, no PR was merged, and no deployment, release, spending, key rotation, or revocation occurred.
+
+
+## Verification repair — preserve ancestry-specific errors (2026-10-26 UTC)
+
+The first verification run for code/test head `f59dda5292474b1f61d9e14b6e79abccc404dc65` exposed one regression: **327 passed, 1 failed**. Existing test `test/world-projection.test.js` expected malformed parent accessors to fail with `parent metadata must be an enumerable data property`, but whole-event validation ran first and returned a generic payload error.
+
+Fixed rather than ignored:
+
+- `7c8dde917d1f998888b1a51446a16446acd2980c` — inspect the event ID via an own data descriptor, validate ancestry metadata first to preserve its specific failure, then validate remaining payload shape before duplicate comparison or cloning.
+- `1a8ba4609f1a154538ef3086b1b0ea363a338d61` — adjust the event-ID accessor regression to assert the new explicit ID-metadata error.
+
+### Verification after repair — code/test head `1a8ba4609f1a154538ef3086b1b0ea363a338d61`
+
+- Full repository verification — run [40325980915](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325980915): **success**.
+- Genesis Evidence Invariant — run [40325980994](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325980994): **success**.
+- Browser acceptance — run [40325980985](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325980985): **in progress** at last inspection; do not claim it passed until the result is observed.
+- This checkpoint-only commit does not change source/tests. No local test run is claimed.
+
+The failure and repair remain recorded to preserve the evidence trail; the prior failed run is not erased or described as a pass.
