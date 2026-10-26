@@ -73,3 +73,22 @@ test("rejected evidence cannot satisfy acceptance", () => {
   };
   assert.equal(projectQuest(quest, [auth, event], trust).status, QUEST_STATUS.AUTHORIZED);
 });
+test("quest projection rejects accessor-bearing events before filtering", () => {
+  let getterCalls = 0;
+  const hostile = {
+    event_id: "hostile-quest-event",
+    subject: quest.quest_id,
+    grant_id: "g-alpha",
+    actor: "founder"
+  };
+  Object.defineProperty(hostile, "quest_id", {
+    enumerable: true,
+    get() { getterCalls += 1; return quest.quest_id; }
+  });
+  assert.throws(() => projectQuest(quest, [hostile], trust), /invalid quest event payload/);
+  assert.equal(getterCalls, 0);
+
+  const sparse = [];
+  sparse.length = 1;
+  assert.throws(() => projectQuest(quest, sparse, trust), /invalid quest event list/);
+});
