@@ -28,6 +28,7 @@ async function unlinkOwnedLock(path, identity) {
 async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoundary = false } = {}) {
   const temporary = join(directory, `.atomic-${randomUUID()}`);
   let handle;
+  let renamed = false;
   try {
     handle = await open(temporary, 'wx', 0o600);
     await handle.writeFile(bytes);
@@ -35,11 +36,21 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoun
     await handle.close();
     handle = undefined;
     await rename(temporary, file);
-    const parent = await open(directory, 'r');
-    try { await parent.sync(); } finally { await parent.close(); }
+    renamed = true;
+    try { await syncDirectoryFn(directory); }
+    catch (error) {
+      if (!commitBoundary) throw error;
+      const uncertain = new KernelError(
+        'COMMIT_DURABILITY_UNCERTAIN',
+        'Ledger replacement succeeded but directory sync failed; close and reopen the ledger to validate the committed envelope before writing again'
+      );
+      uncertain.cause = error;
+      throw uncertain;
+    }
   } finally {
-    await handle?.close();
-    await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    await handle?.close().catch(() => {});
+    // After a successful rename the target may already contain the new envelope.
+    if (!renamed) await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
 }
 
