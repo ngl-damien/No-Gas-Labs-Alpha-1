@@ -7,25 +7,31 @@
 - Repository: `ngl-damien/No-Gas-Labs-Alpha-1`
 - PR: [#66 — independent observation attestation](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/66), open and unmerged; base `main` observed at `17096dd6789299ad1bcd6de544db602a529da3c3` before these follow-ups.
 - Safe branch: `security/observation-attestation-mainline-20261026`.
-- Pre-run PR head: `a27a635cbf9178a899d152c2de148e0dabab478e`. That head had successful exact-head verification, Genesis Evidence Invariant, and browser acceptance (runs 40315329167, 40315329162, 40315329220). These results do **not** verify the new follow-up commits below.
-- This run re-inspected the current PR and source twice before making two source-backed follow-up cycles.
+- Pre-run PR head: `a27a635cbf9178a899d152c2de148e0dabab478e`. That head had successful exact-head verification, Genesis Evidence Invariant, and browser acceptance (runs 40315329167, 40315329162, 40315329220). These results do **not** verify follow-up commits.
+- This run re-inspected live PR/source between changes and completed three source-backed improvement cycles.
 
 ### Cycle 1 — Prevent cross-institution attestation replay
 
 - `acdec375911bc174fd12b36bcab387c0c1163697` — `createObservationVerifier` now requires a host-configured `expectedAudience` and rejects signed events whose `audience` does not match it.
 - `0333ea1cf546d6c98180609790738bab9e8cf437` — regression tests require audience configuration and prove that a valid signature for a different audience cannot award progress in this institution.
-- This closes a cross-context replay gap when one observer key is trusted by more than one institution/ledger. It does not provision a production key or prove the observer is independent.
+- This closes a cross-context replay gap when an observer key is trusted by more than one institution/ledger. It does not provision a production key or prove the observer is independent.
 
 ### Cycle 2 — Prevent prototype-sensitive projection writes
 
 - `89a5a4c8febbcc0729b32b9e7a4a94ac6f5a18e2` — quest, inventory, and world-effect writes now use explicit own data properties. Inventory accumulation ignores inherited values; malformed array/non-object effect maps are not treated as ordinary records.
 - `42c55fb1a65fa2a2454383b3d60f55a0631363c5` — regression coverage exercises `__proto__` and `constructor` keys in quest subjects, inventory, and world effects and checks that projection prototypes remain unchanged.
-- `29bc56b481513553e4cd6262e071a50bb4e5af26` — trust-boundary documentation records audience binding and prototype-safe writes.
+- `29bc56b481513553e4cd6262e071a50bb4e5af26` — documentation records audience binding and prototype-safe writes.
+
+### Cycle 3 — Preserve evidence snapshots against caller mutation
+
+- `b016cfd9906ed851b92f2d429606f52aae4d9d0b` — `projectWorld` now stores a structured clone of each event in projected history instead of retaining a caller-owned object reference.
+- `0063bb5f40b27ee75a0fb74056b14aa97a80add0` — regression test mutates the original event and nested receipt/world-effect fields after projection and confirms the retained history snapshot is unchanged.
+- `1dfc8d350589f22b52f723e48bfad010659b8659` — trust-boundary documentation records the snapshot-isolation behavior.
 
 ## Verification status for this handoff
 
 - Before follow-ups, the exact pre-run head `a27a635cbf9178a899d152c2de148e0dabab478e` passed all three workflows listed above.
-- The new source/test commits trigger new CI. **Do not claim those commits are verified until full verification, Genesis Evidence Invariant, and browser acceptance have completed on the current exact head.**
+- The follow-up source/test/documentation commits trigger new CI. **Do not claim these commits are verified until full verification, Genesis Evidence Invariant, and browser acceptance have completed on the current exact head.**
 - Local execution is unavailable in this runtime; use the observed exact-head GitHub Actions runs. If any check fails, inspect job logs, fix the source/test defect, and re-run.
 - No merge, deployment, release, key provisioning/rotation, or external publication is authorized or claimed.
 
@@ -66,4 +72,3 @@ Mainline `src/world/project.js` treated event-supplied labels as sufficient for 
 - The test suite uses ephemeral generated keys only. It verifies cryptographic binding and fail-closed behavior, not an actual outside observer or Damien's identity.
 - The adapter is not wired into `game/server.mjs`; no production trust root/private key is configured.
 - No merge, deployment, key provisioning/rotation, or external release is authorized or claimed.
-
