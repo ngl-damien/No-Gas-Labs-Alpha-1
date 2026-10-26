@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rename, writeFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rename, symlink, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -29,6 +29,15 @@ async function replaceLockWithIdenticalBytes(path) {
   // cannot accidentally receive the same inode number on immediate reuse.
   await rename(path, path + '.displaced');
   await writeFile(path, original, { mode: 0o600 });
+  return original;
+}
+
+async function replaceLockWithSymlink(path) {
+  const original = await readFile(path);
+  await rename(path, path + '.displaced');
+  const target = path + '.target';
+  await writeFile(target, original, { mode: 0o600 });
+  await symlink(target, path);
   return original;
 }
 
@@ -99,4 +108,24 @@ test('concurrent institutional-ledger opens admit exactly one writer', async t =
   await opened[0].value.close();
   const reopened = await openLedger({ directory, ...config });
   await reopened.close();
+});
+
+test('service-store close preserves a symlink replacement lock', async t => {
+  const dataDir = await temp(t);
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const replacement = await replaceLockWithSymlink(lockPath);
+  await store.close();
+  assert.equal((await lstat(lockPath)).isSymbolicLink(), true);
+  assert.deepEqual(await readFile(lockPath), replacement);
+});
+
+test('ledger close preserves a symlink replacement writer lock', async t => {
+  const directory = await temp(t);
+  const ledger = await openLedger({ directory, ...config });
+  const lockPath = join(directory, '.writer.lock');
+  const replacement = await replaceLockWithSymlink(lockPath);
+  await ledger.close();
+  assert.equal((await lstat(lockPath)).isSymbolicLink(), true);
+  assert.deepEqual(await readFile(lockPath), replacement);
 });
