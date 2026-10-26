@@ -99,7 +99,7 @@ test("event ID accessors are rejected before projection and ancestry checks", ()
   });
   assert.throws(
     () => projectWorld([event]),
-    /non-JSON object field in event payload/
+    /event ID metadata must be an enumerable data property/
   );
   assert.throws(() => validateHistory([event]), /duplicate or missing event_id/);
   assert.equal(getterCalls, 0);
