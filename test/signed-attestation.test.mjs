@@ -21,16 +21,16 @@ function key() {
   return { ...pair, fingerprint: worldTrustKeyFingerprint(pair.publicKey) };
 }
 
-function setup() {
+function setup(audience = "ngl-alpha1:world-1") {
   const observer = key(), authorizer = key(), adjudicator = key();
   const identities = { observation: "observer-A", authorization: "authorizer-A", adjudication: "adjudicator-A" };
   const config = {
-    observation: { publicKey: observer.publicKey, expectedFingerprint: observer.fingerprint, expectedIdentity: identities.observation },
-    authorization: { publicKey: authorizer.publicKey, expectedFingerprint: authorizer.fingerprint, expectedIdentity: identities.authorization },
-    adjudication: { publicKey: adjudicator.publicKey, expectedFingerprint: adjudicator.fingerprint, expectedIdentity: identities.adjudication }
+    observation: { publicKey: observer.publicKey, expectedFingerprint: observer.fingerprint, expectedIdentity: identities.observation, expectedAudience: audience },
+    authorization: { publicKey: authorizer.publicKey, expectedFingerprint: authorizer.fingerprint, expectedIdentity: identities.authorization, expectedAudience: audience },
+    adjudication: { publicKey: adjudicator.publicKey, expectedFingerprint: adjudicator.fingerprint, expectedIdentity: identities.adjudication, expectedAudience: audience }
   };
   const event = {
-    event_id: "event-1", event_type: "EXECUTION_ADJUDICATION", subject: "forge-gate",
+    event_id: "event-1", audience, event_type: "EXECUTION_ADJUDICATION", subject: "forge-gate",
     admission: "ACCEPTED", authority: "AUTHORIZED", execution: "EXECUTED",
     evidence: "OBSERVED", observation_verification: "VERIFIED", outcome: "SUCCEEDED",
     grant_id: "grant-1", world_effect: { xp: 25, inventory: { shard: 1 } },
@@ -56,6 +56,16 @@ test("three distinct host-pinned roles verify signatures over one common event p
   assert.equal(trust.verifyObservation(event), true);
   assert.equal(trust.verifyAuthorization(event), true);
   assert.equal(trust.verifyAdjudication(event), true);
+});
+
+test("a valid signature cannot be replayed into a different configured audience", () => {
+  const { config, event } = setup("institution-A");
+  const verifierForOtherInstitution = createSignedEventVerifier({
+    ...config.observation,
+    expectedAudience: "institution-B"
+  });
+  assert.equal(createSignedEventVerifier(config.observation)(event), true);
+  assert.equal(verifierForOtherInstitution(event), false);
 });
 
 test("changing a signed consequence invalidates every role attestation", () => {
@@ -110,6 +120,10 @@ test("world trust refuses missing or reused role roots", () => {
       expectedFingerprint: config.observation.expectedFingerprint },
     adjudication: config.adjudication
   }), /ROOTS_MUST_BE_DISTINCT/);
+  assert.throws(() => createWorldTrust({
+    ...config,
+    authorization: { ...config.authorization, expectedAudience: "another-institution" }
+  }), /ROOTS_AUDIENCE_MISMATCH/);
   assert.throws(() => createWorldTrustFromEnv({}), /ROOTS_NOT_CONFIGURED/);
 });
 
