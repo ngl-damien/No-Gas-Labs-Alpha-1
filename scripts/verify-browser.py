@@ -158,7 +158,7 @@ def shared(browser,url,data,out):
         close_sheet(b);b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to River of Receipts',exact=True).click()
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The river remembers bytes.')
-        expect(b.locator('#sheet .primary-button')).to_have_text('Inspect a published receipt →')
+        expect(b.locator('#sheet .primary-button')).to_have_text('Inspect your source observatory →')
         b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
         visit(b,'The shared observatory');b.locator('#enter-creation').click()
         frame=b.frame_locator('#artifact-frame')
