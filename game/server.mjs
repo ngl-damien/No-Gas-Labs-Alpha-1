@@ -340,8 +340,9 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" }); response.end(content); return;
       }
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
-      let session = sessionFor(request, response);
+      let session;
       if (request.method === 'GET') {
+        session = sessionFor(request, response);
         if(path==='/api/projects')return json(response,200,projects);
         if(path==='/api/decisions')return json(response,200,await decisions.snapshot({id:session.actor.id,role:session.actor.role}));
         if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
@@ -366,7 +367,11 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         fail('NOT_FOUND', 'Not found.', 404);
       }
       if (request.method !== 'POST') fail('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
-      sameOrigin(request); const input = await body(request);
+      // Reject cross-origin or malformed writes before allocating a session.
+      // A failed request must not consume session capacity or set a new cookie.
+      sameOrigin(request);
+      const input = await body(request);
+      session = sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
