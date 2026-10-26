@@ -328,7 +328,10 @@ def main():
                     stop_server(process);process,url=launch_server(data)
                     fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
                     assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==1
+                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==2
+                    assert all(report['version']==1 for report in restored['world']['reports'])
+                    structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+                    assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
                     record({'journey':'shared-restart','passed':True,'retainedVersion':2})
                 finally:browser.close()
         finally:stop_server(process)
