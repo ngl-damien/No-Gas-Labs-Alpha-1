@@ -43,3 +43,32 @@ Start the next run with fresh repository, PR, branch, source, and Actions inspec
 5. Reassess NGL Mesh integration only when its required APK/RAE reference artifacts are actually available.
 
 No merge, deployment, release, spending, production key provisioning, rotation, or revocation occurred. No autonomous discovery breakthrough is claimed. Work between scheduled runs is not assumed to continue uninterrupted.
+
+
+## Follow-up — strict event payload shape validation (2026-10-26 UTC)
+
+This follow-up adds a separate source-backed hardening cycle to the existing observation-attestation branch. It does not provision production trust roots or wire the verifier into the server.
+
+- `b2ed2e3c9e95dbeb8a7fc45a50163aa12ed107b2` — world event duplicate-payload comparison now rejects sparse/decorated arrays, inherited array indices, non-enumerable own properties, symbol keys, accessor fields, and exotic object prototypes rather than comparing a lossy view.
+- `824061b9353ed0eafcb0d299a4c07e3ebf4e96b1` — validate each new event payload before `structuredClone` can discard hidden properties or normalize a sparse/exotic shape.
+- `4434cd09ac5392aab098a7d1b33a553cbe84e867` — regression coverage for hidden nested properties, sparse arrays with inherited indices, and accessor rejection without invoking the getter.
+
+### Exact-head verification observed before this checkpoint-only update
+
+Code/test head: `4434cd09ac5392aab098a7d1b33a553cbe84e867`.
+
+- [Full repository verification — run 40325236225](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325236225): **success**.
+- [Genesis Evidence Invariant — run 40325236188](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325236188): **success**.
+- [Browser acceptance — run 40325236213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325236213): **in progress at last inspection**; the browser build/journeys had not yet started. Do not claim browser acceptance for this code/test head until completion is observed.
+- No local test execution is claimed.
+
+The checkpoint commit below changes the branch head, so recheck all three workflows on the new exact head. PR #66 remains open and unmerged; its compare is already substantially diverged from main. Reconcile rather than merge wholesale.
+
+### Current blockers and next steps
+
+1. Reinspect PR #66 after the checkpoint commit and wait for exact-head browser acceptance; fix any observed failure.
+2. Keep production world/quest progress fail-closed until observer, adjudicator, and authorization trust roots are separately controlled and provisioned.
+3. PR #16 remains closed/unmerged; merged PR #18 supersedes its self-signing flow. Issue #17 still needs real Founder key custody, adversarial concurrency, and crash/stale-lock recovery.
+4. PR #67's canonical JSON own-property fix is independently tracked against current `main`; keep it separate from this diverged security branch unless a reviewed reconciliation proves otherwise.
+
+No merge, deployment, release, spending, production key provisioning, rotation, or revocation occurred.
