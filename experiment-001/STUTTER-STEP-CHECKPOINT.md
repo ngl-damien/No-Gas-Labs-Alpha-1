@@ -5,8 +5,8 @@
 ## Fresh repository state before this run's implementation
 
 - Canonical repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
-- Observed `main` at reinspection: `02b6d25a0a69dd8f113fa84a6e81047af57a9689`. This branch was created from `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; main has since advanced by two commits (TaskAgile source-only recovery and assimilation-status documentation). The changed paths in those commits do not overlap the Experiment 001 files in this branch; this branch is behind current main and has not been rebased.
-- Open PRs at reinspection: #38 source-gap/key-exposure audit; #30 character sheet; #29 versioned ledger identities; #28 offline Founder signer; #27 TownSquare receipts; #26 observation verifier boundary; #25 cross-process ledger contention; #21 RELEASETRACE correction. PR #33's repository reconciliation plan is merged.
+- Observed `main` at reinspection: `573e756b4d5229e7e27907720ab65894be69f698`. This branch was created from `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; main has since advanced by four commits. The intervening commits touched `integrations/taskagile-reference/**`, `docs/ASSIMILATION_PLAN.md`, `docs/reconciliation/follow-up-source-gap-and-security-audit.md`, and `recovery/reconciliation-inputs/ngl001-def4us28/**`; these paths do not overlap this branch's eight changed files. GitHub currently reports PR #40 as not mergeable, so synchronization is still required before any merge review.
+- Open PRs at reinspection: #40 Experiment 001 hardening; #38 source-gap/key-exposure audit; #30 character sheet; #29 versioned ledger identities; #28 offline Founder signer; #27 TownSquare receipts; #26 observation verifier boundary; #25 cross-process ledger contention; #21 RELEASETRACE correction. PR #33 and PRs #31, #32, #34, #35 are recorded as merged.
 - PR #16 is closed unmerged; PR #18 is the merged replacement for its old self-signing flow. Issue #17 remains open for real key custody, concurrency, crash recovery, and integration. Issue #22 remains an unrun proposal for falsifiable hybrid-cognition comparison.
 - PRs #31, #32, #34 and #35 are recorded as merged in the current mainline assimilation history. That establishes source-preserving imports, not runtime integration.
 - Linked private repository `ngl-damien/Damien-Featherstone` remains at observed main `021d358d3cabdd3887cef58bbebac1adbfd39bb8`. The reconciliation plan flags potentially exposed private-key material in that repository; no key material was copied, displayed, rotated, or revoked by this run.
@@ -14,7 +14,7 @@
 
 ## Stutter-step work initiated on safe branch
 
-Branch: `stutter-step/experiment001-hardening-20261026-r2`, created from main SHA `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c` before two non-overlapping mainline commits arrived. No main write or merge was made.
+Branch: `stutter-step/experiment001-hardening-20261026-r2`, created from main SHA `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; four non-overlapping mainline commits arrived afterward. Draft PR #40 is open; no merge was performed. No main write or merge was made.
 
 1. Ported PR #29's stable, versioned strategy identities and narrow legacy-ledger replay compatibility onto the current main base. New INSTALL records use semantic strategy IDs; historical source-hash records are accepted only during replay, while new installs must use the current identity.
 2. Ported PR #25's two-independent-process INSTALL contention regression and its test-only worker. A contending process may only receive explicit `LEDGER_LOCKED`; a fresh retry must commit, and the reopened ledger must contain both records.
@@ -22,9 +22,13 @@ Branch: `stutter-step/experiment001-hardening-20261026-r2`, created from main SH
 4. Hardened signer file opening: reject symlinks with `lstat` even where `O_NOFOLLOW` is unavailable, and compare the pre-open path identity with the opened handle to reject a path swap. Added a symlink regression.
 5. Updated the Experiment 001 document so the closed PR #16 / merged PR #18 history and remaining stale-lock limits are not misstated.
 
-## Verification status at checkpoint creation
+## Exact-head verification evidence
 
-The source changes and tests have been committed to the safe branch, but this checkpoint does not yet claim their new combined exact-head CI has passed. The pre-existing standalone branches had successful Actions runs, but that evidence does not transfer to this combined branch. Next step: open a draft PR against current `main`, inspect its exact head and Actions runs, fix any failures, and refresh this checkpoint with the PR number and CI IDs.
+At code/test head `cb90ba4456c571169f16192d925f78cda76caf72`, both GitHub Actions workflows completed successfully:
+- [verify — run 40265292590](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40265292590): success. Node `--test`, Python `test_engine.py`, `scripts/build-game.mjs`, and `scripts/meteor-demo.mjs --out <temporary exercise directory>` all exited 0.
+- [Genesis Evidence Invariant — run 40265292482](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40265292482): success. The genesis invariant and attack-evidence-boundary step both completed successfully.
+
+The workflow did not expose a reliable test-count summary in the captured log, so no count is claimed. No local test run is claimed. The checkpoint update is documentation-only and triggers CI again; inspect the resulting final head separately. PR #40 remains draft and GitHub currently reports `mergeable=false` while the branch is behind current main.
 
 ## Remaining blockers
 
@@ -36,7 +40,7 @@ The source changes and tests have been committed to the safe branch, but this ch
 
 ## Next prioritized steps
 
-1. Verify the combined PR's exact-head Node tests, Python inspector, package build, institutional exercise, and Genesis Evidence Invariant.
+1. Synchronize PR #40 with the current mainline using a safe, reviewable branch update, then rerun exact-head Node tests, Python inspector, package build, institutional exercise, and Genesis Evidence Invariant.
 2. If green, review signer failure modes and ledger compatibility behavior; keep the PR draft.
 3. Integrate a real host-controlled observation verifier only after independently provisioned trust configuration exists; fail closed rather than injecting an always-true callback.
 4. Define and test crash-safe recovery without deleting a potentially live lock.
