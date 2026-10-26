@@ -14,6 +14,29 @@ function setOwn(target, key, value) {
   });
 }
 
+// Parent metadata is part of the event contract, not optional data to coerce.
+// A malformed list or duplicate edge must fail closed instead of turning an
+// event into a root event or obscuring its causal path.
+export function eventParents(event) {
+  const label = typeof event?.event_id === "string" && event.event_id
+    ? event.event_id
+    : "<unknown>";
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error("invalid event for parent validation");
+  }
+  if (!Object.hasOwn(event, "parents")) return [];
+  if (!Array.isArray(event.parents)) throw new Error("invalid parents for " + label);
+  const unique = new Set();
+  for (const parent of event.parents) {
+    if (typeof parent !== "string" || parent.trim().length === 0) {
+      throw new Error("invalid parent reference for " + label);
+    }
+    if (unique.has(parent)) throw new Error("duplicate parent for " + label);
+    unique.add(parent);
+  }
+  return event.parents;
+}
+
 // Produce a type-tagged, key-order-independent comparison value. Event IDs
 // identify one immutable payload; they are not permission to silently discard
 // a different payload that reuses the same ID.
@@ -111,6 +134,10 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     if (historyById.has(retained.event_id)) {
       throw new Error("duplicate event_id in retained history: " + retained.event_id);
     }
+    const parents = eventParents(retained);
+    if (parents.some(parent => !historyById.has(parent))) {
+      throw new Error("unresolved parent for " + retained.event_id);
+    }
     historyById.set(retained.event_id, retained);
   }
   const seen = new Set(state.seen || []);
@@ -129,8 +156,10 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
       continue;
     }
 
-    const parents = Array.isArray(event.parents) ? event.parents : [];
-    if (parents.some(parent => !seen.has(parent))) throw new Error("unresolved parent for " + event.event_id);
+    const parents = eventParents(event);
+    if (parents.some(parent => !historyById.has(parent))) {
+      throw new Error("unresolved parent for " + event.event_id);
+    }
 
     seen.add(event.event_id);
     // Keep a snapshot: later mutation of the caller's event object must not
