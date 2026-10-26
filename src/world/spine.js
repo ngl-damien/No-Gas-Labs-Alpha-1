@@ -17,21 +17,21 @@ export function validateHistory(events) {
   for (const e of events) {
     if (!e?.event_id || ids.has(e.event_id)) throw new Error("duplicate or missing event_id");
     const parents=Array.isArray(e.parents)?e.parents:[];
-    if (parents.some(p=>!ids.has(p))) throw new Error(`unresolved parent for ${e.event_id}`);
+    if (parents.some(p=>!ids.has(p))) throw new Error("unresolved parent for " + e.event_id);
     ids.add(e.event_id);
   }
   return true;
 }
 
-export function replayInstitution({events,quests=[],resolveArtifact}) {
+export function replayInstitution({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication}) {
   validateHistory(events);
-  const world=projectWorld(events,undefined,{resolveArtifact});
-  const questState=Object.fromEntries(quests.map(q=>[q.quest_id,projectQuest(q,events)]));
+  const world=projectWorld(events,undefined,{resolveArtifact,verifyObservation,verifyAdjudication});
+  const questState=Object.fromEntries(quests.map(q=>[q.quest_id,projectQuest(q,events,{resolveArtifact,verifyObservation,verifyAdjudication})]));
   const projection={world,quests:questState};
   return Object.freeze({projection,state_hash:hashState(projection),event_count:events.length});
 }
 
-export function verifyReplay({events,quests=[],resolveArtifact,expected_hash}) {
-  const replay=replayInstitution({events,quests,resolveArtifact});
+export function verifyReplay({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication,expected_hash}) {
+  const replay=replayInstitution({events,quests,resolveArtifact,verifyObservation,verifyAdjudication});
   return Object.freeze({...replay,matches:replay.state_hash===expected_hash});
 }
