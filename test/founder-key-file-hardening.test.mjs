@@ -85,12 +85,22 @@ test('unauthenticated session churn cannot evict a live Founder session', async 
 
   // Node fetch does not persist Set-Cookie between requests here: each request
   // represents a new unauthenticated client trying to churn the bounded session map.
+  let firstWitnessCookie = null;
   for (let index = 0; index < 520; index += 1) {
     const response = await fetch(`${origin}/api/state`);
-    assert.equal(response.status, 200, `unauthenticated request ${index + 1}`);
+    if (index < 511) {
+      assert.equal(response.status, 200, `unauthenticated request ${index + 1}`);
+      if (index === 0) firstWitnessCookie = response.headers.get('set-cookie')?.split(';', 1)[0] || null;
+    } else {
+      assert.equal(response.status, 429, `over-capacity request ${index + 1} must not evict a live session`);
+    }
   }
 
   const founderState = await fetch(`${origin}/api/state`, { headers: { cookie } });
   assert.equal(founderState.status, 200);
   assert.equal((await founderState.json()).viewer.role, 'founder');
+  assert.match(firstWitnessCookie || '', /^ngl_session=[A-Za-z0-9_-]{43}$/);
+  const witnessState = await fetch(`${origin}/api/state`, { headers: { cookie: firstWitnessCookie } });
+  assert.equal(witnessState.status, 200);
+  assert.equal((await witnessState.json()).viewer.role, 'witness');
 });
