@@ -41,8 +41,8 @@ The groups above are path-based triage; a file may be technically valid without 
 
 File-only comparison against `recovery/public-repos/ngl001-def4us28/`:
 
-- `contact/ledger.jsonl`: source blob differs from snapshot; source file is about 69 KB. This is append-only evidence-like data. Do not overwrite or concatenate automatically. Compare event schemas, hash-chain continuity, duplicates, timestamps and branch/tree provenance; preserve both versions until reconciled.
-- `contact/state.json`: source blob differs from snapshot. This is derived state tied to the ledger. Recompute from a validated ledger if its documented reducer exists; do not pick whichever state looks newer.
+- `contact/ledger.jsonl`: source blob differs from snapshot. A row-level comparison now establishes 128 source events versus 22 snapshot events; the snapshot is an exact ordered prefix of the source, with 106 additional source events. Both files have zero broken `previous_hash` pointers in the observed ordering, and no duplicate `event_hash` values were found. This pointer check does **not** independently recalculate each `event_hash` from its canonical event payload. The source ledger and state are being preserved separately under `recovery/reconciliation-inputs/ngl001-def4us28/source-main-2026-10-25/`; the older snapshot remains untouched.
+- `contact/state.json`: source and snapshot differ at six paths (`last_event_hash`, last observation event hash/timestamp/previous hash/pushed_at, and `run_count`). Source state reports 128 runs and points to the source ledger's final event; snapshot state reports 22 runs and points to the snapshot's final event. Preserve both versions; do not silently replace the archived snapshot or promote either to live Alpha One state.
 - `src/App.jsx`: source file is 4,563,284 bytes. The file-read connector returned an empty result for the requested opening lines, so its contents have **not** been reviewed. Determine whether it is minified/generated, embedded media, or an unexpectedly large source artifact before any port. Do not copy it into the runtime on the strength of its filename.
 - `src/assets/hero.png`: missing from snapshot; 13,057 bytes. Candidate presentation asset only after confirming its use, provenance, and license.
 
@@ -110,7 +110,7 @@ The highest-value safe slice is to compare the TaskAgile legacy state/persistenc
 
 - [x] Capture a file-only SHA ledger for NGL-001, Command Center, and TaskAgile.
 - [x] Record TaskAgile missing-file classes and recommended extraction order.
-- [x] Identify NGL-001 evidence-bearing differences and the unreviewed oversized application blob.
+- [x] Identify NGL-001 evidence-bearing differences, verify ledger-prefix/previous-hash continuity, preserve the 106-event delta separately, and flag the unreviewed oversized application blob.
 - [x] Identify the four Command Center assets and their aggregate size.
 - [x] Flag the tracked private-key field without reproducing key material.
 - [x] Identify Alpha One's native game, authority, institution, evidence, forge, quest, world, and test areas plus existing TaskAgile reference copies; record a first-pass capability-to-owner map (behavioral equivalence still unverified).
@@ -122,4 +122,4 @@ The highest-value safe slice is to compare the TaskAgile legacy state/persistenc
 
 **Security follow-up opened:** [Damien-Featherstone PR #1](https://github.com/ngl-damien/Damien-Featherstone/pull/1) removes the tracked `privateKeyPem` field from the current file while retaining public-key metadata. It is open and unmerged; no key rotation/revocation or Git-history cleanup has occurred.
 
-**Current result:** this document is a triage artifact. No TaskAgile application code or media has been imported, no evidence ledger has been merged, no build/tests have been run, and no key rotation has occurred.
+**Current result:** selected NGL-001 source contact data has been copied into a separate provenance-labelled recovery input; it has not been merged into Alpha One's live ledger/state. No TaskAgile application code or media has been imported, no build/tests have been run, and no key rotation has occurred.
