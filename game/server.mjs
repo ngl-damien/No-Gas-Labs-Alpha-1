@@ -197,10 +197,26 @@ async function getFounderKey(dataDir, provided) {
   }
 }
 
+async function assertPrivateDataDirectory(dataDir) {
+  const directory = await lstat(dataDir);
+  if (directory.isSymbolicLink() || !directory.isDirectory()) {
+    throw new Error('Founder data directory must be a regular, non-symlink directory');
+  }
+  if ((directory.mode & 0o077) !== 0) {
+    throw new Error('Founder data directory permissions must exclude group and other access (0700)');
+  }
+  return { dev: directory.dev, ino: directory.ino };
+}
+
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
 export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
+  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev || dataDirectory.ino !== dataDirectoryAfterKeyRead.ino) {
+    throw new Error('Founder data directory changed during startup');
+  }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
   let decisions,projects;
