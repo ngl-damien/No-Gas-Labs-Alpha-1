@@ -201,6 +201,9 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
       throw new Error("unresolved parent for " + event.event_id);
     }
 
+    // Validate the full payload before structuredClone can discard hidden keys
+    // or normalize sparse/exotic arrays into a different retained snapshot.
+    stableEventValue(event);
     seen.add(event.event_id);
     // Keep a snapshot: later mutation of the caller's event object must not
     // silently rewrite the projection's retained evidence history.
