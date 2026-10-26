@@ -127,6 +127,34 @@ test("world trust refuses missing or reused role roots", () => {
   assert.throws(() => createWorldTrustFromEnv({}), /ROOTS_NOT_CONFIGURED/);
 });
 
+test("environment loader pins all three roles to one explicit audience", () => {
+  const { config, event, observer, authorizer, adjudicator } = setup("alpha1:world-B");
+  const env = {
+    NGL_OBSERVER_PUBLIC_KEY_PEM: observer.publicKey.export({ type: "spki", format: "pem" }),
+    NGL_OBSERVER_KEY_SHA256: observer.fingerprint,
+    NGL_OBSERVER_ID: config.observation.expectedIdentity,
+    NGL_AUTHORIZER_PUBLIC_KEY_PEM: authorizer.publicKey.export({ type: "spki", format: "pem" }),
+    NGL_AUTHORIZER_KEY_SHA256: authorizer.fingerprint,
+    NGL_AUTHORIZER_ID: config.authorization.expectedIdentity,
+    NGL_ADJUDICATOR_PUBLIC_KEY_PEM: adjudicator.publicKey.export({ type: "spki", format: "pem" }),
+    NGL_ADJUDICATOR_KEY_SHA256: adjudicator.fingerprint,
+    NGL_ADJUDICATOR_ID: config.adjudication.expectedIdentity,
+    NGL_WORLD_TRUST_AUDIENCE: "alpha1:world-A"
+  };
+  const wrongWorld = createWorldTrustFromEnv(env);
+  assert.equal(wrongWorld.verifyObservation(event), false);
+  assert.equal(wrongWorld.verifyAuthorization(event), false);
+  assert.equal(wrongWorld.verifyAdjudication(event), false);
+
+  const correctWorld = createWorldTrustFromEnv({
+    ...env,
+    NGL_WORLD_TRUST_AUDIENCE: "alpha1:world-B"
+  });
+  assert.equal(correctWorld.verifyObservation(event), true);
+  assert.equal(correctWorld.verifyAuthorization(event), true);
+  assert.equal(correctWorld.verifyAdjudication(event), true);
+});
+
 test("canonical attestation payload ignores all three signature envelopes", () => {
   const { event } = setup();
   const before = canonicalAttestationPayload(event);
