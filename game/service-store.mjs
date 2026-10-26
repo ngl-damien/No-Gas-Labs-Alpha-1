@@ -5,6 +5,19 @@ import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.m
 
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
 
+// This module is also consumed directly by tests and recovery tools, so do not
+// rely solely on the HTTP host's earlier check of the same directory path.
+async function assertPrivateStoreDirectory(dataDir) {
+  const directory = await lstat(dataDir);
+  if (directory.isSymbolicLink() || !directory.isDirectory()) {
+    throw new Error('Service store data directory must be a regular, non-symlink directory');
+  }
+  if ((directory.mode & 0o077) !== 0) {
+    throw new Error('Service store data directory permissions must exclude group and other access (0700)');
+  }
+  return { dev: directory.dev, ino: directory.ino };
+}
+
 // Remove a lock only while the path still names the exact inode acquired with
 // exclusive creation. A replacement file may copy the old contents/token.
 async function unlinkOwnedLock(path, identity) {
@@ -31,6 +44,7 @@ function durabilityUncertain(cause) {
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
 export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory }) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const dataDirectory = await assertPrivateStoreDirectory(dataDir);
   const path = join(dataDir, 'service.json');
   const lockPath = join(dataDir, '.service.lock');
   let lease;
@@ -42,6 +56,10 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     const stat = await lease.stat();
     leaseIdentity = { dev: stat.dev, ino: stat.ino };
     await lease.writeFile(ownership);
+    const currentDirectory = await assertPrivateStoreDirectory(dataDir);
+    if (currentDirectory.dev !== dataDirectory.dev || currentDirectory.ino !== dataDirectory.ino) {
+      throw new Error('Service store data directory changed while acquiring the writer lease');
+    }
   } catch (error) {
     await lease.close().catch(() => {});
     await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
