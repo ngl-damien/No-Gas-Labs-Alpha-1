@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -32,9 +32,9 @@ const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
 const actionFields = {
-  draft: ['type', 'kind', 'title', 'intent', 'html'], publish: ['type', 'draftId', 'expectedVersion'],
-  repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html'],
-  contribute: ['type', 'creationId', 'version', 'text'], report: ['type', 'creationId', 'version', 'text'], discover: ['type', 'locationId']
+  draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
+  repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
+  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId']
 };
 const snapshots = world => world.creations.flatMap(creation => [...creation.versions, creation]);
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
@@ -45,14 +45,35 @@ function validateHistory(world) {
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map();
+  const drafts = new Map(), requestIds = new Set();
   let previousAt = world.createdAt;
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
-    exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type]]);
+    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : [])];
+    exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     if (event.at < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = event.at;
+    if (event.repeat !== undefined && (event.type !== 'discover' || typeof event.repeat !== 'boolean')) throw new Error('Stored repeat-discovery marker is invalid');
+    const receiptFields = ['requestId', 'actionFingerprint', 'actionResult'];
+    const present = receiptFields.filter(key => Object.hasOwn(event, key));
+    if (present.length && present.length !== receiptFields.length) throw new Error('Stored idempotency receipt is incomplete');
+    if (present.length === receiptFields.length) {
+      if (typeof event.requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.requestId) || requestIds.has(event.requestId) || typeof event.actionFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(event.actionFingerprint)) throw new Error('Stored idempotency receipt is invalid or repeated');
+      requestIds.add(event.requestId);
+      const result = event.actionResult;
+      if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
+      const resultKeys = Object.keys(result).sort().join(',');
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', discover: 'discovered' }[event.type];
+      if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
+      if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
+      if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
+      if (event.type === 'contribute' || event.type === 'report') {
+        const collection = event.type === 'report' ? world.reports : world.contributions;
+        if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
+      }
+      if (event.type === 'discover' && (typeof result.discovered !== 'boolean' || (event.repeat === true && result.discovered) || (event.repeat === true && !world.discoveries.some(item => item.locationId === event.locationId && item.actor.id === event.actor.id && item.at <= event.at)) || (event.repeat !== true && !result.discovered))) throw new Error('Stored idempotency discovery result mismatch');
+    }
     if (event.type === 'draft' || event.type === 'repair') {
       if (typeof event.draftId !== 'string' || drafts.has(event.draftId)) throw new Error('Stored draft history mismatch');
       if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && p.publishedAt <= event.at))) throw new Error('Stored repair version history mismatch');
@@ -60,6 +81,7 @@ function validateHistory(world) {
     }
     if (event.type === 'publish' && !published.some(p => p.id === event.creationId && p.version === event.version && p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
     if (Object.hasOwn(notes, event.type)) {
+      if (event.type === 'discover' && event.repeat === true) continue;
       const index = notes[event.type].findIndex(note => note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor) && (event.type === 'discover' ? note.locationId === event.locationId : note.creationId === event.creationId && note.version === event.version));
       if (index < 0) throw new Error('Stored contribution / discovery history mismatch');
       notes[event.type].splice(index, 1);
@@ -79,7 +101,6 @@ function validateHistory(world) {
     const method = matching[0]; exact(method, ['id', 'creationId', 'version', 'title', 'description', 'actor', 'at', 'semantics']);
     if (!event || method.at !== event.at || canonicalStringify(method.actor) !== canonicalStringify(event.actor) || method.title !== `Repair ${publication.title} · v${publication.version}` || method.description !== (publication.intent || 'Publish a checked revision while preserving the prior version and its exact bytes.') || method.semantics !== 'Earned game method: a retained, checked repair; no external truth or authority claim.') throw new Error('Earned repair method publication binding mismatch');
   }
-
 }
 
 async function validatePayload(raw) {
@@ -170,28 +191,39 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
   const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
-  const witness = () => ({ id: `witness-${randomUUID()}`, name: 'Witness', role: 'witness' });
+  const tokenDigest = token => createHash('sha256').update(token).digest('hex');
+  const witness = (token = randomBytes(32).toString('base64url')) => ({ id: `witness-${tokenDigest(token)}`, name: 'Witness', role: 'witness' });
+  const presenceIdFor = token => `presence-${tokenDigest(token)}`;
+  const validSessionToken = token => typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token);
+  const sessionCookie = (token, request, actor) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${actor.role === 'witness' ? `; Max-Age=${Math.floor(SESSION_TTL / 1000)}` : ''}${request.socket.encrypted ? '; Secure' : ''}`;
   function expireSession(token, session) {
-    presence.delete(session.token); session.actor = witness(); session.lastSeen = Date.now();
+    presence.delete(session.token); session.actor = witness(session.token); session.lastSeen = Date.now();
     for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session)); stream.response.end(); }
     broadcastPresence();
     if (token) sessions.delete(token);
   }
   function sessionFor(request, response) {
     const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
-    let session = token && sessions.get(token);
-    if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; }
+    const tokenIsValid = validSessionToken(token);
+    let session = tokenIsValid ? sessions.get(token) : null, expired = false;
+    if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; expired = true; }
     if (!session) {
       if (sessions.size >= 512) { const oldest = sessions.entries().next().value; expireSession(...oldest); }
-      const id = randomBytes(32).toString('base64url'); session = { token: id, presenceId: `presence-${randomUUID()}`, actor: witness(), lastSeen: Date.now() }; sessions.set(id, session);
-      response.setHeader('Set-Cookie', `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict${request.socket.encrypted ? '; Secure' : ''}`);
+      // A surviving opaque cookie can restore only its pseudonymous Witness identity
+      // after process restart. Founder authority is never reconstructed from a cookie.
+      const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
+      const actor = witness(id);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now() }; sessions.set(id, session);
+      response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
     session.lastSeen = Date.now(); return session;
   }
   function rotate(request, response, previous, actor) {
     expireSession(previous.token, previous);
-    const token = randomBytes(32).toString('base64url'); const session = { token, presenceId: `presence-${randomUUID()}`, actor, lastSeen: Date.now() }; sessions.set(token, session);
-    response.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${request.socket.encrypted ? '; Secure' : ''}`);
+    const token = randomBytes(32).toString('base64url');
+    const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now() }; sessions.set(token, session);
+    response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
   function json(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
@@ -275,12 +307,22 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       if (path === '/api/action') {
         if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.'); exact(input, actionFields[input.type]);
+        const { requestId: suppliedRequestId, ...action } = input;
+        const requestId = suppliedRequestId ?? randomUUID();
+        if (typeof requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) fail('INVALID_REQUEST_ID', 'Request ID must be a bounded stable identifier.');
         return await enqueue(async () => {
           // Re-check after waiting: a logout may have demoted this live session.
-          const outcome = await applyAction(store.value.world, input, { ...session.actor });
+          const actor = { ...session.actor };
+          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
+          const previous = store.value.world.events.find(event => event.requestId === requestId);
+          if (previous) {
+            if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
+            return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
           const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
-          try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
-          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result });
+          try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
+          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
         });
       }
       if (path === '/api/launch') {
