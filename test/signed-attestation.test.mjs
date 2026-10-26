@@ -65,7 +65,7 @@ test("a valid signature cannot be replayed into a different configured audience"
     ...config.observation,
     expectedAudience: "institution-B"
   });
-  assert.equal(createSignedEventVerifier(config.observation)(event), true);
+  assert.equal(createSignedEventVerifier({ role: "observation", ...config.observation })(event), true);
   assert.equal(verifierForOtherInstitution(event), false);
 });
 
