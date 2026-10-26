@@ -24,17 +24,32 @@ export function eventParents(event) {
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     throw new Error("invalid event for parent validation");
   }
-  if (!Object.hasOwn(event, "parents")) return [];
-  if (!Array.isArray(event.parents)) throw new Error("invalid parents for " + label);
+  const property = Object.getOwnPropertyDescriptor(event, "parents");
+  if (!property) return [];
+  // The parent edge must participate in canonical signing/serialization. Never
+  // invoke an accessor or accept hidden ancestry metadata.
+  if (!("value" in property) || property.enumerable !== true) {
+    throw new Error("parent metadata must be an enumerable data property for " + label);
+  }
+  const parents = property.value;
+  if (!Array.isArray(parents) || Object.getPrototypeOf(parents) !== Array.prototype ||
+      Reflect.ownKeys(parents).length !== parents.length + 1) {
+    throw new Error("invalid parents for " + label);
+  }
   const unique = new Set();
-  for (const parent of event.parents) {
+  for (let index = 0; index < parents.length; index++) {
+    const item = Object.getOwnPropertyDescriptor(parents, String(index));
+    if (!item || !("value" in item) || item.enumerable !== true) {
+      throw new Error("invalid parent reference for " + label);
+    }
+    const parent = item.value;
     if (typeof parent !== "string" || parent.trim().length === 0) {
       throw new Error("invalid parent reference for " + label);
     }
     if (unique.has(parent)) throw new Error("duplicate parent for " + label);
     unique.add(parent);
   }
-  return event.parents;
+  return parents;
 }
 
 // Produce a type-tagged, key-order-independent comparison value. Event IDs
