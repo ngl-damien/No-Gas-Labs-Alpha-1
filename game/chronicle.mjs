@@ -98,7 +98,8 @@ function worldEntry(event, index, world, notes) {
 
   if (["publish", "contribute", "report", "repair"].includes(type) && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
-    entry.warning ||= "The referenced artifact version is unavailable in this snapshot; the event remains visible without an invented target.";
+    const targetWarning = "The referenced artifact version is unavailable in this snapshot; the event remains visible without an invented target.";
+    entry.warning = entry.warning ? entry.warning + " " + targetWarning : targetWarning;
   }
   if (!text(event?.id)) entry.warning ||= "The retained event has no usable source ID; this display key is local to the view.";
   if (!entry.at) entry.warning ||= "The retained event has no parseable timestamp; it is shown after timestamped records.";
