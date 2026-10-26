@@ -5,6 +5,15 @@ const EMPTY = () => ({
 });
 const OBSERVATION_EVENT_TYPES = new Set(["SYSTEM_EVENT", "EXECUTION_ADJUDICATION"]);
 
+function setOwn(target, key, value) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true
+  });
+}
+
 // Event labels are claims, not attestations. The host injects trust roots
 // independently of the event producer; missing, non-boolean or throwing
 // verifiers fail closed. Events are still retained in history for later review.
@@ -80,23 +89,25 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     const subject = event.subject || event.event_id;
 
     if (event.event_type === "CLAIM" || event.event_type === "PROPOSAL") {
-      state.quests[subject] = { status: "PROPOSED", source_event: event.event_id };
+      setOwn(state.quests, subject, { status: "PROPOSED", source_event: event.event_id });
       continue;
     }
 
     if (event.admission === "REJECTED" && isVerifiedAdjudication(event, verifyAdjudication)) {
-      state.quests[subject] = { ...(state.quests[subject] || {}), status: "REJECTED", source_event: event.event_id };
+      const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
+      setOwn(state.quests, subject, { ...previous, status: "REJECTED", source_event: event.event_id });
       continue;
     }
 
     if (event.outcome === "FAILED" || event.evidence === "REFUTED") {
       if (hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
           isVerifiedAuthorization(event, verifyAuthorization)) {
-        state.quests[subject] = {
-          ...(state.quests[subject] || {}),
+        const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
+        setOwn(state.quests, subject, {
+          ...previous,
           status: event.outcome === "FAILED" ? "FAILED" : "REJECTED",
           source_event: event.event_id
-        };
+        });
       }
       continue;
     }
@@ -107,13 +118,27 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     if (revoked.has(event.grant_id) ||
         !terminalSuccess(event, resolveArtifact, verifyObservation, verifyAuthorization)) continue;
 
-    state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
+    const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
+    setOwn(state.quests, subject, { ...previous, status: "COMPLETED", source_event: event.event_id });
+
     const effect = event.world_effect || {};
     if (Number.isFinite(effect.xp) && effect.xp > 0) state.xp += effect.xp;
-    for (const [item, amount] of Object.entries(effect.inventory || {})) {
-      if (Number.isFinite(amount)) state.inventory[item] = (state.inventory[item] || 0) + amount;
+
+    const inventory = effect.inventory;
+    if (inventory && typeof inventory === "object" && !Array.isArray(inventory)) {
+      for (const [item, amount] of Object.entries(inventory)) {
+        if (!Number.isFinite(amount)) continue;
+        const previousAmount = Object.hasOwn(state.inventory, item) && Number.isFinite(state.inventory[item])
+          ? state.inventory[item]
+          : 0;
+        setOwn(state.inventory, item, previousAmount + amount);
+      }
     }
-    Object.assign(state.world, effect.world || {});
+
+    const worldEffect = effect.world;
+    if (worldEffect && typeof worldEffect === "object" && !Array.isArray(worldEffect)) {
+      for (const [key, value] of Object.entries(worldEffect)) setOwn(state.world, key, value);
+    }
   }
 
   state.seen = [...seen];
