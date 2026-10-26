@@ -198,8 +198,28 @@ def shared(browser,url,data,out):
         a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
         assert a.locator('#creation-notes script').count()==0
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
-        b.locator('#report-text').fill('Preserve this report against version one.')
+        report_text='Preserve this report against version one.'
+        drop={'remaining':True}
+        def lose_report_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if drop['remaining'] and payload.get('type')=='report' and payload.get('text')==report_text:
+                route.fetch()  # The service commits; simulate the response disappearing in transit.
+                drop['remaining']=False
+                route.abort()
+                return
+            route.continue_()
+        b.route('**/api/action',lose_report_response)
+        b.locator('#report-text').fill(report_text)
         b.locator('#report-button').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        close_sheet(b);b.locator('#journal-button').click()
+        b.locator('#retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        recovered=visitor.request.get(url+'api/state').json()
+        assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
+        assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
+        b.unroute('**/api/action',lose_report_response)
         b.get_by_text('Ask the Contradiction Clerk to challenge this version',exact=True).click()
         b.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
         b.locator('#contradiction-source').fill('The preserved HTML bytes and the cited source page.')
