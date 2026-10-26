@@ -116,3 +116,27 @@ test("accessor-backed event collections are rejected without executing their get
   assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-events"));
   assert.ok(chronicle.entries.some(entry => entry.id === "kernel:unclassified-events"));
 });
+
+
+test("report text is not attributed when actor identity metadata is missing on both records", () => {
+  const { world, kernel } = fixture();
+  world.events[1].actor = { name: "Witness" };
+  world.reports[0].actor = { name: "Witness" };
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /complete actor, version, or timestamp/i);
+});
+
+test("report text is not arbitrarily selected when multiple records share the same metadata", () => {
+  const { world, kernel } = fixture();
+  world.reports.push({
+    ...structuredClone(world.reports[0]),
+    id: "report-record-ambiguous",
+    text: "A different report with the same metadata.",
+  });
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /attribution is ambiguous/i);
+});
