@@ -67,16 +67,21 @@ export function validateHistory(events) {
   if (!Array.isArray(events)) throw new Error("event history must be an array");
   const ids = new Set();
   for (const event of events) {
-    if (!event || typeof event !== "object" || Array.isArray(event) ||
-        typeof event.event_id !== "string" || event.event_id.trim().length === 0 ||
-        ids.has(event.event_id)) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
       throw new Error("duplicate or missing event_id");
     }
+    const idProperty = Object.getOwnPropertyDescriptor(event, "event_id");
+    if (!idProperty || !("value" in idProperty) || idProperty.enumerable !== true ||
+        typeof idProperty.value !== "string" || idProperty.value.trim().length === 0 ||
+        ids.has(idProperty.value)) {
+      throw new Error("duplicate or missing event_id");
+    }
+    const eventId = idProperty.value;
     const parents = eventParents(event);
     if (parents.some(parent => !ids.has(parent))) {
-      throw new Error("unresolved parent for " + event.event_id);
+      throw new Error("unresolved parent for " + eventId);
     }
-    ids.add(event.event_id);
+    ids.add(eventId);
   }
   return true;
 }
