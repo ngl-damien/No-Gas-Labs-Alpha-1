@@ -16,8 +16,17 @@ function canonical(value, ancestors = new Set()) {
 
   const keys = Object.keys(value);
   if (Array.isArray(value)) {
-    if (keys.length !== value.length || keys.some((key, index) => key !== String(index))) {
+    if (Object.getPrototypeOf(value) !== Array.prototype ||
+        keys.length !== value.length ||
+        keys.some((key, index) => key !== String(index)) ||
+        Reflect.ownKeys(value).length !== value.length + 1) {
       throw new TypeError("state hash cannot include sparse or decorated arrays");
+    }
+    for (let index = 0; index < value.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !("value" in descriptor)) {
+        throw new TypeError("state hash cannot include accessor properties");
+      }
     }
     ancestors.add(value);
     try {
