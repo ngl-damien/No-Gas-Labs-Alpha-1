@@ -13,7 +13,7 @@ The three NGL-001 content differences and the four missing Command Center images
 
 ## 1. TaskAgile gap analysis
 
-Latest source tree: `TaskAgile` tree SHA `66885999064997b332f61dac13333058c462e857`. File-only comparison: 169 source files, 66 identical blobs already represented in the Alpha One TaskAgile snapshot, 103 absent from that snapshot, 0 same-path content differences. The snapshot is therefore partial, not a faithful full copy.
+Latest source tree: `TaskAgile` tree SHA `66885999064997b332f61dac13333058c462e857`. File-only comparison: 169 source files, 66 identical blobs already represented in the Alpha One TaskAgile snapshot, 103 absent from that snapshot, 0 same-path content differences. A follow-up scan of Alpha One's broader tree found 14 of those 103 missing-from-snapshot source files already preserved byte-identically under `integrations/taskagile-reference/` (the legacy entry point, nine modules, package metadata, two HTML experiences and deathmatch research). Thus 103 is a snapshot gap, not a claim that all 103 files are absent from Alpha One; after those exact reference copies, at least 89 source paths remain to classify for equivalent implementations or true gaps. Alpha One also has native `game/`, `src/authority/`, `src/institution/`, `src/evidence/`, `src/forge/`, `src/quest/`, `src/world/`, and `test/` modules, so a same-name file is not the only possible equivalent.
 
 ### Missing-file groups (103 files)
 
@@ -30,7 +30,7 @@ The groups above are path-based triage; a file may be technically valid without 
 
 ### Recommended TaskAgile port order
 
-1. **Inventory existing Alpha One equivalents** for RPG/game loops, quest state, evidence receipts, audio/animation, mobile UI, localization, and tests. Extend an existing canonical module where possible instead of adding a second owner.
+1. **Inventory existing Alpha One equivalents** for RPG/game loops, quest state, evidence receipts, audio/animation, mobile UI, localization, and tests. This inventory has begun: Alpha One already contains native `game/`, `src/authority/`, `src/institution/`, `src/evidence/`, `src/forge/`, `src/quest/`, `src/world/`, and `test/` modules, plus a 15-file `integrations/taskagile-reference/` area. Extend an existing canonical module where possible instead of adding a second owner.
 2. **Review the ten legacy `modules/` files as a bounded package**, beginning with `state.js`, `persistence.js`, `security.js`, and `testing.js`. Record each module's imports, browser assumptions, state writes, network calls, and test hooks before adapting it.
 3. **Review `main.js` and `localization/en.js` together**. They form a likely entry-point/localization pair, not independent copy-paste candidates.
 4. **Evaluate `rpg.html`, `shrine.html`, and the deathmatch artifacts as separate experiences**. Preserve original provenance and avoid making their state authoritative for Alpha One.
@@ -89,7 +89,7 @@ This audit confirms the tracked private-key field; it does **not** establish whe
 - [x] Identify NGL-001 evidence-bearing differences and the unreviewed oversized application blob.
 - [x] Identify the four Command Center assets and their aggregate size.
 - [x] Flag the tracked private-key field without reproducing key material.
-- [ ] Inspect Alpha One's current equivalent modules and map each proposed TaskAgile capability to a single canonical owner.
+- [x] Identify Alpha One's native game, authority, institution, evidence, forge, quest, world, and test areas plus existing TaskAgile reference copies; detailed per-capability call-graph mapping remains to be completed.
 - [ ] Validate NGL-001 ledger/state differences and source provenance.
 - [ ] Confirm key trust status and complete rotation/remediation if the key is or could be trusted.
 - [ ] Review licenses and security implications for any selected code/media.
