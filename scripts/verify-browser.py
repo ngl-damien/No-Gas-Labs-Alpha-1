@@ -95,6 +95,36 @@ def visit(page,title):
     page.get_by_role('button',name=f'Open {title}',exact=True).click()
 
 
+def institutional_locations(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        cases=[
+            ('The Relay','Carry the question.','Draft a portable request →'),
+            ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
+            ('The Long View','Make room for another voice.','Make a first place to preserve →'),
+            ('The Unfinished','Unfinished is a useful state.','Give the recovered comic a home →')
+        ]
+        for place,title,label in cases:
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {place}',exact=True).click()
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg=title)
+            expect(page.locator('#sheet .primary-button')).to_have_text(label)
+            assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
+        page.screenshot(path=str(out/'institutional-locations.png'))
+        assert not errors,errors
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases),'creations':0,'xp':0,'errors':errors}
+    finally:
+        context.close()
+
+
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
@@ -106,6 +136,11 @@ def shared(browser,url,data,out):
             page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
+        close_sheet(b)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
@@ -120,6 +155,11 @@ def shared(browser,url,data,out):
         snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to River of Receipts',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The river remembers bytes.')
+        expect(b.locator('#sheet .primary-button')).to_have_text('Inspect a published receipt →')
+        b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
         visit(b,'The shared observatory');b.locator('#enter-creation').click()
         frame=b.frame_locator('#artifact-frame')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
@@ -215,6 +255,7 @@ def main():
                         except Exception:
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
+                    record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
