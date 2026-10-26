@@ -58,17 +58,30 @@ function findVersion(world, creationId, version) {
 }
 
 function matchingNote(records, event, consumed) {
-  const index = records.findIndex(record =>
+  const creationId = text(event?.creationId);
+  const version = event?.version;
+  const at = timestamp(event?.at);
+  const actor = text(actorId(event?.actor));
+  if (!creationId || !Number.isInteger(version) || version < 1 || !at || !actor) {
+    return { record: null, reason: "insufficient-metadata" };
+  }
+
+  const matches = records.filter(record =>
     !consumed.has(record) &&
-    record?.creationId === event.creationId &&
-    record?.version === event.version &&
+    record?.creationId === creationId &&
+    record?.version === version &&
     record?.at === event.at &&
-    actorId(record?.actor) === actorId(event.actor)
+    text(actorId(record?.actor)) === actor
   );
-  if (index < 0) return null;
-  const [record] = records.splice(index, 1);
+  if (matches.length !== 1) {
+    return { record: null, reason: matches.length > 1 ? "ambiguous" : "missing" };
+  }
+
+  const record = matches[0];
+  const index = records.indexOf(record);
+  if (index >= 0) records.splice(index, 1);
   consumed.add(record);
-  return record;
+  return { record, reason: null };
 }
 
 function worldEntry(event, index, world, notes) {
@@ -110,7 +123,8 @@ function worldEntry(event, index, world, notes) {
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
   } else if (type === "contribute" || type === "report") {
     const records = type === "report" ? notes.reports : notes.contributions;
-    const record = matchingNote(records, event, notes.consumed);
+    const match = matchingNote(records, event, notes.consumed);
+    const record = match.record;
     entry.title = type === "report"
       ? `Report retained · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`
       : `Contribution retained · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
@@ -119,7 +133,15 @@ function worldEntry(event, index, world, notes) {
       ? "A report was retained against the referenced version. It remains a report, not an adjudication."
       : "A contribution was retained against the referenced version.";
     entry.detail = text(record?.text);
-    if (!record) entry.warning = "The event is retained, but its corresponding text record is absent from this snapshot.";
+    if (!record) {
+      if (match.reason === "ambiguous") {
+        entry.warning = "Multiple text records match this event's metadata; no text was attached because attribution is ambiguous.";
+      } else if (match.reason === "insufficient-metadata") {
+        entry.warning = "The event lacks a complete actor, version, or timestamp; its text record cannot be safely attributed.";
+      } else {
+        entry.warning = "The event is retained, but its corresponding text record is absent from this snapshot.";
+      }
+    }
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
