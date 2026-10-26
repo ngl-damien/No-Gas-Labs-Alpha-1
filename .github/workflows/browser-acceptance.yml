@@ -1,0 +1,38 @@
+name: browser-acceptance
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  playable-world:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser acceptance dependencies
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+          echo "NGL_CHROMIUM_EXECUTABLE=$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')" >> "$GITHUB_ENV"
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Exercise desktop, mobile, shared-world and recovery journeys
+        run: python3 scripts/verify-browser.py --out artifacts/browser-acceptance --standalone
+      - name: Preserve browser receipts and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-browser-acceptance
+          path: artifacts/browser-acceptance/
+          if-no-files-found: warn
+          retention-days: 14
