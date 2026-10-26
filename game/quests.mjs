@@ -67,3 +67,84 @@ export function getQuest(world, viewer) {
     button: 'Explore your places →', action: 'places'
   };
 }
+
+
+const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+const inspect = (creation, label, explanation) => creation && typeof creation.id === 'string'
+  ? { type: 'inspect', creationId: creation.id, label, explanation }
+  : null;
+
+/**
+ * Choose the next real activity for a guide location without mutating world state.
+ * Witnesses can inspect published work but can never be routed into Founder-only drafting.
+ */
+export function getLocationAction(locationId, world, viewer) {
+  if (!GUIDE_LOCATIONS.has(locationId)) return null;
+  const creations = rows(world?.creations).filter(creation =>
+    creation && typeof creation.id === 'string' && creation.id.length > 0
+  );
+  const oldest = creations[0] || null;
+  const newest = creations.at(-1) || null;
+  const comic = creations.find(creation => creation.kind === 'comic') || null;
+  const observatory = creations.find(creation => creation.kind === 'observatory') || null;
+  const founder = viewer?.role === 'founder';
+
+  if (!founder) {
+    if (!creations.length) return {
+      type: 'places',
+      label: 'Explore another guide →',
+      explanation: 'No published creation is available to inspect yet. Your discovery is recorded, but it does not create work or grant publishing authority.'
+    };
+    const target = locationId === 'river' ? observatory || newest
+      : locationId === 'overlook' ? oldest
+      : locationId === 'ruins' ? comic || oldest
+      : newest;
+    const labels = {
+      relay: 'Inspect published work to carry a useful response →',
+      river: 'Inspect a published receipt →',
+      overlook: 'Compare a retained version →',
+      ruins: 'Read a published artifact →'
+    };
+    const explanations = {
+      relay: 'Open an existing creation and leave a specific, attributed contribution or version-bound report. This guide does not execute an external request.',
+      river: 'Inspect the actual bytes and receipt. The receipt identifies content; it does not establish that the content is true.',
+      overlook: 'Open the earliest published place and compare its retained versions before proposing a repair.',
+      ruins: 'Open a real published artifact. If it is a comic, read the recovered pages; do not infer unseen pages.'
+    };
+    return inspect(target, labels[locationId], explanations[locationId]) || {
+      type: 'places', label: 'Explore another guide →',
+      explanation: 'No published creation is available to inspect yet.'
+    };
+  }
+
+  if (locationId === 'relay') return {
+    type: 'workbench', recipe: 'custom',
+    label: 'Draft a portable request →',
+    explanation: 'Prepare a bounded request with context, evidence, uncertainty and a testable next step. Drafting does not send it to a provider.'
+  };
+  if (locationId === 'river') {
+    if (observatory) return inspect(observatory, 'Inspect your source observatory →',
+      'Reuse the existing observatory rather than creating a duplicate. Compare its source notes and uncertainty.');
+    return {
+      type: 'workbench', recipe: 'observatory',
+      label: 'Build a source observatory →',
+      explanation: 'Put one claim beside a source and a question that could change your mind. The local artifact does not fetch or verify the source.'
+    };
+  }
+  if (locationId === 'overlook') {
+    if (oldest) return inspect(oldest, 'Inspect retained versions →',
+      'Open the earliest published place. Review its actual versions and field notes before deciding whether a repair is warranted.');
+    return {
+      type: 'workbench', recipe: 'custom',
+      label: 'Make a first place to preserve →',
+      explanation: 'There is nothing to repair yet. Publish one real artifact first; the Long View can then lead back to its retained history.'
+    };
+  }
+  if (comic) return inspect(comic, 'Read the published comic →',
+    'Open the existing comic instead of creating a duplicate. Inspect the pages actually present before making a claim about them.');
+  return {
+    type: 'workbench', recipe: 'comic',
+    label: 'Give the recovered comic a home →',
+    explanation: 'Create a playable home for the recovered pages. Missing pages remain labelled unavailable; no missing content is invented.'
+  };
+}
