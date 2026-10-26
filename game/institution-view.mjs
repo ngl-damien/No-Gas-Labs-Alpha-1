@@ -1,4 +1,26 @@
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
+import { projectDissentDocket } from './dissent-docket.mjs';
+
+export function renderDissentDocket(container, world, {onOpenReport} = {}) {
+ const reports=projectDissentDocket(world);
+ container.append(el('h3','FIELD DISSENT & FAILURE REPORTS'));
+ container.append(el('p',`\${reports.length} retained report(s). Reports are attributed to a specific published version; this read-only docket does not verify, adjudicate, dismiss or reward them.`));
+ if(reports.length===0){container.append(el('p','No field reports have been recorded in this world yet.'));return;}
+ for(const report of reports){
+  const card=el('article');card.className='field-card';card.dataset.recordType='FIELD_REPORT';card.dataset.reportId=report.id;card.dataset.status=report.status;
+  card.append(el('h3',`\${report.status} · \${report.creationTitle} v\${report.version??'?'}`));
+  card.append(el('p',report.text));
+  const parsed=Date.parse(report.at);const when=Number.isFinite(parsed)?new Date(parsed).toLocaleString():String(report.at||'time unavailable');
+  card.append(el('p',`Filed by \${report.actorName} · \${when}`));
+  card.append(el('p','A preserved report is not a verified finding, adjudication or truth claim.'));
+  if(report.inspectable&&typeof onOpenReport==='function'){
+   const inspect=el('button','Inspect exact version →');inspect.type='button';inspect.dataset.action='inspect-report-version';inspect.dataset.creationId=report.creationId;inspect.dataset.version=String(report.version);inspect.onclick=()=>onOpenReport(report);card.append(inspect);
+  }else{
+   const warning=el('p',report.limitation||'The referenced version cannot be opened from this docket.');warning.className='evidence-warning';card.append(warning);
+  }
+  container.append(card);
+ }
+}
 
 function renderKernelHistory(container,kernel){
  const events=Array.isArray(kernel?.events)?kernel.events:[];
