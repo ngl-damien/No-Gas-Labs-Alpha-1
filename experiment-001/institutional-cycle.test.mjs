@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -160,4 +160,151 @@ test('stale lock fails closed and is not silently deleted as crash recovery', ()
   await assert.rejects(() => store.commit(decision, receipt(lib, decision, executor.privateKey)), /LEDGER_LOCKED/);
   assert.equal(await readFile(lockPath, 'utf8'), 'simulated prior-process lock');
   assert.equal(store.snapshot().sequence, 1);
+}));
+
+
+test('versioned implementation identities are stable semantic IDs, not source-text hashes', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder);
+  assert.equal(lib.implementationHash('square'), createHash('sha256').update('ngl-experiment-001:strategy:square:v1').digest('hex'));
+  assert.equal(lib.implementationHash('double'), createHash('sha256').update('ngl-experiment-001:strategy:double:v1').digest('hex'));
+  assert.notEqual(lib.implementationHash('square'), lib.legacyImplementationHash('square'));
+  assert.equal(lib.legacyImplementationHash('square'), createHash('sha256').update('function square(n) { return n * n; }').digest('hex'));
+  assert.equal(lib.legacyImplementationHash('double'), createHash('sha256').update('function double(n) { return n * 2; }').digest('hex'));
+}));
+
+test('legacy source-hash ledger replays and reuses while new legacy INSTALL is rejected', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  const draft = proposal(lib, executor, { id: 'legacy-square', nonce: 'install-legacy-record-01', maxUses: 2 });
+  const legacyHash = lib.legacyImplementationHash(draft.strategy);
+  draft.implementationHash = legacyHash;
+  draft.proof = { ...draft.proof, implementationHash: legacyHash };
+  const timestamp = Date.now();
+  const signature = approve(lib, draft, founder.privateKey);
+  const record = { sequence: 1, previous: 'GENESIS', timestamp, decision: draft, signature };
+  record.hash = createHash('sha256').update(lib.canonical({
+    sequence: record.sequence,
+    previous: record.previous,
+    timestamp: record.timestamp,
+    decision: record.decision,
+    signature: record.signature ?? null
+  })).digest('hex');
+  const legacyState = {
+    version: 2,
+    sequence: 1,
+    previous: record.hash,
+    records: [record],
+    capabilities: {
+      [draft.id]: {
+        id: draft.id,
+        strategy: draft.strategy,
+        proof: draft.proof,
+        implementationHash: legacyHash,
+        installedAt: timestamp,
+        issuedAt: draft.issuedAt,
+        expiresAt: draft.expiresAt,
+        maxUses: draft.maxUses,
+        uses: 0,
+        installationNonce: draft.nonce,
+        executorPublicKeyPem: draft.executorPublicKeyPem
+      }
+    },
+    used: [],
+    installationNonces: [draft.nonce]
+  };
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  await writeFile(join(path, 'institution.json'), lib.canonical(legacyState), { mode: 0o600 });
+
+  const store = await openStore(lib, path, founder);
+  assert.equal(store.snapshot().sequence, 1);
+  assert.equal(store.snapshot().capabilities[draft.id].implementationHash, legacyHash);
+
+  const secondExecutor = pair();
+  const newLegacyDraft = proposal(lib, secondExecutor, { id: 'legacy-new-install', nonce: 'install-legacy-new-0001', maxUses: 1 });
+  newLegacyDraft.implementationHash = legacyHash;
+  newLegacyDraft.proof = { ...newLegacyDraft.proof, implementationHash: legacyHash };
+  await assert.rejects(() => store.commit(newLegacyDraft, approve(lib, newLegacyDraft, founder.privateKey)), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 1);
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-legacy-record-01', input: 3, output: 9 };
+  await store.commit(use, receipt(lib, use, executor.privateKey));
+  const reopened = await openStore(lib, path, founder);
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.equal(reopened.snapshot().capabilities[draft.id].uses, 1);
+}));
+
+
+test('two independent processes contend safely and preserve both INSTALL records', () => temp(async dir => {
+  const founder = pair(), executorA = pair(), executorB = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  await openStore(lib, path, founder);
+  const drafts = [
+    proposal(lib, executorA, { id: 'process-install-a', nonce: 'install-process-a-0001', maxUses: 1 }),
+    proposal(lib, executorB, { id: 'process-install-b', nonce: 'install-process-b-0001', maxUses: 1 })
+  ];
+  const signatures = drafts.map(draft => approve(lib, draft, founder.privateKey));
+  const startWorker = index => {
+    const child = spawn(process.execPath, [
+      new URL('./commit-worker.mjs', import.meta.url).pathname,
+      path,
+      pem(founder),
+      JSON.stringify(drafts[index]),
+      signatures[index]
+    ], {
+      env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    let stdout = '', stderr = '', readySettled = false, resolveReady, rejectReady;
+    const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    const done = new Promise(resolve => {
+      child.stdout.on('data', chunk => {
+        stdout += chunk.toString();
+        if (!readySettled && stdout.includes('READY\n')) {
+          readySettled = true;
+          resolveReady();
+        }
+      });
+      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+      child.once('error', error => {
+        if (!readySettled) { readySettled = true; rejectReady(error); }
+      });
+      child.once('close', (code, signal) => {
+        if (!readySettled) {
+          readySettled = true;
+          rejectReady(new Error('Worker exited before readiness: code=' + code + ' stderr=' + stderr + ' stdout=' + stdout));
+        }
+        resolve({ code, signal, stdout, stderr });
+      });
+    });
+    return { child, ready, done };
+  };
+
+  const workers = [startWorker(0), startWorker(1)];
+  await Promise.all(workers.map(worker => worker.ready));
+  for (const worker of workers) worker.child.stdin.end('GO\n');
+  const completed = await Promise.all(workers.map(worker => worker.done));
+  const outcomes = completed.map((result, index) => {
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const lines = result.stdout.trim().split(/\r?\n/);
+    return { ...JSON.parse(lines.at(-1)), index };
+  });
+  assert.ok(outcomes.every(outcome =>
+    outcome.outcome === 'committed' ||
+    (outcome.outcome === 'rejected' && outcome.error === 'LEDGER_LOCKED')
+  ), JSON.stringify(outcomes));
+
+  const rejected = outcomes.find(outcome => outcome.outcome === 'rejected');
+  if (rejected) {
+    const retry = startWorker(rejected.index);
+    await retry.ready;
+    retry.child.stdin.end('GO\n');
+    const result = await retry.done;
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const retryOutcome = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+    assert.equal(retryOutcome.outcome, 'committed', JSON.stringify(retryOutcome));
+  }
+
+  const reopened = await openStore(lib, path, founder);
+  const snapshot = reopened.snapshot();
+  assert.equal(snapshot.sequence, 2);
+  assert.deepEqual(snapshot.records.map(record => record.decision.id).sort(), drafts.map(draft => draft.id).sort());
+  assert.deepEqual(Object.keys(snapshot.capabilities).sort(), drafts.map(draft => draft.id).sort());
 }));
