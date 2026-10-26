@@ -35,7 +35,7 @@ No repository is considered assimilated merely because its name, README, manifes
 ## Existing snapshot reconciliation
 
 The current Alpha One tree contains `recovery/public-repos/` snapshots. Initial tree/blob comparison found:
-- `ngl001-def4us28`: 29 of 30 source paths correspond; 23 blobs match exactly.
+- `ngl001-def4us28`: 29 of 30 tree entries correspond (directories included); at file level, 20 of 24 source blobs match exactly. Four files differ or are missing, including a 4.56 MB source `src/App.jsx` whose Alpha One snapshot is an empty file.
 - `no-gas-labs-command-center`: 119 paths correspond; 117 blobs match exactly out of 124 source paths.
 - `TaskAgile`: 79 paths correspond; 74 blobs match exactly out of 202 source paths.
 
