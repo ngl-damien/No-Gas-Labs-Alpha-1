@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderInstitution } from '../game/institution-view.mjs';
+import { renderInstitution, renderDissentDocket } from '../game/institution-view.mjs';
 
 function element(tag) {
   return {
@@ -25,6 +25,50 @@ function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
 const gate = { policy: null, decisions: [] };
+
+test('TownSquare preserves version-bound dissent as unadjudicated and opens the exact retained version', () => withDocument(() => {
+  const world = {
+    creations: [{ id: 'creation-1', title: 'The Observatory', version: 2, versions: [{ version: 1 }] }],
+    reports: [{
+      id: 'report-1', creationId: 'creation-1', version: 1,
+      text: 'The first version omits its source.',
+      actor: { id: 'witness-1', name: 'Witness One' },
+      at: '2026-10-25T12:00:00.000Z'
+    }]
+  };
+  const root = element('div');
+  let opened = null;
+  renderDissentDocket(root, world, { onOpenReport: report => { opened = report; } });
+  const output = textOf(root);
+  assert.match(output, /FIELD DISSENT & FAILURE REPORTS/);
+  assert.match(output, /UNADJUDICATED REPORT · The Observatory v1/);
+  assert.match(output, /The first version omits its source/);
+  assert.match(output, /not a verified finding, adjudication or truth claim/);
+  const card = walk(root).find(item => item.dataset?.recordType === 'FIELD_REPORT');
+  assert.ok(card);
+  assert.equal(card.dataset.status, 'UNADJUDICATED REPORT');
+  const inspect = walk(card).find(item => item.tagName === 'button');
+  assert.equal(inspect.textContent, 'Inspect exact version →');
+  inspect.onclick();
+  assert.equal(opened.id, 'report-1');
+  assert.equal(opened.version, 1);
+}));
+
+test('TownSquare keeps orphaned reports visible without inventing an inspection target', () => withDocument(() => {
+  const root = element('div');
+  renderDissentDocket(root, {
+    creations: [],
+    reports: [{
+      id: 'orphan', creationId: 'missing', version: 8, text: 'Do not erase this.',
+      actor: { id: 'witness-2', name: 'Witness Two' }, at: 'not-a-date'
+    }]
+  }, { onOpenReport: () => assert.fail('orphan must not open') });
+  const output = textOf(root);
+  assert.match(output, /UNADJUDICATED REPORT · Unknown creation v8/);
+  assert.match(output, /Do not erase this/);
+  assert.match(output, /cannot be opened from this docket/);
+  assert.equal(walk(root).filter(item => item.tagName === 'button').length, 0);
+}));
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
