@@ -30,7 +30,11 @@ function denseArrayValues(value, label) {
 
 // Validate the complete object graph before cloning or comparing it. Hidden
 // fields, accessors, symbols, sparse arrays and exotic prototypes are not JSON.
-function stableEventValue(value, ancestors = new Set()) {
+const MAX_EVENT_NESTING_DEPTH = 128;
+
+// Bound recursive validation so hostile nesting fails closed before exhausting the JS stack.
+function stableEventValue(value, ancestors = new Set(), depth = 0) {
+  if (depth > MAX_EVENT_NESTING_DEPTH) throw new Error("event payload exceeds maximum nesting depth");
   if (value === null) return ["null"];
   const type = typeof value;
   if (type === "string" || type === "boolean") return [type, value];
@@ -44,7 +48,7 @@ function stableEventValue(value, ancestors = new Set()) {
   let result;
   if (Array.isArray(value)) {
     const items = denseArrayValues(value, "array");
-    result = ["array", items.map(item => stableEventValue(item, ancestors))];
+    result = ["array", items.map(item => stableEventValue(item, ancestors, depth + 1))];
   } else {
     const prototype = Object.getPrototypeOf(value);
     const keys = Object.keys(value);
@@ -57,7 +61,7 @@ function stableEventValue(value, ancestors = new Set()) {
       if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor)) {
         throw new Error("accessor or hidden field in event payload");
       }
-      return [key, stableEventValue(descriptor.value, ancestors)];
+      return [key, stableEventValue(descriptor.value, ancestors, depth + 1)];
     })];
   }
   ancestors.delete(value);
