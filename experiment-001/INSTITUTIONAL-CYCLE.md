@@ -19,3 +19,14 @@ Run on Node.js 24 or newer (the current repository CI runtime): `node --test exp
 ## Next experiment
 
 Test concurrent writers and stale-lock recovery, then compare the candidate with the real reducer/authority entry points for integration.
+
+## Implementation identity and ledger replay compatibility
+
+New INSTALL proposals identify a strategy with a stable, versioned semantic ID (`ngl-experiment-001:strategy:square:v1` or `ngl-experiment-001:strategy:double:v1`) rather than hashing JavaScript `Function.toString()`. This avoids rejecting historical records merely because implementation source formatting changes.
+
+The version-2 ledger reader retains a narrow compatibility path for INSTALL records written by the former source-hash scheme:
+
+- `square`: `a44644e2cb5f1e34cf0aac616d43631c4778a19585cb634128f9d4fbfe9d947d`
+- `double`: `8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436`
+
+Legacy hashes are accepted only when replaying existing ledger history; new INSTALL commits must use the current versioned identity. Existing legacy capabilities remain reusable under their recorded identity. This is a compatibility fix, not proof that a strategy's implementation is correct: strategy IDs are immutable behavior contracts, and any semantic change must introduce a new version and corresponding tests rather than silently changing the behavior associated with an existing ID. No ledger migration, production key provisioning, or capability installation is performed by this code change.
