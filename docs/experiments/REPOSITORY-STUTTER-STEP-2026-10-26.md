@@ -28,11 +28,15 @@
 - `0063bb5f40b27ee75a0fb74056b14aa97a80add0` — regression test mutates the original event and nested receipt/world-effect fields after projection and confirms the retained history snapshot is unchanged.
 - `1dfc8d350589f22b52f723e48bfad010659b8659` — trust-boundary documentation records the snapshot-isolation behavior.
 
-## Verification status for this handoff
+## Verification status for the code/test head
 
-- Before follow-ups, the exact pre-run head `a27a635cbf9178a899d152c2de148e0dabab478e` passed all three workflows listed above.
-- The follow-up source/test/documentation commits trigger new CI. **Do not claim these commits are verified until full verification, Genesis Evidence Invariant, and browser acceptance have completed on the current exact head.**
-- Local execution is unavailable in this runtime; use the observed exact-head GitHub Actions runs. If any check fails, inspect job logs, fix the source/test defect, and re-run.
+The exact code/test head `1c110543bdae008f859af25e08ffc47f2a7dffa9` passed all required GitHub Actions checks:
+
+- [Full verification — run 40317442221](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442221): **success**. Node tests, Python inspector, game package build, and bounded institutional exercise all exited 0.
+- [Genesis Evidence Invariant — run 40317442225](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442225): **success**.
+- [Browser acceptance — run 40317442383](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442383): initial attempt failed because the shared-world journey expected two Source Observatory articles but observed one. I inspected the job log; desktop, phone, and institutional-location journeys had passed before the assertion. The failed job was rerun without code changes; rerun job `121554655222` completed **successfully** on the same code/test head. Treat the first failure as a non-reproduced/flaky browser result, not as a source fix.
+- The checkpoint update itself is a documentation-only commit after that tested code/test head. Reinspect the live branch head and CI on the next run; do not assume this newer checkpoint commit is covered by the results above.
+- Local execution is unavailable in this runtime; no local test run is claimed.
 - No merge, deployment, release, key provisioning/rotation, or external publication is authorized or claimed.
 
 ## Unresolved blockers / next priorities
