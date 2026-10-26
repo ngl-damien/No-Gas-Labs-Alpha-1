@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectWorld } from "../src/world/project.js";
+import { validateHistory } from "../src/world/spine.js";
 
 const claim = Object.freeze({
   event_id: "claim-immutable-1",
@@ -83,5 +84,37 @@ test("event payload validation rejects accessors without invoking them", () => {
     () => projectWorld([{ ...claim, event_id: "accessor-payload", world_effect: { nested } }]),
     /non-JSON object field in event payload/
   );
+  assert.equal(getterCalls, 0);
+});
+
+test("event ID accessors are rejected before projection and ancestry checks", () => {
+  let getterCalls = 0;
+  const event = { event_type: "CLAIM", subject: "forge-gate" };
+  Object.defineProperty(event, "event_id", {
+    enumerable: true,
+    get() {
+      getterCalls++;
+      return "getter-id";
+    }
+  });
+  assert.throws(
+    () => projectWorld([event]),
+    /non-JSON object field in event payload/
+  );
+  assert.throws(() => validateHistory([event]), /duplicate or missing event_id/);
+  assert.equal(getterCalls, 0);
+});
+
+test("seed accessors are rejected before structured cloning", () => {
+  let getterCalls = 0;
+  const seed = { history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: [] };
+  Object.defineProperty(seed, "xp", {
+    enumerable: true,
+    get() {
+      getterCalls++;
+      return 0;
+    }
+  });
+  assert.throws(() => projectWorld([], seed), /non-JSON object field in event payload/);
   assert.equal(getterCalls, 0);
 });
