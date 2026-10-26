@@ -9,9 +9,15 @@ const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
 
-async function atomicWrite(file, bytes, directory) {
+async function syncDirectory(directory) {
+  const parent = await open(directory, 'r');
+  try { await parent.sync(); } finally { await parent.close(); }
+}
+
+async function atomicWrite(file, bytes, directory, { syncDirectory: syncDirectoryFn = syncDirectory, commitBoundary = false } = {}) {
   const temporary = join(directory, `.atomic-${randomUUID()}`);
   let handle;
+  let renamed = false;
   try {
     handle = await open(temporary, 'wx', 0o600);
     await handle.writeFile(bytes);
@@ -19,16 +25,26 @@ async function atomicWrite(file, bytes, directory) {
     await handle.close();
     handle = undefined;
     await rename(temporary, file);
-    const parent = await open(directory, 'r');
-    try { await parent.sync(); } finally { await parent.close(); }
+    renamed = true;
+    try { await syncDirectoryFn(directory); }
+    catch (error) {
+      if (!commitBoundary) throw error;
+      const uncertain = new KernelError(
+        'COMMIT_DURABILITY_UNCERTAIN',
+        'Ledger replacement succeeded but directory sync failed; close and reopen the ledger to validate the committed envelope before writing again'
+      );
+      uncertain.cause = error;
+      throw uncertain;
+    }
   } finally {
-    await handle?.close();
-    await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    if (handle) await handle.close().catch(() => {});
+    // After rename, the target may already be visible. Never imply rollback.
+    if (!renamed) await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
 }
 
 /** One live writer per directory. A stale lock after process death requires explicit operator recovery. */
-export async function openLedger({ directory, actors, founderId } = {}) {
+export async function openLedger({ directory, actors, founderId, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
   if (typeof directory !== 'string' || !directory) fail('INVALID_CONFIG', 'A private ledger directory is required');
   const location = resolve(directory);
   await mkdir(location, { recursive: true, mode: 0o700 });
@@ -89,6 +105,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
     }
 
     let queue = Promise.resolve();
+    let durabilityUncertainError = null;
     let closing = false;
     let closed = false;
     return {
@@ -111,6 +128,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
           }
         } catch (error) { return Promise.reject(error); }
         const operation = queue.then(async () => {
+          if (durabilityUncertainError) throw durabilityUncertainError;
           const existing = state.events.find(candidate => candidate.id === event.id);
           if (existing) return clone(applyEvent(state, event));
           const actual = await eventArtifacts(event, supplied);
@@ -125,7 +143,12 @@ export async function openLedger({ directory, actors, founderId } = {}) {
           const previousHash = records.at(-1)?.hash ?? genesis;
           const record = { index, previousHash, event, hash: hash({ index, previousHash, event }) };
           const candidateRecords = [...records, record];
-          await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location);
+          try {
+            await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location, { syncDirectory: syncDirectoryFn, commitBoundary: true });
+          } catch (error) {
+            if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') durabilityUncertainError = error;
+            throw error;
+          }
           // No in-memory authority or projection is adopted before durable replacement.
           records = candidateRecords;
           state = candidate;
