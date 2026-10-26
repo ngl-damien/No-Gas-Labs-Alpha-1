@@ -55,8 +55,13 @@ function publicKeyObject(publicKey) {
   if (publicKey === undefined || publicKey === null || publicKey === "") {
     throw new Error("WORLD_TRUST_PUBLIC_KEY_REQUIRED");
   }
-  const key = createPublicKey(publicKey);
-  if (key.asymmetricKeyType !== "ed25519") throw new Error("WORLD_TRUST_KEY_MUST_BE_ED25519");
+  const key = publicKey && typeof publicKey === "object" &&
+    publicKey.type === "public" && publicKey.asymmetricKeyType === "ed25519"
+    ? publicKey
+    : createPublicKey(publicKey);
+  if (key.asymmetricKeyType !== "ed25519" || key.type !== "public") {
+    throw new Error("WORLD_TRUST_KEY_MUST_BE_ED25519");
+  }
   return key;
 }
 
