@@ -2,10 +2,52 @@ import { createHash } from "node:crypto";
 import { projectWorld } from "./project.js";
 import { projectQuest } from "../quest/engine.js";
 
-function canonical(value) {
-  if (Array.isArray(value)) return "["+value.map(canonical).join(",")+"]";
-  if (value && typeof value==="object") return "{"+Object.keys(value).sort().map(k=>JSON.stringify(k)+":"+canonical(value[k])).join(",")+"}";
-  return JSON.stringify(value);
+function canonical(value, ancestors = new Set()) {
+  if (value === null) return "null";
+  const type = typeof value;
+  if (type === "string" || type === "boolean") return JSON.stringify(value);
+  if (type === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("state hash requires finite JSON-compatible values");
+    return JSON.stringify(value);
+  }
+  if (type !== "object") throw new TypeError("state hash requires JSON-compatible values");
+  if (ancestors.has(value)) throw new TypeError("state hash cannot include cyclic values");
+  if (Object.getOwnPropertySymbols(value).length) throw new TypeError("state hash cannot include symbol keys");
+
+  const keys = Object.keys(value);
+  if (Array.isArray(value)) {
+    if (keys.length !== value.length || keys.some((key, index) => key !== String(index))) {
+      throw new TypeError("state hash cannot include sparse or decorated arrays");
+    }
+    ancestors.add(value);
+    try {
+      return "[" + value.map(item => canonical(item, ancestors)).join(",") + "]";
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError("state hash requires plain JSON objects");
+  }
+  if (Reflect.ownKeys(value).length !== keys.length) {
+    throw new TypeError("state hash cannot include non-enumerable properties");
+  }
+
+  ancestors.add(value);
+  try {
+    const fields = keys.sort().map(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !("value" in descriptor)) {
+        throw new TypeError("state hash cannot include accessor properties");
+      }
+      return JSON.stringify(key) + ":" + canonical(descriptor.value, ancestors);
+    });
+    return "{" + fields.join(",") + "}";
+  } finally {
+    ancestors.delete(value);
+  }
 }
 
 export function hashState(value) {
