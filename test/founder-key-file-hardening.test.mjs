@@ -64,3 +64,33 @@ test('generated Founder key is private and reused after restart', async t => {
   });
   assert.equal(login.status, 200, 'the generated key must still authenticate after restart');
 });
+
+
+test('unauthenticated session churn cannot evict a live Founder session', async t => {
+  const dataDir = await directory(t);
+  const server = await createGameServer({ dataDir });
+  t.after(() => server.closeGame());
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const key = (await readFile(join(dataDir, 'founder.key'), 'utf8')).trim();
+  const login = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key })
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+  assert.match(cookie || '', /^ngl_session=[A-Za-z0-9_-]{43}$/);
+
+  // Node fetch does not persist Set-Cookie between requests here: each request
+  // represents a new unauthenticated client trying to churn the bounded session map.
+  for (let index = 0; index < 520; index += 1) {
+    const response = await fetch(`${origin}/api/state`);
+    assert.equal(response.status, 200, `unauthenticated request ${index + 1}`);
+  }
+
+  const founderState = await fetch(`${origin}/api/state`, { headers: { cookie } });
+  assert.equal(founderState.status, 200);
+  assert.equal((await founderState.json()).viewer.role, 'founder');
+});
