@@ -94,6 +94,13 @@ test("wrong identity, key pin, schema, or non-canonical signature fails closed",
   }), /FINGERPRINT_MISMATCH/);
 });
 
+test("verification configuration refuses private key material", () => {
+  const pair = generateKeyPairSync("ed25519");
+  assert.throws(() => worldTrustKeyFingerprint(pair.privateKey), /PUBLIC_KEY_ONLY/);
+  const pem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
+  assert.throws(() => worldTrustKeyFingerprint(pem), /PUBLIC_KEY_ONLY/);
+});
+
 test("world trust refuses missing or reused role roots", () => {
   const { config } = setup();
   assert.throws(() => createWorldTrust({ observation: config.observation }), /ROOTS_NOT_CONFIGURED/);
