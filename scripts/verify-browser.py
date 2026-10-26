@@ -43,7 +43,9 @@ def stop_server(process):
 
 
 def close_sheet(page):
-    if page.locator('#sheet').is_visible(): page.locator('#sheet-close').click()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').click()
+        expect(page.locator('#sheet')).to_be_hidden()
 
 
 def draft(page,kind,title):
@@ -195,6 +197,9 @@ def shared(browser,url,data,out):
         assert not presence_errors,presence_errors
         a.screenshot(path=str(out/'shared-desktop.png'));b.screenshot(path=str(out/'shared-phone.png'))
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        # A location or artifact panel may still be open after async shared-state refresh.
+        # Dismiss it explicitly before exercising the authenticated logout transition.
+        close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
