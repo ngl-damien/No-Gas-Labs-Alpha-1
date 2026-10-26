@@ -37,7 +37,7 @@ function setup() {
     observer_id: identities.observation, authorizer_id: identities.authorization,
     adjudicator_id: identities.adjudication
   };
-  const pairs = { observation: observer, authorization: authorizer, adjudication };
+  const pairs = { observation: observer, authorization: authorizer, adjudication: adjudicator };
   for (const role of Object.keys(profile)) {
     const payload = canonicalAttestationPayload(event);
     const signature = sign(null, payload, pairs[role].privateKey).toString("base64url");
