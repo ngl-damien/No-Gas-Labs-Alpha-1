@@ -43,6 +43,7 @@ test('TownSquare preserves version-bound dissent as unadjudicated and opens the 
   assert.match(output, /FIELD DISSENT & FAILURE REPORTS/);
   assert.match(output, /UNADJUDICATED REPORT · The Observatory v1/);
   assert.match(output, /The first version omits its source/);
+  assert.match(output, /Filed under display name Witness One · actor ID witness-1/);
   assert.match(output, /not a verified finding, adjudication or truth claim/);
   const card = walk(root).find(item => item.dataset?.recordType === 'FIELD_REPORT');
   assert.ok(card);
