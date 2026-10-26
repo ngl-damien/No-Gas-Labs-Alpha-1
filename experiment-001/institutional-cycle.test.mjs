@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -160,4 +160,72 @@ test('stale lock fails closed and is not silently deleted as crash recovery', ()
   await assert.rejects(() => store.commit(decision, receipt(lib, decision, executor.privateKey)), /LEDGER_LOCKED/);
   assert.equal(await readFile(lockPath, 'utf8'), 'simulated prior-process lock');
   assert.equal(store.snapshot().sequence, 1);
+}));
+
+
+test('versioned implementation identities are stable semantic IDs, not source-text hashes', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder);
+  assert.equal(lib.implementationHash('square'), createHash('sha256').update('ngl-experiment-001:strategy:square:v1').digest('hex'));
+  assert.equal(lib.implementationHash('double'), createHash('sha256').update('ngl-experiment-001:strategy:double:v1').digest('hex'));
+  assert.notEqual(lib.implementationHash('square'), lib.legacyImplementationHash('square'));
+}));
+
+test('legacy source-hash ledger replays and reuses while new legacy INSTALL is rejected', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  const draft = proposal(lib, executor, { id: 'legacy-square', nonce: 'install-legacy-record-01', maxUses: 2 });
+  const legacyHash = lib.legacyImplementationHash(draft.strategy);
+  draft.implementationHash = legacyHash;
+  draft.proof = { ...draft.proof, implementationHash: legacyHash };
+  const timestamp = Date.now();
+  const signature = approve(lib, draft, founder.privateKey);
+  const record = { sequence: 1, previous: 'GENESIS', timestamp, decision: draft, signature };
+  record.hash = createHash('sha256').update(lib.canonical({
+    sequence: record.sequence,
+    previous: record.previous,
+    timestamp: record.timestamp,
+    decision: record.decision,
+    signature: record.signature ?? null
+  })).digest('hex');
+  const legacyState = {
+    version: 2,
+    sequence: 1,
+    previous: record.hash,
+    records: [record],
+    capabilities: {
+      [draft.id]: {
+        id: draft.id,
+        strategy: draft.strategy,
+        proof: draft.proof,
+        implementationHash: legacyHash,
+        installedAt: timestamp,
+        issuedAt: draft.issuedAt,
+        expiresAt: draft.expiresAt,
+        maxUses: draft.maxUses,
+        uses: 0,
+        installationNonce: draft.nonce,
+        executorPublicKeyPem: draft.executorPublicKeyPem
+      }
+    },
+    used: [],
+    installationNonces: [draft.nonce]
+  };
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  await writeFile(join(path, 'institution.json'), lib.canonical(legacyState), { mode: 0o600 });
+
+  const store = await openStore(lib, path, founder);
+  assert.equal(store.snapshot().sequence, 1);
+  assert.equal(store.snapshot().capabilities[draft.id].implementationHash, legacyHash);
+
+  const secondExecutor = pair();
+  const newLegacyDraft = proposal(lib, secondExecutor, { id: 'legacy-new-install', nonce: 'install-legacy-new-0001', maxUses: 1 });
+  newLegacyDraft.implementationHash = legacyHash;
+  newLegacyDraft.proof = { ...newLegacyDraft.proof, implementationHash: legacyHash };
+  await assert.rejects(() => store.commit(newLegacyDraft, approve(lib, newLegacyDraft, founder.privateKey)), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 1);
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-legacy-record-01', input: 3, output: 9 };
+  await store.commit(use, receipt(lib, use, executor.privateKey));
+  const reopened = await openStore(lib, path, founder);
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.equal(reopened.snapshot().capabilities[draft.id].uses, 1);
 }));
