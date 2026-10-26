@@ -96,7 +96,7 @@ test("a rejecting observer verifier cannot satisfy a quest acceptance condition"
 test("an unverified authorization event remains visible but cannot authorize the quest", () => {
   const replay = replayInstitution({
     events, quests: [quest], resolveArtifact, verifyObservation,
-    verifyAuthorization: event => event.event_id === "e1"
+    verifyAuthorization: () => false
   });
   assert.equal(replay.projection.quests[quest.quest_id].status, "OPEN");
   assert.equal(replay.projection.world.xp, 0);
