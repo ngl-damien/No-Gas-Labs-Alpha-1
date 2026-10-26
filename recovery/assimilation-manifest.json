@@ -69,23 +69,32 @@
   "snapshot_comparison": [
     {
       "source": "ngl-damien/ngl001-def4us28",
-      "source_paths": 30,
-      "corresponding_paths": 29,
-      "identical_blob_paths": 23,
+      "source_tree_entries": 30,
+      "source_blobs": 24,
+      "corresponding_tree_entries": 29,
+      "identical_blob_paths": 20,
+      "different_or_missing_blob_paths": 4,
+      "notable": "src/App.jsx source is 4,563,284 bytes; corresponding target file is empty (0 bytes). hero.png is missing.",
       "runtime_verified": false
     },
     {
       "source": "ngl-damien/no-gas-labs-command-center",
-      "source_paths": 124,
-      "corresponding_paths": 119,
-      "identical_blob_paths": 117,
+      "source_tree_entries": 124,
+      "source_blobs": 108,
+      "corresponding_tree_entries": 119,
+      "identical_blob_paths": 104,
+      "different_or_missing_blob_paths": 4,
+      "notable": "Four large image assets are missing from the snapshot.",
       "runtime_verified": false
     },
     {
       "source": "ngl-damien/TaskAgile",
-      "source_paths": 202,
-      "corresponding_paths": 79,
-      "identical_blob_paths": 74,
+      "source_tree_entries": 202,
+      "source_blobs": 169,
+      "corresponding_tree_entries": 79,
+      "identical_blob_paths": 66,
+      "different_or_missing_blob_paths": 103,
+      "notable": "Many UI components and assets are absent; this is a substantial partial snapshot.",
       "runtime_verified": false
     }
   ],
