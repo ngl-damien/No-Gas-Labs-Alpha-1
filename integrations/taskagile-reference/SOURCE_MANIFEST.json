@@ -9,7 +9,9 @@
     "source_blob_hashes_recorded": true,
     "build_tested": false,
     "runtime_integrated": false,
-    "security_reviewed": false
+    "security_reviewed": false,
+    "additional_source_files_copied": 8,
+    "latest_tranche": "recovered-source TaskAgile server/config files"
   },
   "entries": [
     {
@@ -101,6 +103,54 @@
       "source_blob_sha": "b787794c91a21367f35ef251178f3e8e36c00caa",
       "target_path": "integrations/taskagile-reference/production/deathmatch/research_deathmatch.md",
       "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "server/index.ts",
+      "source_blob_sha": "e8ed0c2707e176dc567d3e99dc7e27582427efb1",
+      "target_path": "integrations/taskagile-reference/recovered-source/server/index.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "server/routes.ts",
+      "source_blob_sha": "9da3a816d5f1b16686e2218d77f25f5f6a9d1140",
+      "target_path": "integrations/taskagile-reference/recovered-source/server/routes.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "server/storage.ts",
+      "source_blob_sha": "e01abec75c37f40e1e8d69971e0c9407d8822c01",
+      "target_path": "integrations/taskagile-reference/recovered-source/server/storage.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "server/vite.ts",
+      "source_blob_sha": "7bfa2a115b01aa33112c37d1bfcd170eddec1895",
+      "target_path": "integrations/taskagile-reference/recovered-source/server/vite.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "shared/schema.ts",
+      "source_blob_sha": "e58e0afcac818f8a410170f9bcebfa2d0a5c3e64",
+      "target_path": "integrations/taskagile-reference/recovered-source/shared/schema.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "vite.config.ts",
+      "source_blob_sha": "61914d0188b9102442ecfeb0fcd71584d8804a64",
+      "target_path": "integrations/taskagile-reference/recovered-source/vite.config.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "tailwind.config.ts",
+      "source_blob_sha": "22ccd6cbe43a2d802f5b9b99d7069896127dc37a",
+      "target_path": "integrations/taskagile-reference/recovered-source/tailwind.config.ts",
+      "disposition": "copied-as-reference-security-review-required"
+    },
+    {
+      "source_path": "tsconfig.json",
+      "source_blob_sha": "a0203eefcb88d0dcf5e5ff0e2f90150a1b46ee05",
+      "target_path": "integrations/taskagile-reference/recovered-source/tsconfig.json",
+      "disposition": "copied-as-reference-security-review-required"
     }
   ],
   "excluded_from_this_tranche": [
