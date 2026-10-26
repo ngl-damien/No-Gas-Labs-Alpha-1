@@ -66,3 +66,21 @@ test("capability roster reports fit but grants no authority", () => {
   assert.equal(room.roster[1].can_contribute, false);
   assert.equal(room.quest.status, "OPEN");
 });
+test("malformed Guild Hall events are rejected before filtering can execute getters", () => {
+  let getterCalls = 0;
+  const hostile = { event_id: "hostile", quest_id: "q1", actor: "unknown", summary: "" };
+  Object.defineProperty(hostile, "type", {
+    enumerable: true,
+    get() { getterCalls += 1; return "PROPOSAL"; }
+  });
+  assert.throws(() => projectGuildHall({
+    institution: empty, quest_id: "q1", events: [hostile], agents: []
+  }), /invalid Guild Hall event payload/);
+  assert.equal(getterCalls, 0);
+
+  const sparse = [];
+  sparse.length = 1;
+  assert.throws(() => projectGuildHall({
+    institution: empty, quest_id: "q1", events: sparse, agents: []
+  }), /invalid Guild Hall event list/);
+});
