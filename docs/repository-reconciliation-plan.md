@@ -105,3 +105,10 @@ This plan records the issue; it does not itself rotate or revoke any key.
 ## Not done by this document
 
 No application source was merged; no tests were run; no key was rotated; no deployment was performed; and no missing source was assumed recovered. This is the proposed control document for subsequent, reviewable implementation work.
+
+
+## Latest verified TaskAgile source-recovery tranche
+
+On 2026-10-26, Alpha One PR #37 merged eight additional TaskAgile server/configuration files under `integrations/taskagile-reference/recovered-source/`. The source manifest now records 23 selected TaskAgile files across the PR #35 and PR #37 tranches. The original `recovery/public-repos/TaskAgile/` snapshot remains unchanged. The eight newly recovered files are source-only; Alpha One's two CI workflows passed for the PR head, but that verifies Alpha One's existing project workflows, not that the imported TaskAgile application builds or is secure.
+
+The reconciliation ledger now distinguishes `COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED` from `MISSING_FROM_SNAPSHOT`. Do not treat a copied reference file as a working or integrated capability. TaskAgile's remaining client/server/assets and operational files still require individual disposition; rollback scripts that reset/push branches are not to be executed as part of recovery.
