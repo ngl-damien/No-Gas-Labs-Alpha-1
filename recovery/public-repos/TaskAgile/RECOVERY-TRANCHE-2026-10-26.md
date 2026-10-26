@@ -12,3 +12,12 @@
 | `client/src/components/ui/command.tsx` | `0db642a6e97255f177a9ce03df6340cca678f0ea` | `recovery/public-repos/TaskAgile/client/src/components/ui/command.tsx` |
 | `client/src/components/ui/context-menu.tsx` | `67bbd2804c7aabc16122028924d91ead77a49c5b` | `recovery/public-repos/TaskAgile/client/src/components/ui/context-menu.tsx` |
 | `client/src/components/ui/dialog.tsx` | `1647513eced8f9e788c0e8b63c99654d3a542a9c` | `recovery/public-repos/TaskAgile/client/src/components/ui/dialog.tsx` |
+
+
+## Additional source files recovered in this tranche
+
+- `client/src/components/ui/drawer.tsx` — source blob `6a0ef53dde8991d3adeadd791cd262808aaf9ac0`; destination `recovery/public-repos/TaskAgile/client/src/components/ui/drawer.tsx`.
+- `client/src/components/ui/dropdown-menu.tsx` — source blob `77f88a532c0bb98fdd3b00a878aa4edc8fa655c3`; destination `recovery/public-repos/TaskAgile/client/src/components/ui/dropdown-menu.tsx`.
+- `client/src/components/ui/form.tsx` — source blob `ad1ae028b1ba82279377c39ae9b62d2498eef830`; destination `recovery/public-repos/TaskAgile/client/src/components/ui/form.tsx`.
+- `client/src/components/ui/hover-card.tsx` — source blob `e54d91cf81f48462887825698166393764c4251f`; destination `recovery/public-repos/TaskAgile/client/src/components/ui/hover-card.tsx`.
+- `client/src/components/ui/input-otp.tsx` — source blob `f7891c9cc8ba7868f4b5bdb67dc883b1880ade9f`; destination `recovery/public-repos/TaskAgile/client/src/components/ui/input-otp.tsx`.
