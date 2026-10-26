@@ -31,7 +31,7 @@ function denseDataArray(value) {
       if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) return false;
     }
     return keys.every(key => key === "length" ||
-      (typeof key === "string" && /^(0|[1-9]\\d*)$/.test(key) && Number(key) < length));
+      (typeof key === "string" && /^(0|[1-9]\d*)$/.test(key) && Number(key) < length));
   } catch {
     return false;
   }
