@@ -1,43 +1,69 @@
-# Repository stutter-step checkpoint — 2026-10-26 UTC
+# Current handoff — 2026-10-26 UTC
+
+> This handoff supersedes the historical snapshot below. Re-read the live PR and current branch head before acting; do not assume this branch is still based on the same `main` commit.
+
+## Fresh state and implemented cycles
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`
+- PR: [#66 — independent observation attestation](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/66), open and unmerged; base `main` observed at `17096dd6789299ad1bcd6de544db602a529da3c3` before these follow-ups.
+- Safe branch: `security/observation-attestation-mainline-20261026`.
+- Pre-run PR head: `a27a635cbf9178a899d152c2de148e0dabab478e`. That head had successful exact-head verification, Genesis Evidence Invariant, and browser acceptance (runs 40315329167, 40315329162, 40315329220). These results do **not** verify the new follow-up commits below.
+- This run re-inspected the current PR and source twice before making two source-backed follow-up cycles.
+
+### Cycle 1 — Prevent cross-institution attestation replay
+
+- `acdec375911bc174fd12b36bcab387c0c1163697` — `createObservationVerifier` now requires a host-configured `expectedAudience` and rejects signed events whose `audience` does not match it.
+- `0333ea1cf546d6c98180609790738bab9e8cf437` — regression tests require audience configuration and prove that a valid signature for a different audience cannot award progress in this institution.
+- This closes a cross-context replay gap when one observer key is trusted by more than one institution/ledger. It does not provision a production key or prove the observer is independent.
+
+### Cycle 2 — Prevent prototype-sensitive projection writes
+
+- `89a5a4c8febbcc0729b32b9e7a4a94ac6f5a18e2` — quest, inventory, and world-effect writes now use explicit own data properties. Inventory accumulation ignores inherited values; malformed array/non-object effect maps are not treated as ordinary records.
+- `42c55fb1a65fa2a2454383b3d60f55a0631363c5` — regression coverage exercises `__proto__` and `constructor` keys in quest subjects, inventory, and world effects and checks that projection prototypes remain unchanged.
+- `29bc56b481513553e4cd6262e071a50bb4e5af26` — trust-boundary documentation records audience binding and prototype-safe writes.
+
+## Verification status for this handoff
+
+- Before follow-ups, the exact pre-run head `a27a635cbf9178a899d152c2de148e0dabab478e` passed all three workflows listed above.
+- The new source/test commits trigger new CI. **Do not claim those commits are verified until full verification, Genesis Evidence Invariant, and browser acceptance have completed on the current exact head.**
+- Local execution is unavailable in this runtime; use the observed exact-head GitHub Actions runs. If any check fails, inspect job logs, fix the source/test defect, and re-run.
+- No merge, deployment, release, key provisioning/rotation, or external publication is authorized or claimed.
+
+## Unresolved blockers / next priorities
+
+1. Inspect the live PR head and all three required workflows. Repair failures rather than stopping at the first red check.
+2. Keep production observation/adjudication/authorization fail-closed until a separately controlled trust root, expected audience, and custody contract are actually configured. Do not use an always-true callback, event-derived key, or repository-held observer private key.
+3. Reconcile PR #26 against current `main`; it remains an older, diverged proposal and should not be merged directly.
+4. Continue issue #17 acceptance work for Founder key custody, adversarial concurrency, and crash/stale-lock recovery. Preserve ambiguous commit states and never automatically delete a potentially live lock.
+5. Reinspect the linked NGL Mesh PR and required APK/RAE reference artifacts before claiming integration.
+6. PR #16 remains closed and unmerged; merged PR #18 supersedes its original self-signing INSTALL flow. Do not reopen PR #16 as a substitute for the remaining custody and recovery work.
+
+---
+
+# Historical checkpoint — initial 2026-10-26 snapshot
 
 ## Scope and branch
 
 - Repository: `ngl-damien/No-Gas-Labs-Alpha-1`
-- Base `main` at inspection: `17096dd6789299ad1bcd6de544db602a529da3c3`
+- Base `main` at original inspection: `17096dd6789299ad1bcd6de544db602a529da3c3`
 - Safe branch: `security/observation-attestation-mainline-20261026`
 - Initial source commit: `89297a95d1bd45fc38025196cf875b45026bd66c`
-- Status: source hardening committed; regression suite and CI evidence are being added on this branch. Do not merge automatically.
 
 ## Source-backed defect
 
-The current mainline `src/world/project.js` treated event-supplied labels as sufficient for success projection and let unverified failure/rejection/revocation events alter state. `src/quest/engine.js` had a parallel path that could satisfy acceptance from event claims alone. The existing PR #26 addresses this area but diverges from current main by 15 commits ahead / 25 behind, so merging that branch directly is not the safe route.
+Mainline `src/world/project.js` treated event-supplied labels as sufficient for success projection and let unverified failure/rejection/revocation events alter state. `src/quest/engine.js` had a parallel path that could satisfy acceptance from event claims alone. The existing PR #26 addresses this area but diverged from current main by 15 commits ahead / 25 behind at the original comparison, so merging that branch directly was not the safe route.
 
-## Changes on this branch
+## Initial changes on this branch
 
 - `projectWorld`: requires host-injected observation verification returning literal `true`; missing/throwing/non-boolean verifiers fail closed. Only separately verified adjudications can reject or revoke. Unverified events remain in history.
 - `projectQuest`: only independently verified, byte-checked observations satisfy acceptance or set failure; rejections require adjudication verification.
-- `replayInstitution` and `verifyReplay`: propagate the trust callbacks consistently into both world and quest projections.
-- Added an Ed25519 observation-attestation adapter with a host-pinned DER public-key fingerprint and observer ID. The signature binds the complete canonical event outside its own envelope.
+- `replayInstitution` and `verifyReplay`: propagate trust callbacks consistently into both world and quest projections.
+- Added an Ed25519 observation-attestation adapter with a host-pinned DER public-key fingerprint and observer ID.
+- Added a separate host-controlled authorization verifier and closed the Guild Hall UI's raw authorization-label bypass.
 
-## Verification boundary
+## Original verification boundary
 
 - The test suite uses ephemeral generated keys only. It verifies cryptographic binding and fail-closed behavior, not an actual outside observer or Damien's identity.
 - The adapter is not wired into `game/server.mjs`; no production trust root/private key is configured.
 - No merge, deployment, key provisioning/rotation, or external release is authorized or claimed.
-- CI must be inspected against the exact final branch head before reporting tests as passing.
 
-## Remaining blockers / next priorities
-
-1. Inspect exact-head CI and fix any failures.
-2. Review the production mutation path in `game/server.mjs`; wire a separately controlled observer trust root only after its custody/provisioning contract is defined.
-3. Add cross-process tests with an independently held signing key and explicit key-rotation/revocation semantics.
-4. Keep PR #16 closed: merged PR #18 supersedes its old self-signing flow. Real Founder identity/key custody remains unresolved under issue #17.
-5. Reinspect current `main` and all open PRs before any future port/rebase; do not merge without Founder authorization.
-
-
-## Follow-up hardening after first verification pass
-
-- Tightened the verifier boundary to allow observation attestation only on `SYSTEM_EVENT` and `EXECUTION_ADJUDICATION` records.
-- Tightened adjudication verification to accept only `EXECUTION_ADJUDICATION` rejection events or explicit `REVOCATION` records; a verifier callback returning true cannot authorize an arbitrary event type.
-- Added regressions for wrong-type rejection and unrecognized observation event types.
-- This follow-up changes the exact branch head; rerun and inspect all required CI on the new head before treating the branch as verified.
