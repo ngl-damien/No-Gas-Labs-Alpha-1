@@ -104,3 +104,28 @@ test('unauthenticated session churn cannot evict a live Founder session', async 
   assert.equal(witnessState.status, 200);
   assert.equal((await witnessState.json()).viewer.role, 'witness');
 });
+
+
+test('rejected cross-origin and malformed writes do not allocate sessions', async t => {
+  const dataDir = await directory(t);
+  const server = await createGameServer({ dataDir });
+  t.after(() => server.closeGame());
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  const crossOrigin = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'https://attacker.example' },
+    body: JSON.stringify({ key: VALID_KEY })
+  });
+  assert.equal(crossOrigin.status, 403);
+  assert.equal(crossOrigin.headers.get('set-cookie'), null, 'cross-origin rejection must not create a session');
+
+  const malformed = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', origin },
+    body: '{}'
+  });
+  assert.equal(malformed.status, 415);
+  assert.equal(malformed.headers.get('set-cookie'), null, 'content-type rejection must not create a session');
+});
