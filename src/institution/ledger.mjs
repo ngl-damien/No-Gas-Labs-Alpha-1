@@ -9,6 +9,11 @@ const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
 
+async function syncDirectory(directory) {
+  const parent = await open(directory, 'r');
+  try { await parent.sync(); } finally { await parent.close(); }
+}
+
 // A copied lock token does not prove that the path still names our lease.
 async function unlinkOwnedLock(path, identity) {
   if (!identity) return false;
@@ -20,7 +25,7 @@ async function unlinkOwnedLock(path, identity) {
   return true;
 }
 
-async function atomicWrite(file, bytes, directory) {
+async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoundary = false } = {}) {
   const temporary = join(directory, `.atomic-${randomUUID()}`);
   let handle;
   try {
@@ -39,7 +44,7 @@ async function atomicWrite(file, bytes, directory) {
 }
 
 /** One live writer per directory. A stale lock after process death requires explicit operator recovery. */
-export async function openLedger({ directory, actors, founderId } = {}) {
+export async function openLedger({ directory, actors, founderId, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
   if (typeof directory !== 'string' || !directory) fail('INVALID_CONFIG', 'A private ledger directory is required');
   const location = resolve(directory);
   await mkdir(location, { recursive: true, mode: 0o700 });
@@ -105,6 +110,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
     let queue = Promise.resolve();
     let closing = false;
     let closed = false;
+    let durabilityUncertain = false;
     return {
       get state() { return clone(state); },
       get events() { return clone(state.events); },
@@ -125,6 +131,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
           }
         } catch (error) { return Promise.reject(error); }
         const operation = queue.then(async () => {
+          if (durabilityUncertain) fail('COMMIT_DURABILITY_UNCERTAIN', 'A previous ledger replacement had uncertain durability; close and reopen the ledger before writing again');
           const existing = state.events.find(candidate => candidate.id === event.id);
           if (existing) return clone(applyEvent(state, event));
           const actual = await eventArtifacts(event, supplied);
@@ -133,13 +140,18 @@ export async function openLedger({ directory, actors, founderId } = {}) {
             if (!actual.has(receipt.digest)) continue;
             const bytes = actual.get(receipt.digest);
             // Content is verified by applyEvent before any disk mutation.
-            await atomicWrite(join(blobDirectory, receipt.digest), bytes, blobDirectory);
+            await atomicWrite(join(blobDirectory, receipt.digest), bytes, blobDirectory, syncDirectoryFn);
           }
           const index = records.length;
           const previousHash = records.at(-1)?.hash ?? genesis;
           const record = { index, previousHash, event, hash: hash({ index, previousHash, event }) };
           const candidateRecords = [...records, record];
-          await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location);
+          try {
+            await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location, syncDirectoryFn, { commitBoundary: true });
+          } catch (error) {
+            if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') durabilityUncertain = true;
+            throw error;
+          }
           // No in-memory authority or projection is adopted before durable replacement.
           records = candidateRecords;
           state = candidate;
