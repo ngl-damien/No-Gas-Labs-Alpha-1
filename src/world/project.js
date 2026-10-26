@@ -77,7 +77,9 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     if (parents.some(parent => !seen.has(parent))) throw new Error("unresolved parent for " + event.event_id);
 
     seen.add(event.event_id);
-    state.history.push(event);
+    // Keep a snapshot: later mutation of the caller's event object must not
+    // silently rewrite the projection's retained evidence history.
+    state.history.push(structuredClone(event));
 
     if (event.event_type === "REVOCATION") {
       if (isVerifiedAdjudication(event, verifyAdjudication) && typeof event.revokes === "string" && event.revokes) {
