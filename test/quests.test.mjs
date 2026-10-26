@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest} from '../game/quests.mjs';
+import {getQuest,getQuestTrail} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -55,4 +55,108 @@ test('quest projection is deterministic and never mutates canonical world state'
   const first=getQuest(world,founder),second=getQuest(world,founder);
   assert.deepEqual(first,second);
   assert.deepEqual(world,before);
+});
+
+
+function trailFixture() {
+  return { creations: [], events: [], discoveries: [], contributions: [], reports: [] };
+}
+const at1 = '2026-10-26T10:00:00.000Z';
+const at2 = '2026-10-26T10:05:00.000Z';
+const publishedV1 = { id: 'c-1', title: 'A retained place', version: 1, publishedAt: at1 };
+const publishedV2 = { id: 'c-1', title: 'A retained place', version: 2, publishedAt: at2, versions: [publishedV1] };
+
+test('objective trail advances only from retained events matching real records and retained versions', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV2, versions: [publishedV1] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'publish-v2', type: 'publish', actor: founder, at: at2, creationId: 'c-1', version: 2 },
+    { id: 'discover-river', type: 'discover', actor: founder, at: at1, locationId: 'river' },
+    { id: 'field-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+  ];
+  world.discoveries = [{ id: 'd-1', locationId: 'river', actor: founder, at: at1 }];
+  world.contributions = [{ id: 'n-1', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'Observed' }];
+  const trail = getQuestTrail(world, founder);
+  assert.deepEqual(trail.find(item => item.id === 'founder-first-place').evidenceIds, ['publish-v1']);
+  assert.equal(trail.find(item => item.id === 'founder-first-place').complete, true);
+  assert.equal(trail.find(item => item.id === 'founder-second-place').progress, 1);
+  assert.equal(trail.find(item => item.id === 'founder-preserve-version').complete, true);
+  assert.equal(trail.find(item => item.id === 'founder-walk-institution').complete, true);
+  assert.equal(trail.find(item => item.id === 'founder-field-note').complete, true);
+});
+
+test('objective trail refuses aggregate records without a matching retained event', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.discoveries = [{ id: 'd-unproven', locationId: 'river', actor: founder, at: at1 }];
+  world.contributions = [{ id: 'n-unproven', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'Not in event history' }];
+  world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.find(item => item.id === 'founder-walk-institution').progress, 0);
+  assert.equal(trail.find(item => item.id === 'founder-field-note').progress, 0);
+});
+
+test('duplicate event metadata cannot be arbitrarily attached to one field note', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.contributions = [{ id: 'n-1', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'Observed' }];
+  world.events = [
+    { id: 'note-a', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+    { id: 'note-b', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+  ];
+  assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-field-note').progress, 0);
+});
+
+test('witness objective evidence is actor-scoped and published work is not attributed to the witness', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'founder-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+    { id: 'witness-report', type: 'report', actor: witness, at: at2, creationId: 'c-1', version: 1 },
+  ];
+  world.contributions = [{ id: 'n-founder', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'Founder note' }];
+  world.reports = [{ id: 'r-witness', creationId: 'c-1', version: 1, actor: witness, at: at2, text: 'Test it' }];
+  const trail = getQuestTrail(world, witness);
+  assert.equal(trail.find(item => item.id === 'witness-work-available').complete, true);
+  assert.equal(trail.find(item => item.id === 'witness-field-note').complete, false);
+  assert.deepEqual(trail.find(item => item.id === 'witness-version-report').evidenceIds, ['witness-report']);
+});
+
+test('objective trail is deterministic, read-only, and exposes only real event IDs', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
+  const before = structuredClone(world);
+  assert.deepEqual(getQuestTrail(world, founder), getQuestTrail(structuredClone(world), founder));
+  assert.deepEqual(world, before);
+  assert.deepEqual(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').evidenceIds, ['publish-v1']);
+});
+
+
+test('reused event IDs cannot support conflicting publication and discovery claims', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'reused-event', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'reused-event', type: 'discover', actor: founder, at: at1, locationId: 'river' },
+  ];
+  world.discoveries = [{ id: 'd-1', locationId: 'river', actor: founder, at: at1 }];
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.find(item => item.id === 'founder-first-place').progress, 0);
+  assert.equal(trail.find(item => item.id === 'founder-walk-institution').progress, 0);
+});
+
+test('objective trail exposes minimal frozen provenance for each counted event', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
+  const milestone = getQuestTrail(world, founder).find(item => item.id === 'founder-first-place');
+  assert.deepEqual(milestone.evidence, [{
+    id: 'publish-v1', type: 'publish', at: at1, actorId: 'f-1',
+    creationId: 'c-1', version: 1, locationId: null,
+  }]);
+  assert.equal(Object.isFrozen(milestone.evidence), true);
+  assert.equal(Object.isFrozen(milestone.evidence[0]), true);
 });
