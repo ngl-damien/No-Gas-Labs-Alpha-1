@@ -1,0 +1,47 @@
+{
+  "schema": "ngl.source-branch-delta.v1",
+  "source_repository": "ngl-damien/ngl-mesh",
+  "source_branch": "recovery/artifact-first-relay",
+  "source_commit": "bc018c377023ac579bef48f878e13cfc2c3c1656",
+  "source_tree_sha": "8a2704e17218b2dc8afdf358a8dd0cbf5eee2d29",
+  "source_base_branch": "main",
+  "source_base_commit": "be43452a2133ba920a3814e19d7812e5c964117d",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/ngl-mesh-feature-branch-recovery-2026-10-26",
+  "license_status": "No LICENSE file found in the inspected NGL Mesh branch tree; reuse license remains unconfirmed",
+  "runtime_status": "Reference-only; no execution or integration",
+  "verification": {
+    "branch_delta_file_count": 3,
+    "exact_target_blob_matches": 3,
+    "byte_identity_method": "Git blob SHA equality",
+    "credential_pattern_scan": "No configured private-key/API-key/credential patterns matched in copied files",
+    "build_test_performed": false,
+    "runtime_integrated": false
+  },
+  "entries": [
+    {
+      "source_path": "README.md",
+      "source_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "size_bytes": 2362,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-artifact-first-relay/source/README.md",
+      "target_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "forensics/relay/CLASS_SURFACE.md",
+      "source_blob_sha": "d030e36378b1ac4a44adec2b8a706a4803516df5",
+      "size_bytes": 5821,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-artifact-first-relay/source/forensics/relay/CLASS_SURFACE.md",
+      "target_blob_sha": "d030e36378b1ac4a44adec2b8a706a4803516df5",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "forensics/relay/RECOVERY_LEDGER.md",
+      "source_blob_sha": "3041ba4f9dbc6eea9e013fc8a78ff4f77c0ae5f8",
+      "size_bytes": 4854,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-artifact-first-relay/source/forensics/relay/RECOVERY_LEDGER.md",
+      "target_blob_sha": "3041ba4f9dbc6eea9e013fc8a78ff4f77c0ae5f8",
+      "status": "IDENTICAL_BLOB"
+    }
+  ]
+}
