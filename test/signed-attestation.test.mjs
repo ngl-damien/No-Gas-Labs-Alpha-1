@@ -61,6 +61,7 @@ test("three distinct host-pinned roles verify signatures over one common event p
 test("a valid signature cannot be replayed into a different configured audience", () => {
   const { config, event } = setup("institution-A");
   const verifierForOtherInstitution = createSignedEventVerifier({
+    role: "observation",
     ...config.observation,
     expectedAudience: "institution-B"
   });
@@ -115,6 +116,7 @@ test("signed verifier rejects absent, blank, padded, or oversized audience pins"
   const { config } = setup();
   for (const expectedAudience of [undefined, "", " padded ", "x".repeat(257)]) {
     assert.throws(() => createSignedEventVerifier({
+      role: "observation",
       ...config.observation,
       expectedAudience
     }), /WORLD_TRUST_AUDIENCE_REQUIRED/);
