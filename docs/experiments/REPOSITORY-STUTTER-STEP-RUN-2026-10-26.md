@@ -1,52 +1,45 @@
-# Repository stutter-step run checkpoint — 2026-10-26 UTC
+# Repository stutter-step handoff — 2026-10-26 UTC
 
-This is the current handoff for the next repository loop. Start by inspecting live GitHub state; do not assume any head, PR count, or workflow result below remains current.
+Start the next run with fresh repository, PR, branch, source, and Actions inspection. This note is a handoff, not proof that state remains current.
 
-## Alpha One — No-Gas-Labs-Alpha-1
+## Alpha One: `ngl-damien/No-Gas-Labs-Alpha-1`
 
-- PR: [#66 — independent observation attestation](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/66), open and unmerged.
+- PR [#66 — independent observation attestation](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/66) remains open and unmerged.
 - Safe branch: `security/observation-attestation-mainline-20261026`.
-- Before this checkpoint artifact is committed, branch head was `7527b53283800853314ed134c7fb63bc5944ff95`; the historical checkpoint path was aligned to the current `main` file blob to remove a same-path conflict. Recheck PR mergeability and the new artifact commit's CI after this file is added.
-- Code/test head `1c110543bdae008f859af25e08ffc47f2a7dffa9` passed:
-  - [Full verification run 40317442221](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442221): success.
-  - [Genesis Evidence Invariant run 40317442225](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442225): success.
-  - [Browser acceptance run 40317442383](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40317442383): final success after the first attempt failed at the Source Observatory article count and rerun job `121554655222` passed without code changes.
-- Documentation-only head `61814ce3a8e28cf5b9cd19eaf42198c41246e524` also passed full verification run `40318180151`, Genesis run `40318180179`, and browser acceptance run `40318180158`.
-- Earlier pre-follow-up head `a27a635cbf9178a899d152c2de148e0dabab478e` had all three workflows green (runs `40315329167`, `40315329162`, `40315329220`). These older green runs do not substitute for checking the latest head.
+- Code/test head before this checkpoint-only commit: `ccbea5f2c09204889dbd791a241662165edfa609`.
+- Current compare: branch is ahead of `main` and diverged; the latest mainline commits are documentation-only checkpoint incident/revert commits. Do not merge automatically or assume the branch is current with main.
+- This checkpoint update will create a new branch head. Reinspect the PR and exact-head Actions after the commit.
 
-### Three Alpha One implementation cycles
+## Implemented in this run
 
-1. **Audience/domain separation:** `acdec375911bc174fd12b36bcab387c0c1163697` requires a host-configured expected audience; `0333ea1cf546d6c98180609790738bab9e8cf437` tests that a valid signature for another audience cannot project progress here.
-2. **Prototype-safe projection writes:** `89a5a4c8febbcc0729b32b9e7a4a94ac6f5a18e2` uses own data properties for quest/inventory/world keys; `42c55fb1a65fa2a2454383b3d60f55a0631363c5` tests `__proto__` and `constructor` keys.
-3. **Evidence-history snapshot isolation:** `b016cfd9906ed851b92f2d429606f52aae4d9d0b` clones retained events; `0063bb5f40b27ee75a0fb74056b14aa97a80add0` verifies later caller mutation cannot rewrite the projection's history snapshot.
+1. `04a7c6f82fe6dde3ad6c3ebd03527507cdf90db0` — `projectWorld` now rejects conflicting duplicate event IDs instead of silently skipping altered payloads. Exact duplicate replay remains idempotent; a seen ID without retained payload fails closed.
+2. `25e2922f55d0fa18894182ce58a5eca3759b835e` — added five regression cases for identical replay, conflicting IDs within a batch and across replay batches, missing retained payload, and duplicate retained history.
+3. `d313955e8b7f644a5d662dee2067ae46aed1c04b` — `hashState` now rejects ambiguous non-JSON values, non-finite numbers, cycles, unsupported object types, accessors, and symbol keys instead of hashing lossy representations.
+4. `55aa825fc6a6e3d856adcb13e3a17db56b20e225` — hardened array hashing against sparse/decorated arrays, hidden array properties, accessors, and custom array prototypes while preserving own prototype-sensitive data keys.
+5. `ccbea5f2c09204889dbd791a241662165edfa609` — expanded hash regression coverage for insertion-order stability, undefined/NaN/infinity, cycles, sparse/decorated/hidden/accessor arrays, prototype-sensitive keys, and non-plain objects.
 
-Related documentation commits: `29bc56b481513553e4cd6262e071a50bb4e5af26`, `1dfc8d350589f22b52f723e48bfad010659b8659`. Checkpoint commits include `1c110543bdae008f859af25e08ffc47f2a7dffa9`, `61814ce3a8e28cf5b9cd19eaf42198c41246e524`, and `337cd66ff2b4500c2c2e86a32dbe68a7c904fecd`.
+## Exact-head verification observed for code/test head `ccbea5f2c09204889dbd791a241662165edfa609`
 
-**Production trust remains unresolved.** The adapter is not wired into `game/server.mjs`; no separately controlled observer key, authorization trust root, or custody contract is provisioned. Test keys and callbacks prove code paths only, not independent observation, Damien's identity, or deployment. Keep canonical progress fail-closed until trust material is independently controlled.
+- [Full verification — run 40321504721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40321504721): **success**. The world-projection job's test, package-build, and bounded institutional-exercise step passed.
+- [Genesis Evidence Invariant — run 40321504777](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40321504777): **success**.
+- [Browser acceptance — run 40321504722](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40321504722): **success**.
+- These are GitHub Actions results; no local test run is claimed.
 
-## Linked NGL Mesh — operator trust
+## Freshly reconciled boundaries
 
-- PR: [ngl-mesh #1](https://github.com/ngl-damien/ngl-mesh/pull/1), draft/open/unmerged.
-- Safe branch: `security/pin-relay-operator-key-20261026`.
-- Current code/test head before this checkpoint: `e108be26f7b6a6de5fce875ac6eaaf32f41f992e`.
-- [Relay operator-key trust run 40318420477](https://github.com/ngl-damien/ngl-mesh/actions/runs/40318420477): success; `OperatorKeyTrustTest` passed 9 checks and `DurableMarkerTest` passed 11 checks.
-- Fixes in this run reject symlinks in any marker-path ancestor and sync newly created directory entries outermost-first. The tests cover symlinked grandparent redirection and nested marker-directory creation.
-- Broader APK/RAE integration is still unverified: recovered-source archive, reference APK, and RAE report are absent. The isolated workflow does not compile the complete `EvidenceAuthorizedTransition` integration.
-
-## Founder authorization / PR #16
-
-- PR #16 is closed and unmerged. Merged PR #18 supersedes the old self-signing INSTALL flow; reopening #16 is not the fix.
-- Issue #17 remains open for real Founder key custody, adversarial concurrent-writer tests, and crash/stale-lock recovery.
-- Preserve `COMMIT_DURABILITY_UNCERTAIN`; never auto-delete a potentially live lock. Do not provision, rotate, or revoke real keys without authorization.
-
-## Operational incident — main checkpoint content restored
-
-One checkpoint update accidentally omitted the branch argument and briefly created documentation-only commit `78ef9278e3013986505a533646f926858b494c11` on `main`. A corrective commit `5ac551c0c730515a723a0615460e06768cd57dfa` immediately restored the checkpoint file to the exact prior blob `22d2a0568cd48172e44fe22fa241b3ef77d01159`. No source or functional code was written to `main`, and no PR was merged; the main branch history did advance with those two documentation-only commits. The Alpha One safe branch's historical checkpoint file was aligned to that same blob, and this separate artifact preserves the new run's handoff.
+- PR #16 is closed and unmerged. Merged PR #18 supersedes its original self-signing INSTALL flow; do not reopen #16 as a substitute for remaining custody work.
+- Issue [#17 — Founder key custody, concurrency, and stale-lock recovery](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/issues/17) remains open. Real Founder identity/key custody is unproven; adversarial concurrent-writer and crash-recovery acceptance work remains.
+- PR #65 replay-safe shared actions is open and unmerged; its documented exact-head full verification, Genesis, and browser journeys passed on its own head. Do not treat it as merged into main.
+- PR #26 remains an older, diverged draft. Reconcile its changes against current main; do not trust an old mergeable flag or merge the branch wholesale.
+- PR #66's observation adapter remains **not wired into `game/server.mjs`**. No separately controlled production observer/adjudicator/authorization trust root is provisioned. Keep canonical progress fail-closed; never add an always-true verifier or store an observer private key in this repository.
+- Linked [NGL Mesh PR #1](https://github.com/ngl-damien/ngl-mesh/pull/1) remains draft/open/unmerged at head `e108be26f7b6a6de5fce875ac6eaaf32f41f992e`. [Isolated trust workflow run 40318420477](https://github.com/ngl-damien/ngl-mesh/actions/runs/40318420477) passed 9 OperatorKeyTrust checks and 11 DurableMarker checks. Full APK/RAE integration remains unverified because the recovered-source archive, reference APK, and RAE report are absent.
 
 ## Next priorities
 
-1. Freshly inspect Alpha One `main`, all open PRs, PR #66 mergeability, and workflows on the current branch head; repair any actual conflict without merging to main.
-2. Inspect the current-head browser result and test logs; treat the earlier Source Observatory failure as flaky only because a no-code-change retry passed.
-3. Keep production observation/adjudication/authorization trust fail-closed until independent host trust roots and audience are configured.
-4. Advance issue #17's crash/concurrency acceptance work.
-5. Continue NGL Mesh integration only after recovering the required APK/RAE reference artifacts.
+1. Reinspect exact current PR #66 head and all three Actions workflows after this checkpoint commit; repair any failure before claiming final-head verification.
+2. Reconcile PR #66's three-commit mainline divergence without merging or overwriting unrelated changes.
+3. Define host-controlled observation/adjudication/authorization configuration and startup failure behavior, but do not provision production trust roots or claim independent observation without separately controlled key custody.
+4. Advance issue #17 with adversarial concurrency and crash/fault-injection coverage across lock acquisition, atomic rename, and directory sync. Preserve `COMMIT_DURABILITY_UNCERTAIN`; never automatically delete a potentially live lock.
+5. Reassess NGL Mesh integration only when its required APK/RAE reference artifacts are actually available.
+
+No merge, deployment, release, spending, production key provisioning, rotation, or revocation occurred. No autonomous discovery breakthrough is claimed. Work between scheduled runs is not assumed to continue uninterrupted.
