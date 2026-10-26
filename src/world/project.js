@@ -74,18 +74,38 @@ function stableEventValue(value, ancestors = new Set()) {
   ancestors.add(value);
   let result;
   if (Array.isArray(value)) {
-    result = ["array", Array.from({ length: value.length }, (_, index) =>
-      index in value ? stableEventValue(value[index], ancestors) : ["hole"]
-    )];
+    if (Object.getPrototypeOf(value) !== Array.prototype ||
+        Object.keys(value).length !== value.length ||
+        Reflect.ownKeys(value).length !== value.length + 1) {
+      throw new Error("non-JSON array in event payload");
+    }
+    const items = [];
+    for (let index = 0; index < value.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw new Error("non-JSON array item in event payload");
+      }
+      items.push(stableEventValue(descriptor.value, ancestors));
+    }
+    result = ["array", items];
   } else {
-    result = ["object", Object.keys(value).sort().map(key =>
-      [key, stableEventValue(value[key], ancestors)]
-    )];
+    const prototype = Object.getPrototypeOf(value);
+    const keys = Object.keys(value);
+    if ((prototype !== Object.prototype && prototype !== null) ||
+        Reflect.ownKeys(value).length !== keys.length) {
+      throw new Error("non-JSON object in event payload");
+    }
+    result = ["object", keys.sort().map(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+        throw new Error("non-JSON object field in event payload");
+      }
+      return [key, stableEventValue(descriptor.value, ancestors)];
+    })];
   }
   ancestors.delete(value);
   return result;
 }
-
 function sameEventPayload(left, right) {
   return JSON.stringify(stableEventValue(left)) === JSON.stringify(stableEventValue(right));
 }
