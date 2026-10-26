@@ -12,7 +12,7 @@ Authorization is a separate trust boundary from observation. `projectWorld` requ
 
 `src/world/observation-attestation.js` verifies an Ed25519 signature over the canonical event payload (excluding only the attestation envelope). It requires a host-configured SHA-256 fingerprint of the DER SubjectPublicKeyInfo, a configured observer ID, and a configured expected audience. The signed event must carry that exact `audience`; a signature valid for one institution/ledger audience is rejected by a verifier configured for another. This prevents cross-context replay when an observer key is trusted by more than one context. The adapter also rejects wrong observers, wrong keys, malformed signatures, extra envelope fields, and modified signed payloads.
 
-The world projector writes event-controlled keys with own data properties instead of prototype-sensitive assignment. Regression coverage includes `__proto__` and `constructor` keys in quest subjects, inventory items, and world effects. These keys remain data; they cannot mutate the projection object's prototype.
+The world projector writes event-controlled keys with own data properties instead of prototype-sensitive assignment. Regression coverage includes `__proto__` and `constructor` keys in quest subjects, inventory items, and world effects. These keys remain data; they cannot mutate the projection object's prototype. Projected history stores a structured clone of each input event, so later caller mutation of the source object cannot silently rewrite the projection's retained evidence snapshot.
 
 ## Production limitation
 
