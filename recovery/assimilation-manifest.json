@@ -2,7 +2,7 @@
   "schema_version": 1,
   "canonical_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
   "created_for_branch": "integration/assimilate-all-projects-2026-10-25",
-  "status": "active_reconciliation_not_complete",
+  "status": "active_reconciliation_incomplete",
   "policy": "Every relevant source must be integrated, retained as a module, preserved as source/archive, or explicitly blocked with evidence. Repository existence alone is not assimilation.",
   "sources": [
     {
@@ -18,17 +18,17 @@
     {
       "repository": "ngl-damien/ngl001-def4us28",
       "role": "comic-and-contact-interface",
-      "status": "reconcile-existing-snapshot"
+      "status": "20-of-24-source-blobs-match; 1-missing-and-3-differing-files"
     },
     {
       "repository": "ngl-damien/no-gas-labs-command-center",
       "role": "operational-command-center",
-      "status": "reconcile-existing-snapshot"
+      "status": "104-of-108-source-blobs-match; 4-image-assets-missing"
     },
     {
       "repository": "ngl-damien/TaskAgile",
       "role": "game-mechanics-assets-and-variants",
-      "status": "reconcile-partial-snapshot"
+      "status": "selected-reference-import-merged; 103-of-169-source-files-still-absent-from-original-snapshot"
     },
     {
       "repository": "ngl-damien/ngl-mesh",
@@ -38,12 +38,12 @@
     {
       "repository": "ngl-damien/no-gas-labs",
       "role": "static-browser-publication-interface",
-      "status": "selective-integration"
+      "status": "snapshot-exact-13-of-13-source-blobs; runtime-integration-not-claimed"
     },
     {
       "repository": "ngl-damien/ngl-recovery-2026-10-25",
       "role": "recovery-vault-and-94-repository-manifest",
-      "status": "preserve-and-reconcile"
+      "status": "recovery-vault-preserved; selected cockpit reference imported; sensitive archives excluded"
     },
     {
       "repository": "ngl-damien/AI-BI-Intelligence-node-gate",
@@ -152,6 +152,32 @@
       "target_prefix": "integrations/ngl-mesh-reference/",
       "target_status": "imported-source-only-not-runtime-verified",
       "import_commit": "e0e9bd541c1e8d9ca7bb9c858bacf9f16f0bcb58"
+    },
+    {
+      "source_repository": "ngl-damien/ngl-recovery-2026-10-25/cockpit",
+      "reported_source_head": "e5fcc85bd4157e680dcbb711faa119a08457a37c",
+      "target_prefix": "integrations/recovery-vault/cockpit-reference/",
+      "target_status": "partial-source-reference; not-runnable; licensing-unconfirmed; no-runtime-integration",
+      "target_merge_commit": "4a8503af93c030c8eb6f7db9073f5dd598b8fa21",
+      "files_imported": [
+        "README.md",
+        "FILE_INVENTORY.md",
+        "package.json",
+        "App.js",
+        "src/components/BlessingsLog.js",
+        "src/components/GameDashboard.js",
+        "src/hooks/useGameState.js"
+      ]
+    },
+    {
+      "source_repository": "ngl-damien/TaskAgile",
+      "source_commit": "66885999064997b332f61dac13333058c462e857",
+      "source_blob_count": 15,
+      "target_prefix": "integrations/taskagile-reference/",
+      "target_status": "selected-source-reference-import; no-runtime-integration; no-build-test",
+      "target_merge_commit": "972af9bd95e25b7fafccbbf9fe25138d9c06a95b",
+      "manifest_path": "integrations/taskagile-reference/SOURCE_MANIFEST.json",
+      "notable": "Imports main.js, rpg.html, shrine.html, package.json, ten app modules, and deathmatch research. Binary assets, staging state, rollback scripts, and remaining client/server files remain excluded pending review."
     }
   ],
   "reconciliation_note": "Snapshot counts refreshed from current source-main and Alpha One Git tree blob SHAs on 2026-10-25. Blob identity is not runtime verification. These entries supersede earlier inconsistent tree-entry counts."
