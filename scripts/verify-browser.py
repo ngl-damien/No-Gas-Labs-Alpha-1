@@ -5,6 +5,7 @@ Requires Python Playwright plus Chromium for development only. No provider keys 
 import argparse
 import os
 import json
+import re
 import select
 import subprocess
 import tempfile
@@ -65,6 +66,8 @@ def basic(page,url,out,label):
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
     draft(page,'comic','The real comic lives here')
     page.locator('#preview-button').click()
@@ -73,6 +76,18 @@ def basic(page,url,out,label):
     assert frame.locator('img').first.evaluate('(img)=>img.decode().then(()=>img.naturalWidth>0)'), 'Original comic did not load'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('1')")
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    evidence = page.locator('[data-objective-id="founder-first-place"] details.quest-evidence')
+    expect(evidence).to_have_count(1)
+    expect(evidence.locator('summary')).to_have_text('Inspect retained evidence')
+    evidence.locator('summary').click()
+    expect(evidence).to_contain_text('PUBLISH')
+    expect(evidence).to_contain_text('version 1')
+    expect(evidence).to_contain_text(re.compile(r'at \d{4}-\d{2}-\d{2}T[0-9:.]+Z'))
+    expect(evidence.locator('code')).to_contain_text('event-')
+    evidence.get_by_role('button', name='Open retained version 1 →', exact=True).click()
+    expect(page.locator('#version-select')).to_have_value('1')
+    close_sheet(page)
     draft(page,'loom','A sentence that sings')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
@@ -83,6 +98,7 @@ def basic(page,url,out,label):
     frame.locator('#stop').click()
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
+    expect(page.locator('[data-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
@@ -185,8 +201,7 @@ def shared(browser,url,data,out):
         b.locator('#report-text').fill('Preserve this report against version one.')
         b.locator('#report-button').click()
         b.wait_for_function("async()=>{const r=await fetch('/api/state');const s=await r.json();return s.world.reports.some(item=>item.text==='Preserve this report against version one.')}")
-        # TownSquare is a world location: its chronicle must retain dissent and
-        # navigate back to the exact version named by the report.
+        # TownSquare is a world location: retained dissent must navigate to the exact version.
         close_sheet(b);b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='The institution at work.'")
@@ -195,6 +210,19 @@ def shared(browser,url,data,out):
         expect(report_card).to_contain_text('Preserve this report against version one.')
         report_card.get_by_role('button',name='Inspect The shared observatory · v1',exact=True).click()
         expect(b.locator('#version-select')).to_have_value('1')
+        b.get_by_text('Ask the Contradiction Clerk to challenge this version',exact=True).click()
+        b.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
+        b.locator('#contradiction-source').fill('The preserved HTML bytes and the cited source page.')
+        b.locator('#contradiction-falsifier').fill('A source that contradicts the claim or a failed reproduction.')
+        b.locator('#contradiction-unknown').fill('Whether the source supports the wording; compare the exact passage.')
+        b.locator('#contradiction-submit').click()
+        b.locator('#creation-notes').get_by_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE',exact=False).wait_for()
+        challenge_snapshot=visitor.request.get(url+'api/state').json()
+        structured=[r for r in challenge_snapshot['world']['reports'] if r.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+        assert len(structured)==1 and structured[0]['version']==1, structured
+        assert 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
+        assert 'no AI/provider call or independent observation occurred' in structured[0]['text']
+        assert challenge_snapshot['world']['xp']==100, 'A structured report must not award XP'
         a.locator('#repair-button').click();a.locator('#publish-button').wait_for()
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
@@ -310,7 +338,10 @@ def main():
                     stop_server(process);process,url=launch_server(data)
                     fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
                     assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==1
+                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==2
+                    assert all(report['version']==1 for report in restored['world']['reports'])
+                    structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+                    assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
                     record({'journey':'shared-restart','passed':True,'retainedVersion':2})
                 finally:browser.close()
         finally:stop_server(process)
