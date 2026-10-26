@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T06:11:00Z",
+  "design_invariant": "External execution may produce evidence or computation; provider identity, response success, or consensus never grants canonical authority.",
+  "profiles": [
+    {
+      "id": "groq-openai",
+      "kind": "COGNITION",
+      "transport": "OPENAI_COMPAT",
+      "endpoint_base": "https://api.groq.com/openai/v1",
+      "auth": "BEARER_REQUIRED",
+      "capabilities": ["CHAT", "RESPONSES", "STREAM", "TOOLS"],
+      "health": "UNTESTED",
+      "source": "https://console.groq.com/docs/openai"
+    },
+    {
+      "id": "huggingface-router",
+      "kind": "COGNITION",
+      "transport": "OPENAI_COMPAT",
+      "endpoint_base": "https://router.huggingface.co/v1",
+      "auth": "BEARER_REQUIRED",
+      "capabilities": ["CHAT", "RESPONSES", "TOOLS", "MODEL_LIST"],
+      "health": "UNTESTED",
+      "notes": "Provider resolution may be automatic; record resolved provider/model when exposed.",
+      "source": "https://huggingface.co/docs/inference-providers/index"
+    },
+    {
+      "id": "cloudflare-workers-ai",
+      "kind": "COGNITION",
+      "transport": "OPENAI_COMPAT",
+      "endpoint_base": "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1",
+      "auth": "BEARER_REQUIRED",
+      "capabilities": ["CHAT", "EMBEDDINGS"],
+      "health": "UNTESTED",
+      "source": "https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/"
+    },
+    {
+      "id": "openrouter",
+      "kind": "COGNITION",
+      "transport": "OPENAI_COMPAT",
+      "endpoint_base": "https://openrouter.ai/api/v1",
+      "auth": "BEARER_REQUIRED",
+      "capabilities": ["CHAT", "STREAM", "TOOLS", "MODEL_LIST"],
+      "health": "UNTESTED",
+      "notes": "If provider/model fallback occurs upstream, preserve that resolution as evidence instead of treating it as invisible transport behavior.",
+      "source": "https://openrouter.ai/docs/quickstart"
+    },
+    {
+      "id": "ollama-local",
+      "kind": "LOCAL_MODEL",
+      "transport": "LOCAL_HTTP",
+      "endpoint_base": "http://127.0.0.1:11434/v1",
+      "auth": "NONE_LOCAL",
+      "capabilities": ["CHAT", "TOOLS"],
+      "health": "UNTESTED",
+      "notes": "Loopback profile demonstrates that the contract is not inherently cloud- or provider-bound.",
+      "source": "https://ollama.com/blog/openai-compatibility"
+    },
+    {
+      "id": "crossref-public",
+      "kind": "EVIDENCE",
+      "transport": "GENERIC_HTTP",
+      "endpoint_base": "https://api.crossref.org/v1",
+      "auth": "PUBLIC",
+      "capabilities": ["SEARCH", "LOOKUP", "RETRIEVE"],
+      "health": "UNTESTED",
+      "notes": "No signup required. Prefer the polite pool by identifying the client with mailto/User-Agent; cache and back off on service pressure.",
+      "source": "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"
+    }
+  ]
+}
