@@ -12,11 +12,15 @@ function renderKernelHistory(container,kernel){
  if(events.length===0){container.append(el('p','No canonical work events are recorded in this shared world yet.'));return;}
  const acceptedByWork=new Map(accepted.filter(w=>typeof w?.workId==='string').map(w=>[w.workId,w]));
  const histories=new Map();
+ let ungroupedEventCount=0;
  for(const event of events){
-  if(typeof event?.workId!=='string'||!event.workId)continue;
+  if(typeof event?.workId!=='string'||!event.workId){ungroupedEventCount++;continue;}
   if(!histories.has(event.workId))histories.set(event.workId,[]);
   histories.get(event.workId).push(event);
  }
+ if(ungroupedEventCount>0){const warning=el('p',`${ungroupedEventCount} retained event(s) have no valid work ID and were omitted from grouped histories.`);warning.className='evidence-warning';container.append(warning);}
+ const acceptedWithoutHistory=accepted.filter(work=>typeof work?.workId==='string'&&!histories.has(work.workId)).length;
+ if(acceptedWithoutHistory>0){const warning=el('p',`${acceptedWithoutHistory} accepted work record(s) have no retained event history.`);warning.className='evidence-warning';container.append(warning);}
  for(const [workId,stages]of histories){
   const work=acceptedByWork.get(workId);
   const claim=stages.find(e=>e.type==='claim');
@@ -42,9 +46,9 @@ function renderKernelHistory(container,kernel){
  if(histories.size===0)container.append(el('p','The service returned kernel events without work IDs; they cannot be grouped into work receipts.'));
 }
 
-export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel}={}){
+export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false}={}){
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
- renderKernelHistory(container,kernel);
+ if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
  container.append(el('h3','FOUNDER GATE'),el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
