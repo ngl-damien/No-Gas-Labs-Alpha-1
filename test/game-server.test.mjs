@@ -170,7 +170,7 @@ test('serves every first-party module imported by the playable game client', asy
   }
   const institutionView = await client.request('/institution-view.mjs');
   assert.equal(institutionView.response.status, 200);
-  assert.match(institutionView.body, /dissent-docket\\.mjs/);
+  assert.match(institutionView.body, /dissent-docket\.mjs/);
   for (const module of ['client', 'quests', 'character-sheet', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'dissent-docket']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
