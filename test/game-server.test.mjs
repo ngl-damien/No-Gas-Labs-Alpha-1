@@ -390,3 +390,23 @@ test('unknown API routes are rejected before session allocation', async t => {
   assert.match(supported.headers.get('set-cookie') || '', /^ngl_session=/, 'supported state route still creates a session');
   await supported.text();
 });
+
+
+test('public catalog, institution summary, and retained artifacts do not allocate sessions', async t => {
+  const f = await fixture(t);
+  for (const path of ['/api/projects', '/api/institution']) {
+    const response = await fetch(f.url + path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' is public and must not mint a session');
+    await response.text();
+  }
+
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Public artifact route');
+  const artifact = await fetch(f.url + '/api/artifacts/' + published.result.creationId + '?version=1');
+  assert.equal(artifact.status, 200);
+  assert.equal(artifact.headers.get('set-cookie'), null, 'public artifact reads must not mint a session');
+  assert.match(artifact.headers.get('content-security-policy') || '', /sandbox allow-scripts/);
+  await artifact.text();
+});
