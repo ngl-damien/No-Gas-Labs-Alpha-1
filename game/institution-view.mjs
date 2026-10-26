@@ -11,7 +11,7 @@ export function renderDissentDocket(container, world, {onOpenReport} = {}) {
   card.append(el('h3',`${report.status} · ${report.creationTitle} v${report.version??'?'}`));
   card.append(el('p',report.text));
   const parsed=Date.parse(report.at);const when=Number.isFinite(parsed)?new Date(parsed).toLocaleString():String(report.at||'time unavailable');
-  card.append(el('p',`Filed by ${report.actorName} · ${when}`));
+  card.append(el('p',`Filed under display name ${report.actorName} · actor ID ${report.actorId || 'unavailable'} · ${when}`));
   card.append(el('p','A preserved report is not a verified finding, adjudication or truth claim.'));
   if(report.inspectable&&typeof onOpenReport==='function'){
    const inspect=el('button','Inspect exact version →');inspect.type='button';inspect.dataset.action='inspect-report-version';inspect.dataset.creationId=report.creationId;inspect.dataset.version=String(report.version);inspect.onclick=()=>onOpenReport(report);card.append(inspect);
