@@ -99,6 +99,18 @@ export function eventParents(event) {
 
 // These callbacks are supplied by the trusted host, never by the event or UI.
 // Missing, throwing, non-boolean, or false verification fails closed.
+// Validate descriptors before any field read or structuredClone: cloning a
+// plain object with an accessor can execute attacker-controlled getter code.
+function safeEventPayload(event) {
+  if (!event || typeof event !== "object" || Array.isArray(event)) return false;
+  try {
+    stableEventValue(event);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function trustedByHost(event, verifier) {
   if (typeof verifier !== "function") return false;
   try {
@@ -119,7 +131,8 @@ function receiptsMatch(event, resolveArtifact) {
 }
 
 export function hasVerifiedObservation(event, resolveArtifact, verifyObservation) {
-  return OBSERVATION_EVENT_TYPES.has(event?.event_type) &&
+  if (!safeEventPayload(event)) return false;
+  return OBSERVATION_EVENT_TYPES.has(event.event_type) &&
     event.admission === "ACCEPTED" &&
     event.authority === "AUTHORIZED" &&
     event.execution === "EXECUTED" &&
@@ -130,10 +143,11 @@ export function hasVerifiedObservation(event, resolveArtifact, verifyObservation
 }
 
 export function isVerifiedAuthorization(event, verifyAuthorization) {
-  const validExecutionGrant = OBSERVATION_EVENT_TYPES.has(event?.event_type) &&
+  if (!safeEventPayload(event)) return false;
+  const validExecutionGrant = OBSERVATION_EVENT_TYPES.has(event.event_type) &&
     event.authority === "AUTHORIZED" &&
     typeof event.grant_id === "string" && event.grant_id.length > 0;
-  const validQuestGrant = event?.type === "QUEST_AUTHORIZED" &&
+  const validQuestGrant = event.type === "QUEST_AUTHORIZED" &&
     typeof event.quest_id === "string" && event.quest_id.length > 0 &&
     typeof event.grant_id === "string" && event.grant_id.length > 0 &&
     event.actor === "founder";
@@ -142,9 +156,10 @@ export function isVerifiedAuthorization(event, verifyAuthorization) {
 }
 
 export function isVerifiedAdjudication(event, verifyAdjudication) {
-  const revocation = event?.event_type === "REVOCATION" &&
+  if (!safeEventPayload(event)) return false;
+  const revocation = event.event_type === "REVOCATION" &&
     typeof event.revokes === "string" && event.revokes.length > 0;
-  const rejection = event?.event_type === "EXECUTION_ADJUDICATION" &&
+  const rejection = event.event_type === "EXECUTION_ADJUDICATION" &&
     event.admission === "REJECTED";
   return (revocation || rejection) && trustedByHost(event, verifyAdjudication);
 }
