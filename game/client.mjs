@@ -4,6 +4,7 @@ import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderInstitution} from './institution-view.mjs';
+import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 
 let institutionRequestGeneration=0;
 async function openInstitution(){const content=showSheet('The institution at work.','PROJECTS · EVIDENCE · FOUNDER GATE');if(mode!=='shared'){content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));return;}const requestGeneration=institutionRequestGeneration,principalId=viewer.id,principalRole=viewer.role;const [projects,gate,institutionResult]=await Promise.all([request('/api/projects'),request('/api/decisions'),request('/api/institution').then(data=>({data})).catch(()=>({data:null}))]);if(requestGeneration!==institutionRequestGeneration||mode!=='shared'||viewer.id!==principalId||viewer.role!==principalRole||$('sheet').hidden||content!==$('sheet-content')||$('sheet-kicker').textContent!=='PROJECTS · EVIDENCE · FOUNDER GATE')return;renderInstitution(content,projects,gate,{founder:viewer.role==='founder',kernel:institutionResult.data?.kernel,kernelUnavailable:!institutionResult.data?.kernel,onChoice:guarded(async(d,action)=>{await request('/api/decisions/choose',{decisionId:d.id,expectedRevision:d.revision,requestId:crypto.randomUUID(),action});await openInstitution();})});}
@@ -76,9 +77,42 @@ function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;s
 function previewDraft(draft){openPortal({title:draft.title,html:draft.html,kicker:'PRIVATE DRAFT',footer:[paragraph('Private preview · opaque sandbox · no live AI or network requests.'),button(`Publish v${draft.version}`,guarded(()=>publishDraft(draft)),{id:'portal-publish',class:'primary-button'})]})}
 async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 game XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
 function openCreation(id,requestedVersion=null){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
-  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes()};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
+  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
   const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';renderNotes();toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';renderNotes();toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
+  const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
+  challengeDetails.append(paragraph('A fixed local checklist, not an AI collaborator or independent witness. It can preserve a report; it cannot decide truth, authorize work, or award XP.','form-help'));
+  const challengeTarget=paragraph('','form-help');
+  challengeDetails.append(challengeTarget);
+  const challengeForm=node('form',{id:'contradiction-form'});
+  const challengeInputs={};
+  for(const prompt of prepareContradictionReview(creation,selectedVersion).prompts){
+    const input=node('textarea',{id:'contradiction-'+prompt.id,maxlength:String(prompt.maxLength),rows:'2',placeholder:prompt.placeholder});
+    challengeInputs[prompt.id]=input;
+    challengeForm.append(field(prompt.label,input.id,input),paragraph(prompt.prompt,'form-help'));
+  }
+  const challengeSubmit=node('button',{id:'contradiction-submit',type:'submit',class:'secondary-button',text:'Preserve structured challenge'});
+  challengeForm.append(node('div',{class:'button-row'},[challengeSubmit]));
+  challengeForm.onsubmit=guarded(async e=>{
+    e.preventDefault();
+    const targetVersion=selectedVersion;
+    const reportText=formatContradictionReport(creation,targetVersion,Object.fromEntries(Object.entries(challengeInputs).map(([key,input])=>[key,input.value])));
+    challengeSubmit.disabled=true;
+    try{
+      await act({type:'report',creationId:id,version:targetVersion,text:reportText});
+      for(const input of Object.values(challengeInputs))input.value='';
+      renderNotes();
+      toast('Structured challenge preserved against v'+targetVersion+'. It is a report, not a verdict.');
+    }finally{challengeSubmit.disabled=false;}
+  });
+  challengeDetails.append(challengeForm);
+  function syncChallengeTarget(clear=false){
+    const review=prepareContradictionReview(creation,selectedVersion);
+    challengeTarget.textContent='Target: '+review.target.title+' · retained v'+review.target.version+'. The Clerk has no authority and issues no verdict.';
+    if(clear)for(const input of Object.values(challengeInputs))input.value='';
+  }
+  syncChallengeTarget();
+  content.append(challengeDetails);
   if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=renderNotes;renderNotes();
 }
