@@ -132,6 +132,19 @@ test('canonical input rejects undefined, nonfinite values and prototype keys', (
   rejectsCode(() => kernel.canonicalStringify(JSON.parse('{"__proto__":{"bad":true}}')), 'INVALID_JSON');
 });
 
+test('canonical input rejects non-enumerable own properties instead of silently omitting them', () => {
+  const hiddenObject = { visible: 1 };
+  Object.defineProperty(hiddenObject, 'hidden', { value: 2, enumerable: false });
+  rejectsCode(() => kernel.canonicalStringify(hiddenObject), 'INVALID_JSON');
+
+  const hiddenArray = [1];
+  Object.defineProperty(hiddenArray, 'hidden', { value: 2, enumerable: false });
+  rejectsCode(() => kernel.canonicalStringify(hiddenArray), 'INVALID_JSON');
+
+  assert.equal(kernel.canonicalStringify([1, { a: 2 }]), '[1,{"a":2}]',
+    'ordinary dense JSON arrays remain supported');
+});
+
 test('ordinary IDs that overlap inherited object methods remain valid own records', () => {
   const { events, artifacts } = fixture();
   let state = kernel.createKernel(config);
