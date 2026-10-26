@@ -1,0 +1,21 @@
+{
+  "schema": "ngl.capability-registry.v0",
+  "hard_constraint": {
+    "maximum_required_cost_usd": 0
+  },
+  "capabilities": [
+    {
+      "id": "media.render.vertical",
+      "provider": "github-actions-public-runner",
+      "status": "CANDIDATE",
+      "cost_usd": 0,
+      "executor": "scripts/build-ngl-media.sh",
+      "verification": [
+        "process exit code == 0",
+        "output exists and bytes > 0",
+        "SHA-256 independently computed into receipt"
+      ],
+      "authority": "NONE_UNTIL_VERIFIED"
+    }
+  ]
+}
