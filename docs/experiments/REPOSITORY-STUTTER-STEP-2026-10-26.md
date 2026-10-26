@@ -33,3 +33,11 @@ The current mainline `src/world/project.js` treated event-supplied labels as suf
 3. Add cross-process tests with an independently held signing key and explicit key-rotation/revocation semantics.
 4. Keep PR #16 closed: merged PR #18 supersedes its old self-signing flow. Real Founder identity/key custody remains unresolved under issue #17.
 5. Reinspect current `main` and all open PRs before any future port/rebase; do not merge without Founder authorization.
+
+
+## Follow-up hardening after first verification pass
+
+- Tightened the verifier boundary to allow observation attestation only on `SYSTEM_EVENT` and `EXECUTION_ADJUDICATION` records.
+- Tightened adjudication verification to accept only `EXECUTION_ADJUDICATION` rejection events or explicit `REVOCATION` records; a verifier callback returning true cannot authorize an arbitrary event type.
+- Added regressions for wrong-type rejection and unrecognized observation event types.
+- This follow-up changes the exact branch head; rerun and inspect all required CI on the new head before treating the branch as verified.

@@ -189,7 +189,7 @@ test("unverified failures and rejections remain in history without manufacturing
   assert.equal(failedProjection.quests["forge-gate"], undefined);
   assert.equal(failedProjection.history.length, 1);
 
-  const rejected = { ...observed, event_id: "e15", admission: "REJECTED" };
+  const rejected = { ...observed, event_id: "e15", event_type: "EXECUTION_ADJUDICATION", admission: "REJECTED" };
   const untrusted = projectWorld([rejected], undefined, { resolveArtifact, verifyObservation, verifyAdjudication: () => false });
   assert.equal(untrusted.quests["forge-gate"], undefined);
   assert.equal(untrusted.history.length, 1);
@@ -204,4 +204,20 @@ test("observation verifier must return literal true, not merely a truthy value",
   const s = projectWorld([observed], undefined, { resolveArtifact, verifyObservation: () => ({ verified: true }) });
   assert.equal(s.xp, 0);
   assert.equal(s.world.forgeOpen, undefined);
+});
+
+
+test("a signed-looking rejection on the wrong event type cannot change quest state", () => {
+  const malformed = { ...observed, event_id: "e16", event_type: "SYSTEM_EVENT", admission: "REJECTED" };
+  const s = projectWorld([malformed], undefined, { resolveArtifact, verifyObservation, verifyAdjudication: () => true });
+  assert.equal(s.quests["forge-gate"], undefined);
+  assert.equal(s.history.length, 1);
+});
+
+test("only declared observation event types can mint consequences", () => {
+  const malformed = { ...observed, event_id: "e17", event_type: "UNRECOGNIZED_EVENT" };
+  const s = projectWorld([malformed], undefined, { resolveArtifact, verifyObservation: () => true });
+  assert.equal(s.xp, 0);
+  assert.equal(s.world.forgeOpen, undefined);
+  assert.equal(s.history.length, 1);
 });

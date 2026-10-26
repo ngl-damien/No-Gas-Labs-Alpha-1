@@ -2,7 +2,7 @@
 
 ## Canonical projection rule
 
-An event's `observation_verification: "VERIFIED"` field is a claim, not proof. `projectWorld` and `projectQuest` require a host-injected `verifyObservation(event)` callback that returns the boolean `true`, plus artifact receipts whose bytes validate. Missing, throwing, false, or merely truthy verifiers do not grant progress. The event remains in history for review.
+An event's `observation_verification: "VERIFIED"` field is a claim, not proof. `projectWorld` and `projectQuest` require an allowed observation event type (`SYSTEM_EVENT` or `EXECUTION_ADJUDICATION`), a host-injected `verifyObservation(event)` callback that returns the boolean `true`, and artifact receipts whose bytes validate. Adjudication verification is accepted only for an `EXECUTION_ADJUDICATION` rejection or a `REVOCATION` event. Missing, throwing, false, or merely truthy verifiers do not grant progress. The event remains in history for review.
 
 Rejections and revocations require a separate `verifyAdjudication(event)` callback. An unverified rejection or revocation remains history and cannot manufacture terminal state or revoke a grant.
 

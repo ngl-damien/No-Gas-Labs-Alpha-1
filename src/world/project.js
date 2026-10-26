@@ -3,6 +3,7 @@ import { verifyReceipt } from "../evidence/content-addressed.js";
 const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
 });
+const OBSERVATION_EVENT_TYPES = new Set(["SYSTEM_EVENT", "EXECUTION_ADJUDICATION"]);
 
 // Event labels are claims, not attestations. The host injects trust roots
 // independently of the event producer; missing, non-boolean or throwing
@@ -17,7 +18,8 @@ function trustedByHost(event, verifier) {
 }
 
 export function hasVerifiedObservation(e, resolveArtifact, verifyObservation) {
-  return e?.admission === "ACCEPTED" &&
+  return OBSERVATION_EVENT_TYPES.has(e?.event_type) &&
+    e?.admission === "ACCEPTED" &&
     e.authority === "AUTHORIZED" &&
     e.execution === "EXECUTED" &&
     ["OBSERVED", "REFUTED"].includes(e.evidence) &&
@@ -29,7 +31,11 @@ export function hasVerifiedObservation(e, resolveArtifact, verifyObservation) {
 }
 
 export function isVerifiedAdjudication(event, verifyAdjudication) {
-  return trustedByHost(event, verifyAdjudication);
+  const isRevocation = event?.event_type === "REVOCATION" &&
+    typeof event.revokes === "string" && event.revokes.length > 0;
+  const isRejection = event?.event_type === "EXECUTION_ADJUDICATION" &&
+    event.admission === "REJECTED";
+  return (isRevocation || isRejection) && trustedByHost(event, verifyAdjudication);
 }
 
 const terminalSuccess = (e, resolveArtifact, verifyObservation) =>
