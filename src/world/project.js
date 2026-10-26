@@ -264,15 +264,29 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
 
     const effect = event.world_effect;
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) continue;
-    if (Number.isFinite(effect.xp) && effect.xp > 0) state.xp += effect.xp;
 
-    const inventory = effect.inventory;
-    if (inventory && typeof inventory === "object" && !Array.isArray(inventory)) {
+    if (Object.hasOwn(effect, "xp")) {
+      if (!Number.isSafeInteger(effect.xp) || effect.xp < 0) {
+        throw new Error("invalid XP world effect");
+      }
+      if (effect.xp > 0) {
+        const nextXp = state.xp + effect.xp;
+        if (!Number.isSafeInteger(nextXp)) throw new Error("XP world effect exceeds safe integer range");
+        state.xp = nextXp;
+      }
+    }
+
+    if (Object.hasOwn(effect, "inventory")) {
+      const inventory = effect.inventory;
+      if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) {
+        throw new Error("invalid inventory world effect");
+      }
       for (const [item, amount] of Object.entries(inventory)) {
-        if (!Number.isFinite(amount)) continue;
-        const priorAmount = Object.hasOwn(state.inventory, item) && Number.isFinite(state.inventory[item])
-          ? state.inventory[item] : 0;
-        setOwn(state.inventory, item, priorAmount + amount);
+        if (!Number.isSafeInteger(amount)) throw new Error("invalid inventory world effect amount");
+        const priorAmount = Object.hasOwn(state.inventory, item) ? state.inventory[item] : 0;
+        const nextAmount = priorAmount + amount;
+        if (!Number.isSafeInteger(nextAmount)) throw new Error("inventory world effect exceeds safe integer range");
+        setOwn(state.inventory, item, nextAmount);
       }
     }
 
