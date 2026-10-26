@@ -96,4 +96,6 @@ This audit confirms the tracked private-key field; it does **not** establish whe
 - [ ] Port selected capabilities in isolated changes and run relevant tests/builds.
 - [ ] Verify each integrated behavior in runtime and attach evidence before declaring completion.
 
+**Security follow-up opened:** [Damien-Featherstone PR #1](https://github.com/ngl-damien/Damien-Featherstone/pull/1) removes the tracked `privateKeyPem` field from the current file while retaining public-key metadata. It is open and unmerged; no key rotation/revocation or Git-history cleanup has occurred.
+
 **Current result:** this document is a triage artifact. No TaskAgile application code or media has been imported, no evidence ledger has been merged, no build/tests have been run, and no key rotation has occurred.
