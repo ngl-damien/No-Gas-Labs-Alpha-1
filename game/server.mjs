@@ -1,5 +1,6 @@
 import http from 'node:http';
-import { readFile, mkdir, open } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -130,18 +131,64 @@ function publicationCandidate(payload, world, result) {
   append('adjudicate', 'damien', { grantId, executionId, subject, outputs, observationId: observed.id, decision: 'accept' });
   return { world, artifacts, institutionalEvents: kernel.events, publicationBindings: [...payload.publicationBindings, { creationId: creation.id, version: creation.version, digest: creation.receipt.digest, size: creation.receipt.size, workId }] };
 }
+async function readFounderKeyFile(path) {
+  // A pathname alone is not a trust anchor: reject symlinks and permissive
+  // files, then verify the opened descriptor still names the inspected inode.
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) {
+    throw new Error('Founder key must be a regular, non-symlink file');
+  }
+  if ((before.mode & 0o077) !== 0) {
+    throw new Error('Founder key file permissions must exclude group and other access (0600)');
+  }
+
+  let handle;
+  try {
+    const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+    handle = await open(path, flags);
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error('Founder key file changed while opening');
+    }
+    if ((opened.mode & 0o077) !== 0) {
+      throw new Error('Founder key file permissions must exclude group and other access (0600)');
+    }
+
+    const key = (await handle.readFile('utf8')).trim();
+    const after = await lstat(path);
+    if (after.isSymbolicLink() || after.dev !== opened.dev || after.ino !== opened.ino) {
+      throw new Error('Founder key file changed while reading');
+    }
+    if (key.length < 32 || Buffer.byteLength(key) > 1024) {
+      throw new Error('Invalid persisted Founder key');
+    }
+    return key;
+  } finally {
+    await handle?.close();
+  }
+}
+
 async function getFounderKey(dataDir, provided) {
   if (provided !== undefined) {
     if (typeof provided !== 'string' || provided.length < 16 || Buffer.byteLength(provided) > 1024) throw new Error('Founder key must be 16–1024 bytes');
     return provided;
   }
   const path = join(dataDir, 'founder.key');
-  try { const key = (await readFile(path, 'utf8')).trim(); if (key.length < 32 || key.length > 1024) throw new Error('Invalid persisted Founder key'); return key; }
-  catch (error) {
+  try {
+    return await readFounderKeyFile(path);
+  } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    const key = randomBytes(32).toString('base64url');
-    try { const file = await open(path, 'wx', 0o600); try { await file.writeFile(key + '\n'); await file.sync(); } finally { await file.close(); } return key; }
-    catch (writeError) { if (writeError.code === 'EEXIST') return getFounderKey(dataDir); throw writeError; }
+  }
+
+  const key = randomBytes(32).toString('base64url');
+  try {
+    const file = await open(path, 'wx', 0o600);
+    try { await file.writeFile(key + '\n'); await file.sync(); }
+    finally { await file.close(); }
+    return key;
+  } catch (writeError) {
+    if (writeError.code === 'EEXIST') return getFounderKey(dataDir);
+    throw writeError;
   }
 }
 
