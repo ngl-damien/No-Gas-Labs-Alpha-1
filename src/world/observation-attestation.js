@@ -12,11 +12,14 @@ function ed25519PublicKey(publicKey) {
   return key;
 }
 
-export function observationKeyFingerprint(publicKey) {
-  const key = ed25519PublicKey(publicKey);
+function fingerprintKey(key) {
   return createHash("sha256")
     .update(key.export({ type: "spki", format: "der" }))
     .digest("hex");
+}
+
+export function observationKeyFingerprint(publicKey) {
+  return fingerprintKey(ed25519PublicKey(publicKey));
 }
 
 /**
@@ -29,7 +32,7 @@ export function createObservationVerifier({ publicKey, expectedFingerprint, obse
   if (typeof expectedFingerprint !== "string" || !FINGERPRINT.test(expectedFingerprint)) {
     throw new Error("OBSERVATION_TRUST_FINGERPRINT_REQUIRED");
   }
-  if (observationKeyFingerprint(key) !== expectedFingerprint) {
+  if (fingerprintKey(key) !== expectedFingerprint) {
     throw new Error("OBSERVATION_TRUST_FINGERPRINT_MISMATCH");
   }
   if (typeof observerId !== "string" || observerId.trim().length === 0) {
