@@ -1,0 +1,216 @@
+{
+  "schema": "ngl.source-branch-delta.v1",
+  "source_repository": "ngl-damien/no-gas-labs-command-center",
+  "source_branch": "work/zero-cost-media-factory",
+  "source_commit": "eb74c2877e3fcc11a0897da2c7d1193bf1b1dd31",
+  "source_tree_sha": "c2a593e7fabb3f8d32ab47277975f5d211108fc9",
+  "source_base_branch": "main",
+  "source_base_commit": "675aa2a2ec425614ec27081bbae5ffe45e396006",
+  "source_base_tree_sha": "2570ccbde33431038e64861c8c598e4b4e2a33c8",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/command-center-zero-cost-media-factory-2026-10-26",
+  "source_license": "NGL-A v1.0: attribution required; non-commercial reuse permitted under conditions; commercial deployment requires explicit permission or fee; AI training restricted",
+  "reconstruction_note": "These 24 files are the branch-only delta against source main. The base main snapshot is separately preserved in Alpha One; four large common image assets remain identified but not copied due write-payload limitation.",
+  "verification": {
+    "source_delta_files": 24,
+    "exact_target_blob_matches": 24,
+    "byte_identity_method": "Git blob SHA equality",
+    "secret_pattern_scan": "24 files scanned; no configured private-key/API-key/credential patterns matched",
+    "build_test_performed": false,
+    "runtime_integrated": false
+  },
+  "entries": [
+    {
+      "source_path": ".github/workflows/cross-repo-evidence.yml",
+      "source_blob_sha": "c447f8b72c6104bfd66ffe0e56280826c9de9af6",
+      "size_bytes": 1367,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/.github/workflows/cross-repo-evidence.yml",
+      "target_blob_sha": "c447f8b72c6104bfd66ffe0e56280826c9de9af6",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/institution-state.yml",
+      "source_blob_sha": "f7d34d626bb8eb4cdc3459dd80d937b6ebb18e25",
+      "size_bytes": 1546,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/.github/workflows/institution-state.yml",
+      "target_blob_sha": "f7d34d626bb8eb4cdc3459dd80d937b6ebb18e25",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/ngl-protocol-check.yml",
+      "source_blob_sha": "c026b74e885a8487615f48182bd9265443a23ffa",
+      "size_bytes": 390,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/.github/workflows/ngl-protocol-check.yml",
+      "target_blob_sha": "c026b74e885a8487615f48182bd9265443a23ffa",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/zero-cost-media-factory.yml",
+      "source_blob_sha": "86f9b954c2b9c6218a668e4cde701282c47e87e2",
+      "size_bytes": 4520,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/.github/workflows/zero-cost-media-factory.yml",
+      "target_blob_sha": "86f9b954c2b9c6218a668e4cde701282c47e87e2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/zero-cost-media-factory.md",
+      "source_blob_sha": "a9fb142a3b70777f31655ab6e7cac10a7ba46115",
+      "size_bytes": 892,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/docs/zero-cost-media-factory.md",
+      "target_blob_sha": "a9fb142a3b70777f31655ab6e7cac10a7ba46115",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/capabilities/registry.json",
+      "source_blob_sha": "eab25aedb3d5ae7ac6164bb431b11b575d865608",
+      "size_bytes": 531,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/capabilities/registry.json",
+      "target_blob_sha": "eab25aedb3d5ae7ac6164bb431b11b575d865608",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/institution/evidence-sources.json",
+      "source_blob_sha": "c3314db1f8f0af7911a3338e9287299e3c056ca2",
+      "size_bytes": 2345,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/institution/evidence-sources.json",
+      "target_blob_sha": "c3314db1f8f0af7911a3338e9287299e3c056ca2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/institution/state-graph.json",
+      "source_blob_sha": "23ead01ed7bf9fa9eb1197b4f0fbc827ca2b8749",
+      "size_bytes": 6568,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/institution/state-graph.json",
+      "target_blob_sha": "23ead01ed7bf9fa9eb1197b4f0fbc827ca2b8749",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/protocol/neophyte-principle.md",
+      "source_blob_sha": "231afaa390f7034467efb156d5aa1945aa3514e5",
+      "size_bytes": 1124,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/protocol/neophyte-principle.md",
+      "target_blob_sha": "231afaa390f7034467efb156d5aa1945aa3514e5",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/state/runtime.json",
+      "source_blob_sha": "a5357c311f217c32c92e0054ee16e56ec9949b79",
+      "size_bytes": 2304,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/state/runtime.json",
+      "target_blob_sha": "a5357c311f217c32c92e0054ee16e56ec9949b79",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/state/transitions/run-37105586165.json",
+      "source_blob_sha": "a7204f72ab3c971db9ef9c7fff07ee535a13c280",
+      "size_bytes": 540,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/state/transitions/run-37105586165.json",
+      "target_blob_sha": "a7204f72ab3c971db9ef9c7fff07ee535a13c280",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/state/transitions/run-37105650826.json",
+      "source_blob_sha": "7c4106bb6b20b9e2ad98aaf83b5bebc5727c2b48",
+      "size_bytes": 540,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/state/transitions/run-37105650826.json",
+      "target_blob_sha": "7c4106bb6b20b9e2ad98aaf83b5bebc5727c2b48",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/state/transitions/run-37106519122.json",
+      "source_blob_sha": "e1282939ccb5eaea45af5fccda402ee7b19935cc",
+      "size_bytes": 540,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/state/transitions/run-37106519122.json",
+      "target_blob_sha": "e1282939ccb5eaea45af5fccda402ee7b19935cc",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "ngl/state/uncertainty-ledger.json",
+      "source_blob_sha": "cf7f2fca60d73ba49d7505ab590b4a7d516a449e",
+      "size_bytes": 501,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/ngl/state/uncertainty-ledger.json",
+      "target_blob_sha": "cf7f2fca60d73ba49d7505ab590b4a7d516a449e",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/build-ngl-media.sh",
+      "source_blob_sha": "fbeb2fe1f4c381fd128341c406bc0cc9c047f941",
+      "size_bytes": 3279,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/build-ngl-media.sh",
+      "target_blob_sha": "fbeb2fe1f4c381fd128341c406bc0cc9c047f941",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/generate-ngl-ad-copy.py",
+      "source_blob_sha": "cd37cfe3da2c1cdcb67f67515faa3afd7dd3120d",
+      "size_bytes": 1944,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/generate-ngl-ad-copy.py",
+      "target_blob_sha": "cd37cfe3da2c1cdcb67f67515faa3afd7dd3120d",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/ngl-progress-width.py",
+      "source_blob_sha": "43e2cc9c61d8f1d4ac5e7baec15b89eef3297aa4",
+      "size_bytes": 141,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/ngl-progress-width.py",
+      "target_blob_sha": "43e2cc9c61d8f1d4ac5e7baec15b89eef3297aa4",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/observe-cross-repo-evidence.py",
+      "source_blob_sha": "bb8a1b1ed36df663f7140e4ef2f3c356be724efb",
+      "size_bytes": 1549,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/observe-cross-repo-evidence.py",
+      "target_blob_sha": "bb8a1b1ed36df663f7140e4ef2f3c356be724efb",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/query-institution-state.py",
+      "source_blob_sha": "3d45bd643c1ce451af2e9b9bdacf25744a781d09",
+      "size_bytes": 1391,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/query-institution-state.py",
+      "target_blob_sha": "3d45bd643c1ce451af2e9b9bdacf25744a781d09",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/test-illegal-state-jump.py",
+      "source_blob_sha": "bc724eada5d995c92b197cf4864fb60a3ac50479",
+      "size_bytes": 1664,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/test-illegal-state-jump.py",
+      "target_blob_sha": "bc724eada5d995c92b197cf4864fb60a3ac50479",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/test-institution-state-promotion.py",
+      "source_blob_sha": "c22213f1022e35b53371e033a425a450e56ba331",
+      "size_bytes": 947,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/test-institution-state-promotion.py",
+      "target_blob_sha": "c22213f1022e35b53371e033a425a450e56ba331",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/validate-institution-state.py",
+      "source_blob_sha": "f6ada5ffccc6953215738b9b0abab1fcbf6670d2",
+      "size_bytes": 1694,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/validate-institution-state.py",
+      "target_blob_sha": "f6ada5ffccc6953215738b9b0abab1fcbf6670d2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/validate-ngl-protocol.py",
+      "source_blob_sha": "7c059eba91bc32c926cb79c84e7aa266b0f023b2",
+      "size_bytes": 610,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/validate-ngl-protocol.py",
+      "target_blob_sha": "7c059eba91bc32c926cb79c84e7aa266b0f023b2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "scripts/verify-and-advance-state.py",
+      "source_blob_sha": "2968b7c67156682a3276268b18ea0f5c3fcfe798",
+      "size_bytes": 1876,
+      "target_path": "integrations/command-center-reference/branches/work-zero-cost-media-factory/source/scripts/verify-and-advance-state.py",
+      "target_blob_sha": "2968b7c67156682a3276268b18ea0f5c3fcfe798",
+      "status": "IDENTICAL_BLOB"
+    }
+  ]
+}

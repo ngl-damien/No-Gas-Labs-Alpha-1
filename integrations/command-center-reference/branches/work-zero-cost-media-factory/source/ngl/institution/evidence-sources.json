@@ -1,0 +1,80 @@
+{
+  "schema": "ngl.evidence-source-registry.v0",
+  "rule": "A source may report observations or claims; source existence never grants authority and self-description never promotes a claim.",
+  "sources": [
+    {
+      "id": "source:rae-verifier",
+      "repository": "No-Gas-Labs-Official/recursive-artifact-engine",
+      "ref": "main",
+      "path": "src/verifier.js",
+      "blob_sha": "0b9e6122de8095d64d99a13526718296ffa0ca76",
+      "kind": "EXECUTABLE_SOURCE",
+      "admissible_for": [
+        "implementation-exists"
+      ],
+      "not_admissible_for": [
+        "claim-semantic-truth",
+        "production-security"
+      ]
+    },
+    {
+      "id": "source:rae-receipt-schema",
+      "repository": "No-Gas-Labs-Official/recursive-artifact-engine",
+      "ref": "main",
+      "path": "schemas/receipt-v1.json",
+      "blob_sha": "d60df0e82760bda1c700a2d77c910131f06f2e95",
+      "kind": "SCHEMA",
+      "admissible_for": [
+        "receipt-contract-exists"
+      ],
+      "not_admissible_for": [
+        "artifact-observed-without-receipt"
+      ]
+    },
+    {
+      "id": "source:mesh-bridge-verifier",
+      "repository": "No-Gas-Labs-Official/ngl-mesh",
+      "ref": "main",
+      "path": "integration/relay/verify_bridge.py",
+      "blob_sha": "49e1697213f9753073dc5e4968ea4f84b580c608",
+      "kind": "EXECUTABLE_HARNESS",
+      "admissible_for": [
+        "harness-exists"
+      ],
+      "not_admissible_for": [
+        "harness-passed",
+        "production-security"
+      ]
+    },
+    {
+      "id": "source:mesh-authority-experiment",
+      "repository": "No-Gas-Labs-Official/ngl-mesh",
+      "ref": "main",
+      "path": "integration/relay/EVIDENCE_AUTHORITY_EXPERIMENT.md",
+      "blob_sha": "2b916ec0c719b3df5f47b1aa1d0825338d21fdcb",
+      "kind": "DESIGN_DOCUMENT",
+      "admissible_for": [
+        "declared-experiment-contract"
+      ],
+      "not_admissible_for": [
+        "execution-success"
+      ]
+    },
+    {
+      "id": "source:store-readme",
+      "repository": "No-Gas-Labs-Official/Store",
+      "ref": "main",
+      "path": "README.md",
+      "blob_sha": "fe7da4e2d6aeb063e3446ce9b59449e36f67b373",
+      "kind": "SELF_DESCRIPTION",
+      "admissible_for": [
+        "declared-store-contract"
+      ],
+      "not_admissible_for": [
+        "sale",
+        "payment",
+        "delivery"
+      ]
+    }
+  ]
+}

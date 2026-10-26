@@ -1,0 +1,246 @@
+{
+  "schema": "ngl.institution-state.v0",
+  "principle": "A model assertion is never sufficient evidence that the state it describes is correct.",
+  "sovereignty": {
+    "principal": "Damien Featherstone",
+    "rule": "No machine may promote its own assertion directly into authoritative institutional state."
+  },
+  "epistemic_states": [
+    "DECLARED",
+    "OBSERVED",
+    "SUPPORTED",
+    "FALSIFIED",
+    "CONTRADICTORY",
+    "UNRESOLVED"
+  ],
+  "node_types": [
+    "HUMAN",
+    "REPOSITORY",
+    "CAPABILITY",
+    "EXPERIMENT",
+    "ARTIFACT",
+    "CLAIM",
+    "RESOURCE",
+    "INTERFACE"
+  ],
+  "nodes": [
+    {
+      "id": "human:damien",
+      "type": "HUMAN",
+      "label": "Damien Featherstone",
+      "state": "DECLARED",
+      "authority": [
+        "DEFINE_OBJECTIVES",
+        "GRANT_AUTHORITY",
+        "REVOKE_AUTHORITY"
+      ]
+    },
+    {
+      "id": "repo:command-center",
+      "type": "REPOSITORY",
+      "label": "no-gas-labs-command-center",
+      "state": "OBSERVED",
+      "evidence": [
+        "github:No-Gas-Labs-Official/no-gas-labs-command-center"
+      ]
+    },
+    {
+      "id": "repo:recursive-artifact-engine",
+      "type": "REPOSITORY",
+      "label": "recursive-artifact-engine",
+      "state": "OBSERVED",
+      "evidence": [
+        "github:No-Gas-Labs-Official/recursive-artifact-engine"
+      ],
+      "facts": {
+        "visibility": "public",
+        "default_branch": "main"
+      }
+    },
+    {
+      "id": "repo:ngl-mesh",
+      "type": "REPOSITORY",
+      "label": "ngl-mesh",
+      "state": "OBSERVED",
+      "evidence": [
+        "github:No-Gas-Labs-Official/ngl-mesh"
+      ],
+      "facts": {
+        "visibility": "public",
+        "default_branch": "main"
+      }
+    },
+    {
+      "id": "repo:store",
+      "type": "REPOSITORY",
+      "label": "Store",
+      "state": "OBSERVED",
+      "evidence": [
+        "github:No-Gas-Labs-Official/Store"
+      ],
+      "facts": {
+        "visibility": "private",
+        "default_branch": "main"
+      }
+    },
+    {
+      "id": "capability:media-render-vertical",
+      "type": "CAPABILITY",
+      "label": "Deterministic vertical media rendering",
+      "state": "OBSERVED",
+      "evidence": [
+        "runtime:37105586165",
+        "runtime:37105650826",
+        "runtime:37106519122"
+      ],
+      "authority": [
+        "RENDER_CANDIDATE_ONLY"
+      ]
+    },
+    {
+      "id": "experiment:media-animation-001",
+      "type": "EXPERIMENT",
+      "label": "Media animation bounded advancement",
+      "state": "OBSERVED",
+      "evidence": [
+        "ngl/state/runtime.json"
+      ],
+      "facts": {
+        "target_seconds": 12,
+        "populated_seconds": 3,
+        "next_action": "COMPILE_NEXT_SECOND"
+      }
+    },
+    {
+      "id": "artifact:media-step-1",
+      "type": "ARTIFACT",
+      "label": "Media candidate step 1",
+      "state": "OBSERVED",
+      "evidence": [
+        "sha256:5b60c316a3da10d1bf83f62be98afdc4224e9afe286b7065cf190fb8532d0597"
+      ]
+    },
+    {
+      "id": "artifact:media-step-2",
+      "type": "ARTIFACT",
+      "label": "Media candidate step 2",
+      "state": "OBSERVED",
+      "evidence": [
+        "sha256:4133901e7869cbeef4dcf6d8ff481607fa2e419bf67282cd1acf51a8c6a318e2"
+      ]
+    },
+    {
+      "id": "artifact:media-step-3",
+      "type": "ARTIFACT",
+      "label": "Media candidate step 3",
+      "state": "OBSERVED",
+      "evidence": [
+        "sha256:2d9f89e72b005152b6e39e2a383a5b15bd6a143119d4592f7192c8c634fc4f7f"
+      ]
+    },
+    {
+      "id": "claim:commercial-self-sustaining",
+      "type": "CLAIM",
+      "label": "NGL is commercially self-sustaining",
+      "state": "UNRESOLVED",
+      "evidence": []
+    },
+    {
+      "id": "claim:self-building-institution",
+      "type": "CLAIM",
+      "label": "NGL can construct and validate new institutional capabilities without direct manual implementation",
+      "state": "UNRESOLVED",
+      "evidence": []
+    },
+    {
+      "id": "interface:contact",
+      "type": "INTERFACE",
+      "label": "CONTACT inter-node human control surface",
+      "state": "DECLARED",
+      "evidence": []
+    },
+    {
+      "id": "interface:relay",
+      "type": "INTERFACE",
+      "label": "NGL Relay mobile/native interface",
+      "state": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "human:damien",
+      "relation": "GOVERNS",
+      "to": "experiment:media-animation-001"
+    },
+    {
+      "from": "repo:command-center",
+      "relation": "HOSTS",
+      "to": "experiment:media-animation-001"
+    },
+    {
+      "from": "capability:media-render-vertical",
+      "relation": "EXECUTES_FOR",
+      "to": "experiment:media-animation-001"
+    },
+    {
+      "from": "experiment:media-animation-001",
+      "relation": "PRODUCED",
+      "to": "artifact:media-step-1"
+    },
+    {
+      "from": "experiment:media-animation-001",
+      "relation": "PRODUCED",
+      "to": "artifact:media-step-2"
+    },
+    {
+      "from": "experiment:media-animation-001",
+      "relation": "PRODUCED",
+      "to": "artifact:media-step-3"
+    },
+    {
+      "from": "repo:recursive-artifact-engine",
+      "relation": "INTENDED_ROLE",
+      "to": "claim:self-building-institution"
+    },
+    {
+      "from": "repo:ngl-mesh",
+      "relation": "INTENDED_ROLE",
+      "to": "claim:self-building-institution"
+    },
+    {
+      "from": "repo:store",
+      "relation": "INTENDED_ROLE",
+      "to": "claim:commercial-self-sustaining"
+    },
+    {
+      "from": "interface:contact",
+      "relation": "CONTROL_SURFACE_FOR",
+      "to": "claim:self-building-institution"
+    },
+    {
+      "from": "interface:relay",
+      "relation": "MOBILE_SURFACE_FOR",
+      "to": "claim:self-building-institution"
+    }
+  ],
+  "promotion_policy": {
+    "authoritative_states": [
+      "OBSERVED",
+      "SUPPORTED"
+    ],
+    "requirements": [
+      "Node IDs must be unique.",
+      "All edges must reference existing nodes.",
+      "OBSERVED or SUPPORTED nodes must carry at least one evidence reference.",
+      "CLAIM nodes may not grant authority.",
+      "UNRESOLVED, DECLARED, FALSIFIED, or CONTRADICTORY nodes may not be used as evidence for authoritative promotion."
+    ]
+  },
+  "queries": {
+    "what_is_known": "Return OBSERVED or SUPPORTED nodes and their evidence.",
+    "what_is_only_claimed": "Return CLAIM nodes not in OBSERVED or SUPPORTED.",
+    "what_can_act": "Return CAPABILITY nodes with explicit authority.",
+    "what_should_happen_next": "Choose only actions whose prerequisites are OBSERVED or SUPPORTED; otherwise return the missing evidence."
+  }
+}

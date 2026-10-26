@@ -1,0 +1,19 @@
+name: NGL Protocol Check
+on:
+  pull_request:
+    paths:
+      - "ngl/**"
+      - "scripts/validate-ngl-protocol.py"
+  push:
+    branches: [main]
+    paths:
+      - "ngl/**"
+      - "scripts/validate-ngl-protocol.py"
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/validate-ngl-protocol.py

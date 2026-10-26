@@ -1,0 +1,19 @@
+{
+  "schema": "ngl.uncertainty-ledger.v0",
+  "counts": {
+    "claims": 1,
+    "observed": 0,
+    "supported": 0,
+    "falsified": 0,
+    "contradictory": 0,
+    "unresolved": 1
+  },
+  "entries": [
+    {
+      "id": "media-render-001",
+      "claim": "A public GitHub runner can compile the NGL vertical MP4 and receipt as specified.",
+      "state": "UNRESOLVED",
+      "reason": "implementation exists on branch but media workflow has not yet produced and independently inspected output"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+name: NGL Institutional State
+
+on:
+  push:
+    branches:
+      - "work/zero-cost-media-factory"
+    paths:
+      - "ngl/institution/**"
+      - "scripts/validate-institution-state.py"
+      - "scripts/test-institution-state-promotion.py"
+      - "scripts/query-institution-state.py"
+      - ".github/workflows/institution-state.yml"
+  pull_request:
+    paths:
+      - "ngl/institution/**"
+      - "scripts/validate-institution-state.py"
+      - "scripts/test-institution-state-promotion.py"
+      - "scripts/query-institution-state.py"
+      - ".github/workflows/institution-state.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate canonical institutional graph
+        run: |
+          python3 scripts/validate-institution-state.py ngl/institution/state-graph.json
+
+      - name: Prove unsupported promotion is rejected
+        run: |
+          python3 scripts/test-institution-state-promotion.py
+
+      - name: Query current institutional state
+        run: |
+          python3 scripts/query-institution-state.py ngl/institution/state-graph.json summary
+          python3 scripts/query-institution-state.py ngl/institution/state-graph.json known
+          python3 scripts/query-institution-state.py ngl/institution/state-graph.json claims
+          python3 scripts/query-institution-state.py ngl/institution/state-graph.json actors
+          python3 scripts/query-institution-state.py ngl/institution/state-graph.json next
