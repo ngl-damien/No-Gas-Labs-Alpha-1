@@ -1,0 +1,10 @@
+{
+  "knowledge_class": "OBSERVED_DIRECTLY",
+  "drive": {"path":"/Google Drive/NGL Relay","file_id":"external-gdrive:file:10aU0OomiAT-iieNczBBxdFCEYIQ_w27r","created_at_utc":"2026-09-17T04:43:22.295Z","modified_at_utc":"2026-09-17T04:43:22.367Z","size_bytes":49651},
+  "hashes": {"sha256":"6cee7b1ea12c435cc7705510b5d61c85c63764dcd9658a00b6ea99c2311e9ffe","sha1":"e164c69efd5b43b4197048e084753a23492dc5bf","md5":"4c0498e3b2be808220085fb783f63a9d"},
+  "apk": {"package":"ngl.relay","versionCode":1,"versionName":"0.1.0","compileSdk":34,"minSdk":24,"targetSdk":34,"permissions":["android.permission.INTERNET","android.permission.ACCESS_NETWORK_STATE"],"application":".app.RelayApp","activities":[".app.MainActivity exported",".app.CaseActivity",".app.ArtifactActivity",".app.CompareActivity",".app.SettingsActivity"],"services":[],"receivers":[],"providers":[]},
+  "signing": {"v1_jar_signature_verified":true,"apk_signing_block_ids":["0x7109871a","0xf05368c0","0x42726577"],"subject":"CN=NGL Relay Self-Signed, OU=Build, O=NGL Relay Project, C=US","serial_hex":"8cc687dc42d9b7b4","cert_sha1":"C4:90:55:AB:EB:90:DF:6C:C6:77:53:D4:93:ED:4A:70:51:BF:A5:B8","cert_sha256":"72:DC:D4:E7:C9:B5:78:B3:86:C2:25:4D:99:63:B5:77:C8:8E:11:02:F7:18:82:4A:AE:28:8F:20:7E:C9:FB:16","algorithm":"SHA256withRSA 2048-bit","valid_from_utc":"2026-09-12T13:23:18Z","valid_until_utc":"2054-01-28T13:23:18Z"},
+  "zip_entries": ["AndroidManifest.xml","res/mipmap/ic_launcher.png","resources.arsc","classes.dex","META-INF/NGLRELAY.SF","META-INF/NGLRELAY.RSA","META-INF/MANIFEST.MF"],
+  "dex_counts": {"strings":986,"types":180,"protos":232,"fields":205,"methods":589,"classes":71},
+  "member_inventory": "dex-member-inventory.txt.gz"
+}
