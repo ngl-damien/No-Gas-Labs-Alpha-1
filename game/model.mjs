@@ -10,12 +10,13 @@ const date=now=>new Date(now??Date.now()).toISOString();
 function text(value,max,label,{empty=false}={}){if(typeof value!=='string'||(!empty&&!value.trim()))fail('INVALID_INPUT',`${label} is required.`);if(Array.from(value).length>max)fail('TOO_LARGE',`${label} exceeds ${max} characters.`,413);return value.trim();}
 function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['founder','witness'].includes(actor.role))fail('INVALID_ACTOR','A valid actor is required.',403);return {id:actor.id,name:text(actor.name||'Witness',80,'Name'),role:actor.role};}
 async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
-function event(world,type,actor,at,detail={}){world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
+function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
-export async function applyAction(original,action,actor,{now}={}) {
+export async function applyAction(original,action,actor,{now,requestId,actionFingerprint}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
-  const world=clone(original),at=date(now);let result={};
+  if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
+  const world=clone(original),at=date(now);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
   switch(action.type){
     case 'draft':{
@@ -27,7 +28,7 @@ export async function applyAction(original,action,actor,{now}={}) {
       if(encoder.encode(action.html||'').length>131072)fail('TOO_LARGE','Custom HTML exceeds 128 KiB.',413);
       const built=createArtifact({kind:action.kind,title,intent,html:action.html});
       const draft={id:uid('draft'),creationId:null,baseVersion:0,kind:action.kind,title,intent,html:built.html,receipt:await receipt(built.html),version:1,position:clone(slots[world.creations.length]),checks:built.checks,createdAt:at};
-      world.drafts.push(draft);result={draftId:draft.id};event(world,'draft',who,at,{draftId:draft.id});break;
+      world.drafts.push(draft);result={draftId:draft.id};recordEvent('draft',{draftId:draft.id});break;
     }
     case 'publish':{
       const index=world.drafts.findIndex(d=>d.id===action.draftId);if(index<0)fail('STALE_DRAFT','That draft is no longer available.',409);
@@ -42,7 +43,7 @@ export async function applyAction(original,action,actor,{now}={}) {
       if(existing)world.creations[world.creations.indexOf(existing)]=published;else world.creations.push(published);
       world.drafts.splice(index,1);world.xp+=100;
       if(existing)world.methods.push({id:uid('method'),creationId:id,version:published.version,title:`Repair ${published.title} · v${published.version}`,description:published.intent||'Publish a checked revision while preserving the prior version and its exact bytes.',actor:who,at,semantics:'Earned game method: a retained, checked repair; no external truth or authority claim.'});
-      result={creationId:id,version:published.version};event(world,'publish',who,at,{creationId:id,version:published.version,reward:100});break;
+      result={creationId:id,version:published.version};recordEvent('publish',{creationId:id,version:published.version,reward:100});break;
     }
     case 'repair':{
       const c=creation();if(action.expectedVersion!==c.version)fail('STALE_VERSION','Repair the current published version.',409);
@@ -53,16 +54,16 @@ export async function applyAction(original,action,actor,{now}={}) {
       const built=createArtifact({kind:c.kind,title:c.title,intent,html:action.html??(c.kind==='custom'?undefined:'') ,version:c.version+1});
       // A custom repair preserves the existing portable document until an explicitly supplied replacement is drafted.
       const html=c.kind==='custom'&&action.html===undefined?c.html:built.html;
-      const draft={id:uid('draft'),creationId:c.id,baseVersion:c.version,kind:c.kind,title:c.title,intent,html,receipt:await receipt(html),version:c.version+1,position:clone(c.position),checks:built.checks,createdAt:at};world.drafts.push(draft);result={draftId:draft.id};event(world,'repair',who,at,{creationId:c.id,draftId:draft.id,baseVersion:c.version});break;
+      const draft={id:uid('draft'),creationId:c.id,baseVersion:c.version,kind:c.kind,title:c.title,intent,html,receipt:await receipt(html),version:c.version+1,position:clone(c.position),checks:built.checks,createdAt:at};world.drafts.push(draft);result={draftId:draft.id};recordEvent('repair',{creationId:c.id,draftId:draft.id,baseVersion:c.version});break;
     }
     case 'contribute':case 'report':{
       const c=creation();if(!Number.isInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a published version.');
-      const isReport=action.type==='report';const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};world[isReport?'reports':'contributions'].push(entry);event(world,action.type,who,at,{creationId:c.id,version:action.version});result={id:entry.id};break;
+      const isReport=action.type==='report';const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};world[isReport?'reports':'contributions'].push(entry);result={id:entry.id};recordEvent(action.type,{creationId:c.id,version:action.version});break;
     }
     case 'discover':{
       if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
-      if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId))return {world:original,result:{discovered:false}};
-      const d={id:uid('discovery'),locationId:action.locationId,actor:who,at};world.discoveries.push(d);event(world,'discover',who,at,{locationId:action.locationId});result={discovered:true};break;
+      if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId)){result={discovered:false};recordEvent('discover',{locationId:action.locationId,repeat:true});break;}
+      const d={id:uid('discovery'),locationId:action.locationId,actor:who,at};world.discoveries.push(d);result={discovered:true};recordEvent('discover',{locationId:action.locationId});break;
     }
     default:fail('INVALID_ACTION','Unknown world action.');
   }
@@ -75,7 +76,7 @@ export async function validateWorld(raw) {
   if(!raw||raw.schema!=='ngl.world.v2'||typeof raw.id!=='string'||typeof raw.founderName!=='string'||!Number.isInteger(raw.revision)||raw.revision<0)invalid('Unsupported or malformed world.');
   for(const key of ['creations','drafts','events','contributions','reports','discoveries','methods'])if(!Array.isArray(raw[key]))invalid(`Missing ${key}.`);
   if(raw.creations.length>12||raw.drafts.length>24||!Number.isFinite(Date.parse(raw.createdAt))||!Number.isFinite(Date.parse(raw.updatedAt)))invalid('Invalid world bounds.');
-  const ids=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
+  const ids=new Set(),requestIds=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
   const checkArtifact=async a=>{
     if(!a||!kinds.has(a.kind)||typeof a.title!=='string'||Array.from(a.title).length>80||typeof a.intent!=='string'||Array.from(a.intent).length>2000||typeof a.html!=='string'||encoder.encode(a.html).length>4*1024*1024||!Number.isInteger(a.version)||a.version<1||!a.position||!Number.isFinite(a.position.x)||!Number.isFinite(a.position.y)||a.position.x<80||a.position.x>1520||a.position.y<80||a.position.y>920||!Array.isArray(a.checks)||!a.checks.length||a.checks.some(c=>typeof c.id!=='string'||c.passed!==true))invalid('Malformed creation.');
     const exact=await receipt(a.html);if(a.receipt?.algorithm!=='sha256'||a.receipt.digest!==exact.digest||a.receipt.size!==exact.size)fail('INVALID_RECEIPT','Artifact bytes do not match their receipt.');
@@ -83,7 +84,7 @@ export async function validateWorld(raw) {
   for(const c of raw.creations){unique(c.id);await checkArtifact(c);if(!Array.isArray(c.versions)||c.versions.length!==c.version-1)invalid('Incomplete version history.');for(let i=0;i<c.versions.length;i++){const v=c.versions[i];if(v.id!==c.id||v.version!==i+1||v.versions!==undefined)invalid('Invalid flat version history.');await checkArtifact(v)}}
   for(const d of raw.drafts){unique(d.id);await checkArtifact(d);if(!Number.isInteger(d.baseVersion)||d.baseVersion<0||d.version!==d.baseVersion+1)invalid('Invalid draft base.');if(d.creationId&&!raw.creations.some(c=>c.id===d.creationId))invalid('Orphan draft.');}
   if(raw.xp!==raw.creations.reduce((sum,c)=>sum+c.version*100,0))invalid('Game rewards do not match published versions.');
-  for(const e of raw.events){unique(e.id);actorFor(e.actor);if(typeof e.type!=='string'||!Number.isFinite(Date.parse(e.at))||typeof e.semantics!=='string')invalid('Malformed event.');}
+  for(const e of raw.events){unique(e.id);actorFor(e.actor);if(typeof e.type!=='string'||!Number.isFinite(Date.parse(e.at))||typeof e.semantics!=='string')invalid('Malformed event.');if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',discover:'discovered'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&d.at<=e.at))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!Number.isFinite(Date.parse(method.at)))invalid('Invalid earned game method.');}
