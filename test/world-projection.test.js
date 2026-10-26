@@ -106,6 +106,33 @@ test("a seen event ID without retained bytes cannot serve as a parent", () => {
   );
 });
 
+test("accessor or hidden parent metadata cannot evade event signing", () => {
+  const accessor = { ...observed, event_id: "accessor-parent" };
+  Object.defineProperty(accessor, "parents", {
+    enumerable: true,
+    get() { throw new Error("must not execute event accessor"); }
+  });
+  assert.throws(
+    () => projectWorld([accessor], undefined, { resolveArtifact, verifyObservation, verifyAuthorization }),
+    /parent metadata must be an enumerable data property/
+  );
+
+  const hidden = { ...observed, event_id: "hidden-parent" };
+  Object.defineProperty(hidden, "parents", { value: ["e1"], enumerable: false });
+  assert.throws(
+    () => projectWorld([hidden], undefined, { resolveArtifact, verifyObservation, verifyAuthorization }),
+    /parent metadata must be an enumerable data property/
+  );
+
+  const decorated = ["e1"];
+  decorated.extra = "not part of the signed parent list";
+  assert.throws(
+    () => projectWorld([{ ...observed, event_id: "decorated-parent", parents: decorated }], undefined,
+      { resolveArtifact, verifyObservation, verifyAuthorization }),
+    /invalid parents/
+  );
+});
+
 test("malformed receipt references cannot award progress", () => {
   const malformed = { ...observed, event_id: "e6", receipts: [""] };
   const s = projectWorld([malformed], undefined, { resolveArtifact, verifyObservation, verifyAuthorization });
