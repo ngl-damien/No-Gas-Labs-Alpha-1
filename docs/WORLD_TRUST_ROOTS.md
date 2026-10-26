@@ -4,13 +4,16 @@ This adapter binds the world projection's existing host callbacks to three separ
 
 ## Required host configuration
 
-`createWorldTrustFromEnv()` requires all nine values:
+`createWorldTrustFromEnv()` requires all ten values:
 
 - `NGL_OBSERVER_PUBLIC_KEY_PEM`, `NGL_OBSERVER_KEY_SHA256`, `NGL_OBSERVER_ID`
 - `NGL_AUTHORIZER_PUBLIC_KEY_PEM`, `NGL_AUTHORIZER_KEY_SHA256`, `NGL_AUTHORIZER_ID`
 - `NGL_ADJUDICATOR_PUBLIC_KEY_PEM`, `NGL_ADJUDICATOR_KEY_SHA256`, `NGL_ADJUDICATOR_ID`
+- `NGL_WORLD_TRUST_AUDIENCE` — a stable, host-controlled identifier unique to this world/institution context
 
-Fingerprints are SHA-256 of DER SubjectPublicKeyInfo and must be pinned through a channel separate from the incoming event. The module rejects missing configuration, non-Ed25519 keys, fingerprint mismatch, reused fingerprints, and reused role identities. It never generates production keys or trusts a fingerprint supplied by an event.
+All three role roots must use the same configured audience. Do not reuse the audience across separate institutions, tenants, or environments. Each incoming event must carry that exact `audience` value; it is part of the canonical signed payload. A valid signature created for another audience is rejected even if the same key is accidentally trusted in both contexts.
+
+Fingerprints are SHA-256 of DER SubjectPublicKeyInfo and must be pinned through a channel separate from the incoming event. The module rejects missing configuration, non-Ed25519 keys, fingerprint mismatch, reused fingerprints, reused role identities, and inconsistent audiences. It never generates production keys or trusts a fingerprint supplied by an event.
 
 ## Signed event format
 
