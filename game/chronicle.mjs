@@ -18,15 +18,89 @@ const eventTime = value => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+function denseDataArray(value) {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    const length = lengthDescriptor?.value;
+    if (!Number.isSafeInteger(length) || length < 0) return false;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== length + 1) return false;
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) return false;
+    }
+    return keys.every(key => key === "length" ||
+      (typeof key === "string" && /^(0|[1-9]\\d*)$/.test(key) && Number(key) < length));
+  } catch {
+    return false;
+  }
+}
+
+function snapshotPlainData(value, active = new Set()) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("Non-finite event value");
+    return value;
+  }
+  if (typeof value !== "object" || active.has(value)) throw new TypeError("Unsupported event value");
+  active.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (!denseDataArray(value)) throw new TypeError("Malformed event array");
+      const length = Object.getOwnPropertyDescriptor(value, "length").value;
+      const copy = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        copy.push(snapshotPlainData(descriptor.value, active));
+      }
+      return copy;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new TypeError("Non-plain event object");
+    const copy = Object.create(null);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") throw new TypeError("Symbol event key");
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) {
+        throw new TypeError("Hidden or accessor event property");
+      }
+      Object.defineProperty(copy, key, {
+        value: snapshotPlainData(descriptor.value, active),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return copy;
+  } finally {
+    active.delete(value);
+  }
+}
+
+function safeEventSnapshot(event) {
+  try {
+    const snapshot = snapshotPlainData(event);
+    return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
 function retainedEventCollection(owner, key) {
   const descriptor = owner && typeof owner === "object"
     ? Object.getOwnPropertyDescriptor(owner, key)
     : undefined;
   if (!descriptor) return { present: false, valid: true, value: [] };
-  if (!Object.hasOwn(descriptor, "value") || !Array.isArray(descriptor.value)) {
+  if (!Object.hasOwn(descriptor, "value") || !denseDataArray(descriptor.value)) {
     return { present: true, valid: false, value: [] };
   }
-  return { present: true, valid: true, value: descriptor.value };
+  const length = Object.getOwnPropertyDescriptor(descriptor.value, "length").value;
+  const snapshot = [];
+  for (let index = 0; index < length; index += 1) {
+    snapshot.push(Object.getOwnPropertyDescriptor(descriptor.value, String(index)).value);
+  }
+  return { present: true, valid: true, value: snapshot };
 }
 
 function malformedCollectionEntry(source) {
@@ -46,6 +120,26 @@ function malformedCollectionEntry(source) {
     targetTitle: "",
     targetAvailable: false,
     warning: "Malformed retained event collection; inspect the source store before adjudicating it.",
+  };
+}
+
+function malformedEventEntry(source, index) {
+  const institutional = source === "kernel";
+  return {
+    id: `${source}:unclassified-${index}`,
+    source,
+    eventType: "unknown",
+    at: "",
+    actor: "unknown actor",
+    title: institutional ? "Unclassified institutional event" : "Unclassified retained world event",
+    category: institutional ? "INSTITUTIONAL WORK" : "WORLD ACTIVITY",
+    summary: "A malformed event payload is present; no claim or consequence is inferred.",
+    detail: "",
+    creationId: "",
+    version: null,
+    targetTitle: "",
+    targetAvailable: false,
+    warning: "Malformed retained event payload; accessor, hidden, sparse, or non-JSON data was rejected without reading it.",
   };
 }
 
@@ -221,32 +315,20 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const kernelEvents = kernelCollection.value;
 
   for (let index = 0; index < worldEvents.length; index += 1) {
-    const event = worldEvents[index];
-    if (!event || typeof event !== "object" || Array.isArray(event)) {
+    const event = safeEventSnapshot(worldEvents[index]);
+    if (!event) {
       malformed += 1;
-      entries.push({
-        id: `world:unclassified-${index}`, source: "world", eventType: "unknown",
-        at: "", actor: "unknown actor", title: "Unclassified retained world event",
-        category: "WORLD ACTIVITY", summary: "A malformed event slot is present; no claim or consequence is inferred.",
-        detail: "", creationId: "", version: null, targetTitle: "", targetAvailable: false,
-        warning: "Malformed retained event payload; inspect the source store before adjudicating it.",
-      });
+      entries.push(malformedEventEntry("world", index));
       continue;
     }
     entries.push(worldEntry(event, index, world, notes));
   }
 
   for (let index = 0; index < kernelEvents.length; index += 1) {
-    const event = kernelEvents[index];
-    if (!event || typeof event !== "object" || Array.isArray(event)) {
+    const event = safeEventSnapshot(kernelEvents[index]);
+    if (!event) {
       malformed += 1;
-      entries.push({
-        id: `kernel:unclassified-${index}`, source: "kernel", eventType: "unknown",
-        at: "", actor: "unknown actor", title: "Unclassified institutional event",
-        category: "INSTITUTIONAL WORK", summary: "A malformed event slot is present; no claim or consequence is inferred.",
-        detail: "", creationId: "", version: null, targetTitle: "", targetAvailable: false,
-        warning: "Malformed retained event payload; inspect the source store before adjudicating it.",
-      });
+      entries.push(malformedEventEntry("kernel", index));
       continue;
     }
     entries.push(kernelEntry(event, index, kernel, world));
