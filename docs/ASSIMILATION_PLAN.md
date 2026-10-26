@@ -34,12 +34,18 @@ No repository is considered assimilated merely because its name, README, manifes
 
 ## Existing snapshot reconciliation
 
-The current Alpha One tree contains `recovery/public-repos/` snapshots. Initial tree/blob comparison found:
-- `ngl001-def4us28`: 29 of 30 tree entries correspond (directories included); at file level, 20 of 24 source blobs match exactly. Four files differ or are missing, including a 4.56 MB source `src/App.jsx` whose Alpha One snapshot is an empty file.
-- `no-gas-labs-command-center`: 119 paths correspond; 117 blobs match exactly out of 124 source paths.
-- `TaskAgile`: 79 paths correspond; 74 blobs match exactly out of 202 source paths.
+The following counts were refreshed by comparing Git tree blob SHAs from the current source `main` branches with the corresponding files in Alpha One's `recovery/public-repos/` snapshots. These are source-to-snapshot identity checks, not build or runtime tests.
 
-These are path/blob comparisons, not runtime tests. Every non-matching path must be classified as added, deleted, renamed, modified, or intentionally excluded. Do not overwrite active Alpha One files with snapshots without review.
+| Source | Source blobs | Snapshot files | Exact source blobs present | Source files absent from snapshot | Same-path blobs differing | Notable findings |
+|---|---:|---:|---:|---:|---:|---|
+| `no-gas-labs` | 13 | 14 | 13 | 0 | 0 | All 13 source blobs match exactly; snapshot has one extra `RECOVERY.md`. |
+| `ngl001-def4us28` | 24 | 23 | 20 | 1 | 3 | `src/App.jsx` is 4,563,284 bytes at source and 0 bytes in snapshot; `src/assets/hero.png` is absent. `contact/ledger.jsonl` and `contact/state.json` also differ. |
+| `no-gas-labs-command-center` | 108 | 104 | 104 | 4 | 0 | Missing `client/public/images/ai-avatar.jpg`, `capabilities-grid.jpg`, `hero-bg.jpg`, and `security-shield.jpg`. |
+| `TaskAgile` | 169 | 66 | 66 | 103 | 0 | Snapshot is a strict partial copy; absent paths include UI components, geometry, sound, and texture assets. |
+
+Earlier draft text contained inconsistent TaskAgile and Command Center path counts; the table above supersedes those counts. Tree-entry totals may include directories and must not be compared directly with blob/file totals.
+
+Next reconciliation rule: classify every absent or differing path as required import, intentionally excluded, duplicate/obsolete, sensitive, license-blocked, or superseded. Do not overwrite active Alpha One files without review.
 
 ## Architecture and integration boundaries
 
