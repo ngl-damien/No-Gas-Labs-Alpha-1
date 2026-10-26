@@ -12,7 +12,7 @@
 
 The original `recovery/public-repos/ngl001-def4us28/src/App.jsx` snapshot path is an empty blob, not the real application source. The exact source blob was successfully retrieved and inspected, but the connected GitHub write operation rejected the 4.56 MB content payload; no truncated replacement was written. The file-level ledger records this as `SOURCE_BLOB_VERIFIED_TARGET_EMPTY_WRITE_BLOCKED`.
 
-Two other snapshot files, `contact/ledger.jsonl` and `contact/state.json`, differ from source. They are operational state/receipt material and remain unmerged pending semantic and sensitivity review. The source license and build/runtime compatibility have not been verified here.
+The source `contact/ledger.jsonl` (128 observations) and `contact/state.json` were verified as a consistent pair: the earlier 22-record snapshot was an exact prefix of the 128-record source ledger, and each state file's `last_event_hash` matched the last record present in its corresponding snapshot. Both files have now been restored byte-for-byte from the source and their target blob SHAs recorded in the reconciliation ledger. The source repository and Alpha One are public; this import adds no new privacy boundary, but the ledger remains source data rather than an independently verified truth record. The source license and build/runtime compatibility have not been verified here.
 
 ## Evidence boundary
 
