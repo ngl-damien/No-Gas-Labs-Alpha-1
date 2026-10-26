@@ -273,6 +273,63 @@ test('the host CSP permits authored srcdoc instrument scripts while its iframe r
   assert.ok(sandbox?.includes('allow-scripts')); assert.ok(!sandbox?.includes('allow-same-origin'));
 });
 
+test('Witness request recovery survives service restart without restoring Founder authority from a cookie', async t => {
+  const f = await fixture(t);
+  const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Witness restart receipt target');
+  const creation = published.world.creations[0];
+  const witness = f.client();
+  const initial = await witness.request('/api/state');
+  assert.equal(initial.body.viewer.role, 'witness');
+  const witnessId = initial.body.viewer.id;
+  const witnessToken = witness.cookie.slice('ngl_session='.length);
+  assert.ok(witnessId.startsWith('witness-'));
+  assert.notEqual(witnessId, witnessToken);
+
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'Retry this exact report after restart.' };
+  const requestId = 'restart-witness-report-001';
+  const first = await witness.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const reportId = first.body.result.id;
+  assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
+  assert.equal(JSON.stringify(first.body.world.events).includes(witnessToken), false, 'raw session bearer token must not enter public event history');
+
+  const witnessCookie = witness.cookie, founderCookie = founder.cookie;
+  await f.closeGame();
+  const reopened = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => reopened.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${reopened.address().port}`;
+    async function request(path, body, cookie) {
+      const headers = { ...(cookie ? { cookie } : {}) };
+      if (body !== undefined) { headers['content-type'] = 'application/json'; headers.origin = url; }
+      const response = await fetch(url + path, { method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const nextCookie = response.headers.get('set-cookie')?.split(';')[0] || cookie;
+      return { response, body: await response.json(), cookie: nextCookie };
+    }
+
+    const restoredWitness = await request('/api/state', undefined, witnessCookie);
+    assert.equal(restoredWitness.body.viewer.role, 'witness');
+    assert.equal(restoredWitness.body.viewer.id, witnessId, 'surviving witness cookie must recover the same pseudonymous actor');
+    const replay = await request('/api/action', { ...action, requestId }, restoredWitness.cookie);
+    assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+    assert.equal(replay.body.idempotentReplay, true);
+    assert.equal(replay.body.result.id, reportId);
+    assert.equal(replay.body.world.reports.filter(report => report.text === action.text).length, 1);
+
+    const staleFounder = await request('/api/state', undefined, founderCookie);
+    assert.equal(staleFounder.body.viewer.role, 'witness', 'a pre-restart Founder cookie must be demoted');
+    assert.notEqual(staleFounder.body.viewer.id, 'damien');
+    const denied = await request('/api/action', { type: 'draft', kind: 'custom', title: 'Must not publish', intent: 'Stale cookie is not authority' }, staleFounder.cookie);
+    assert.equal(denied.response.status, 403);
+    const reauthenticated = await request('/api/login', { key: KEY, name: 'Damien' }, staleFounder.cookie);
+    assert.equal(reauthenticated.response.status, 200);
+    assert.equal(reauthenticated.body.viewer.role, 'founder');
+  } finally {
+    await reopened.closeGame();
+  }
+});
+
 test('shared action request IDs replay the original result across lost responses and service restart', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const published = await publish(founder, 'Idempotent report target');
