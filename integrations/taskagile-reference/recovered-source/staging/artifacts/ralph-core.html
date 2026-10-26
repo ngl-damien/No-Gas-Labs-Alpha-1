@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ralph Loop - Core HTML</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f1a;
+      --panel: #141a2b;
+      --accent: #3cffb5;
+      --accent-2: #47a3ff;
+      --text: #e9f2ff;
+      --muted: #9ab0cc;
+      --danger: #ff6b6b;
+      --radius: 16px;
+      --tap-min: 44px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #10182a, var(--bg));
+      color: var(--text);
+      font-family: "Inter", system-ui, sans-serif;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    main {
+      width: min(100%, 960px);
+      margin: 0 auto;
+      padding: 24px 18px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid rgba(71, 163, 255, 0.2);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid rgba(60, 255, 181, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .stat strong {
+      font-size: 1.2rem;
+      color: var(--accent);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    button {
+      min-height: var(--tap-min);
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #0b141f;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 12px 14px;
+      touch-action: manipulation;
+    }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid rgba(71, 163, 255, 0.6);
+      color: var(--text);
+    }
+
+    button.danger {
+      background: var(--danger);
+      color: #1d0b0b;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--accent-2);
+      outline-offset: 2px;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px 14px;
+      border-radius: 12px;
+    }
+
+    .list-item small {
+      color: var(--muted);
+    }
+
+    .log {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 12px 14px;
+      min-height: 120px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding-top: 8px;
+    }
+
+    @media (max-width: 600px) {
+      main {
+        padding: 18px 14px 28px;
+      }
+
+      header {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Ralph Loop • Core HTML Structure</h1>
+      <p>Mobile-first layout with 44px+ tap targets, ready for local-only logic, data persistence, and offline play.</p>
+      <div class="actions" aria-label="Primary actions">
+        <button type="button" id="start-run">Start Loop</button>
+        <button type="button" class="secondary" id="save-run">Save Snapshot</button>
+        <button type="button" class="danger" id="reset-run">Reset Run</button>
+      </div>
+    </header>
+
+    <section class="grid" aria-label="Key stats">
+      <div class="card">
+        <h2>Loop Status</h2>
+        <div class="stat">
+          <span>Current Cycle</span>
+          <strong id="cycle-count">01</strong>
+        </div>
+        <div class="stat">
+          <span>Momentum</span>
+          <strong id="momentum">+0</strong>
+        </div>
+        <div class="stat">
+          <span>XP</span>
+          <strong id="xp">0</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Fighter Roster</h2>
+        <div class="list" id="fighter-list">
+          <div class="list-item">
+            <div>
+              <strong>Sentinel</strong><br />
+              <small>Defender</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+          <div class="list-item">
+            <div>
+              <strong>Echo</strong><br />
+              <small>Scout</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+          <div class="list-item">
+            <div>
+              <strong>Forge</strong><br />
+              <small>Striker</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Combat Console</h2>
+        <div class="log" id="combat-log" aria-live="polite">
+          <div>Awaiting command...</div>
+        </div>
+        <div class="actions" aria-label="Combat actions">
+          <button type="button" class="secondary" id="simulate-turn">Simulate Turn</button>
+          <button type="button" id="train-team">Train Fighters</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="System notes">
+      <h3>System Readiness</h3>
+      <div class="list">
+        <div class="list-item">
+          <span>Offline-ready UI shell</span>
+          <strong>Ready</strong>
+        </div>
+        <div class="list-item">
+          <span>Tap targets 44px+</span>
+          <strong>Ready</strong>
+        </div>
+        <div class="list-item">
+          <span>Local storage hooks</span>
+          <strong>Pending</strong>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Inline CSS + JS scaffold. No external dependencies or network calls.
+    </footer>
+  </main>
+
+  <script>
+    const cycleCount = document.getElementById("cycle-count");
+    const momentum = document.getElementById("momentum");
+    const xp = document.getElementById("xp");
+    const combatLog = document.getElementById("combat-log");
+
+    let cycle = 1;
+    let momentumValue = 0;
+    let xpValue = 0;
+
+    const log = (message) => {
+      const entry = document.createElement("div");
+      entry.textContent = message;
+      combatLog.prepend(entry);
+    };
+
+    document.getElementById("start-run").addEventListener("click", () => {
+      cycle += 1;
+      cycleCount.textContent = String(cycle).padStart(2, "0");
+      log(`Loop ${cycle} initiated.`);
+    });
+
+    document.getElementById("save-run").addEventListener("click", () => {
+      log("Snapshot captured (placeholder)." );
+    });
+
+    document.getElementById("reset-run").addEventListener("click", () => {
+      cycle = 1;
+      momentumValue = 0;
+      xpValue = 0;
+      cycleCount.textContent = "01";
+      momentum.textContent = "+0";
+      xp.textContent = "0";
+      log("Run reset. Systems idle.");
+    });
+
+    document.getElementById("simulate-turn").addEventListener("click", () => {
+      momentumValue += 2;
+      xpValue += 5;
+      momentum.textContent = `+${momentumValue}`;
+      xp.textContent = xpValue;
+      log("Simulated combat turn: momentum +2, XP +5.");
+    });
+
+    document.getElementById("train-team").addEventListener("click", () => {
+      xpValue += 10;
+      xp.textContent = xpValue;
+      log("Training complete: team XP boosted.");
+    });
+  </script>
+</body>
+</html>
