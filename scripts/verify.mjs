@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -8,8 +8,18 @@ import { performance } from 'node:perf_hooks';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const exec = promisify(execFile);
 const started = performance.now();
-await mkdir(join(ROOT, '.runtime'), { recursive: true });
-const out = await mkdtemp(join(ROOT, '.runtime/verification-'));
+const runtimeRoot = join(ROOT, '.runtime');
+await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
+let runtimeInfo = await lstat(runtimeRoot);
+if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory()) {
+  throw new Error('Verification runtime must be a regular, non-symlink directory');
+}
+if ((runtimeInfo.mode & 0o077) !== 0) await chmod(runtimeRoot, 0o700);
+runtimeInfo = await lstat(runtimeRoot);
+if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory() || (runtimeInfo.mode & 0o077) !== 0) {
+  throw new Error('Verification runtime must exclude group and other access');
+}
+const out = await mkdtemp(join(runtimeRoot, 'verification-'));
 const stages = [];
 
 for (const [name, bin, args, cwd] of [
