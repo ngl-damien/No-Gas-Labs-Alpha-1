@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, open, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, open, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -48,7 +48,6 @@ test('a post-rename directory-sync failure is explicit and blocks later writes u
   await assert.rejects(store.commit({ revision: 1 }), error =>
     error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
   );
-  // The in-memory state is not promoted after an uncertain commit.
   assert.deepEqual(store.value, { revision: 0 });
   await assert.rejects(store.commit({ revision: 2 }), error =>
     error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
@@ -63,4 +62,27 @@ test('a post-rename directory-sync failure is explicit and blocks later writes u
   const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   assert.deepEqual(reopened.value, { revision: 1 });
   await reopened.close();
+});
+
+test('service-store rejects symlinked and group/world-accessible data directories before locking', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-service-store-dir-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const target = join(root, 'target');
+  await mkdir(target, { mode: 0o700 });
+  const linked = join(root, 'linked');
+  await symlink(target, linked, 'dir');
+  await assert.rejects(
+    createServiceStore({ dataDir: linked, initial: { revision: 0 }, validate }),
+    /regular, non-symlink directory/
+  );
+
+  const exposed = join(root, 'exposed');
+  await mkdir(exposed, { mode: 0o700 });
+  await chmod(exposed, 0o755);
+  await assert.rejects(
+    createServiceStore({ dataDir: exposed, initial: { revision: 0 }, validate }),
+    /permissions must exclude group and other access/
+  );
+  await assert.rejects(readFile(join(exposed, '.service.lock')), { code: 'ENOENT' });
 });
