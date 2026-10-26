@@ -1,4 +1,5 @@
 import test from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, rename, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -409,4 +410,41 @@ test('public catalog, institution summary, and retained artifacts do not allocat
   assert.equal(artifact.headers.get('set-cookie'), null, 'public artifact reads must not mint a session');
   assert.match(artifact.headers.get('content-security-policy') || '', /sandbox allow-scripts/);
   await artifact.text();
+});
+
+
+test('event-stream capacity rejection happens before a new session is allocated', async t => {
+  const f = await fixture(t);
+  const agent = new http.Agent({ keepAlive: false, maxSockets: 140 });
+  const active = [];
+  function openStream() {
+    return new Promise((resolve, reject) => {
+      let request;
+      request = http.get(f.url + '/api/events', { agent }, response => {
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          response,
+          close() { response.destroy(); request.destroy(); }
+        });
+      });
+      request.on('error', reject);
+    });
+  }
+
+  try {
+    for (let i = 0; i < 128; i++) {
+      const stream = await openStream();
+      assert.equal(stream.status, 200, 'each slot below the cap should be accepted');
+      active.push(stream);
+    }
+    const overflow = await openStream();
+    assert.equal(overflow.status, 429);
+    assert.equal(overflow.headers['set-cookie'], undefined, 'rejected stream must not allocate a session cookie');
+    overflow.response.resume();
+    await once(overflow.response, 'end');
+  } finally {
+    for (const stream of active) stream.close();
+    agent.destroy();
+  }
 });
