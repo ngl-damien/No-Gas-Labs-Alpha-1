@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, unlink, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -25,7 +25,9 @@ async function temp(t) {
 }
 async function replaceLockWithIdenticalBytes(path) {
   const original = await readFile(path);
-  await unlink(path);
+  // Keep the original inode alive under another name so the replacement
+  // cannot accidentally receive the same inode number on immediate reuse.
+  await rename(path, path + '.displaced');
   await writeFile(path, original, { mode: 0o600 });
   return original;
 }
