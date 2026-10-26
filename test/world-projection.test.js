@@ -275,3 +275,20 @@ test("deeply nested event payloads fail closed before recursive validation exhau
     assert.throws(() => projectWorld([event], undefined, trusted), /maximum nesting depth/);
   }
 });
+
+
+test("unsafe XP and inventory quantities fail closed instead of producing non-canonical state", () => {
+  const hugeXp = { ...observed, event_id: "e17", world_effect: { xp: Number.MAX_VALUE } };
+  assert.throws(() => projectWorld([hugeXp], undefined, trusted), /invalid XP world effect/);
+
+  const fractionalInventory = {
+    ...observed, event_id: "e17", world_effect: { inventory: { verified_shard: 0.5 } }
+  };
+  assert.throws(() => projectWorld([fractionalInventory], undefined, trusted), /invalid inventory world effect amount/);
+
+  const overflow = [
+    { ...observed, event_id: "e2", world_effect: { xp: Number.MAX_SAFE_INTEGER } },
+    { ...observed, event_id: "e17", parents: ["e2"], world_effect: { xp: 1 } }
+  ];
+  assert.throws(() => projectWorld(overflow, undefined, trusted), /XP world effect exceeds safe integer range/);
+});
