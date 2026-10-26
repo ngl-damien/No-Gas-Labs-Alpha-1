@@ -257,3 +257,21 @@ test("public trust helpers reject accessor-bearing events without invoking gette
   assert.equal(getterCalls, 0);
   assert.equal(verifierCalls, 0);
 });
+
+
+test("deeply nested event payloads fail closed before recursive validation exhausts the stack", () => {
+  for (const [label, wrap] of [
+    ["object", value => ({ child: value })],
+    ["array", value => [value]]
+  ]) {
+    let nested = "leaf";
+    for (let depth = 0; depth < 160; depth += 1) nested = wrap(nested);
+    const event = {
+      event_id: "deep-" + label,
+      event_type: "CLAIM",
+      subject: "deep-payload",
+      world_effect: nested
+    };
+    assert.throws(() => projectWorld([event], undefined, trusted), /maximum nesting depth/);
+  }
+});
