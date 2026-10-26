@@ -180,13 +180,15 @@ def shared(browser,url,data,out):
         b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
         visit(b,'The shared observatory');b.locator('#enter-creation').click()
         frame=b.frame_locator('#artifact-frame')
-        # srcdoc inputs can appear before the inline artifact script has attached handlers.
-        # Wait for its initial rendered receipt before exercising the form.
+        # The artifact advertises readiness only after its inline recipe script has
+        # attached handlers and rendered the initial receipt.
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
         expect(frame.locator('#sources article')).to_have_count(1)
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
         frame.locator('#uncertainty').fill('A note is not a verdict.')
         frame.locator('#add-source').click()
+        expect(frame.locator('#status')).to_have_text('Observation added to this open artifact. Download to keep these notes.')
         expect(frame.locator('#sources article')).to_have_count(2)
         assert frame.locator('#sources b').count()==0
         with b.expect_download() as downloaded:frame.locator('#download').click()
