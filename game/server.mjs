@@ -381,33 +381,49 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session;
       if (request.method === 'GET') {
-        // Resolve the route before creating a session. Unknown paths must not
-        // consume one of the bounded live-session slots or receive a cookie.
-        const knownArtifact = /^\/api\/artifacts\/(creation-[a-zA-Z0-9-]+)$/.test(path);
-        if (!['/api/projects', '/api/decisions', '/api/state', '/api/export', '/api/institution', '/api/events'].includes(path) && !knownArtifact) {
-          fail('NOT_FOUND', 'Not found.', 404);
-        }
-        session = sessionFor(request, response);
-        if(path==='/api/projects')return json(response,200,projects);
-        if(path==='/api/decisions')return json(response,200,await decisions.snapshot({id:session.actor.id,role:session.actor.role}));
-        if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
+        const artifactPrefix = '/api/artifacts/';
+        const artifactCandidate = path.startsWith(artifactPrefix) ? path.slice(artifactPrefix.length) : '';
+        const artifactId = /^creation-[a-zA-Z0-9-]+$/.test(artifactCandidate) ? artifactCandidate : null;
+        const knownRoute = ['/api/projects', '/api/decisions', '/api/state', '/api/export', '/api/institution', '/api/events'].includes(path) || artifactId !== null;
+        if (!knownRoute) fail('NOT_FOUND', 'Not found.', 404);
+
+        // These reads expose only public data and do not need an actor. Do not
+        // mint sessions for catalog, capability-summary, or retained artifact reads.
+        if (path === '/api/projects') return json(response, 200, projects);
         if (path === '/api/institution') return json(response, 200, institution());
-        if (path === '/api/events') {
-          if (streams.size >= 128) fail('STREAM_LIMIT', 'Too many active streams.', 429);
-          response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' }); response.flushHeaders();
-          const stream = { response, session }; streams.add(stream); sendEvent(stream, 'world', dto(session));
-          const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\n\n'); }, 20000); heartbeat.unref();
-          response.on('close', () => { clearInterval(heartbeat); streams.delete(stream); if (![...streams].some(other => other.session === session) && presence.delete(session.token)) broadcastPresence(); }); return;
-        }
-        const match = /^\/api\/artifacts\/(creation-[a-zA-Z0-9-]+)$/.exec(path);
-        if (match) {
-          const creation = store.value.world.creations.find(item => item.id === match[1]);
+        if (artifactId !== null) {
+          const creation = store.value.world.creations.find(item => item.id === artifactId);
           const versionText = url.searchParams.get('version');
-          if (versionText !== null && !/^[1-9]\d*$/.test(versionText)) fail('INVALID_VERSION', 'Invalid artifact version.');
+          if (versionText !== null && !/^[1-9]\\d*$/.test(versionText)) fail('INVALID_VERSION', 'Invalid artifact version.');
           const version = versionText === null ? creation?.version : Number(versionText);
           const artifact = creation && (creation.version === version ? creation : creation.versions.find(item => item.version === version));
           if (!artifact) fail('NOT_FOUND', 'Published artifact not found.', 404);
-          response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': ARTIFACT_CSP, 'x-artifact-sha256': artifact.receipt.digest }); response.end(artifact.html); return;
+          response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': ARTIFACT_CSP, 'x-artifact-sha256': artifact.receipt.digest });
+          response.end(artifact.html);
+          return;
+        }
+
+        // Check stream capacity before sessionFor can allocate a new cookie/session.
+        if (path === '/api/events' && streams.size >= 128) {
+          fail('STREAM_LIMIT', 'Too many active streams.', 429);
+        }
+        session = sessionFor(request, response);
+        if (path === '/api/decisions') return json(response, 200, await decisions.snapshot({ id: session.actor.id, role: session.actor.role }));
+        if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
+        if (path === '/api/events') {
+          response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+          response.flushHeaders();
+          const stream = { response, session };
+          streams.add(stream);
+          sendEvent(stream, 'world', dto(session));
+          const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\\n\\n'); }, 20000);
+          heartbeat.unref();
+          response.on('close', () => {
+            clearInterval(heartbeat);
+            streams.delete(stream);
+            if (![...streams].some(other => other.session === session) && presence.delete(session.token)) broadcastPresence();
+          });
+          return;
         }
         fail('NOT_FOUND', 'Not found.', 404);
       }
