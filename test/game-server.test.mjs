@@ -182,7 +182,7 @@ test('Founder data directory rejects symlinks and group/world-accessible directo
 
   const target = join(root, 'target');
   await mkdir(target, { mode: 0o700 });
-  await writeFile(join(target, 'founder.key'), KEY + '\\n', { mode: 0o600 });
+  await writeFile(join(target, 'founder.key'), KEY + '\n', { mode: 0o600 });
   const linked = join(root, 'linked-data');
   await symlink(target, linked, 'dir');
   await assert.rejects(
