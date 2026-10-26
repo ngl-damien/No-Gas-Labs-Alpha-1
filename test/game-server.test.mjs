@@ -168,7 +168,9 @@ test('serves every first-party module imported by the playable game client', asy
   for (const module of ['model', 'quests', 'character-sheet', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
-  for (const module of ['client', 'quests', 'character-sheet', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk']) {
+  const institutionView = await client.request('/institution-view.mjs');
+  assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
+  for (const module of ['client', 'quests', 'character-sheet', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
     assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);

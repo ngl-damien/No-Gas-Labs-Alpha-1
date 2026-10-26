@@ -7,7 +7,41 @@ import {renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 
 let institutionRequestGeneration=0;
-async function openInstitution(){const content=showSheet('The institution at work.','PROJECTS · EVIDENCE · FOUNDER GATE');if(mode!=='shared'){content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));return;}const requestGeneration=institutionRequestGeneration,principalId=viewer.id,principalRole=viewer.role;const [projects,gate,institutionResult]=await Promise.all([request('/api/projects'),request('/api/decisions'),request('/api/institution').then(data=>({data})).catch(()=>({data:null}))]);if(requestGeneration!==institutionRequestGeneration||mode!=='shared'||viewer.id!==principalId||viewer.role!==principalRole||$('sheet').hidden||content!==$('sheet-content')||$('sheet-kicker').textContent!=='PROJECTS · EVIDENCE · FOUNDER GATE')return;renderInstitution(content,projects,gate,{founder:viewer.role==='founder',kernel:institutionResult.data?.kernel,kernelUnavailable:!institutionResult.data?.kernel,onChoice:guarded(async(d,action)=>{await request('/api/decisions/choose',{decisionId:d.id,expectedRevision:d.revision,requestId:crypto.randomUUID(),action});await openInstitution();})});}
+async function openInstitution() {
+  const content = showSheet('The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE');
+  if (mode !== 'shared') {
+    content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
+    return;
+  }
+  const requestGeneration = institutionRequestGeneration;
+  const principalId = viewer.id;
+  const principalRole = viewer.role;
+  const [projects, gate, stateResult, institutionResult] = await Promise.all([
+    request('/api/projects'),
+    request('/api/decisions'),
+    request('/api/state').then(data => ({ data })).catch(() => ({ data: null })),
+    request('/api/institution').then(data => ({ data })).catch(() => ({ data: null })),
+  ]);
+  if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
+      viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
+      content !== $('sheet-content') || $('sheet-kicker').textContent !== 'PROJECTS · EVIDENCE · FOUNDER GATE') return;
+  renderInstitution(content, projects, gate, {
+    founder: viewer.role === 'founder',
+    world: stateResult.data?.world,
+    kernel: institutionResult.data?.kernel,
+    kernelUnavailable: !institutionResult.data?.kernel,
+    onOpenArtifact: (id, version) => openCreation(id, version),
+    onChoice: guarded(async (decision, action) => {
+      await request('/api/decisions/choose', {
+        decisionId: decision.id,
+        expectedRevision: decision.revision,
+        requestId: crypto.randomUUID(),
+        action,
+      });
+      await openInstitution();
+    }),
+  });
+}
 
 const $=id=>document.getElementById(id);
 const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1';
