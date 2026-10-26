@@ -1,19 +1,38 @@
-import { isVerifiedAuthorization } from "./project.js";
+import { isSafeEventPayload, isVerifiedAuthorization } from "./project.js";
+
+function validatedEventList(events) {
+  if (!Array.isArray(events) || Object.getPrototypeOf(events) !== Array.prototype ||
+      Object.keys(events).length !== events.length ||
+      Reflect.ownKeys(events).length !== events.length + 1) {
+    throw new Error("invalid Guild Hall event list");
+  }
+  const result = [];
+  for (let index = 0; index < events.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(events, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor) ||
+        !isSafeEventPayload(descriptor.value)) {
+      throw new Error("invalid Guild Hall event payload at index " + index);
+    }
+    result.push(descriptor.value);
+  }
+  return result;
+}
 
 export function projectGuildHall({
   institution, quest_id, events = [], agents = [], verifyAuthorization
 }) {
   if (!institution?.projection) throw new Error("institution projection required");
+  const eventList = validatedEventList(events);
   const quest = institution.projection.quests?.[quest_id];
   if (!quest) throw new Error("quest not projected");
 
-  const proposals = events.filter(event =>
+  const proposals = eventList.filter(event =>
     event?.type === "PROPOSAL" && event.quest_id === quest_id
   ).map(event => Object.freeze({
     proposal_id: event.event_id,
     actor: event.actor || "unknown",
     summary: event.summary || "",
-    status: events.some(candidate =>
+    status: eventList.some(candidate =>
       candidate?.type === "QUEST_AUTHORIZED" &&
       candidate.proposal_id === event.event_id &&
       isVerifiedAuthorization(candidate, verifyAuthorization)
