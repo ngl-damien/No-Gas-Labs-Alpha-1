@@ -23,15 +23,15 @@ export function validateHistory(events) {
   return true;
 }
 
-export function replayInstitution({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication}) {
+export function replayInstitution({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication,verifyAuthorization}) {
   validateHistory(events);
-  const world=projectWorld(events,undefined,{resolveArtifact,verifyObservation,verifyAdjudication});
-  const questState=Object.fromEntries(quests.map(q=>[q.quest_id,projectQuest(q,events,{resolveArtifact,verifyObservation,verifyAdjudication})]));
+  const world=projectWorld(events,undefined,{resolveArtifact,verifyObservation,verifyAdjudication,verifyAuthorization});
+  const questState=Object.fromEntries(quests.map(q=>[q.quest_id,projectQuest(q,events,{resolveArtifact,verifyObservation,verifyAdjudication,verifyAuthorization})]));
   const projection={world,quests:questState};
   return Object.freeze({projection,state_hash:hashState(projection),event_count:events.length});
 }
 
-export function verifyReplay({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication,expected_hash}) {
-  const replay=replayInstitution({events,quests,resolveArtifact,verifyObservation,verifyAdjudication});
+export function verifyReplay({events,quests=[],resolveArtifact,verifyObservation,verifyAdjudication,verifyAuthorization,expected_hash}) {
+  const replay=replayInstitution({events,quests,resolveArtifact,verifyObservation,verifyAdjudication,verifyAuthorization});
   return Object.freeze({...replay,matches:replay.state_hash===expected_hash});
 }
