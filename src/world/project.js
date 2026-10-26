@@ -155,7 +155,7 @@ export function hasVerifiedObservation(event, resolveArtifact, verifyObservation
 }
 
 export function isVerifiedAuthorization(event, verifyAuthorization) {
-  if (!safeEventPayload(event)) return false;
+  if (!isSafeEventPayload(event)) return false;
   const validExecutionGrant = OBSERVATION_EVENT_TYPES.has(event.event_type) &&
     event.authority === "AUTHORIZED" &&
     typeof event.grant_id === "string" && event.grant_id.length > 0;
@@ -168,7 +168,7 @@ export function isVerifiedAuthorization(event, verifyAuthorization) {
 }
 
 export function isVerifiedAdjudication(event, verifyAdjudication) {
-  if (!safeEventPayload(event)) return false;
+  if (!isSafeEventPayload(event)) return false;
   const revocation = event.event_type === "REVOCATION" &&
     typeof event.revokes === "string" && event.revokes.length > 0;
   const rejection = event.event_type === "EXECUTION_ADJUDICATION" &&
