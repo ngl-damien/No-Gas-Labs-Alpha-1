@@ -275,7 +275,31 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     let session = tokenIsValid ? sessions.get(token) : null, expired = false;
     if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; expired = true; }
     if (!session) {
-      if (sessions.size >= 512) { const oldest = sessions.entries().next().value; expireSession(...oldest); }
+      // Reap expired sessions before applying capacity pressure. Expiration is
+      // request-driven, so an unrelated unauthenticated request must not evict
+      // a still-live Founder session merely because the map reached its bound.
+      if (sessions.size >= 512) {
+        const now = Date.now();
+        for (const [existingToken, existing] of sessions) {
+          if (now - existing.lastSeen > SESSION_TTL) expireSession(existingToken, existing);
+        }
+      }
+      if (sessions.size >= 512) {
+        // Preserve authenticated sessions under unauthenticated session churn.
+        // Evict the least-recently-used Witness; if no Witness slot is available,
+        // fail closed rather than demoting an authenticated Founder.
+        let oldestWitnessToken = null;
+        let oldestWitness = null;
+        for (const [existingToken, existing] of sessions) {
+          if (existing.actor.role !== 'witness') continue;
+          if (!oldestWitness || existing.lastSeen < oldestWitness.lastSeen) {
+            oldestWitnessToken = existingToken;
+            oldestWitness = existing;
+          }
+        }
+        if (!oldestWitness) fail('SESSION_LIMIT', 'Session capacity reached; retry after an existing session expires.', 429);
+        expireSession(oldestWitnessToken, oldestWitness);
+      }
       // A surviving opaque cookie can restore only its pseudonymous Witness identity
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
