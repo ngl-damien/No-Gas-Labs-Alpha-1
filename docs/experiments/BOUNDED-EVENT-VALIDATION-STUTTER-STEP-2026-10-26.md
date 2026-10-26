@@ -7,11 +7,19 @@ Branch: `security/mainline-host-verification-20261026`
 
 ## Changes in this cycle
 
+### Cycle 2 — canonical reward arithmetic
+
+- Source commit: `286aedadd2ca5d21a33706214c9398084950c162` — verified world events with non-safe-integer XP, fractional inventory, or accumulated XP overflow now fail closed rather than creating non-canonical projected state.
+- Regression commit: `877c8a98590a689041a09a6eb18c1d1bc894498a` — tests cover `Number.MAX_VALUE` XP, fractional inventory counts, and cumulative XP overflow past `Number.MAX_SAFE_INTEGER`.
+- This is intentionally strict only when a reward field is present; absent XP/inventory fields remain valid.
+
 - Source commit: `0d6887ca7097c6bb2cb474325be887009ab683ad` — `src/world/project.js` now rejects event object graphs deeper than 128 levels before recursive canonical validation can exhaust the JavaScript stack.
 - Regression commit: `7885b87578efe6964be12dac54af095a80119bb7` — `test/world-projection.test.js` exercises both deeply nested object and array payloads (160 levels) and requires a controlled fail-closed error.
 - The bound is deliberately on structural depth, not total retained-history length, so this change does not impose a new event-count ceiling.
 
 ## Evidence and limits
+
+- The preceding depth-bound exact-head check observed `verify` and Genesis Evidence Invariant success; browser acceptance was still running at the time of that inspection. New commits below require a fresh CI run.
 
 - Parent PR #72 head inspected before change: `1f0efb4890a1508dcc9793e1a66a5ec7542d5053`.
 - Its recorded GitHub Actions runs were `verify` [40376635371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40376635371), Genesis Evidence Invariant [40376635392](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40376635392), and browser acceptance [40376635368](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40376635368). Those are parent-head results, not evidence for this new change.
