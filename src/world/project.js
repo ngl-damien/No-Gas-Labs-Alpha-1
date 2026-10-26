@@ -11,6 +11,23 @@ function setOwn(target, key, value) {
   });
 }
 
+function denseArrayValues(value, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      Object.keys(value).length !== value.length ||
+      Reflect.ownKeys(value).length !== value.length + 1) {
+    throw new Error("invalid " + label);
+  }
+  const values = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor)) {
+      throw new Error("invalid " + label + " item");
+    }
+    values.push(descriptor.value);
+  }
+  return values;
+}
+
 // Validate the complete object graph before cloning or comparing it. Hidden
 // fields, accessors, symbols, sparse arrays and exotic prototypes are not JSON.
 function stableEventValue(value, ancestors = new Set()) {
@@ -26,20 +43,8 @@ function stableEventValue(value, ancestors = new Set()) {
   ancestors.add(value);
   let result;
   if (Array.isArray(value)) {
-    if (Object.getPrototypeOf(value) !== Array.prototype ||
-        Object.keys(value).length !== value.length ||
-        Reflect.ownKeys(value).length !== value.length + 1) {
-      throw new Error("sparse, decorated, or hidden-property array in event payload");
-    }
-    const items = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor)) {
-        throw new Error("accessor or hidden array item in event payload");
-      }
-      items.push(stableEventValue(descriptor.value, ancestors));
-    }
-    result = ["array", items];
+    const items = denseArrayValues(value, "array");
+    result = ["array", items.map(item => stableEventValue(item, ancestors))];
   } else {
     const prototype = Object.getPrototypeOf(value);
     const keys = Object.keys(value);
@@ -70,7 +75,7 @@ export function eventParents(event) {
     throw new Error("invalid event for parent validation");
   }
   const idProperty = Object.getOwnPropertyDescriptor(event, "event_id");
-  if (idProperty && (!( "value" in idProperty) || idProperty.enumerable !== true)) {
+  if (idProperty && (!("value" in idProperty) || idProperty.enumerable !== true)) {
     throw new Error("event ID metadata must be an enumerable data property");
   }
   const label = typeof idProperty?.value === "string" && idProperty.value
@@ -80,19 +85,9 @@ export function eventParents(event) {
   if (!("value" in property) || property.enumerable !== true) {
     throw new Error("parent metadata must be an enumerable data property for " + label);
   }
-  const parents = property.value;
-  if (!Array.isArray(parents) || Object.getPrototypeOf(parents) !== Array.prototype ||
-      Object.keys(parents).length !== parents.length ||
-      Reflect.ownKeys(parents).length !== parents.length + 1) {
-    throw new Error("invalid parents for " + label);
-  }
+  const parents = denseArrayValues(property.value, "parents for " + label);
   const unique = new Set();
-  for (let index = 0; index < parents.length; index += 1) {
-    const item = Object.getOwnPropertyDescriptor(parents, String(index));
-    if (!item || !("value" in item) || item.enumerable !== true) {
-      throw new Error("invalid parent reference for " + label);
-    }
-    const parent = item.value;
+  for (const parent of parents) {
     if (typeof parent !== "string" || parent.trim().length === 0) {
       throw new Error("invalid parent reference for " + label);
     }
@@ -161,13 +156,13 @@ const terminalSuccess = (event, resolveArtifact, verifyObservation, verifyAuthor
   isVerifiedAuthorization(event, verifyAuthorization);
 
 function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudication, verifyAuthorization } = {}) {
-  stableEventValue(events);
+  const eventList = denseArrayValues(events, "event list");
   const state = EMPTY();
   const historyById = new Map();
   const seen = new Set();
   const revoked = new Set();
 
-  for (const event of events) {
+  for (const event of eventList) {
     if (!event || typeof event !== "object" || Array.isArray(event)) {
       throw new Error("invalid event payload");
     }
@@ -270,11 +265,11 @@ export function projectWorld(events, seed = EMPTY(), options = {}) {
   }
   stableEventValue(seed);
   if (!Array.isArray(seed.history)) throw new Error("invalid retained event history");
+  const eventList = denseArrayValues(events, "event list");
 
   const replayedSeed = reduceWorld(seed.history, options);
   if (!sameEventPayload(replayedSeed, seed)) {
     throw new Error("seed projection differs from verified retained history");
   }
-  if (!Array.isArray(events)) throw new Error("event list must be an array");
-  return reduceWorld([...seed.history, ...events], options);
+  return reduceWorld([...seed.history, ...eventList], options);
 }
