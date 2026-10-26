@@ -43,7 +43,9 @@ def stop_server(process):
 
 
 def close_sheet(page):
-    if page.locator('#sheet').is_visible(): page.locator('#sheet-close').click()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').click()
+        expect(page.locator('#sheet')).to_be_hidden()
 
 
 def draft(page,kind,title):
@@ -162,11 +164,14 @@ def shared(browser,url,data,out):
         b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
         visit(b,'The shared observatory');b.locator('#enter-creation').click()
         frame=b.frame_locator('#artifact-frame')
+        # srcdoc inputs can appear before the inline artifact script has attached handlers.
+        # Wait for its initial rendered receipt before exercising the form.
+        expect(frame.locator('#sources article')).to_have_count(1)
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
         frame.locator('#uncertainty').fill('A note is not a verdict.')
         frame.locator('#add-source').click()
-        assert frame.locator('#sources article').count()==2
+        expect(frame.locator('#sources article')).to_have_count(2)
         assert frame.locator('#sources b').count()==0
         with b.expect_download() as downloaded:frame.locator('#download').click()
         notes=json.loads(Path(downloaded.value.path()).read_text());assert notes['sources'][1]['claim']=='<b>Source note</b> — café 🌍'
@@ -195,6 +200,9 @@ def shared(browser,url,data,out):
         assert not presence_errors,presence_errors
         a.screenshot(path=str(out/'shared-desktop.png'));b.screenshot(path=str(out/'shared-phone.png'))
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        # A location or artifact panel may still be open after async shared-state refresh.
+        # Dismiss it explicitly before exercising the authenticated logout transition.
+        close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
