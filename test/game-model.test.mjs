@@ -62,3 +62,21 @@ test('imports reject tampered bytes, invalid reward totals and oversized custom 
   await assert.rejects(applyAction(world,{type:'draft',kind:'custom',title:'Big',intent:'',html:'🐚'.repeat(40000)},founder),e=>e.code==='TOO_LARGE');
   await assert.rejects(applyAction(world,{type:'repair',creationId:world.creations[0].id,expectedVersion:1,html:'🐚'.repeat(40000)},founder),e=>e.code==='TOO_LARGE');
 });
+
+test('shared request receipts survive validation and repeated discoveries remain non-rewarding history',async()=>{
+  const start=createWorld({id:'retry-world',now});
+  const first=await applyAction(start,{type:'discover',locationId:'river'},witness,{now,requestId:'request-discover-1',actionFingerprint:'a'.repeat(64)});
+  assert.deepEqual(first.result,{discovered:true});
+  assert.equal(first.world.events[0].requestId,'request-discover-1');
+  assert.deepEqual(first.world.events[0].actionResult,{discovered:true});
+  const repeated=await applyAction(first.world,{type:'discover',locationId:'river'},witness,{now:'2026-10-17T12:00:01.000Z',requestId:'request-discover-2',actionFingerprint:'b'.repeat(64)});
+  assert.deepEqual(repeated.result,{discovered:false});
+  assert.equal(repeated.world.discoveries.length,1);
+  assert.equal(repeated.world.xp,0);
+  assert.equal(repeated.world.events.length,2);
+  assert.equal(repeated.world.events[1].repeat,true);
+  assert.deepEqual(repeated.world.events[1].actionResult,{discovered:false});
+  assert.equal(await validateWorld(repeated.world).then(()=>true),true);
+  const duplicate=structuredClone(repeated.world);duplicate.events[1].requestId=duplicate.events[0].requestId;
+  await assert.rejects(validateWorld(duplicate),e=>e.code==='INVALID_WORLD');
+});
