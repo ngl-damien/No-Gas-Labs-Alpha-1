@@ -1,7 +1,7 @@
 # Alpha One import record: NGL Mesh
 
 Source: https://github.com/ngl-damien/ngl-mesh
-Source tree SHA: `a95d0e3c` (see source repository default branch for authoritative full SHA; this abbreviated label is not a verification key).
+Source tree SHA: `be43452a2133ba920a3814e19d7812e5c964117d`.
 
 The files in this directory are copied from the source repository into Alpha One with paths retained beneath `integrations/ngl-mesh-reference/`. Source blob SHA values are recorded in the assimilation plan's repository history and source repository. This is a source-preserving import, not a claim of runtime integration.
 
