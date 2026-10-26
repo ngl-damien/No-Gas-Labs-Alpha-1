@@ -1,12 +1,54 @@
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getQuest,getLocationAction} from './quests.mjs';
+import {getQuest,getQuestTrail,getLocationAction} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderInstitution} from './institution-view.mjs';
+import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 
 let institutionRequestGeneration=0;
-async function openInstitution(){const content=showSheet('The institution at work.','PROJECTS · EVIDENCE · FOUNDER GATE');if(mode!=='shared'){content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));return;}const requestGeneration=institutionRequestGeneration,principalId=viewer.id,principalRole=viewer.role;const [projects,gate,stateResult]=await Promise.all([request('/api/projects'),request('/api/decisions'),request('/api/state').then(data=>({data})).catch(()=>({data:null}))]);if(requestGeneration!==institutionRequestGeneration||mode!=='shared'||viewer.id!==principalId||viewer.role!==principalRole||$('sheet').hidden||content!==$('sheet-content')||$('sheet-kicker').textContent!=='PROJECTS · EVIDENCE · FOUNDER GATE')return;renderInstitution(content,projects,gate,{founder:viewer.role==='founder',world:stateResult.data?.world,kernel:stateResult.data?.institution?.kernel,kernelUnavailable:!stateResult.data?.institution?.kernel,onOpenArtifact:(id,version)=>{openCreation(id);const selector=$('version-select');if(selector){selector.value=String(version);selector.dispatchEvent(new Event('change'));}},onChoice:guarded(async(d,action)=>{await request('/api/decisions/choose',{decisionId:d.id,expectedRevision:d.revision,requestId:crypto.randomUUID(),action});await openInstitution();})});}
+async function openInstitution() {
+  const content = showSheet('The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE');
+  if (mode !== 'shared') {
+    content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
+    return;
+  }
+  const requestGeneration = institutionRequestGeneration;
+  const principalId = viewer.id;
+  const principalRole = viewer.role;
+  const [projects, gate, stateResult, institutionResult] = await Promise.all([
+    request('/api/projects'),
+    request('/api/decisions'),
+    request('/api/state').then(data => ({ data })).catch(() => ({ data: null })),
+    request('/api/institution').then(data => ({ data })).catch(() => ({ data: null })),
+  ]);
+  if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
+      viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
+      content !== $('sheet-content') || $('sheet-kicker').textContent !== 'PROJECTS · EVIDENCE · FOUNDER GATE') return;
+  renderInstitution(content, projects, gate, {
+    founder: viewer.role === 'founder',
+    world: stateResult.data?.world,
+    kernel: institutionResult.data?.kernel,
+    kernelUnavailable: !institutionResult.data?.kernel,
+    onOpenArtifact: (id, version) => {
+      openCreation(id);
+      const selector = $('version-select');
+      if (selector) {
+        selector.value = String(version);
+        selector.dispatchEvent(new Event('change'));
+      }
+    },
+    onChoice: guarded(async (decision, action) => {
+      await request('/api/decisions/choose', {
+        decisionId: decision.id,
+        expectedRevision: decision.revision,
+        requestId: crypto.randomUUID(),
+        action,
+      });
+      await openInstitution();
+    }),
+  });
+}
 
 const $=id=>document.getElementById(id);
 const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor';
@@ -30,7 +72,8 @@ async function act(action){if(mode==='shared'){const dto=await request('/api/act
 const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(openInstitution)();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y})})});
 view.setWorld(world);
 function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' total game XP · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
-function render(){view.setWorld(world);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' game XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' game XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const quest=getQuest(world,viewer);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
+function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
+function render(){view.setWorld(world);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' game XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' game XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const quest=getQuest(world,viewer);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(getQuestTrail(world,viewer));if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto);$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
@@ -74,10 +117,43 @@ function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;s
 }
 function previewDraft(draft){openPortal({title:draft.title,html:draft.html,kicker:'PRIVATE DRAFT',footer:[paragraph('Private preview · opaque sandbox · no live AI or network requests.'),button(`Publish v${draft.version}`,guarded(()=>publishDraft(draft)),{id:'portal-publish',class:'primary-button'})]})}
 async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 game XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
-function openCreation(id){const creation=world.creations.find(c=>c.id===id);if(!creation)return;selectedCreation=id;selectedVersion=creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
-  const version=node('select',{id:'version-select'});for(const v of [creation,...[...creation.versions].reverse()])version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.onchange=()=>{selectedVersion=Number(version.value);renderNotes()};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
+function openCreation(id,requestedVersion=null){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
+  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
   const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';renderNotes();toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';renderNotes();toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
+  const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
+  challengeDetails.append(paragraph('A fixed local checklist, not an AI collaborator or independent witness. It can preserve a report; it cannot decide truth, authorize work, or award XP.','form-help'));
+  const challengeTarget=paragraph('','form-help');
+  challengeDetails.append(challengeTarget);
+  const challengeForm=node('form',{id:'contradiction-form'});
+  const challengeInputs={};
+  for(const prompt of prepareContradictionReview(creation,selectedVersion).prompts){
+    const input=node('textarea',{id:'contradiction-'+prompt.id,maxlength:String(prompt.maxLength),rows:'2',placeholder:prompt.placeholder});
+    challengeInputs[prompt.id]=input;
+    challengeForm.append(field(prompt.label,input.id,input),paragraph(prompt.prompt,'form-help'));
+  }
+  const challengeSubmit=node('button',{id:'contradiction-submit',type:'submit',class:'secondary-button',text:'Preserve structured challenge'});
+  challengeForm.append(node('div',{class:'button-row'},[challengeSubmit]));
+  challengeForm.onsubmit=guarded(async e=>{
+    e.preventDefault();
+    const targetVersion=selectedVersion;
+    const reportText=formatContradictionReport(creation,targetVersion,Object.fromEntries(Object.entries(challengeInputs).map(([key,input])=>[key,input.value])));
+    challengeSubmit.disabled=true;
+    try{
+      await act({type:'report',creationId:id,version:targetVersion,text:reportText});
+      for(const input of Object.values(challengeInputs))input.value='';
+      renderNotes();
+      toast('Structured challenge preserved against v'+targetVersion+'. It is a report, not a verdict.');
+    }finally{challengeSubmit.disabled=false;}
+  });
+  challengeDetails.append(challengeForm);
+  function syncChallengeTarget(clear=false){
+    const review=prepareContradictionReview(creation,selectedVersion);
+    challengeTarget.textContent='Target: '+review.target.title+' · retained v'+review.target.version+'. The Clerk has no authority and issues no verdict.';
+    if(clear)for(const input of Object.values(challengeInputs))input.value='';
+  }
+  syncChallengeTarget();
+  content.append(challengeDetails);
   if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=renderNotes;renderNotes();
 }
