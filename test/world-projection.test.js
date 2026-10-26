@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { projectWorld } from "../src/world/project.js";
+import { projectWorld, isVerifiedAuthorization, hasVerifiedObservation, isVerifiedAdjudication } from "../src/world/project.js";
 import { projectRealm } from "../src/world/realm.js";
 import { makeReceipt } from "../src/evidence/content-addressed.js";
 
@@ -227,4 +227,33 @@ test("an explicitly rejected observation cannot mint progress despite a valid re
   assert.equal(s.xp, 0);
   assert.equal(s.quests["forge-gate"], undefined);
   assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("public trust helpers reject accessor-bearing events without invoking getters", () => {
+  let getterCalls = 0;
+  let verifierCalls = 0;
+  const verifier = () => { verifierCalls += 1; return true; };
+
+  const authorization = { quest_id: "q", grant_id: "g", actor: "founder" };
+  Object.defineProperty(authorization, "type", {
+    enumerable: true,
+    get() { getterCalls += 1; return "QUEST_AUTHORIZED"; }
+  });
+  assert.equal(isVerifiedAuthorization(authorization, verifier), false);
+
+  const observation = { ...observed, event_id: "getter-observation" };
+  Object.defineProperty(observation, "admission", {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return "ACCEPTED"; }
+  });
+  assert.equal(hasVerifiedObservation(observation, resolveArtifact, verifier), false);
+
+  const adjudication = { event_id: "getter-adjudication", revokes: "g" };
+  Object.defineProperty(adjudication, "event_type", {
+    enumerable: true,
+    get() { getterCalls += 1; return "REVOCATION"; }
+  });
+  assert.equal(isVerifiedAdjudication(adjudication, verifier), false);
+  assert.equal(getterCalls, 0);
+  assert.equal(verifierCalls, 0);
 });
