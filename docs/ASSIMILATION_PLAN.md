@@ -47,6 +47,16 @@ Earlier draft text contained inconsistent TaskAgile and Command Center path coun
 
 Next reconciliation rule: classify every absent or differing path as required import, intentionally excluded, duplicate/obsolete, sensitive, license-blocked, or superseded. Do not overwrite active Alpha One files without review.
 
+## Completed assimilation tranches (2026-10-25)
+
+- **PR #31 merged** — established the evidence-bound assimilation contract and imported all 11 text files from `ngl-mesh` under `integrations/ngl-mesh-reference/`. This remains source-only; Relay dependencies and runtime integration are unresolved.
+- **PR #32 merged** — preserved seven cockpit reference files under `integrations/recovery-vault/cockpit-reference/`. The application is incomplete, license is unconfirmed, and client-side XP is not canonical Alpha One state.
+- **PR #34 merged** — corrected source-to-snapshot counts and recorded exact current Git blob comparisons.
+- **PR #35 merged** — imported 15 selected TaskAgile source files under `integrations/taskagile-reference/`, including the No_Gas_Slaps entry point/modules and standalone RPG/Shrine HTML. Source hashes are recorded; no runtime integration or build/security test is claimed.
+- **Still outstanding:** 103 TaskAgile source files are absent from the original snapshot; four Command Center image assets are missing; three NGL-001 files differ and one asset is missing. The 4.56 MB NGL-001 `src/App.jsx` is still an empty target placeholder. The 94-repository historical inventory is not fully recovered.
+
+These merges establish preserved source and corrected evidence, not completion of the overall assimilation. Sensitive wallet archives and committed private-key material remain excluded pending security handling.
+
 ## Architecture and integration boundaries
 
 - **World/gameplay:** one canonical player/session/world model and progression path; imported RPG experiences become modules or exhibits.
