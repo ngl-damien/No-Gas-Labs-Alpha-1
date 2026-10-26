@@ -72,3 +72,23 @@ The checkpoint commit below changes the branch head, so recheck all three workfl
 4. PR #67's canonical JSON own-property fix is independently tracked against current `main`; keep it separate from this diverged security branch unless a reviewed reconciliation proves otherwise.
 
 No merge, deployment, release, spending, production key provisioning, rotation, or revocation occurred.
+
+
+## Follow-up — pre-read accessor safety (2026-10-26 UTC)
+
+A second review of the new payload validator found a sequencing gap: `eventParents` and `validateHistory` read `event_id` before full payload validation, and `projectWorld` cloned the seed before validating it. The follow-up moves validation ahead of those reads/clones.
+
+- `80308b3e14988e7e49571e6246ced8b03bd56818` — validate seed and incoming event shape before `structuredClone` or event-ID reads; read the parent-validation label from an own data descriptor rather than invoking an `event_id` accessor.
+- `251acd4af6e58a581e0c8b008d809a33e87fa794` — `validateHistory` reads `event_id` through an enumerable own data descriptor and rejects accessors/non-enumerable IDs without executing them.
+- `f59dda5292474b1f61d9e14b6e79abccc404dc65` — regression tests assert event-ID and seed getters are not invoked.
+
+### Verification state at checkpoint
+
+Code/test head: `f59dda5292474b1f61d9e14b6e79abccc404dc65`.
+
+- Full verify run [40325723205](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325723205): **in progress** at last inspection.
+- Genesis Evidence Invariant run [40325723352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325723352): **queued** at last inspection.
+- Browser acceptance run [40325723386](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40325723386): **queued** at last inspection.
+- The checkpoint commit changes the branch head; recheck exact-head Actions after the update. No local test execution is claimed.
+
+No production trust roots were provisioned, no PR was merged, and no deployment, release, spending, key rotation, or revocation occurred.
