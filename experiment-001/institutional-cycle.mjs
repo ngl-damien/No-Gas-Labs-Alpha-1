@@ -32,18 +32,36 @@ function implementationFor(strategy) {
   if (strategy === 'double') return double;
   return null;
 }
+
+// Stable strategy IDs are compatibility contracts. Change behavior by adding a new
+// strategy version, not by changing the meaning of an existing ID.
+const IMPLEMENTATION_IDENTITIES = Object.freeze({
+  square: 'ngl-experiment-001:strategy:square:v1',
+  double: 'ngl-experiment-001:strategy:double:v1'
+});
+// Hashes produced by the pre-versioned Function.toString() scheme. These constants
+// let existing version-2 ledgers replay after this source changes.
+const LEGACY_IMPLEMENTATION_HASHES = Object.freeze({
+  square: 'a44644e2cb5f1e34cf0aac616d43631c4778a19585cb634128f9d4fbfe9d947d',
+  double: '8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436'
+});
 export function implementationHash(strategy) {
-  const implementation = implementationFor(strategy);
-  if (!implementation) throw new Error('UNKNOWN_STRATEGY');
-  return hashBytes(Buffer.from(implementation.toString()));
+  if (!implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
+  return hashBytes(Buffer.from(IMPLEMENTATION_IDENTITIES[strategy]));
+}
+export function legacyImplementationHash(strategy) {
+  if (!implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
+  return LEGACY_IMPLEMENTATION_HASHES[strategy];
 }
 
 const cases = Object.freeze([{ n: 2, out: 4 }, { n: 3, out: 9 }, { n: 5, out: 25 }, { n: -4, out: 16 }]);
-export function challenge(strategy) {
+function challengeWithHash(strategy, hashFor) {
   const implementation = implementationFor(strategy);
   const failed = cases.filter(testCase => !implementation || implementation(testCase.n) !== testCase.out).map(testCase => testCase.n);
-  return { total: cases.length, passed: cases.length - failed.length, failed, implementationHash: implementation ? implementationHash(strategy) : null };
+  return { total: cases.length, passed: cases.length - failed.length, failed, implementationHash: implementation ? hashFor(strategy) : null };
 }
+export function challenge(strategy) { return challengeWithHash(strategy, implementationHash); }
+function legacyChallenge(strategy) { return challengeWithHash(strategy, legacyImplementationHash); }
 export function competition() {
   return ['double', 'square'].map(strategy => ({ strategy, result: challenge(strategy) }));
 }
@@ -77,7 +95,7 @@ function exactKeys(object, expected) {
     Object.keys(object).sort().join('\0') === [...expected].sort().join('\0');
 }
 
-export function validateInstallationProposal(decision, now = Date.now()) {
+export function validateInstallationProposal(decision, now = Date.now(), { allowLegacy = false } = {}) {
   const reject = reason => ({ valid: false, reason });
   if (!exactKeys(decision, ['kind', 'id', 'strategy', 'executorPublicKeyPem', 'proof', 'implementationHash', 'nonce', 'issuedAt', 'expiresAt', 'maxUses'])) return reject('INSTALL_SCHEMA_INVALID');
   if (decision.kind !== 'INSTALL' || typeof decision.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(decision.id)) return reject('INSTALL_ID_INVALID');
@@ -90,8 +108,16 @@ export function validateInstallationProposal(decision, now = Date.now()) {
   if (!Number.isSafeInteger(decision.issuedAt) || !Number.isSafeInteger(decision.expiresAt) || decision.issuedAt > now || now >= decision.expiresAt || decision.expiresAt <= decision.issuedAt || decision.expiresAt - decision.issuedAt > MAX_GRANT_MS) return reject('INSTALL_TIME_INVALID');
   if (!Number.isSafeInteger(decision.maxUses) || decision.maxUses < 1 || decision.maxUses > MAX_USES) return reject('INSTALL_USE_BOUND_INVALID');
   const proof = challenge(decision.strategy);
-  if (decision.implementationHash !== proof.implementationHash || canonical(decision.proof) !== canonical(proof) || proof.passed !== proof.total) return reject('INSTALL_PROOF_INVALID');
-  return { valid: true, reason: null };
+  if (decision.implementationHash === proof.implementationHash && canonical(decision.proof) === canonical(proof) && proof.passed === proof.total) {
+    return { valid: true, reason: null };
+  }
+  if (allowLegacy) {
+    const legacyProof = legacyChallenge(decision.strategy);
+    if (decision.implementationHash === legacyProof.implementationHash && canonical(decision.proof) === canonical(legacyProof) && legacyProof.passed === legacyProof.total) {
+      return { valid: true, reason: null };
+    }
+  }
+  return reject('INSTALL_PROOF_INVALID');
 }
 
 function verifyDetached(publicKey, payload, signature) {
@@ -109,7 +135,7 @@ function recordHash(record) {
   return hash({ sequence: record.sequence, previous: record.previous, timestamp: record.timestamp, decision: record.decision, signature: record.signature ?? null });
 }
 
-function apply(state, record, publicKey) {
+function apply(state, record, publicKey, { allowLegacy = false } = {}) {
   if (!record || !exactKeys(record, ['sequence', 'previous', 'timestamp', 'decision', 'signature', 'hash'])) throw new Error('RECORD_SCHEMA_INVALID');
   if (record.sequence !== state.sequence + 1 || record.previous !== state.previous) throw new Error('BROKEN_CHAIN');
   if (!Number.isSafeInteger(record.timestamp) || record.timestamp < 0) throw new Error('RECORD_TIME_INVALID');
@@ -121,7 +147,7 @@ function apply(state, record, publicKey) {
 
   if (decision.kind === 'INSTALL') {
     if (!verifyApproval(publicKey, decision, record.signature)) throw new Error('UNAUTHORIZED');
-    const validation = validateInstallationProposal(decision, record.timestamp);
+    const validation = validateInstallationProposal(decision, record.timestamp, { allowLegacy });
     if (!validation.valid) throw new Error(validation.reason);
     if (Object.hasOwn(state.capabilities, decision.id)) throw new Error('ALREADY_INSTALLED');
     if (state.installationNonces.includes(decision.nonce)) throw new Error('INSTALL_NONCE_REUSED');
@@ -150,7 +176,7 @@ function apply(state, record, publicKey) {
     if (record.timestamp < capability.issuedAt || record.timestamp >= capability.expiresAt) throw new Error('GRANT_EXPIRED');
     if (!NONCE_PATTERN.test(decision.nonce || '') || state.used.includes(decision.nonce)) throw new Error('REPLAY');
     if (capability.uses >= capability.maxUses) throw new Error('GRANT_USE_LIMIT_REACHED');
-    if (implementationHash(capability.strategy) !== capability.implementationHash) throw new Error('IMPLEMENTATION_HASH_MISMATCH');
+    if (capability.implementationHash !== implementationHash(capability.strategy) && capability.implementationHash !== legacyImplementationHash(capability.strategy)) throw new Error('IMPLEMENTATION_HASH_MISMATCH');
     if (!Number.isSafeInteger(decision.input) || Math.abs(decision.input) > MAX_INPUT) throw new Error('INPUT_OUT_OF_BOUNDS');
     const implementation = implementationFor(capability.strategy);
     const expected = implementation(decision.input);
@@ -190,7 +216,7 @@ async function readLedger(path, publicKey) {
   if (parsed?.version !== 2) throw new Error('LEDGER_VERSION_UNSUPPORTED');
   if (!Array.isArray(parsed.records) || parsed.records.length > 100000) throw new Error('LEDGER_RECORDS_INVALID');
   const replay = initial();
-  for (const record of parsed.records) apply(replay, record, publicKey);
+  for (const record of parsed.records) apply(replay, record, publicKey, { allowLegacy: true });
   if (canonical(replay) !== canonical(parsed)) throw new Error('LEDGER_MISMATCH');
   return replay;
 }
