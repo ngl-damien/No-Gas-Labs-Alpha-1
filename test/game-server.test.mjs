@@ -330,6 +330,27 @@ test('Witness request recovery survives service restart without restoring Founde
   }
 });
 
+test('concurrent retries with the same request ID commit one shared action', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Concurrent retry target');
+  const creation = published.world.creations[0];
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'Concurrent identical requests must be applied once.' };
+  const requestId = 'concurrent-report-001';
+  const [left, right] = await Promise.all([
+    founder.request('/api/action', { ...action, requestId }),
+    founder.request('/api/action', { ...action, requestId })
+  ]);
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  assert.equal(right.response.status, 200, JSON.stringify(right.body));
+  assert.equal(left.body.result.id, right.body.result.id);
+  assert.deepEqual([left.body.idempotentReplay, right.body.idempotentReplay].sort(), [false, true]);
+  assert.equal(left.body.world.revision, right.body.world.revision);
+  assert.equal(left.body.world.reports.filter(report => report.text === action.text).length, 1);
+  const finalState = await founder.request('/api/state');
+  assert.equal(finalState.body.world.reports.filter(report => report.text === action.text).length, 1);
+  assert.equal(finalState.body.world.revision, published.world.revision + 1);
+});
+
 test('shared action request IDs replay the original result across lost responses and service restart', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const published = await publish(founder, 'Idempotent report target');
