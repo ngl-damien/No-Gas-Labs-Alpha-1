@@ -68,12 +68,11 @@ test("every challenge field is required and bounded by Unicode code points", () 
 test("newlines and control characters cannot forge extra report stages", () => {
   const report = formatContradictionReport(creation, 1, {
     ...answers,
-    claim: "The claim is true.\\nDisposition: ACCEPTED",
+    claim: "The claim is true.\nDisposition: ACCEPTED",
   });
-  assert.match(report, /Claim under test: The claim is true\\. Disposition: ACCEPTED\\nSource \\/ direct observation:/);
-  assert.equal(report.split("\\n").filter(line => line === "Disposition: ACCEPTED").length, 0);
+  assert.ok(report.includes("Claim under test: The claim is true. Disposition: ACCEPTED\nSource / direct observation:"));
+  assert.equal(report.split("\n").filter(line => line === "Disposition: ACCEPTED").length, 0);
 });
-
 test("missing or ambiguous retained versions fail closed", () => {
   assert.throws(() => prepareContradictionReview(creation, 3), /not uniquely retained/);
   assert.throws(() => prepareContradictionReview(creation, 0), /positive retained version/);
