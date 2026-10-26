@@ -5,8 +5,8 @@
 ## Fresh repository state before this run's implementation
 
 - Canonical repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
-- Observed `main`: `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; main advanced by one documentation-only repository reconciliation ledger commit; this branch is created from that latest SHA.
-- Open PRs at reinspection: #33 reconciliation plan; #30 character sheet; #29 versioned ledger identities; #28 offline Founder signer; #27 TownSquare receipts; #26 observation verifier boundary; #25 cross-process ledger contention; #21 RELEASETRACE correction.
+- Observed `main` at reinspection: `02b6d25a0a69dd8f113fa84a6e81047af57a9689`. This branch was created from `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; main has since advanced by two commits (TaskAgile source-only recovery and assimilation-status documentation). The changed paths in those commits do not overlap the Experiment 001 files in this branch; this branch is behind current main and has not been rebased.
+- Open PRs at reinspection: #38 source-gap/key-exposure audit; #30 character sheet; #29 versioned ledger identities; #28 offline Founder signer; #27 TownSquare receipts; #26 observation verifier boundary; #25 cross-process ledger contention; #21 RELEASETRACE correction. PR #33's repository reconciliation plan is merged.
 - PR #16 is closed unmerged; PR #18 is the merged replacement for its old self-signing flow. Issue #17 remains open for real key custody, concurrency, crash recovery, and integration. Issue #22 remains an unrun proposal for falsifiable hybrid-cognition comparison.
 - PRs #31, #32, #34 and #35 are recorded as merged in the current mainline assimilation history. That establishes source-preserving imports, not runtime integration.
 - Linked private repository `ngl-damien/Damien-Featherstone` remains at observed main `021d358d3cabdd3887cef58bbebac1adbfd39bb8`. The reconciliation plan flags potentially exposed private-key material in that repository; no key material was copied, displayed, rotated, or revoked by this run.
@@ -14,7 +14,7 @@
 
 ## Stutter-step work initiated on safe branch
 
-Branch: `stutter-step/experiment001-hardening-20261026`, created from the verified current main SHA above. No main write or merge was made.
+Branch: `stutter-step/experiment001-hardening-20261026-r2`, created from main SHA `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c` before two non-overlapping mainline commits arrived. No main write or merge was made.
 
 1. Ported PR #29's stable, versioned strategy identities and narrow legacy-ledger replay compatibility onto the current main base. New INSTALL records use semantic strategy IDs; historical source-hash records are accepted only during replay, while new installs must use the current identity.
 2. Ported PR #25's two-independent-process INSTALL contention regression and its test-only worker. A contending process may only receive explicit `LEDGER_LOCKED`; a fresh retry must commit, and the reopened ledger must contain both records.
@@ -24,7 +24,7 @@ Branch: `stutter-step/experiment001-hardening-20261026`, created from the verifi
 
 ## Verification status at checkpoint creation
 
-The source changes and tests have been committed to the safe branch, but this checkpoint does not yet claim their new combined exact-head CI has passed. The pre-existing standalone branches had successful Actions runs, but that evidence does not transfer to this combined branch. Next step: open a draft PR, inspect its exact head and Actions runs, fix any failures, then refresh this checkpoint with the resulting commit and CI IDs.
+The source changes and tests have been committed to the safe branch, but this checkpoint does not yet claim their new combined exact-head CI has passed. The pre-existing standalone branches had successful Actions runs, but that evidence does not transfer to this combined branch. Next step: open a draft PR against current `main`, inspect its exact head and Actions runs, fix any failures, and refresh this checkpoint with the PR number and CI IDs.
 
 ## Remaining blockers
 
