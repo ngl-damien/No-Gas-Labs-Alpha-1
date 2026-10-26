@@ -77,3 +77,42 @@ test("projection is read-only and malformed retained slots remain visible", () =
   assert.deepEqual(world, beforeWorld);
   assert.deepEqual(kernel, beforeKernel);
 });
+
+
+test("non-array world and institutional event collections remain visible instead of appearing empty", () => {
+  const { world, kernel } = fixture();
+  world.events = { length: 1, 0: { id: "hidden-event", type: "report" } };
+  kernel.events = "corrupt-event-list";
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(chronicle.malformed, 2);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-events"));
+  assert.ok(chronicle.entries.some(entry => entry.id === "kernel:unclassified-events"));
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:hidden-event"), false);
+  assert.equal(
+    chronicle.entries.filter(entry => entry.warning?.includes("Malformed retained event collection")).length,
+    2
+  );
+});
+
+test("accessor-backed event collections are rejected without executing their getters", () => {
+  let worldReads = 0;
+  let kernelReads = 0;
+  const world = { reports: [], contributions: [] };
+  const kernel = { works: {} };
+  Object.defineProperty(world, "events", {
+    enumerable: true,
+    get() { worldReads += 1; throw new Error("world events getter executed"); }
+  });
+  Object.defineProperty(kernel, "events", {
+    enumerable: true,
+    get() { kernelReads += 1; throw new Error("kernel events getter executed"); }
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(worldReads, 0);
+  assert.equal(kernelReads, 0);
+  assert.equal(chronicle.malformed, 2);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-events"));
+  assert.ok(chronicle.entries.some(entry => entry.id === "kernel:unclassified-events"));
+});
