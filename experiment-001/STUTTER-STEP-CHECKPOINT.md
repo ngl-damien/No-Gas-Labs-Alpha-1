@@ -130,3 +130,13 @@ The `verify` job's `world-projection` step ran `npm test` and completed successf
 3. Map actual reducer mutation entry points and test the authority gate against real XP/world projection paths.
 4. Reassess PR #14's integration diff and PR #15's observation-verification boundary against current `main`; preserve founder review before any merge.
 
+
+
+## Stutter-step concurrency acceptance — 2026-10-26 UTC
+
+- Test commit: `221fab450f72b73fa92405ea95e8a2608c2bc5f2` adds two adversarial races to `test/lock-ownership-regression.test.mjs`: two simultaneous service-store initializers must yield exactly one owner and one `SERVICE_LOCKED` rejection; two simultaneous institutional-ledger initializers must yield exactly one owner and one `LEDGER_LOCKED` rejection.
+- Each case closes the winning owner and reopens the store/ledger, checking that normal owned-lock cleanup permits a later validated open.
+- These are deterministic acceptance assertions for exclusive lock acquisition. They do **not** solve stale-lock recovery after process death, do not make inode-check-then-unlink atomic, and do not replace crash injection around rename/directory sync.
+- Exact-head GitHub Actions must run before these tests are reported passing. No local test run is claimed.
+
+Next: inspect exact-head `verify` and Genesis Evidence Invariant; keep stale-lock recovery manual until a safe owner-liveness/recovery protocol is specified. Reconcile this PR's base against current `main` before any review/merge; do not merge automatically.
