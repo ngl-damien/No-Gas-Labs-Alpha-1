@@ -123,3 +123,27 @@ Exact verification evidence for the current PR head's merge candidate 5bdbdb2745
 5. Only after authority/evidence boundaries are operational, revisit the falsifiable Hybrid Cognition comparison in Issue #22.
 
 No merge, deployment, XP award, external release, spending, or linked-repository change occurred.
+
+## Stutter-step D — pinned Ed25519 observation verifier adapter
+
+PR #26 was re-inspected after the TownSquare work. The callback boundary alone left a useful implementation gap: a host could inject a verifier, but the repository did not yet provide a concrete verifier for a separately signed observation.
+
+Added to PR #26's branch codex/world-projection-verifier-boundary-20261025:
+
+- 4d0997ec0924ce30de7914ea0f49bbd23d0734ff — add src/world/observation-attestation.js. It parses an Ed25519 public key, checks its SHA-256 SPKI-DER fingerprint against a host-provided pin, binds the verifier to a configured observer ID, and verifies a base64url signature over the canonical event excluding the attestation envelope. Malformed signatures, wrong keys, wrong observer IDs and altered event content fail closed.
+- 3f4de99b5ae1114236a73800c4fde90bb6f88f3e — avoid re-parsing a KeyObject while fingerprinting.
+- f0a15996fade24536e9ac3bd1fcf4e2edbca84dc — add five regression cases: valid signature projects progress; altered consequences fail; missing/malformed/wrong-key/wrong-observer attestations fail; wrong pinned fingerprint fails at initialization; missing observer identity fails at initialization.
+- 8b7abf1486243d5e288b9402fe974f3c37e06fe2 — document the adapter and its explicit host-integration/key-custody limits in README.md.
+
+Exact verification for PR #26 head 8b7abf1486243d5e288b9402fe974f3c37e06fe2 on merge candidate ac5b4b5 (merged with main 0969df84cce7748d4f0db8e79ec06d13ad826a31):
+
+- [verify run 40255970242](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255970242): success. Node test runner, Python inspector, game package build and bounded institutional exercise each exited 0 under Node 24.21.0.
+- [Genesis Evidence Invariant run 40255970249](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255970249): success.
+- These are GitHub Actions results; no local clone/test was available in this run.
+
+Limit: this is a reusable cryptographic verifier component plus reducer boundary, not yet a production integration. No external observer private key was supplied or configured. The verifier only becomes an independent trust boundary when the host pins the public key and observer identity from separately controlled configuration, the observer signs outside the event-producing process, and the actual host path injects this verifier before canonical progress is awarded. PR #26 remains an unmerged draft.
+
+### Checkpoint verification
+
+- The checkpoint update from the preceding section is on PR #25 branch head 2a440fb08cb93c0a4d298062900b28b1fd959f07.
+- [verify run 40255646023](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255646023) and [Genesis Evidence Invariant run 40255646152](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255646152) both completed successfully for that checkpoint-bearing branch.
