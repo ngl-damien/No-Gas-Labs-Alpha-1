@@ -93,10 +93,14 @@ test("malformed receipt references cannot award progress", () => {
 test("revoked grants cannot produce future world consequences", () => {
   const revocation = { event_id: "e7", event_type: "REVOCATION", revokes: "grant-1" };
   const after = { ...observed, event_id: "e8", parents: ["e7"], grant_id: "grant-1" };
-  const s = projectWorld([revocation, after], undefined, { resolveArtifact, verifyObservation });
+  const verifyAdjudication = event => event.event_id === "e7";
+  const s = projectWorld([revocation, after], undefined, { resolveArtifact, verifyObservation, verifyAdjudication });
   assert.equal(s.xp, 0);
   assert.equal(s.world.forgeOpen, undefined);
   assert.deepEqual(s.revoked, ["grant-1"]);
+  const untrustedRevocation = projectWorld([revocation, after], undefined, { resolveArtifact, verifyObservation });
+  assert.equal(untrustedRevocation.xp, 25, "unverified revocation is history, not authority to rewrite the projection");
+  assert.deepEqual(untrustedRevocation.revoked, []);
 });
 
 test("projection can be rebuilt from event history", () => {
@@ -176,4 +180,21 @@ test("an explicitly rejected observation cannot mint canonical progress despite 
   assert.equal(s.xp, 0);
   assert.equal(s.quests["forge-gate"]?.status, undefined);
   assert.equal(s.world.forgeOpen, undefined);
+});
+
+test("unverified failures and rejections remain in history without manufacturing terminal state", () => {
+  const failed = { ...observed, event_id: "e14", outcome: "FAILED" };
+  const failedProjection = projectWorld([failed], undefined, { resolveArtifact, verifyObservation: () => false });
+  assert.equal(failedProjection.xp, 0);
+  assert.equal(failedProjection.quests["forge-gate"], undefined);
+  assert.equal(failedProjection.history.length, 1);
+
+  const rejected = { ...observed, event_id: "e15", admission: "REJECTED" };
+  const untrusted = projectWorld([rejected], undefined, { resolveArtifact, verifyObservation, verifyAdjudication: () => false });
+  assert.equal(untrusted.quests["forge-gate"], undefined);
+  assert.equal(untrusted.history.length, 1);
+
+  const trusted = projectWorld([rejected], undefined, { resolveArtifact, verifyObservation, verifyAdjudication: event => event.event_id === "e15" });
+  assert.equal(trusted.quests["forge-gate"].status, "REJECTED");
+  assert.equal(trusted.history.length, 1);
 });
