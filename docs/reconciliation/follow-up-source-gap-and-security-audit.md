@@ -82,14 +82,38 @@ This audit confirms the tracked private-key field; it does **not** establish whe
 - Do not silently resolve conflicting state. Prefer explicit adapters and deterministic migration receipts over copying files into runtime directories.
 - Never infer tests, builds, deployments, or operational correctness from repository metadata or matching hashes.
 
-## 6. Acceptance checklist for this reconciliation work
+## 6. First-pass capability-to-owner map
+
+This is a **path-level integration map** derived from the Alpha One tree and test names. It is not a claim that the implementations are behaviorally equivalent; that requires reading contracts/call sites and running tests.
+
+| TaskAgile capability/artifact | Alpha One candidate owner | Decision |
+|---|---|---|
+| `client/modules/state.js` game score/combo/power-up state | `game/model.mjs`, `game/service-store.mjs`, `src/quest/engine.js` | Adapt only game mechanics. Never let legacy game state mutate institutional authority or quest rewards directly. |
+| `client/modules/persistence.js` local storage/offline sync | `game/service-store.mjs`, `src/institution/ledger.mjs`, `src/evidence/content-addressed.js` | Compare persistence semantics. Institutional events/receipts remain append-only and distinct from browser cache. |
+| `client/modules/security.js` sanitization/rate limiting | `src/authority/decision.js`, `src/forge/runner.mjs`, existing security/authority tests | Reuse concepts only after threat-model review; client-side sanitization is not an authorization boundary. |
+| `client/modules/leaderboard-api.js` | No obvious one-to-one canonical owner in the current tree | Treat as an optional adapter/product decision. Do not introduce an independent authority or reward ledger. |
+| `client/modules/telegram-api.js` | No direct Telegram adapter identified in the current tree | Keep provider-specific and opt-in; do not add Telegram dependency just to recover a file. |
+| `client/modules/animations.js`, `audio.js` | `game/client.mjs`, `game/styles.css`, `game/index.html` | Optional presentation features; preserve mobile performance and accessibility. |
+| `client/modules/ui.js`, `client/index.html` | `game/client.mjs`, `game/world-view.mjs`, `game/institution-view.mjs` | Extend the current native game view; avoid a second UI runtime. |
+| `client/modules/testing.js` | `npm test`, `test/*`, existing component/game/authority suites | Port test cases/invariants, not necessarily the old harness. Tests must actually run to count as evidence. |
+| `main.js`, `localization/en.js` | `game/client.mjs` for entry point; no explicit localization subsystem identified | Keep the old pair as reference; localization support is a genuine gap to decide, not to assume. |
+| `rpg.html`, `shrine.html`, deathmatch experiences | `game/quests.mjs`, `game/world-view.mjs`, `game/artifacts.mjs` | Treat as separate content/gameplay candidates and preserve source provenance. |
+| React `client/src/*`, UI primitives, hooks, CSS | No direct equivalent needed if Alpha One's current game runtime remains the target | Do not import a second React UI stack unless a specific capability justifies the added runtime/dependencies. |
+| TaskAgile `server/*`, `shared/schema.ts`, Drizzle/Vite configs and lockfile | `game/server.mjs` and existing Alpha One build scripts | Do not replace Alpha One's server/build/database choices with the source app's stack. Review individual required endpoints instead. |
+| `staging/*` rollback scripts and state | No runtime owner | Historical evidence only; never execute automatically. |
+
+### Immediate next engineering slice
+
+The highest-value safe slice is to compare the TaskAgile legacy state/persistence/security/testing modules against Alpha One's game model, service store, authority/evidence boundaries and test contracts, then write a narrow adapter or port only where a real gap exists. The leaderboard and Telegram integrations are explicit product decisions, not mandatory recovery. The React/Vite/Express/Drizzle subtree should remain deferred until there is a demonstrated need.
+
+## 7. Acceptance checklist for this reconciliation work
 
 - [x] Capture a file-only SHA ledger for NGL-001, Command Center, and TaskAgile.
 - [x] Record TaskAgile missing-file classes and recommended extraction order.
 - [x] Identify NGL-001 evidence-bearing differences and the unreviewed oversized application blob.
 - [x] Identify the four Command Center assets and their aggregate size.
 - [x] Flag the tracked private-key field without reproducing key material.
-- [x] Identify Alpha One's native game, authority, institution, evidence, forge, quest, world, and test areas plus existing TaskAgile reference copies; detailed per-capability call-graph mapping remains to be completed.
+- [x] Identify Alpha One's native game, authority, institution, evidence, forge, quest, world, and test areas plus existing TaskAgile reference copies; record a first-pass capability-to-owner map (behavioral equivalence still unverified).
 - [ ] Validate NGL-001 ledger/state differences and source provenance.
 - [ ] Confirm key trust status and complete rotation/remediation if the key is or could be trusted.
 - [ ] Review licenses and security implications for any selected code/media.
