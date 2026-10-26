@@ -101,7 +101,7 @@ export function eventParents(event) {
 // Missing, throwing, non-boolean, or false verification fails closed.
 // Validate descriptors before any field read or structuredClone: cloning a
 // plain object with an accessor can execute attacker-controlled getter code.
-function safeEventPayload(event) {
+export function isSafeEventPayload(event) {
   if (!event || typeof event !== "object" || Array.isArray(event)) return false;
   try {
     stableEventValue(event);
@@ -131,7 +131,7 @@ function receiptsMatch(event, resolveArtifact) {
 }
 
 export function hasVerifiedObservation(event, resolveArtifact, verifyObservation) {
-  if (!safeEventPayload(event)) return false;
+  if (!isSafeEventPayload(event)) return false;
   return OBSERVATION_EVENT_TYPES.has(event.event_type) &&
     event.admission === "ACCEPTED" &&
     event.authority === "AUTHORIZED" &&
