@@ -1,0 +1,71 @@
+{
+  "schema": "ngl.source-branch-delta.v1",
+  "source_repository": "ngl-damien/ngl-mesh",
+  "source_branch": "relay-live-bridge-registry",
+  "source_commit": "eb8b1907747c4d5e3ef3aea880a18462facbb568",
+  "source_tree_sha": "3067a6cdbc519fee86a2e938957ccc3e6cf20566",
+  "source_base_branch": "main",
+  "source_base_commit": "be43452a2133ba920a3814e19d7812e5c964117d",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/ngl-mesh-feature-branch-recovery-2026-10-26",
+  "license_status": "No LICENSE file found in the inspected NGL Mesh branch tree; reuse license remains unconfirmed",
+  "runtime_status": "Reference-only; no execution or integration",
+  "verification": {
+    "branch_delta_file_count": 6,
+    "exact_target_blob_matches": 6,
+    "byte_identity_method": "Git blob SHA equality",
+    "credential_pattern_scan": "No configured private-key/API-key/credential patterns matched in copied files",
+    "build_test_performed": false,
+    "runtime_integrated": false
+  },
+  "entries": [
+    {
+      "source_path": "README.md",
+      "source_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "size_bytes": 2362,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/README.md",
+      "target_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/NGL-LIVE-BRIDGES.md",
+      "source_blob_sha": "cf01c7968216ac89b8c8bdedbdb0dfc9b9e5147b",
+      "size_bytes": 4195,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/docs/NGL-LIVE-BRIDGES.md",
+      "target_blob_sha": "cf01c7968216ac89b8c8bdedbdb0dfc9b9e5147b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/bridge-registry.v1.json",
+      "source_blob_sha": "a69a00385ea4edb43f083ab01587aa8e6de53ecc",
+      "size_bytes": 2897,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/docs/bridge-registry.v1.json",
+      "target_blob_sha": "a69a00385ea4edb43f083ab01587aa8e6de53ecc",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/node-contract/README.md",
+      "source_blob_sha": "c6466835c17d58c3d1d58bb3b417ff927a6d4f45",
+      "size_bytes": 1383,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/prototype/node-contract/README.md",
+      "target_blob_sha": "c6466835c17d58c3d1d58bb3b417ff927a6d4f45",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/node-contract/src/ngl/mesh/NodeContract.java",
+      "source_blob_sha": "5b8a11a7771ee20f8fa5b7708864b4d4389f91d9",
+      "size_bytes": 6941,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/prototype/node-contract/src/ngl/mesh/NodeContract.java",
+      "target_blob_sha": "5b8a11a7771ee20f8fa5b7708864b4d4389f91d9",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/node-contract/src/ngl/mesh/NodeContractSelfTest.java",
+      "source_blob_sha": "f5f8efedc69aaf9a82fed737953f889d14081891",
+      "size_bytes": 3963,
+      "target_path": "integrations/ngl-mesh-reference/branches/relay-live-bridge-registry/source/prototype/node-contract/src/ngl/mesh/NodeContractSelfTest.java",
+      "target_blob_sha": "f5f8efedc69aaf9a82fed737953f889d14081891",
+      "status": "IDENTICAL_BLOB"
+    }
+  ]
+}
