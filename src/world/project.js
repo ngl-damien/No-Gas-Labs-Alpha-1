@@ -4,18 +4,40 @@ const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
 });
 
-const terminalSuccess = (e, resolveArtifact) =>
-  e.admission === "ACCEPTED" &&
-  e.authority === "AUTHORIZED" &&
-  e.execution === "EXECUTED" &&
-  e.evidence === "OBSERVED" &&
-  e.outcome === "SUCCEEDED" &&
-  e.observation_verification === "VERIFIED" &&
-  Array.isArray(e.receipts) &&
-  e.receipts.length > 0 &&
-  e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
+// Event labels are claims, not attestations. The host injects trust roots
+// independently of the event producer; missing, non-boolean or throwing
+// verifiers fail closed. Events are still retained in history for later review.
+function trustedByHost(event, verifier) {
+  if (typeof verifier !== "function") return false;
+  try {
+    return verifier(structuredClone(event)) === true;
+  } catch {
+    return false;
+  }
+}
 
-export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
+export function hasVerifiedObservation(e, resolveArtifact, verifyObservation) {
+  return e?.admission === "ACCEPTED" &&
+    e.authority === "AUTHORIZED" &&
+    e.execution === "EXECUTED" &&
+    ["OBSERVED", "REFUTED"].includes(e.evidence) &&
+    e.observation_verification === "VERIFIED" &&
+    Array.isArray(e.receipts) &&
+    e.receipts.length > 0 &&
+    e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact)) &&
+    trustedByHost(e, verifyObservation);
+}
+
+export function isVerifiedAdjudication(event, verifyAdjudication) {
+  return trustedByHost(event, verifyAdjudication);
+}
+
+const terminalSuccess = (e, resolveArtifact, verifyObservation) =>
+  e?.outcome === "SUCCEEDED" &&
+  e.evidence === "OBSERVED" &&
+  hasVerifiedObservation(e, resolveArtifact, verifyObservation);
+
+export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication } = {}) {
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
   const revoked = new Set(state.revoked || []);
@@ -30,7 +52,7 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
     state.history.push(event);
 
     if (event.event_type === "REVOCATION") {
-      if (typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
+      if (isVerifiedAdjudication(event, verifyAdjudication) && typeof event.revokes === "string" && event.revokes) revoked.add(event.revokes);
       continue;
     }
 
@@ -41,16 +63,26 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
       continue;
     }
 
-    if (event.outcome === "FAILED" || event.evidence === "REFUTED" || event.admission === "REJECTED") {
-      state.quests[subject] = {
-        ...(state.quests[subject] || {}),
-        status: event.outcome === "FAILED" ? "FAILED" : "REJECTED",
-        source_event: event.event_id
-      };
+    if (event.admission === "REJECTED" && isVerifiedAdjudication(event, verifyAdjudication)) {
+      state.quests[subject] = { ...(state.quests[subject] || {}), status: "REJECTED", source_event: event.event_id };
       continue;
     }
 
-    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact)) continue;
+    if (event.outcome === "FAILED" || event.evidence === "REFUTED") {
+      if (hasVerifiedObservation(event, resolveArtifact, verifyObservation)) {
+        state.quests[subject] = {
+          ...(state.quests[subject] || {}),
+          status: event.outcome === "FAILED" ? "FAILED" : "REJECTED",
+          source_event: event.event_id
+        };
+      }
+      continue;
+    }
+
+    // An unverified rejection remains in history but cannot change projected state.
+    if (event.admission === "REJECTED") continue;
+
+    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact, verifyObservation)) continue;
 
     state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
     const effect = event.world_effect || {};

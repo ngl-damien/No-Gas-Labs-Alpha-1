@@ -51,6 +51,10 @@ The Lab separates:
 
 No actor may promote its own claim directly to `OBSERVED`. Observation requires an evidence reference produced outside the claim itself. Canonical state is derived from accepted events; rejected and failed events remain history.
 
+The canonical `src/world/project.js` reducer also requires a host-injected `verifyObservation(event)` callback to validate observer provenance independently. The event's `observation_verification: "VERIFIED"` field is only a claim; it cannot authorize progress by itself. A deployment must supply a verifier rooted outside the event producer.
+
+`src/world/observation-attestation.js` provides an Ed25519 verifier adapter. It pins the SHA-256 fingerprint of the public key's DER SubjectPublicKeyInfo and a host-configured observer ID, then verifies a base64url signature over the canonical event excluding its attestation envelope. The public key, expected fingerprint and observer ID must come from separately controlled host configuration; never derive the trust pin from an incoming event. This adapter is not wired into `game/server.mjs` and does not custody the observer's private key. Until a host injects it with a separately controlled signing key, it is a tested verifier component—not evidence that production observations are independently authenticated.
+
 ## Genesis acceptance condition
 
 The repository earns its first capability when an executable reducer:
