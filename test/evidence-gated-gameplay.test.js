@@ -5,6 +5,7 @@ import { makeReceipt } from "../src/evidence/content-addressed.js";
 
 const artifact = Buffer.from("actual executed artifact");
 const receipt = makeReceipt(artifact);
+const verifyObservation = event => ["proof-1", "proof-2", "proof-3"].includes(event.event_id);
 const event = {
   event_id:"proof-1", event_type:"SYSTEM_EVENT", subject:"forge-gate",
   admission:"ACCEPTED", authority:"AUTHORIZED", execution:"EXECUTED",
@@ -13,7 +14,7 @@ const event = {
 };
 
 test("verified artifact bytes can mint world consequences", () => {
-  const s=projectWorld([event], undefined, {resolveArtifact:()=>artifact});
+  const s=projectWorld([event], undefined, {resolveArtifact:()=>artifact,verifyObservation});
   assert.equal(s.xp,100);
   assert.equal(s.inventory.proof_shard,1);
   assert.equal(s.world.forgeOpen,true);
@@ -21,18 +22,18 @@ test("verified artifact bytes can mint world consequences", () => {
 
 test("a VERIFIED-looking label without artifact bytes cannot mint XP", () => {
   const forged={...event,event_id:"proof-2",observation_verification:"VERIFIED"};
-  const s=projectWorld([forged]);
+  const s=projectWorld([forged], undefined, {verifyObservation});
   assert.equal(s.xp,0);
   assert.equal(s.world.forgeOpen,undefined);
 });
 
 test("mutated artifact bytes invalidate the receipt", () => {
-  const s=projectWorld([event], undefined, {resolveArtifact:()=>Buffer.from("different artifact")});
+  const s=projectWorld([event], undefined, {resolveArtifact:()=>Buffer.from("different artifact"),verifyObservation});
   assert.equal(s.xp,0);
 });
 
 test("forged digest invalidates the receipt", () => {
   const forged={...event,event_id:"proof-3",receipts:[{...receipt,digest:"f".repeat(64)}]};
-  const s=projectWorld([forged], undefined, {resolveArtifact:()=>artifact});
+  const s=projectWorld([forged], undefined, {resolveArtifact:()=>artifact,verifyObservation});
   assert.equal(s.xp,0);
 });
