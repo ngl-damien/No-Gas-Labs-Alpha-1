@@ -58,10 +58,10 @@ test("all acceptance conditions require verified adjudications", () => {
 test("unverified execution labels cannot satisfy acceptance", () => {
   const event = execution("untrusted", quest.acceptance);
   const noObservationTrust = {
-    ...trust, verifyObservation: () => true,
+    ...trust, verifyObservation: () => false,
     verifyAuthorization: () => true
   };
-  assert.equal(projectQuest(quest, [auth, event], noObservationTrust).status, QUEST_STATUS.IN_PROGRESS);
+  assert.equal(projectQuest(quest, [auth, event], noObservationTrust).status, QUEST_STATUS.AUTHORIZED);
   assert.equal(projectQuest(quest, [auth, event]).status, QUEST_STATUS.OPEN);
 });
 
