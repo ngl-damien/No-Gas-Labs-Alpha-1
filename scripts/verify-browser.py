@@ -192,6 +192,16 @@ def shared(browser,url,data,out):
         assert snapshot['world']['creations'][0]['version']==2 and len(snapshot['world']['methods'])==1
         assert len(snapshot['institution']['kernel']['accepted'])==2
         assert visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()==original
+        # The in-world TownSquare docket must retain dissent against the exact old version after repair.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The institution at work.')
+        expect(b.get_by_text('FIELD DISSENT & FAILURE REPORTS',exact=True)).to_be_visible()
+        expect(b.get_by_text('UNADJUDICATED REPORT · The shared observatory v1',exact=True)).to_be_visible()
+        expect(b.get_by_text('Preserve this report against version one.',exact=True)).to_be_visible()
+        b.get_by_role('button',name='Inspect exact version →',exact=True).click()
+        expect(b.locator('#version-select')).to_have_value('1')
+        expect(b.locator('#creation-notes')).to_contain_text('Preserve this report against version one.')
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
