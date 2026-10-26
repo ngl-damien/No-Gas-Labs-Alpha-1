@@ -49,3 +49,39 @@ test("retained history cannot contain conflicting or duplicate event IDs", () =>
     /duplicate event_id in retained history: claim-immutable-1/
   );
 });
+
+
+test("new event payloads reject hidden own properties before history snapshotting", () => {
+  const effect = { xp: 1 };
+  Object.defineProperty(effect, "hidden", { value: 2, enumerable: false });
+  assert.throws(
+    () => projectWorld([{ ...claim, event_id: "hidden-payload", world_effect: effect }]),
+    /non-JSON object in event payload/
+  );
+});
+
+test("new event payloads reject sparse arrays with inherited indices", () => {
+  const sparse = new Array(1);
+  Object.setPrototypeOf(sparse, ["shadow"]);
+  assert.throws(
+    () => projectWorld([{ ...claim, event_id: "sparse-payload", world_effect: { items: sparse } }]),
+    /non-JSON array in event payload/
+  );
+});
+
+test("event payload validation rejects accessors without invoking them", () => {
+  let getterCalls = 0;
+  const nested = {};
+  Object.defineProperty(nested, "value", {
+    enumerable: true,
+    get() {
+      getterCalls++;
+      return "surprise";
+    }
+  });
+  assert.throws(
+    () => projectWorld([{ ...claim, event_id: "accessor-payload", world_effect: { nested } }]),
+    /non-JSON object field in event payload/
+  );
+  assert.equal(getterCalls, 0);
+});
