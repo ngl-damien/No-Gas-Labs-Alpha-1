@@ -300,3 +300,28 @@ test('the host CSP permits authored srcdoc instrument scripts while its iframe r
   const sandbox = /<iframe[^>]*id="artifact-frame"[^>]*sandbox="([^"]+)"/.exec(page.body)?.[1];
   assert.ok(sandbox?.includes('allow-scripts')); assert.ok(!sandbox?.includes('allow-same-origin'));
 });
+
+test('generated Founder key is retained across a clean server restart', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-key-restart-'));
+  const first = await createGameServer({ dataDir });
+  const keyPath = join(dataDir, 'founder.key');
+  const firstKey = (await readFile(keyPath, 'utf8')).trim();
+  await first.closeGame();
+
+  const second = await createGameServer({ dataDir });
+  t.after(async () => {
+    await second.closeGame();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  assert.equal((await readFile(keyPath, 'utf8')).trim(), firstKey, 'restart must reuse the persisted key');
+
+  await new Promise(resolve => second.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${second.address().port}`;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: firstKey })
+  });
+  assert.equal(login.status, 200, 'the persisted Founder credential must remain usable after restart');
+});
+
