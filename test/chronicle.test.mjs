@@ -140,3 +140,80 @@ test("report text is not arbitrarily selected when multiple records share the sa
   assert.equal(report.detail, "");
   assert.match(report.warning, /attribution is ambiguous/i);
 });
+
+
+test("accessor-bearing event payloads are rejected without invoking top-level or nested getters", () => {
+  const { world, kernel } = fixture();
+  let getterCalls = 0;
+  const badWorld = {
+    id: "getter-world", type: "publish", version: 1,
+    actor: { id: "witness-getter" }, at: "2026-10-26T10:08:00.000Z",
+  };
+  Object.defineProperty(badWorld, "creationId", {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return "creation-observatory"; },
+  });
+  Object.defineProperty(badWorld.actor, "name", {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return "Injected actor"; },
+  });
+  const badKernel = {
+    id: "getter-kernel", type: "adjudicate", workId: "work-1",
+    actor: "damien", at: "2026-10-26T10:09:00.000Z",
+  };
+  Object.defineProperty(badKernel, "decision", {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return "accept"; },
+  });
+  world.events.push(badWorld);
+  kernel.events.push(badKernel);
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(getterCalls, 0);
+  assert.equal(chronicle.malformed, 2);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-3"));
+  assert.ok(chronicle.entries.some(entry => entry.id === "kernel:unclassified-2"));
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:getter-world"), false);
+  assert.equal(chronicle.entries.some(entry => entry.id === "kernel:getter-kernel"), false);
+});
+
+test("sparse retained event arrays fail closed without presenting partial history as complete", () => {
+  const { world, kernel } = fixture();
+  delete world.events[1];
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(chronicle.malformed, 1);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-events"));
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:publish-v1"), false);
+});
+
+test("accessor-backed event array slots are rejected without executing the slot getter", () => {
+  const { world, kernel } = fixture();
+  let getterCalls = 0;
+  Object.defineProperty(world.events, "1", {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return { id: "hidden-event", type: "publish" }; },
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(getterCalls, 0);
+  assert.equal(chronicle.malformed, 1);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-events"));
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:hidden-event"), false);
+});
+
+test("hidden and symbol properties make an event payload visibly malformed", () => {
+  const { world, kernel } = fixture();
+  const hidden = { id: "hidden-event", type: "publish", actor: "damien", at: "2026-10-26T10:08:00.000Z" };
+  Object.defineProperty(hidden, "unrecorded", { value: "not part of enumerable evidence", enumerable: false });
+  const symbolic = { id: "symbol-event", type: "publish", actor: "damien", at: "2026-10-26T10:09:00.000Z" };
+  symbolic[Symbol("unserialized")] = "hidden payload";
+  world.events.push(hidden, symbolic);
+
+  const chronicle = projectChronicle({ world, kernel });
+  assert.equal(chronicle.malformed, 2);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-3"));
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-4"));
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:hidden-event"), false);
+  assert.equal(chronicle.entries.some(entry => entry.id === "world:symbol-event"), false);
+});
