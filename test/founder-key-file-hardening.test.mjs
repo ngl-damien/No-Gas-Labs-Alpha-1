@@ -55,4 +55,12 @@ test('generated Founder key is private and reused after restart', async t => {
   const second = await createGameServer({ dataDir });
   t.after(() => second.closeGame());
   assert.equal((await readFile(path, 'utf8')).trim(), key1);
+  await new Promise(resolve => second.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${second.address().port}`;
+  const login = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: key1 })
+  });
+  assert.equal(login.status, 200, 'the generated key must still authenticate after restart');
 });
