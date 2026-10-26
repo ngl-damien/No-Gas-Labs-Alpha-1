@@ -30,6 +30,18 @@ export function hasVerifiedObservation(e, resolveArtifact, verifyObservation) {
     trustedByHost(e, verifyObservation);
 }
 
+export function isVerifiedAuthorization(event, verifyAuthorization) {
+  const isExecutionAuthorization = OBSERVATION_EVENT_TYPES.has(event?.event_type) &&
+    event.authority === "AUTHORIZED" &&
+    typeof event.grant_id === "string" && event.grant_id.length > 0;
+  const isQuestAuthorization = event?.type === "QUEST_AUTHORIZED" &&
+    typeof event.quest_id === "string" && event.quest_id.length > 0 &&
+    typeof event.grant_id === "string" && event.grant_id.length > 0 &&
+    event.actor === "founder";
+  return (isExecutionAuthorization || isQuestAuthorization) &&
+    trustedByHost(event, verifyAuthorization);
+}
+
 export function isVerifiedAdjudication(event, verifyAdjudication) {
   const isRevocation = event?.event_type === "REVOCATION" &&
     typeof event.revokes === "string" && event.revokes.length > 0;
@@ -38,12 +50,13 @@ export function isVerifiedAdjudication(event, verifyAdjudication) {
   return (isRevocation || isRejection) && trustedByHost(event, verifyAdjudication);
 }
 
-const terminalSuccess = (e, resolveArtifact, verifyObservation) =>
+const terminalSuccess = (e, resolveArtifact, verifyObservation, verifyAuthorization) =>
   e?.outcome === "SUCCEEDED" &&
   e.evidence === "OBSERVED" &&
-  hasVerifiedObservation(e, resolveArtifact, verifyObservation);
+  hasVerifiedObservation(e, resolveArtifact, verifyObservation) &&
+  isVerifiedAuthorization(e, verifyAuthorization);
 
-export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication } = {}) {
+export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication, verifyAuthorization } = {}) {
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
   const revoked = new Set(state.revoked || []);
@@ -77,7 +90,8 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     }
 
     if (event.outcome === "FAILED" || event.evidence === "REFUTED") {
-      if (hasVerifiedObservation(event, resolveArtifact, verifyObservation)) {
+      if (hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
+          isVerifiedAuthorization(event, verifyAuthorization)) {
         state.quests[subject] = {
           ...(state.quests[subject] || {}),
           status: event.outcome === "FAILED" ? "FAILED" : "REJECTED",
@@ -90,7 +104,8 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     // An unverified rejection remains in history but cannot change projected state.
     if (event.admission === "REJECTED") continue;
 
-    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact, verifyObservation)) continue;
+    if (revoked.has(event.grant_id) ||
+        !terminalSuccess(event, resolveArtifact, verifyObservation, verifyAuthorization)) continue;
 
     state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
     const effect = event.world_effect || {};
