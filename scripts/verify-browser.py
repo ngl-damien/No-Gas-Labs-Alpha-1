@@ -3,6 +3,7 @@
 Requires Python Playwright plus Chromium for development only. No provider keys or public posts.
 """
 import argparse
+import os
 import json
 import select
 import subprocess
@@ -42,7 +43,9 @@ def stop_server(process):
 
 
 def close_sheet(page):
-    if page.locator('#sheet').is_visible(): page.locator('#sheet-close').click()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').click()
+        expect(page.locator('#sheet')).to_be_hidden()
 
 
 def draft(page,kind,title):
@@ -94,6 +97,36 @@ def visit(page,title):
     page.get_by_role('button',name=f'Open {title}',exact=True).click()
 
 
+def institutional_locations(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        cases=[
+            ('The Relay','Carry the question.','Draft a portable request →'),
+            ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
+            ('The Long View','Make room for another voice.','Make a first place to preserve →'),
+            ('The Unfinished','Unfinished is a useful state.','Give the recovered comic a home →')
+        ]
+        for place,title,label in cases:
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {place}',exact=True).click()
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg=title)
+            expect(page.locator('#sheet .primary-button')).to_have_text(label)
+            assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
+        page.screenshot(path=str(out/'institutional-locations.png'))
+        assert not errors,errors
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases),'creations':0,'xp':0,'errors':errors}
+    finally:
+        context.close()
+
+
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
@@ -105,6 +138,11 @@ def shared(browser,url,data,out):
             page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
+        close_sheet(b)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
@@ -119,6 +157,11 @@ def shared(browser,url,data,out):
         snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to River of Receipts',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The river remembers bytes.')
+        expect(b.locator('#sheet .primary-button')).to_have_text('Inspect a published receipt →')
+        b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
         visit(b,'The shared observatory');b.locator('#enter-creation').click()
         frame=b.frame_locator('#artifact-frame')
         # srcdoc inputs can appear before the inline artifact script has attached handlers.
@@ -157,7 +200,8 @@ def shared(browser,url,data,out):
         assert not presence_errors,presence_errors
         a.screenshot(path=str(out/'shared-desktop.png'));b.screenshot(path=str(out/'shared-phone.png'))
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
-        # Dismiss any async-refreshed panel before testing the authenticated logout transition.
+        # A location or artifact panel may still be open after async shared-state refresh.
+        # Dismiss it explicitly before exercising the authenticated logout transition.
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
@@ -210,7 +254,7 @@ def main():
         process,url=launch_server(data)
         try:
             with sync_playwright() as playwright:
-                browser=playwright.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
+                browser=playwright.chromium.launch(executable_path=os.environ.get('NGL_CHROMIUM_EXECUTABLE','/usr/bin/chromium'),args=['--no-sandbox'])
                 try:
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
@@ -219,6 +263,7 @@ def main():
                         except Exception:
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
+                    record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
