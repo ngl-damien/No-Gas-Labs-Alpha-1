@@ -65,6 +65,25 @@ test("history cannot reference a future or missing parent", () => {
   }), /unresolved parent/);
 });
 
+test("event parent metadata must be a unique list of retained event IDs", () => {
+  const malformedParents = [
+    "authorize:reconstitute-alpha-1:g1",
+    null,
+    [auth.event_id, auth.event_id],
+    [7],
+    [""]
+  ];
+  for (const [index, parents] of malformedParents.entries()) {
+    assert.throws(
+      () => replayInstitution({
+        events: [auth, { ...done, parents, event_id: "bad-causal-edge-" + index }],
+        quests: [quest], resolveArtifact, verifyObservation, verifyAuthorization
+      }),
+      /invalid parents|invalid parent reference|duplicate parent/
+    );
+  }
+});
+
 test("duplicate event identities are rejected instead of silently replayed", () => {
   assert.throws(() => replayInstitution({
     events: [auth, auth], quests: [quest], resolveArtifact, verifyObservation, verifyAuthorization
