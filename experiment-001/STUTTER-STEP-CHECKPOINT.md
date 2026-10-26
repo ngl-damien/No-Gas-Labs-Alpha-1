@@ -1,5 +1,50 @@
 # NGL Stutter-Step Checkpoint
 
+> **Current handoff updated 2026-10-26 UTC.** This section supersedes the historical snapshots below; those earlier entries are retained as history, not current state.
+
+## Fresh repository state before this run's implementation
+
+- Canonical repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Observed `main`: `960ad5c7d32c1cf86b53cb584882bf1e2fe3954c`; main advanced by one documentation-only repository reconciliation ledger commit; this branch is created from that latest SHA.
+- Open PRs at reinspection: #33 reconciliation plan; #30 character sheet; #29 versioned ledger identities; #28 offline Founder signer; #27 TownSquare receipts; #26 observation verifier boundary; #25 cross-process ledger contention; #21 RELEASETRACE correction.
+- PR #16 is closed unmerged; PR #18 is the merged replacement for its old self-signing flow. Issue #17 remains open for real key custody, concurrency, crash recovery, and integration. Issue #22 remains an unrun proposal for falsifiable hybrid-cognition comparison.
+- PRs #31, #32, #34 and #35 are recorded as merged in the current mainline assimilation history. That establishes source-preserving imports, not runtime integration.
+- Linked private repository `ngl-damien/Damien-Featherstone` remains at observed main `021d358d3cabdd3887cef58bbebac1adbfd39bb8`. The reconciliation plan flags potentially exposed private-key material in that repository; no key material was copied, displayed, rotated, or revoked by this run.
+- Local clone execution is unavailable in this runtime; use exact-head GitHub Actions as observed verification and state that limitation.
+
+## Stutter-step work initiated on safe branch
+
+Branch: `stutter-step/experiment001-hardening-20261026`, created from the verified current main SHA above. No main write or merge was made.
+
+1. Ported PR #29's stable, versioned strategy identities and narrow legacy-ledger replay compatibility onto the current main base. New INSTALL records use semantic strategy IDs; historical source-hash records are accepted only during replay, while new installs must use the current identity.
+2. Ported PR #25's two-independent-process INSTALL contention regression and its test-only worker. A contending process may only receive explicit `LEDGER_LOCKED`; a fresh retry must commit, and the reopened ledger must contain both records.
+3. Ported PR #28's offline, review-bound Founder signer and its tests/docs. This is a key-possession signing helper, not proof of Damien's identity or consent and not hardware-backed key custody.
+4. Hardened signer file opening: reject symlinks with `lstat` even where `O_NOFOLLOW` is unavailable, and compare the pre-open path identity with the opened handle to reject a path swap. Added a symlink regression.
+5. Updated the Experiment 001 document so the closed PR #16 / merged PR #18 history and remaining stale-lock limits are not misstated.
+
+## Verification status at checkpoint creation
+
+The source changes and tests have been committed to the safe branch, but this checkpoint does not yet claim their new combined exact-head CI has passed. The pre-existing standalone branches had successful Actions runs, but that evidence does not transfer to this combined branch. Next step: open a draft PR, inspect its exact head and Actions runs, fix any failures, then refresh this checkpoint with the resulting commit and CI IDs.
+
+## Remaining blockers
+
+- Real Founder identity and private-key custody are unproven; the signer can prove possession of the matching key only.
+- No production observation-attestation trust root has been provisioned or wired to the real world/XP mutation path. PR #26 remains a separate draft and its test allowlists are not production trust.
+- Stale-lock recovery is deliberately not automated. Crash windows around atomic rename and directory sync need a defined safe protocol preserving `COMMIT_DURABILITY_UNCERTAIN`.
+- The linked private repository's potentially exposed key material requires a human-authorized rotation/revocation and history audit; this run did not take those consequential actions.
+- No merge, deployment, XP award, external release, spending, or linked-repository write occurred.
+
+## Next prioritized steps
+
+1. Verify the combined PR's exact-head Node tests, Python inspector, package build, institutional exercise, and Genesis Evidence Invariant.
+2. If green, review signer failure modes and ledger compatibility behavior; keep the PR draft.
+3. Integrate a real host-controlled observation verifier only after independently provisioned trust configuration exists; fail closed rather than injecting an always-true callback.
+4. Define and test crash-safe recovery without deleting a potentially live lock.
+5. Address the linked-repository key exposure only with appropriate Founder authorization; never copy the private key into Alpha One.
+6. Reinspect PR #26/#27/#30/#33 and issue #17 against the then-current main before choosing the next capability improvement.
+
+---
+
 Updated: 2026-10-22. This checkpoint is evidence-bound; it distinguishes tested prototype behavior from real Founder authorization or production autonomy.
 
 ## Fresh repository state
