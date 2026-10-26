@@ -315,7 +315,7 @@ test('exact schema key validation rejects NUL-delimiter collisions', async () =>
   const draft = proposal(lib, executor);
   delete draft.expiresAt;
   delete draft.id;
-  draft['expiresAt\\0id'] = 'square-v1';
+  draft['expiresAt\0id'] = 'square-v1';
   assert.equal(lib.validateInstallationProposal(draft).reason, 'INSTALL_SCHEMA_INVALID');
 });
 
