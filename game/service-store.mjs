@@ -1,9 +1,21 @@
-import { mkdir, readFile, open, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, readFile, open, rename, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.mjs';
 
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
+
+// Lock contents are not ownership proof: an external recovery action can
+// replace the pathname with a new inode carrying the same token.
+async function unlinkOwnedLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  return true;
+}
 
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
 export async function createServiceStore({ dataDir, initial, validate }) {
@@ -14,13 +26,21 @@ export async function createServiceStore({ dataDir, initial, validate }) {
   try { lease = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('Exclusive service writer lock already exists; stop the owner before opening this store. Stale locks require manual offline recovery.'), { code: 'SERVICE_LOCKED' }); throw error; }
   const ownership = randomUUID();
-  try { await lease.writeFile(ownership); } catch (error) { await lease.close(); await rm(lockPath, { force: true }); throw error; }
+  let leaseIdentity;
+  try {
+    const stat = await lease.stat();
+    leaseIdentity = { dev: stat.dev, ino: stat.ino };
+    await lease.writeFile(ownership);
+  } catch (error) {
+    await lease.close().catch(() => {});
+    await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
+    throw error;
+  }
   let released = false;
   async function close() {
     if (released) return; released = true;
     await lease.close();
-    // Never remove a replacement lease installed by an external recovery action.
-    if ((await readFile(lockPath, 'utf8').catch(() => null)) === ownership) await rm(lockPath, { force: true });
+    await unlinkOwnedLock(lockPath, leaseIdentity);
   }
   let current;
   try {
