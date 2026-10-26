@@ -25,9 +25,9 @@ export function observationKeyFingerprint(publicKey) {
 /**
  * Build a fail-closed verifier from host-controlled trust configuration.
  * The private signing key must remain with the observer; it is never accepted here.
- * The attestation signs the complete event except the attestation envelope itself.
+ * The signature binds the event, including its audience, except the attestation envelope.
  */
-export function createObservationVerifier({ publicKey, expectedFingerprint, observerId } = {}) {
+export function createObservationVerifier({ publicKey, expectedFingerprint, observerId, expectedAudience } = {}) {
   const key = ed25519PublicKey(publicKey);
   if (typeof expectedFingerprint !== "string" || !FINGERPRINT.test(expectedFingerprint)) {
     throw new Error("OBSERVATION_TRUST_FINGERPRINT_REQUIRED");
@@ -38,10 +38,13 @@ export function createObservationVerifier({ publicKey, expectedFingerprint, obse
   if (typeof observerId !== "string" || observerId.trim().length === 0) {
     throw new Error("OBSERVATION_IDENTITY_REQUIRED");
   }
+  if (typeof expectedAudience !== "string" || expectedAudience.trim().length === 0) {
+    throw new Error("OBSERVATION_AUDIENCE_REQUIRED");
+  }
 
   return function verifyObservation(event) {
     if (!event || typeof event !== "object" || Array.isArray(event)) return false;
-    if (event.observer_id !== observerId) return false;
+    if (event.observer_id !== observerId || event.audience !== expectedAudience) return false;
 
     const attestation = event.observation_attestation;
     if (!attestation || typeof attestation !== "object" || Array.isArray(attestation)) return false;
