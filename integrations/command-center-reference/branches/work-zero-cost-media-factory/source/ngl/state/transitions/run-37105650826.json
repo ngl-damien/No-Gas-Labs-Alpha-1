@@ -1,0 +1,16 @@
+{
+  "schema": "ngl.state-transition.v0",
+  "experiment_id": "media-animation-001",
+  "run_id": "37105650826",
+  "from_populated_seconds": 1,
+  "to_populated_seconds": 2,
+  "artifact_sha256": "4133901e7869cbeef4dcf6d8ff481607fa2e419bf67282cd1acf51a8c6a318e2",
+  "ad_copy_sha256": "9f22157dd9ffc5141082258b36b05a42207fd82394b9e1e64aba583209c3c6ca",
+  "status": "OBSERVED",
+  "basis": [
+    "compiler exit == 0",
+    "artifact exists and is non-empty",
+    "receipt parsed",
+    "observed populated_seconds == prior canonical state + 1"
+  ]
+}
