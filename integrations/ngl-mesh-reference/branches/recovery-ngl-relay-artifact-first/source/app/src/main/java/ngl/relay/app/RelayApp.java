@@ -1,0 +1,3 @@
+package ngl.relay.app;
+import android.app.Application; import java.io.File; import ngl.relay.core.*;
+public final class RelayApp extends Application {private CaseStore store;private MethodologyEngine engine;public void onCreate(){super.onCreate();refreshEngine();}public synchronized void refreshEngine(){File root=new File(getFilesDir(),"ngl");if(!root.isDirectory())root.mkdirs();store=new CaseStore(root);engine=new MethodologyEngine(store,NodeRegistry.contextBudgetChars(this),NodeRegistry.timeoutMillis(this));}public CaseStore store(){return store;}public MethodologyEngine engine(){return engine;}}
