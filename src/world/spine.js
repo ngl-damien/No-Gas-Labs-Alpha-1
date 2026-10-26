@@ -2,6 +2,23 @@ import { createHash } from "node:crypto";
 import { projectWorld, eventParents } from "./project.js";
 import { projectQuest } from "../quest/engine.js";
 
+function eventValues(events) {
+  if (!Array.isArray(events) || Object.getPrototypeOf(events) !== Array.prototype ||
+      Object.keys(events).length !== events.length ||
+      Reflect.ownKeys(events).length !== events.length + 1) {
+    throw new Error("event history must be a dense plain array");
+  }
+  const values = [];
+  for (let index = 0; index < events.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(events, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor)) {
+      throw new Error("event history contains an accessor or hidden entry");
+    }
+    values.push(descriptor.value);
+  }
+  return values;
+}
+
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
   if (value && typeof value === "object") {
@@ -17,16 +34,21 @@ export function hashState(value) {
 }
 
 export function validateHistory(events) {
-  if (!Array.isArray(events)) throw new Error("event history must be an array");
   const ids = new Set();
-  for (const event of events) {
-    if (!event || typeof event.event_id !== "string" || !event.event_id.trim() ||
-        ids.has(event.event_id)) throw new Error("duplicate or missing event_id");
-    const parents = eventParents(event);
-    if (parents.some(parent => !ids.has(parent))) {
-      throw new Error("unresolved parent for " + event.event_id);
+  for (const event of eventValues(events)) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      throw new Error("duplicate or missing event_id");
     }
-    ids.add(event.event_id);
+    const parents = eventParents(event);
+    const idProperty = Object.getOwnPropertyDescriptor(event, "event_id");
+    const id = idProperty?.value;
+    if (!idProperty || typeof id !== "string" || !id.trim() || ids.has(id)) {
+      throw new Error("duplicate or missing event_id");
+    }
+    if (parents.some(parent => !ids.has(parent))) {
+      throw new Error("unresolved parent for " + id);
+    }
+    ids.add(id);
   }
   return true;
 }
