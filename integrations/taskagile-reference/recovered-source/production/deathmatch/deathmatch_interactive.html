@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>No_Gas_Labs™ PRESENTS: Celebrity Deathmatch - THE GAME</title>
+    <style>
+        :root {
+            --bg: #000;
+            --fg: #fff;
+            --accent: #00ff41;
+            --danger: #ff3131;
+            --surface: #111;
+            --tap-target: 60px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            user-select: none;
+        }
+
+        #game-container {
+            flex: 1;
+            position: relative;
+            background: url('assets/arena_bg.png') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-bottom: 4px solid var(--accent);
+        }
+
+        .fighter-area {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 60%;
+            padding-bottom: 20px;
+        }
+
+        .fighter {
+            width: 40%;
+            max-width: 300px;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .fighter img { width: 100%; height: auto; }
+
+        .hp-bar-container {
+            width: 100%;
+            height: 10px;
+            background: #333;
+            margin-top: 10px;
+            border: 1px solid var(--fg);
+        }
+
+        .hp-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 100%;
+            transition: width 0.3s;
+        }
+
+        .hp-bar.low { background: var(--danger); }
+
+        #ui-layer {
+            height: 40%;
+            background: var(--surface);
+            border-top: 2px solid #333;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+        }
+
+        #subtitle-box {
+            flex: 1;
+            font-size: 1rem;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--accent);
+            margin-bottom: 10px;
+            border: 1px solid #222;
+            padding: 10px;
+        }
+
+        #controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--fg);
+            border: 2px solid var(--fg);
+            height: var(--tap-target);
+            font-size: 1rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .btn:active { background: var(--fg); color: var(--bg); }
+        .btn.accent { border-color: var(--accent); color: var(--accent); }
+        .btn.accent:active { background: var(--accent); color: var(--bg); }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .glitch { animation: glitch 0.1s infinite; }
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            50% { transform: translate(-3px, 3px); }
+            100% { transform: translate(3px, -3px); }
+        }
+
+        .hit { animation: hit 0.2s; }
+        @keyframes hit {
+            0% { filter: brightness(1); }
+            50% { filter: brightness(5) sepia(1) hue-rotate(-50deg); transform: scale(1.1); }
+            100% { filter: brightness(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="fighter-area">
+            <div id="trump-container" class="fighter">
+                <img src="assets/trump_fighter.png" alt="Trump">
+                <div class="hp-bar-container"><div id="trump-hp" class="hp-bar"></div></div>
+            </div>
+            <div id="musk-container" class="fighter">
+                <img src="assets/musk_fighter.png" alt="Musk">
+                <div class="hp-bar-container"><div id="musk-hp" class="hp-bar"></div></div>
+            </div>
+        </div>
+
+        <div id="ui-layer">
+            <div id="subtitle-box">
+                <div id="subtitles">INITIALIZING SYMPHONY...</div>
+            </div>
+            <div id="controls">
+                <button class="btn accent" onclick="playerAction('attack')">ATTACK</button>
+                <button class="btn" onclick="playerAction('dodge')">DODGE</button>
+                <button class="btn" onclick="playerAction('special')">SPECIAL</button>
+                <button class="btn" onclick="toggleAudio()">AUDIO: ON</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1 style="color: var(--accent); margin-bottom: 20px; letter-spacing: 5px;">No_Gas_Labs™</h1>
+        <h2 style="margin-bottom: 30px;">CELEBRITY DEATHMATCH</h2>
+        <button class="btn accent" style="padding: 0 40px;" onclick="startGame()">PLAY INTERACTIVE PODCAST</button>
+    </div>
+
+    <script>
+        let gameState = {
+            playing: false,
+            trumpHP: 100,
+            muskHP: 100,
+            audioEnabled: true,
+            currentLine: 0
+        };
+
+        const podcastScript = [
+            { text: "ANNOUNCER: Welcome to the Alpha Implosion!", action: "none" },
+            { text: "TRUMP: I have the best rockets, Elon. Tremendous.", action: "trump-attack" },
+            { text: "MUSK: Your rockets are a memory leak, Donald.", action: "musk-attack" },
+            { text: "ANNOUNCER: Musk deploys the Doge-Coin Swarm!", action: "musk-special" },
+            { text: "TRUMP: Fake news! I'm calling my lawyers!", action: "trump-dodge" }
+        ];
+
+        function startGame() {
+            document.getElementById('overlay').style.display = 'none';
+            gameState.playing = true;
+            playNextLine();
+        }
+
+        function playNextLine() {
+            if (gameState.currentLine < podcastScript.length) {
+                const line = podcastScript[gameState.currentLine];
+                document.getElementById('subtitles').innerText = line.text;
+                executeAction(line.action);
+                gameState.currentLine++;
+                setTimeout(playNextLine, 3000);
+            } else {
+                document.getElementById('subtitles').innerText = "ARTIFACT SHIPPED. YOU WIN.";
+            }
+        }
+
+        function executeAction(action) {
+            const trump = document.getElementById('trump-container');
+            const musk = document.getElementById('musk-container');
+
+            if (action === 'trump-attack') {
+                trump.style.transform = 'translateX(50px)';
+                musk.classList.add('hit');
+                gameState.muskHP -= 10;
+                updateHP();
+                setTimeout(() => { trump.style.transform = ''; musk.classList.remove('hit'); }, 200);
+            } else if (action === 'musk-attack') {
+                musk.style.transform = 'translateX(-50px)';
+                trump.classList.add('hit');
+                gameState.trumpHP -= 10;
+                updateHP();
+                setTimeout(() => { musk.style.transform = ''; trump.classList.remove('hit'); }, 200);
+            }
+        }
+
+        function playerAction(type) {
+            if (!gameState.playing) return;
+            document.getElementById('subtitles').innerText = `PLAYER USED: ${type.toUpperCase()}!`;
+            executeAction('musk-attack'); // Player plays as Musk for now
+        }
+
+        function updateHP() {
+            document.getElementById('trump-hp').style.width = gameState.trumpHP + '%';
+            document.getElementById('musk-hp').style.width = gameState.muskHP + '%';
+        }
+
+        function toggleAudio() {
+            gameState.audioEnabled = !gameState.audioEnabled;
+            event.target.innerText = `AUDIO: ${gameState.audioEnabled ? 'ON' : 'OFF'}`;
+        }
+    </script>
+</body>
+</html>
