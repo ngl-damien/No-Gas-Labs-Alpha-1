@@ -200,6 +200,19 @@ def shared(browser,url,data,out):
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         b.locator('#report-text').fill('Preserve this report against version one.')
         b.locator('#report-button').click()
+        b.get_by_text('Ask the Contradiction Clerk to challenge this version',exact=True).click()
+        b.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
+        b.locator('#contradiction-source').fill('The preserved HTML bytes and the cited source page.')
+        b.locator('#contradiction-falsifier').fill('A source that contradicts the claim or a failed reproduction.')
+        b.locator('#contradiction-unknown').fill('Whether the source supports the wording; compare the exact passage.')
+        b.locator('#contradiction-submit').click()
+        b.locator('#creation-notes').get_by_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE',exact=False).wait_for()
+        challenge_snapshot=visitor.request.get(url+'api/state').json()
+        structured=[r for r in challenge_snapshot['world']['reports'] if r.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+        assert len(structured)==1 and structured[0]['version']==1, structured
+        assert 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
+        assert 'no AI/provider call or independent observation occurred' in structured[0]['text']
+        assert challenge_snapshot['world']['xp']==100, 'A structured report must not award XP'
         a.locator('#repair-button').click();a.locator('#publish-button').wait_for()
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
