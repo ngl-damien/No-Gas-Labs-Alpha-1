@@ -1,5 +1,5 @@
 import { projectLocationEvidence } from "../location/evidence.js";
-import { hasVerifiedObservation, isVerifiedAuthorization } from "../world/project.js";
+import { hasVerifiedObservation, isVerifiedAuthorization, validatedEventList } from "../world/project.js";
 
 export const QUEST_STATUS = Object.freeze({
   OPEN: "OPEN", AUTHORIZED: "AUTHORIZED", IN_PROGRESS: "IN_PROGRESS",
@@ -24,8 +24,9 @@ export function defineQuest({ quest_id, title, objective, acceptance, capabiliti
 // and acceptance_satisfied arrays in untrusted events are only claims.
 export function projectQuest(quest, events = [], options = {}) {
   const { resolveArtifact, verifyObservation, verifyAuthorization } = options;
-  const relevant = events.filter(event =>
-    event?.quest_id === quest.quest_id || event?.subject === quest.quest_id
+  const eventList = validatedEventList(events, "quest event");
+  const relevant = eventList.filter(event =>
+    event.quest_id === quest.quest_id || event.subject === quest.quest_id
   );
   const authorized = relevant.some(event => isVerifiedAuthorization(event, verifyAuthorization));
   const executions = relevant.filter(event =>
