@@ -394,7 +394,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         if (artifactId !== null) {
           const creation = store.value.world.creations.find(item => item.id === artifactId);
           const versionText = url.searchParams.get('version');
-          if (versionText !== null && !/^[1-9]\\d*$/.test(versionText)) fail('INVALID_VERSION', 'Invalid artifact version.');
+          if (versionText !== null && !/^[1-9]\d*$/.test(versionText)) fail('INVALID_VERSION', 'Invalid artifact version.');
           const version = versionText === null ? creation?.version : Number(versionText);
           const artifact = creation && (creation.version === version ? creation : creation.versions.find(item => item.version === version));
           if (!artifact) fail('NOT_FOUND', 'Published artifact not found.', 404);
@@ -416,7 +416,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
           const stream = { response, session };
           streams.add(stream);
           sendEvent(stream, 'world', dto(session));
-          const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\\n\\n'); }, 20000);
+          const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\n\n'); }, 20000);
           heartbeat.unref();
           response.on('close', () => {
             clearInterval(heartbeat);
