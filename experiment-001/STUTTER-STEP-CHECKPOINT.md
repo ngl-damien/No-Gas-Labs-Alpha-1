@@ -4,51 +4,65 @@ Updated: 2026-10-25 local / 2026-10-26 UTC. Evidence-bound handoff; no merge, de
 
 ## Fresh state observed
 
-- Primary repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
-- `main`: `0969df84cce7748d4f0db8e79ec06d13ad826a31` — `Connect Common Ground quests to recorded activity`.
-- Open PRs observed: #21 (draft), #25 (draft), #26 (draft), #27 (ready for review).
-- PR #25 head `fc7f025400f0a75d58c56afe7f8d7eacad326c96`; `verify` run [40256041852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40256041852) and `Genesis Evidence Invariant` run [40256041862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40256041862) succeeded.
-- PR #26 head `2b7e3c108983849a27ce418922d8af832ae746cd`; `verify` run [40259013270](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40259013270) and `Genesis Evidence Invariant` run [40259013346](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40259013346) succeeded.
-- PR #27 head `12a4f4a4ba7ba2f190b727b7ac48e46a268188ee`; `verify` run [40255483069](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255483069) and `Genesis Evidence Invariant` run [40255483306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255483306) succeeded.
-- PR #16 is closed unmerged; its original self-signing-flow finding is superseded by PR #18, merged as `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. The replacement verifies detached Ed25519 signatures against a configured fingerprint, but that is not proof Damien controls the private key or personally approved a proposal.
-- Issue #17 remains open for real key custody, concurrency, crash recovery, and integration boundaries. PR #25 addresses cross-process contention coverage; PR #26 adds a host-injected observation-verifier boundary; PR #27 exposes canonical local work receipts in TownSquare.
-- The private linked repository `ngl-damien/Damien-Featherstone` was not modified.
+- Primary repository: `ngl-damien/No-Gas-Labs-Alpha-1`; `main` remains `0969df84cce7748d4f0db8e79ec06d13ad826a31` — `Connect Common Ground quests to recorded activity`.
+- Open PRs observed: #21 (draft), #25 (draft), #26 (draft), #27 (ready for review), #28 (draft), #29 (draft). PR #16 is closed unmerged; PR #18 is the merged replacement.
+- PR #25 head `fc7f025400f0a75d58c56afe7f8d7eacad326c96`: `verify` [40256041852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40256041852) and `Genesis Evidence Invariant` [40256041862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40256041862) succeeded.
+- PR #26 head `2b7e3c108983849a27ce418922d8af832ae746cd`: `verify` [40259013270](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40259013270) and `Genesis Evidence Invariant` [40259013346](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40259013346) succeeded.
+- PR #27 head `12a4f4a4ba7ba2f190b727b7ac48e46a268188ee`: `verify` [40255483069](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255483069) and `Genesis Evidence Invariant` [40255483306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40255483306) succeeded.
+- PR #28 offline Founder signer code/test head `1f06ea08af957742fee521cc79a53d5d4588b5c2`: `verify` [40261005600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40261005600) and `Genesis Evidence Invariant` [40261005598](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40261005598) succeeded. A checkpoint-only refresh below will advance PR #28's head; recheck CI on the new head next run.
+- PR #29 versioned implementation identity head `fa712958e4b940c491832198a505ab0398f59fff`: `verify` [40261360678](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40261360678) and `Genesis Evidence Invariant` [40261360781](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40261360781) succeeded. The `verify` job observed all four stages exit 0: Node tests, Python inspector, game package build, institutional exercise.
+- Issue #17 remains open for real key custody, concurrency, crash recovery, and integration boundaries. No real Founder key or real approval was supplied.
 
-## Stutter-step A — inspect and rank
+## Stutter-step A — rank against current reality
 
-1. **Highest leverage:** provide a separately invoked, offline Founder signing workflow that signs the exact validated INSTALL decision without putting the private key into the proposal handler.
-2. **Next:** resolve PR #26's real trust-root and integration boundary; its test callbacks are not production identity or an external observer.
-3. **Next:** retain PR #25's cross-process contention regression and separately address crash/stale-lock recovery.
-4. **Next:** review PR #27's user-facing work receipts and exact-head CI. Do not merge any PR without Damien's authorization.
+1. **Founder authorization:** PR #16's old self-signing-flow finding is superseded by PR #18 (`213f3b5c7771da24b36f9ce6ebdde871d22e4602`). The remaining gap is real key custody/identity, not re-adding the old defect.
+2. **Offline approval capability:** PR #28 adds a two-step proposal inspection and exact-digest confirmation flow, then emits a detached Ed25519 signature. This improves the operator workflow but does not establish hardware custody or human identity.
+3. **Ledger durability:** PR #29 replaces source-text hashes for new installs with stable versioned semantic IDs and retains narrow legacy replay compatibility. The compatibility test exercises a signed legacy ledger, rejects new legacy-format INSTALL, reuses the historical grant, and reopens the ledger.
+4. **Observation trust:** PR #26 adds a host-injected verifier boundary to `src/world/project.js` and quest projection, but its test allowlists are stubs and the adapter is not wired into `game/server.mjs`.
+5. **Contention and UI:** PR #25 adds cross-process contention regression coverage; PR #27 exposes canonical work receipts in TownSquare with explicit limits. Both remain unmerged.
 
-## Stutter-step B — challenge the priority against fresh source
+## Stutter-step B — reinspection and conflict check
 
-Re-read `experiment-001/institutional-cycle.mjs`, its tests, `package.json`, `scripts/verify.mjs`, current PR metadata, and the existing checkpoint. The current source already exports canonical `approvalPayload`, `proposalDigest`, `publicKeyFingerprint`, and `validateInstallationProposal`; no approval CLI existed. The runtime requires a startup fingerprint and detached signature, while `experiment-001/INSTITUTIONAL-CYCLE.md` explicitly says no separate signer or real Founder key is included. This made an offline signer the most direct independent capability addition. The initial implementation would have signed immediately on invocation; a second inspection caught that missing explicit review boundary, so it was replaced before PR creation.
+Re-read the current main source, tests, package scripts, workflow, checkpoint, and current PR metadata before acting. `experiment-001/institutional-cycle.mjs` originally derived implementation hashes from `Function.toString()` and replayed old INSTALL proofs against the loaded code. That creates a source-derived compatibility risk, not a reproduced production failure. `validateInstallationProposal` now uses stable identities for new proposals and accepts pinned legacy hashes only in ledger replay; new legacy-hash installs are rejected.
 
-## Stutter-step C — implementation on safe branch
+Reinspection also caught a signer-workflow weakness before PR #28 was opened: the first CLI version signed immediately when invoked. It was replaced with a separate `--inspect` step and an explicit full-digest `--confirm` invocation. The confirmation is an accident-prevention step, not proof that a human reviewed the proposal.
 
-Branch: `codex/founder-offline-approval-cli-20261025`, created from the observed `main` SHA above. No main-branch writes.
+## Stutter-step C — implemented changes
 
-- `da2fad58d6533d7b80e327f448bf5ff6264b7ad2` — require a separate `--inspect` step and full proposal-digest confirmation before signing. Bound input reads; reject non-regular/oversized files, malformed or expired proposals, non-Ed25519 keys, absent/mismatched trust pin, and group/world-readable private-key files on POSIX.
-- `bd6b5d56d46f6713acc260a8cab755a16ae98407` — add regression coverage for review-only output, detached signature verification, altered-payload rejection, explicit digest mismatch, wrong fingerprint, expired proposal, and unsafe POSIX key permissions.
-- `7408011c8c6ff70983669cc6bd0c6f609164a673` — document the two-step workflow and its limits in `experiment-001/FOUNDER-APPROVAL.md`.
+### PR #28 — review-bound offline Founder signer
 
-Current acceptance status at this checkpoint: **implementation and tests are committed to the feature branch; exact-head CI is pending.** No local execution is claimed. GitHub Actions must establish the result before this is called verified.
+Branch `codex/founder-offline-approval-cli-20261025`.
+- `da2fad58d6533d7b80e327f448bf5ff6264b7ad2` — two-step review/confirmation, bounded regular-file reads, POSIX key permission check, trust-pin matching, and fail-closed validation.
+- `bd6b5d56d46f6713acc260a8cab755a16ae98407` — regression tests for review-only output, signature verification, altered payload, digest mismatch, wrong pin, expiry, and POSIX key permissions.
+- `7408011c8c6ff70983669cc6bd0c6f609164a673` — two-step usage and limits documentation.
+- `1f06ea08af957742fee521cc79a53d5d4588b5c2` — checkpoint refresh; exact-head CI above passed.
 
-## Security and evidence limits
+### PR #29 — versioned capability identity / replay compatibility
 
-- The CLI only produces a detached signature; it does not commit to the ledger, install a capability, deploy code, or award XP.
-- The digest-confirmation step reduces accidental signing and binds the signature to the exact proposal, but is not proof a human reviewed it. A caller with CLI access can supply the digest.
-- Tests use ephemeral keys. No real Founder key, real approval, or human identity proof exists. A file-based signer is not hardware-backed key custody; a compromised host or malicious checkout can still expose the key. Review and pin signer code before any real key use.
-- `src/world/project.js` on `main` still trusts event-supplied `observation_verification: "VERIFIED"` plus byte receipts; PR #26 proposes the missing host verifier boundary. Its allowlists are test stubs, and its Ed25519 adapter is not wired into `game/server.mjs`. Do not treat the test boundary as production verification.
-- `game/server.mjs`'s current institution view describes its observer as a distinct local process identity, not an independent human or AI. The byte receipt proves preserved bytes, not truth or usefulness.
-- `experiment-001/institutional-cycle.mjs` derives implementation hashes from `Function.toString()` and revalidates historical INSTALL proofs against current code. Upgrade compatibility remains a source-derived risk, not a reproduced failure.
+Branch `codex/experiment001-versioned-implementation-ids-20261025`.
+- `4bfb3083541d1ca67ce7984f85d553f6332a4854` — stable semantic IDs for new installs and replay-only compatibility for historical source-hash records.
+- `5884d6210da75d3aab95115049a084ef8b4d71b0` — legacy-ledger replay/reuse and new-legacy-install rejection coverage.
+- `6843926f58b2e7f183a7f8d14995e36d07758bee` — compatibility contract documentation.
+- `fa712958e4b940c491832198a505ab0398f59fff` — latest test code head; exact-head CI above passed.
+
+## Linked repository inspection
+
+- `ngl-damien/Damien-Featherstone` remains at `021d358d3cabdd3887cef58bbebac1adbfd39bb8`, with only `main`, no open PRs, and no changes made.
+- `ngl-damien/ngl-mesh` remains at `be43452a2133ba920a3814e19d7812e5c964117d`, with no open PRs or issues and several recovery/experiment branches. Its Relay/RAE verification harness requires operator-supplied recovered-source ZIP, reference APK and RAE report; those inputs are not available through the repository inspection, so a reproducible run was not claimed and no write was made there.
+
+## Limits still open
+
+- No real Founder key, separate hardware-backed signer, or independent signing service is configured. Tests use ephemeral keys. The offline signer does not write to the ledger, install a capability, deploy, or award XP.
+- The observation verifier is not integrated into the actual host path with an independently provisioned trust root. Do not use an always-true callback.
+- Cross-process contention coverage is not crash-recovery proof. Stale-lock recovery and the `COMMIT_DURABILITY_UNCERTAIN` boundary still require work.
+- The hash chain is not externally anchored. Stable strategy IDs are compatibility contracts, not cryptographic proof of semantic correctness; a behavior change requires a new version and tests.
+- No local clone/tests were run from this runtime. CI is the observed execution evidence for the exact code/test heads cited above.
 
 ## Next prioritized steps
 
-1. Open a draft PR for this branch and inspect the exact-head `verify` and `Genesis Evidence Invariant` runs; fix any failures and re-check after every change.
-2. If green, refresh this checkpoint with the exact final head and run IDs; keep the PR draft pending founder review.
-3. Establish genuinely separate, operator-controlled signing custody (prefer hardware-backed signer or isolated signing service) and provision its public-key fingerprint independently. Do not use a real key in CI.
-4. Reassess PR #26 integration against the actual runtime and prevent canonical world/quest consequences without an externally controlled observer trust root.
-5. Define and exercise crash-safe lock/ledger recovery; preserve `COMMIT_DURABILITY_UNCERTAIN` semantics.
-6. Design a backward-compatible versioned capability identity / ledger migration policy before changing the `Function.toString()` hash scheme.
+1. Re-inspect PR #28 after this checkpoint-only commit and verify exact-head `verify` plus `Genesis Evidence Invariant`; fix any failure and re-check the new head.
+2. Keep PRs #28 and #29 draft pending Damien's review; do not merge.
+3. Specify/provision an independently controlled signer trust root and demonstrate an actual operator-supplied signature without exposing a real key in CI.
+4. Integrate PR #26's observation verifier into the real host boundary only when a separately controlled observer key and configuration are available.
+5. Add crash injection around temp write, atomic rename and directory sync; design safe stale-lock recovery without deleting a live lock.
+6. Reassess PR #25 and #27 against the new heads of `main` before any future merge; preserve their evidence and limits.
