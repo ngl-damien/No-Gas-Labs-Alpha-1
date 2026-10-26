@@ -101,6 +101,48 @@ test('draft privacy, exact publication bytes, stale version rejection and real i
   assert.equal(JSON.stringify(institution).includes(KEY), false);
 });
 
+test('shared action request IDs replay one durable result across retries and restart', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const requestId = 'action-retry-000000000001';
+  const action = { type: 'draft', kind: 'custom', title: 'One durable draft', intent: 'Retry after an uncertain response', html: '<html><body>One</body></html>' };
+  const first = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  assert.equal(first.body.world.revision, 1);
+  const retry = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.deepEqual(retry.body.result, first.body.result);
+  assert.equal(retry.body.world.revision, 1);
+  assert.equal(retry.body.world.drafts.length, 1);
+  assert.equal(retry.body.world.events.length, 1);
+  const conflict = await founder.request('/api/action', { ...action, title: 'Different action', requestId });
+  assert.equal(conflict.response.status, 409);
+  assert.equal(conflict.body.error.code, 'IDEMPOTENCY_KEY_REUSED');
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${restarted.address().port}`;
+  const login = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ key: KEY, name: 'Damien' }) });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const replay = await fetch(base + '/api/action', { method: 'POST', headers: { 'content-type': 'application/json', origin: base, cookie }, body: JSON.stringify({ ...action, requestId }) });
+  assert.equal(replay.status, 200);
+  const replayBody = await replay.json();
+  assert.equal(replayBody.idempotentReplay, true);
+  assert.deepEqual(replayBody.result, first.body.result);
+  assert.equal(replayBody.world.revision, 1);
+  assert.equal(replayBody.world.drafts.length, 1);
+  await restarted.closeGame();
+
+  const file = join(f.dataDir, 'service.json'), stored = JSON.parse(await readFile(file, 'utf8'));
+  stored.payload.actionReceipts[0].eventId = 'missing-retained-event';
+  stored.digest = artifactReceipt(canonicalStringify(stored.payload)).digest;
+  await writeFile(file, JSON.stringify(stored));
+  await assert.rejects(createGameServer({ dataDir: f.dataDir, founderKey: KEY }), /action receipt|idempotency/i);
+});
+
 test('SSE filters drafts per viewer and logout/login rotation demotes an existing stream', async t => {
   const f = await fixture(t); const founder = f.client(); const witness = f.client(); await founder.login();
   const fs = await founder.stream(); const ws = await witness.stream(); t.after(() => { fs.close(); ws.close(); });
