@@ -103,6 +103,28 @@ test('unauthenticated session churn cannot evict a live Founder session', async 
   const witnessState = await fetch(`${origin}/api/state`, { headers: { cookie: firstWitnessCookie } });
   assert.equal(witnessState.status, 200);
   assert.equal((await witnessState.json()).viewer.role, 'witness');
+
+  // Invalid credentials cannot displace a live session even at capacity.
+  const rejectedLogin = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: 'wrong-founder-key' })
+  });
+  assert.equal(rejectedLogin.status, 401);
+  assert.equal(rejectedLogin.headers.get('set-cookie'), null);
+  const witnessAfterRejectedLogin = await fetch(`${origin}/api/state`, { headers: { cookie: firstWitnessCookie } });
+  assert.equal(witnessAfterRejectedLogin.status, 200);
+  assert.equal((await witnessAfterRejectedLogin.json()).viewer.role, 'witness');
+
+  // A valid Founder can still authenticate at capacity; only that successful
+  // authorization may reclaim one Witness slot to keep the map bounded.
+  const founderLoginAtCapacity = await fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key })
+  });
+  assert.equal(founderLoginAtCapacity.status, 200);
+  assert.equal((await founderLoginAtCapacity.json()).viewer.role, 'founder');
 });
 
 
