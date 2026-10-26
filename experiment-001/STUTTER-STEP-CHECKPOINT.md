@@ -10,7 +10,7 @@
 - PR #16 remains closed and unmerged. Its old self-signing INSTALL flow is superseded by merged PR #18; real Founder identity/key custody is still unresolved.
 - Issue #17 remains open for real key custody, adversarial concurrency, and crash/stale-lock recovery.
 - PR #26 is still draft at **2b7e3c108983849a27ce418922d8af832ae746cd**. It fails closed without host-injected observation/adjudication verifiers, but the verifier is not wired into the live game server and no production trust root is provisioned.
-- PR #60 remains draft at **e56b935d85150ed5c8fe0fbf039ebb33f6f6dfd9**. The branch comparison now reports **10 commits ahead and 2 behind current main**; reconcile it with main before any merge/review decision. Its inode check is not an atomic compare-and-unlink primitive, and stale-lock recovery remains manual.
+- PR #60 remains draft. Storage implementation checkpoint: **e56b935d85150ed5c8fe0fbf039ebb33f6f6dfd9**; the active handoff has a later documentation-only refresh on the same branch. The branch comparison reports **2 commits behind current main**; reconcile it before any merge/review decision. Its inode check is not an atomic compare-and-unlink primitive, and stale-lock recovery remains manual.
 - NGL Mesh main: **be43452a2133ba920a3814e19d7812e5c964117d**. Draft PR #1 is open at **0d60a746a022766fc105bfa12396daf255d47bd0**, 23 commits ahead and 0 behind main.
 
 ## Work completed and exact-head evidence
