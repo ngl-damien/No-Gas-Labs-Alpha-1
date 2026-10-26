@@ -1,42 +1,60 @@
-export function projectGuildHall({institution, quest_id, events=[], agents=[]}) {
+export function projectGuildHall({ institution, quest_id, events = [], agents = [] }) {
   if (!institution?.projection) throw new Error("institution projection required");
-  const quest=institution.projection.quests?.[quest_id];
+  const quest = institution.projection.quests?.[quest_id];
   if (!quest) throw new Error("quest not projected");
 
-  const proposals=events.filter(e=>e?.type==="PROPOSAL"&&e.quest_id===quest_id).map(e=>Object.freeze({
-    proposal_id:e.event_id,
-    actor:e.actor||"unknown",
-    summary:e.summary||"",
-    status:events.some(x=>x?.type==="QUEST_AUTHORIZED"&&x.proposal_id===e.event_id)?"AUTHORIZED":"PROPOSED"
-  }));
+  // Raw event labels are visible claims, not authority. The quest reducer's
+  // verified authorization IDs are the only source for this projected status.
+  const verifiedAuthorizationIds = new Set(
+    Array.isArray(quest.verified_authorizations) ? quest.verified_authorizations : []
+  );
+  const proposals = events
+    .filter(event => event?.type === "PROPOSAL" && event.quest_id === quest_id)
+    .map(event => Object.freeze({
+      proposal_id: event.event_id,
+      actor: event.actor || "unknown",
+      summary: event.summary || "",
+      status: events.some(candidate =>
+        candidate?.type === "QUEST_AUTHORIZED" &&
+        candidate.proposal_id === event.event_id &&
+        candidate.quest_id === quest_id &&
+        verifiedAuthorizationIds.has(candidate.event_id)
+      ) ? "AUTHORIZED" : "PROPOSED"
+    }));
 
-  const roster=agents.map(a=>Object.freeze({
-    agent_id:a.agent_id,
-    capabilities:Array.isArray(a.capabilities)?[...a.capabilities]:[],
-    can_contribute:(a.capabilities||[]).some(c=>quest.quest.capabilities.includes(c))
+  const roster = agents.map(agent => Object.freeze({
+    agent_id: agent.agent_id,
+    capabilities: Array.isArray(agent.capabilities) ? [...agent.capabilities] : [],
+    can_contribute: (agent.capabilities || []).some(capability =>
+      quest.quest.capabilities.includes(capability)
+    )
   }));
 
   return Object.freeze({
-    room:"Guild Hall",
-    state_hash:institution.state_hash,
-    quest:Object.freeze({
+    room: "Guild Hall",
+    state_hash: institution.state_hash,
+    quest: Object.freeze({
       quest_id,
-      title:quest.quest.title,
-      objective:quest.quest.objective,
-      status:quest.status,
-      acceptance:quest.acceptance.map(a=>Object.freeze({id:a.id,status:a.satisfied?"SATISFIED":"UNPROVEN"}))
+      title: quest.quest.title,
+      objective: quest.quest.objective,
+      status: quest.status,
+      acceptance: quest.acceptance.map(item =>
+        Object.freeze({ id: item.id, status: item.satisfied ? "SATISFIED" : "UNPROVEN" })
+      )
     }),
-    proposals:Object.freeze(proposals),
-    roster:Object.freeze(roster),
-    exits:Object.freeze({
-      decision_chamber:proposals.some(p=>p.status==="PROPOSED")?"AVAILABLE":"QUIET",
-      forge:institution.projection.world.world?.forgeOpen===true?"UNLOCKED":"LOCKED",
-      evidence_archive:"AVAILABLE"
+    proposals: Object.freeze(proposals),
+    roster: Object.freeze(roster),
+    exits: Object.freeze({
+      decision_chamber: proposals.some(proposal => proposal.status === "PROPOSED") ? "AVAILABLE" : "QUIET",
+      forge: institution.projection.world.world?.forgeOpen === true ? "UNLOCKED" : "LOCKED",
+      evidence_archive: "AVAILABLE"
     })
   });
 }
 
-export function proposeGuildAction({quest_id,proposal_id,actor,summary,capability}) {
-  if (![quest_id,proposal_id,actor,summary,capability].every(v=>typeof v==="string"&&v.length)) throw new Error("complete proposal required");
-  return Object.freeze({event_id:proposal_id,type:"PROPOSAL",quest_id,actor,summary,capability});
+export function proposeGuildAction({ quest_id, proposal_id, actor, summary, capability }) {
+  if (![quest_id, proposal_id, actor, summary, capability].every(value => typeof value === "string" && value.length)) {
+    throw new Error("complete proposal required");
+  }
+  return Object.freeze({ event_id: proposal_id, type: "PROPOSAL", quest_id, actor, summary, capability });
 }
