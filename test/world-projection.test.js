@@ -235,3 +235,36 @@ test("only declared observation event types can mint consequences", () => {
   assert.equal(s.world.forgeOpen, undefined);
   assert.equal(s.history.length, 1);
 });
+
+test("event-controlled prototype keys cannot mutate projection prototypes", () => {
+  const hostile = {
+    ...observed,
+    event_id: "e18",
+    subject: "__proto__",
+    world_effect: {
+      xp: 1,
+      inventory: JSON.parse('{"__proto__":1,"constructor":2}'),
+      world: JSON.parse('{"__proto__":{"polluted":true},"forgeOpen":true}')
+    }
+  };
+  const s = projectWorld([hostile], undefined, {
+    resolveArtifact,
+    verifyObservation: event => event.event_id === "e18",
+    verifyAuthorization
+  });
+
+  assert.equal(Object.getPrototypeOf(s.quests), Object.prototype);
+  assert.equal(Object.hasOwn(s.quests, "__proto__"), true);
+  assert.equal(s.quests["__proto__"].status, "COMPLETED");
+
+  assert.equal(Object.getPrototypeOf(s.inventory), Object.prototype);
+  assert.equal(Object.hasOwn(s.inventory, "__proto__"), true);
+  assert.equal(s.inventory["__proto__"], 1);
+  assert.equal(s.inventory.constructor, 2);
+
+  assert.equal(Object.getPrototypeOf(s.world), Object.prototype);
+  assert.equal(Object.hasOwn(s.world, "__proto__"), true);
+  assert.deepEqual(s.world["__proto__"], { polluted: true });
+  assert.equal(Object.getPrototypeOf(s.world).polluted, undefined);
+  assert.equal(s.world.forgeOpen, true);
+});
