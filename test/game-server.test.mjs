@@ -351,6 +351,28 @@ test('concurrent retries with the same request ID commit one shared action', asy
   assert.equal(finalState.body.world.revision, published.world.revision + 1);
 });
 
+test('an idempotency receipt cannot be replayed by a different Witness actor', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Actor-bound retry target');
+  const creation = published.world.creations[0];
+  const firstWitness = f.client(), secondWitness = f.client();
+  const firstState = await firstWitness.request('/api/state');
+  const secondState = await secondWitness.request('/api/state');
+  assert.equal(firstState.body.viewer.role, 'witness');
+  assert.equal(secondState.body.viewer.role, 'witness');
+  assert.notEqual(firstState.body.viewer.id, secondState.body.viewer.id);
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'This report belongs to one session.' };
+  const requestId = 'actor-bound-report-001';
+  const first = await firstWitness.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const replay = await secondWitness.request('/api/action', { ...action, requestId });
+  assert.equal(replay.response.status, 409);
+  assert.equal(replay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const state = await secondWitness.request('/api/state');
+  assert.equal(state.body.world.reports.filter(report => report.text === action.text).length, 1);
+  assert.equal(state.body.world.events.filter(event => event.requestId === requestId).length, 1);
+});
+
 test('shared action request IDs replay the original result across lost responses and service restart', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const published = await publish(founder, 'Idempotent report target');
