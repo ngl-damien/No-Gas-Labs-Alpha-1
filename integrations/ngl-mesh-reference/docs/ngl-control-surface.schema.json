@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ngl/control-surface/v1",
+  "title": "NGL Control Surface",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "control_surface_id",
+    "source_identity",
+    "source_revision",
+    "source_path",
+    "class",
+    "intended_consumer",
+    "producer",
+    "authority_claim",
+    "actual_authority_status",
+    "instruction_or_behavior_summary",
+    "execution_effect",
+    "persistence_effect",
+    "created_at",
+    "status",
+    "provenance_parents"
+  ],
+  "properties": {
+    "control_surface_id": { "type": "string", "minLength": 1 },
+    "source_identity": { "type": "string", "minLength": 1 },
+    "source_revision": { "type": "string", "minLength": 1 },
+    "source_path": { "type": "string", "minLength": 1 },
+    "class": {
+      "type": "string",
+      "enum": ["NORMATIVE_SPEC", "AGENT_INSTRUCTION", "PERSISTENT_STATE", "EXECUTABLE_CONTROL", "MODEL_PROPOSAL", "CONNECTOR_INPUT", "REFERENCE"]
+    },
+    "intended_consumer": { "type": "string", "minLength": 1 },
+    "producer": { "type": "string", "minLength": 1 },
+    "authority_claim": { "type": "string" },
+    "actual_authority_status": {
+      "type": "string",
+      "enum": ["UNCLAIMED", "CLAIMED", "PROPOSED", "AUTHORIZED", "REJECTED", "SUPERSEDED", "UNKNOWN"]
+    },
+    "instruction_or_behavior_summary": { "type": "string" },
+    "execution_effect": { "type": "string" },
+    "persistence_effect": { "type": "string" },
+    "references": { "type": "array", "items": { "type": "string" } },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "capabilities_requested": { "type": "array", "items": { "type": "string" } },
+    "capabilities_granted": { "type": "array", "items": { "type": "string" } },
+    "human_authorization": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "supersedes": { "type": "array", "items": { "type": "string" } },
+    "superseded_by": { "type": "array", "items": { "type": "string" } },
+    "status": { "type": "string", "enum": ["ACTIVE", "REJECTED", "SUPERSEDED", "ARCHIVED", "UNKNOWN"] },
+    "provenance_parents": { "type": "array", "items": { "type": "string" } }
+  }
+}

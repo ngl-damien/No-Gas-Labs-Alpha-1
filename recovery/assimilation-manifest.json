@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "canonical_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "created_for_branch": "integration/assimilate-all-projects-2026-10-25",
+  "status": "active_reconciliation_not_complete",
+  "policy": "Every relevant source must be integrated, retained as a module, preserved as source/archive, or explicitly blocked with evidence. Repository existence alone is not assimilation.",
+  "sources": [
+    {
+      "repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+      "role": "canonical-target",
+      "status": "canonical"
+    },
+    {
+      "repository": "ngl-damien/Damien-Featherstone",
+      "role": "rpg-world-forge-science-counterexample-mesh",
+      "status": "audit-security-and-integrate"
+    },
+    {
+      "repository": "ngl-damien/ngl001-def4us28",
+      "role": "comic-and-contact-interface",
+      "status": "reconcile-existing-snapshot"
+    },
+    {
+      "repository": "ngl-damien/no-gas-labs-command-center",
+      "role": "operational-command-center",
+      "status": "reconcile-existing-snapshot"
+    },
+    {
+      "repository": "ngl-damien/TaskAgile",
+      "role": "game-mechanics-assets-and-variants",
+      "status": "reconcile-partial-snapshot"
+    },
+    {
+      "repository": "ngl-damien/ngl-mesh",
+      "role": "mesh-relay-adapter",
+      "status": "source-imported-runtime-integration-pending"
+    },
+    {
+      "repository": "ngl-damien/no-gas-labs",
+      "role": "static-browser-publication-interface",
+      "status": "selective-integration"
+    },
+    {
+      "repository": "ngl-damien/ngl-recovery-2026-10-25",
+      "role": "recovery-vault-and-94-repository-manifest",
+      "status": "preserve-and-reconcile"
+    },
+    {
+      "repository": "ngl-damien/AI-BI-Intelligence-node-gate",
+      "role": "node-gate",
+      "status": "source-recovery-required"
+    },
+    {
+      "repository": "ngl-damien/ai-guild-hardened-v0.2",
+      "role": "guild-and-council",
+      "status": "source-recovery-required"
+    },
+    {
+      "repository": "ngl-damien/AI-orchestrator-test",
+      "role": "orchestration-tests",
+      "status": "source-recovery-required"
+    },
+    {
+      "repository": "ngl-damien/app",
+      "role": "unidentified-original-app",
+      "status": "identify-and-recover"
+    }
+  ],
+  "snapshot_comparison": [
+    {
+      "source": "ngl-damien/ngl001-def4us28",
+      "source_tree_entries": 30,
+      "source_blobs": 24,
+      "corresponding_tree_entries": 29,
+      "identical_blob_paths": 20,
+      "different_or_missing_blob_paths": 4,
+      "notable": "src/App.jsx source is 4,563,284 bytes; corresponding target file is empty (0 bytes). hero.png is missing.",
+      "runtime_verified": false
+    },
+    {
+      "source": "ngl-damien/no-gas-labs-command-center",
+      "source_tree_entries": 124,
+      "source_blobs": 108,
+      "corresponding_tree_entries": 119,
+      "identical_blob_paths": 104,
+      "different_or_missing_blob_paths": 4,
+      "notable": "Four large image assets are missing from the snapshot.",
+      "runtime_verified": false
+    },
+    {
+      "source": "ngl-damien/TaskAgile",
+      "source_tree_entries": 202,
+      "source_blobs": 169,
+      "corresponding_tree_entries": 79,
+      "identical_blob_paths": 66,
+      "different_or_missing_blob_paths": 103,
+      "notable": "Many UI components and assets are absent; this is a substantial partial snapshot.",
+      "runtime_verified": false
+    }
+  ],
+  "security_blockers": [
+    {
+      "source": "ngl-damien/Damien-Featherstone",
+      "path": ".data/institutional_keypair.json",
+      "finding": "committed privateKeyPem field; treat as potentially compromised; rotate/revoke and review history before import",
+      "status": "must-resolve-before-key-or-state-import"
+    },
+    {
+      "source": "ngl-recovery-2026-10-25",
+      "path": "archives/Omnichain_Bridge_wallet*",
+      "finding": "recovery documentation flags wallet_keys.json in source as sensitive",
+      "status": "inspect-archive-and-exclude-secrets-from-public-tree"
+    }
+  ],
+  "historical_scope": {
+    "original_organization": "No-Gas-Labs-Official",
+    "reported_repository_inventory_count": 94,
+    "fully_recovered": false,
+    "note": "The inventory count documents scope, not successful restoration. Compare every source against current destinations and staged archives."
+  },
+  "completed_source_imports": [
+    {
+      "source_repository": "ngl-damien/ngl-mesh",
+      "source_tree_sha": "be43452a2133ba920a3814e19d7812e5c964117d",
+      "source_blob_count": 11,
+      "target_prefix": "integrations/ngl-mesh-reference/",
+      "target_status": "imported-source-only-not-runtime-verified",
+      "import_commit": "e0e9bd541c1e8d9ca7bb9c858bacf9f16f0bcb58"
+    }
+  ]
+}
