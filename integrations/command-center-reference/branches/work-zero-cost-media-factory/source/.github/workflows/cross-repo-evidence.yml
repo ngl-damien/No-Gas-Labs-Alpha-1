@@ -1,0 +1,44 @@
+name: NGL Cross-Repo Evidence
+
+on:
+  push:
+    branches: ["work/zero-cost-media-factory"]
+    paths:
+      - "ngl/institution/evidence-sources.json"
+      - "scripts/observe-cross-repo-evidence.py"
+      - ".github/workflows/cross-repo-evidence.yml"
+  pull_request:
+    paths:
+      - "ngl/institution/evidence-sources.json"
+      - "scripts/observe-cross-repo-evidence.py"
+      - ".github/workflows/cross-repo-evidence.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: command-center
+      - uses: actions/checkout@v4
+        with:
+          repository: No-Gas-Labs-Official/recursive-artifact-engine
+          ref: main
+          path: evidence/recursive-artifact-engine
+      - uses: actions/checkout@v4
+        with:
+          repository: No-Gas-Labs-Official/ngl-mesh
+          ref: main
+          path: evidence/ngl-mesh
+      - name: Observe pinned cross-repository evidence
+        working-directory: command-center
+        run: |
+          python3 scripts/observe-cross-repo-evidence.py ngl/institution/evidence-sources.json ../evidence | tee cross-repo-observation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ngl-cross-repo-observation
+          path: command-center/cross-repo-observation.json
