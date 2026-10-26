@@ -184,6 +184,17 @@ def shared(browser,url,data,out):
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         b.locator('#report-text').fill('Preserve this report against version one.')
         b.locator('#report-button').click()
+        # TownSquare is a world location: its chronicle must retain dissent and
+        # navigate back to the exact version named by the report.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_timeout(3500);b.locator('#interact-button').click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='The institution at work.'")
+        report_card=b.locator('[data-record-type="WORLD_EVENT"]').filter(has_text='Report retained')
+        expect(report_card).to_have_count(1)
+        expect(report_card).to_contain_text('Preserve this report against version one.')
+        report_card.get_by_role('button',name='Inspect The shared observatory · v1',exact=True).click()
+        expect(b.locator('#version-select')).to_have_value('1')
         a.locator('#repair-button').click();a.locator('#publish-button').wait_for()
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
