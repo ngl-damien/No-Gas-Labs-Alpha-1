@@ -299,6 +299,45 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     }
     session.lastSeen = Date.now(); return session;
   }
+  // Founder login is authenticated before it consumes a session slot. A stale or
+  // missing cookie gets a transient Witness-shaped predecessor that is never stored.
+  function sessionForFounderLogin(request) {
+    const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
+    const tokenIsValid = validSessionToken(token);
+    let session = tokenIsValid ? sessions.get(token) : null;
+    if (session && Date.now() - session.lastSeen > SESSION_TTL) {
+      expireSession(token, session);
+      session = null;
+    }
+    if (session) {
+      session.lastSeen = Date.now();
+      return session;
+    }
+    const id = tokenIsValid ? token : randomBytes(32).toString('base64url');
+    return { token: id, presenceId: presenceIdFor(id), actor: witness(id), lastSeen: Date.now() };
+  }
+  function makeRoomForFounderLogin(previous) {
+    // Rotation replaces an existing session, so it already has room.
+    if (sessions.has(previous.token) || sessions.size < 512) return;
+    const now = Date.now();
+    for (const [existingToken, existing] of sessions) {
+      if (now - existing.lastSeen > SESSION_TTL) expireSession(existingToken, existing);
+    }
+    if (sessions.size < 512) return;
+    // Only a successful key check reaches this point. It may reclaim the oldest
+    // Witness slot; unauthenticated session creation never evicts a live session.
+    let oldestWitnessToken = null;
+    let oldestWitness = null;
+    for (const [existingToken, existing] of sessions) {
+      if (existing.actor.role !== 'witness') continue;
+      if (!oldestWitness || existing.lastSeen < oldestWitness.lastSeen) {
+        oldestWitnessToken = existingToken;
+        oldestWitness = existing;
+      }
+    }
+    if (!oldestWitness) fail('SESSION_LIMIT', 'Founder session capacity reached; retry after an existing session expires.', 429);
+    expireSession(oldestWitnessToken, oldestWitness);
+  }
   function rotate(request, response, previous, actor) {
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
@@ -371,18 +410,21 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       // A failed request must not consume session capacity or set a new cookie.
       sameOrigin(request);
       const input = await body(request);
-      session = sessionFor(request, response);
-      if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
-        if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
-        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
-      }
       if (path === '/api/login') {
         exact(input, ['key', 'name']);
         if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
         const candidate = Buffer.from(input.key), expected = Buffer.from(key);
         if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
         if (input.name !== undefined && (typeof input.name !== 'string' || !input.name.trim() || Array.from(input.name).length > 80)) fail('INVALID_NAME', 'Name must be 1–80 characters.');
-        session = rotate(request, response, session, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' }); return json(response, 200, dto(session));
+        const previous = sessionForFounderLogin(request);
+        makeRoomForFounderLogin(previous);
+        session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
+        return json(response, 200, dto(session));
+      }
+      session = sessionFor(request, response);
+      if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
+        if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
       }
       if (path === '/api/logout') { exact(input, []); session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
