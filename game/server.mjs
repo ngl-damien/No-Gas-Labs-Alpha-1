@@ -285,20 +285,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         }
       }
       if (sessions.size >= 512) {
-        // Preserve authenticated sessions under unauthenticated session churn.
-        // Evict the least-recently-used Witness; if no Witness slot is available,
-        // fail closed rather than demoting an authenticated Founder.
-        let oldestWitnessToken = null;
-        let oldestWitness = null;
-        for (const [existingToken, existing] of sessions) {
-          if (existing.actor.role !== 'witness') continue;
-          if (!oldestWitness || existing.lastSeen < oldestWitness.lastSeen) {
-            oldestWitnessToken = existingToken;
-            oldestWitness = existing;
-          }
-        }
-        if (!oldestWitness) fail('SESSION_LIMIT', 'Session capacity reached; retry after an existing session expires.', 429);
-        expireSession(oldestWitnessToken, oldestWitness);
+        // Do not evict a still-live session to admit an unauthenticated request.
+        // Expired sessions were reaped above; if all remaining slots are live,
+        // reject new sessions rather than disconnecting existing users.
+        fail('SESSION_LIMIT', 'Session capacity reached; retry after an existing session expires.', 429);
       }
       // A surviving opaque cookie can restore only its pseudonymous Witness identity
       // after process restart. Founder authority is never reconstructed from a cookie.
