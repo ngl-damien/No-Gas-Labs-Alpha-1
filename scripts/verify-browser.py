@@ -184,6 +184,7 @@ def shared(browser,url,data,out):
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         b.locator('#report-text').fill('Preserve this report against version one.')
         b.locator('#report-button').click()
+        b.wait_for_function("async()=>{const r=await fetch('/api/state');const s=await r.json();return s.world.reports.some(item=>item.text==='Preserve this report against version one.')}")
         # TownSquare is a world location: its chronicle must retain dissent and
         # navigate back to the exact version named by the report.
         close_sheet(b);b.locator('#places-button').click()
