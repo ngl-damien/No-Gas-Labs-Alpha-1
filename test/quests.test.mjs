@@ -133,3 +133,30 @@ test('objective trail is deterministic, read-only, and exposes only real event I
   assert.deepEqual(world, before);
   assert.deepEqual(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').evidenceIds, ['publish-v1']);
 });
+
+
+test('reused event IDs cannot support conflicting publication and discovery claims', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'reused-event', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'reused-event', type: 'discover', actor: founder, at: at1, locationId: 'river' },
+  ];
+  world.discoveries = [{ id: 'd-1', locationId: 'river', actor: founder, at: at1 }];
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.find(item => item.id === 'founder-first-place').progress, 0);
+  assert.equal(trail.find(item => item.id === 'founder-walk-institution').progress, 0);
+});
+
+test('objective trail exposes minimal frozen provenance for each counted event', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
+  const milestone = getQuestTrail(world, founder).find(item => item.id === 'founder-first-place');
+  assert.deepEqual(milestone.evidence, [{
+    id: 'publish-v1', type: 'publish', at: at1, actorId: 'f-1',
+    creationId: 'c-1', version: 1, locationId: null,
+  }]);
+  assert.equal(Object.isFrozen(milestone.evidence), true);
+  assert.equal(Object.isFrozen(milestone.evidence[0]), true);
+});
