@@ -68,33 +68,59 @@
   ],
   "snapshot_comparison": [
     {
+      "source": "ngl-damien/no-gas-labs",
+      "source_blobs": 13,
+      "snapshot_files": 14,
+      "identical_blob_paths": 13,
+      "missing_source_paths": 0,
+      "differing_same_path_blobs": 0,
+      "target_only_paths": [
+        "RECOVERY.md"
+      ],
+      "runtime_verified": false,
+      "notable": "All 13 current source blobs match their snapshot counterparts exactly."
+    },
+    {
       "source": "ngl-damien/ngl001-def4us28",
-      "source_tree_entries": 30,
       "source_blobs": 24,
-      "corresponding_tree_entries": 29,
+      "snapshot_files": 23,
       "identical_blob_paths": 20,
-      "different_or_missing_blob_paths": 4,
-      "notable": "src/App.jsx source is 4,563,284 bytes; corresponding target file is empty (0 bytes). hero.png is missing.",
+      "missing_source_paths": 1,
+      "differing_same_path_blobs": 3,
+      "missing": [
+        "src/assets/hero.png"
+      ],
+      "differing": [
+        "contact/ledger.jsonl",
+        "contact/state.json",
+        "src/App.jsx"
+      ],
+      "notable": "Source src/App.jsx is 4,563,284 bytes; snapshot counterpart is 0 bytes.",
       "runtime_verified": false
     },
     {
       "source": "ngl-damien/no-gas-labs-command-center",
-      "source_tree_entries": 124,
       "source_blobs": 108,
-      "corresponding_tree_entries": 119,
+      "snapshot_files": 104,
       "identical_blob_paths": 104,
-      "different_or_missing_blob_paths": 4,
-      "notable": "Four large image assets are missing from the snapshot.",
+      "missing_source_paths": 4,
+      "differing_same_path_blobs": 0,
+      "missing": [
+        "client/public/images/ai-avatar.jpg",
+        "client/public/images/capabilities-grid.jpg",
+        "client/public/images/hero-bg.jpg",
+        "client/public/images/security-shield.jpg"
+      ],
       "runtime_verified": false
     },
     {
       "source": "ngl-damien/TaskAgile",
-      "source_tree_entries": 202,
       "source_blobs": 169,
-      "corresponding_tree_entries": 79,
+      "snapshot_files": 66,
       "identical_blob_paths": 66,
-      "different_or_missing_blob_paths": 103,
-      "notable": "Many UI components and assets are absent; this is a substantial partial snapshot.",
+      "missing_source_paths": 103,
+      "differing_same_path_blobs": 0,
+      "notable": "103 source files are absent from the snapshot, including UI components and media assets.",
       "runtime_verified": false
     }
   ],
@@ -127,5 +153,6 @@
       "target_status": "imported-source-only-not-runtime-verified",
       "import_commit": "e0e9bd541c1e8d9ca7bb9c858bacf9f16f0bcb58"
     }
-  ]
+  ],
+  "reconciliation_note": "Snapshot counts refreshed from current source-main and Alpha One Git tree blob SHAs on 2026-10-25. Blob identity is not runtime verification. These entries supersede earlier inconsistent tree-entry counts."
 }
