@@ -19,7 +19,7 @@ test("same canonical history reconstructs identical institutional state",()=>{
 test("tampered consequence produces a different state hash",()=>{
  const baseline=replayInstitution({events,quests:[quest],resolveArtifact:resolve,verifyObservation});
  const tampered=structuredClone(events); tampered[1].world_effect.xp=1000000;
- const replay=verifyReplay({events:tampered,quests:[quest],resolveArtifact:resolve,expected_hash:baseline.state_hash});
+ const replay=verifyReplay({events:tampered,quests:[quest],resolveArtifact:resolve,verifyObservation,expected_hash:baseline.state_hash});
  assert.equal(replay.matches,false);
 });
 
@@ -29,4 +29,24 @@ test("history cannot reference a future or missing parent",()=>{
 
 test("duplicate event identities are rejected instead of silently replayed",()=>{
  assert.throws(()=>replayInstitution({events:[auth,auth],quests:[quest],resolveArtifact:resolve,verifyObservation}),/duplicate or missing/);
+});
+
+test("valid bytes and a VERIFIED label cannot complete a quest without the independent verifier",()=>{
+ const replay=replayInstitution({events,quests:[quest],resolveArtifact:resolve});
+ const projected=replay.projection.quests[quest.quest_id];
+ assert.equal(replay.projection.world.xp,0);
+ assert.equal(replay.projection.world.history.length,2,"unverified event remains in history");
+ assert.equal(projected.status,"AUTHORIZED");
+ assert.equal(projected.acceptance[0].satisfied,false);
+ assert.deepEqual(projected.executions,["e1"],"raw claim remains inspectable");
+ assert.deepEqual(projected.verified_executions,[]);
+});
+
+test("a rejecting observer verifier cannot satisfy a quest acceptance condition",()=>{
+ const replay=replayInstitution({events,quests:[quest],resolveArtifact:resolve,verifyObservation:()=>false});
+ const projected=replay.projection.quests[quest.quest_id];
+ assert.equal(replay.projection.world.xp,0);
+ assert.equal(projected.status,"AUTHORIZED");
+ assert.equal(projected.acceptance[0].satisfied,false);
+ assert.deepEqual(projected.verified_executions,[]);
 });
