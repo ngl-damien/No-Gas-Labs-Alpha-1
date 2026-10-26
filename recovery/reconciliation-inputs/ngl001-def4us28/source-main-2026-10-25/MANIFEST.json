@@ -1,0 +1,33 @@
+{
+  "artifact": "NGL-001 contact-ledger recovery input",
+  "captured_at": "2026-10-25",
+  "source_repository": "ngl-damien/ngl001-def4us28",
+  "source_branch": "main",
+  "source_tree_sha": "792b7ebe17dcb92fbbb2223d9cd8fee98d2f78c3",
+  "source_files": {
+    "contact/ledger.jsonl": {
+      "blob_sha": "296926483dcd198b1ad5dd665b8be6db75c5b379",
+      "event_count": 128,
+      "bytes": 69314,
+      "role": "source ledger; not live Alpha One state"
+    },
+    "contact/state.json": {
+      "blob_sha": "53e7f5e098d034a170cb85068281911a7d6a5a98",
+      "schema": "ngl.contact.state.v1",
+      "role": "derived state associated with source ledger; not live Alpha One state"
+    }
+  },
+  "comparison": {
+    "alpha_one_preserved_snapshot": "recovery/public-repos/ngl001-def4us28/contact/ledger.jsonl",
+    "snapshot_event_count": 22,
+    "source_event_count": 128,
+    "additional_source_events": 106,
+    "snapshot_is_ordered_source_prefix": true,
+    "source_and_snapshot_previous_hash_links_broken": 0,
+    "event_hashes_recalculated_from_canonical_payload": false,
+    "duplicate_event_hashes_observed": 0,
+    "source_state_matches_source_final_event": true,
+    "snapshot_state_matches_snapshot_final_event": true
+  },
+  "disposition": "Preserve exact source-main files separately. Do not overwrite the archived recovery snapshot, concatenate automatically, or promote to authoritative Alpha One state. Validate canonical event-hash calculation and source provenance before any future migration."
+}
