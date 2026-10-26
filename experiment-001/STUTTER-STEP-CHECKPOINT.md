@@ -77,3 +77,49 @@ Exact-head evidence for PR #26 head `5b284fdaf9fad32f41f7ab90014c29a7a62bb27a`:
 5. Reinspect current reducers and the actual Forge/XP/world-projection entry points after PR #26 review. Do not revive PR #13/#15 branches or merge either draft automatically.
 
 No merge, deployment, XP award, external release, or spending occurred.
+## Run 4 — 2026-10-25 local / 2026-10-26 UTC
+
+### Fresh state rechecked
+
+- main remains 0969df84cce7748d4f0db8e79ec06d13ad826a31; no main-branch write or merge occurred.
+- Open PRs in the primary repository: #27, #25, #26 and #21. PR #25 and #26 remain drafts; #27 is open and not draft.
+- PR #16 is closed unmerged; its old self-signing-flow diagnosis is superseded by merged PR #18 (213f3b5c7771da24b36f9ce6ebdde871d22e4602). Issue #17 remains open.
+- Linked private repository ngl-damien/Damien-Featherstone remains at 021d358d3cabdd3887cef58bbebac1adbfd39bb8 on main and has no open PRs. No linked-repository write was made.
+
+### Stutter-step C — TownSquare receipt resilience and omission warnings
+
+Re-inspection of PR #27 source (game/client.mjs, game/institution-view.mjs) found two concrete UI/evidence failure modes:
+
+1. openInstitution() used one Promise.all for projects, decisions and kernel receipts. If /api/institution alone failed, the entire view failed even when project and Founder Gate data were available.
+2. renderKernelHistory() silently skipped events without a valid workId and accepted work records whose event history was absent. A matching total event count did not expose those omissions.
+
+Changes were committed only to PR #27's branch game/townsquare-kernel-ledger:
+
+- f88448cad13d013fe95732fb93602a203301b354 — isolate the kernel-receipt request failure; keep project/decision rendering available and mark kernel history unavailable instead of treating it as empty.
+- 924b20dcb5c4ab6a78326898f1903fcc148b84a9 — render explicit warnings for events omitted from grouped history and accepted records with no retained event history.
+- 12a4f4a4ba7ba2f190b727b7ac48e46a268188ee — add two regression cases for unavailable kernel history and mismatched/unassigned records.
+
+Exact verification evidence for the current PR head's merge candidate 5bdbdb2745d7733b9aded169f323c79a34117169, which combines PR head 12a4f4a4ba7ba2f190b727b7ac48e46a268188ee with main:
+
+- verify run 40255483069: success. npm run verify reported exit code 0 for Node tests, Python inspector, game package build, and bounded institutional exercise.
+- Genesis Evidence Invariant run 40255483306: success.
+- The workflow log shows Node 24.21.0. It does not expose a test-count summary in the captured verification output, so no count is claimed.
+- This verification is GitHub Actions evidence; no local clone/test was performed in this run.
+
+### Authority and integration boundary remains open
+
+- PR #27 is a presentation/read-path change. It does not grant authority, award XP, or create canonical events.
+- Current game/server.mjs config still identifies the executor and byte verifier as distinct local-process identities within one service. The server's own limitation says this is not independent humans or independent AI providers.
+- PR #26's verifyObservation callback boundary is still unmerged and has no production verifier trust root or host wiring. Its test allowlist is not a production verifier.
+- Real Founder key custody is still unproven: a configured fingerprint does not prove Damien personally controls the private key or supplied a decision.
+- Crash-safe stale-lock recovery remains undefined and untested. Do not delete old-looking locks automatically.
+
+### Next prioritized work
+
+1. Design and integrate an independently provisioned observation attestation/verifier in the actual host path; fail closed before any canonical progress can be awarded.
+2. Establish a Founder-controlled signing workflow with a trust root outside the proposing process; do not claim real Founder authorization until an externally controlled approval is observed.
+3. Define and test crash recovery around ledger write, atomic rename and directory sync, preserving COMMIT_DURABILITY_UNCERTAIN.
+4. Reinspect PR #27's latest head and CI before any further edits; do not merge any PR without Damien's authorization.
+5. Only after authority/evidence boundaries are operational, revisit the falsifiable Hybrid Cognition comparison in Issue #22.
+
+No merge, deployment, XP award, external release, spending, or linked-repository change occurred.
