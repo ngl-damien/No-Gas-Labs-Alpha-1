@@ -63,6 +63,8 @@ Together these are about 25.2 MB decimal (about 24.0 MiB). The 104 other compare
 
 The public source tree contains `.data/institutional_keypair.json` (532 bytes) with fields named `publicKeyPem`, `privateKeyPem`, `publicKeyHex`, `keyFingerprintSha256`, and `createdAt`. A private-key field is present in a tracked file. The key material was not reproduced in this report.
 
+**Additional runtime finding:** inspection of `server.ts` shows the application loads this exact file and passes `institutionalKeypair.privateKeyPem` to Ed25519 signing; the tracked receipt ledger's signer public-key hex matches the public key in the keypair metadata. The key therefore participates in the repository's current receipt-signing design, not merely an unrelated metadata field. Deleting the field alone could break signing, and changing the key affects how historical receipts are trusted.
+
 **Required response if this key is or could be trusted by any system:**
 1. Treat it as potentially exposed until its status is established.
 2. Identify every verifier, grant, signature, or runtime that trusts this public key/fingerprint.
@@ -120,6 +122,6 @@ The highest-value safe slice is to compare the TaskAgile legacy state/persistenc
 - [ ] Port selected capabilities in isolated changes and run relevant tests/builds.
 - [ ] Verify each integrated behavior in runtime and attach evidence before declaring completion.
 
-**Security follow-up opened:** [Damien-Featherstone PR #1](https://github.com/ngl-damien/Damien-Featherstone/pull/1) removes the tracked `privateKeyPem` field from the current file while retaining public-key metadata. It is open and unmerged; no key rotation/revocation or Git-history cleanup has occurred.
+**Security follow-up opened:** [Damien-Featherstone issue #2](https://github.com/ngl-damien/Damien-Featherstone/issues/2) tracks coordinated rotation, runtime key provisioning, and historical receipt trust. [PR #1](https://github.com/ngl-damien/Damien-Featherstone/pull/1) proposes removing the tracked field but is explicitly marked **do not merge alone** because the current runtime uses it for signing. Both remain open; no key rotation/revocation or Git-history cleanup has occurred.
 
 **Current result:** this document is a triage artifact. No TaskAgile application code or media has been imported, no evidence ledger has been merged, no build/tests have been run, and no key rotation has occurred.
