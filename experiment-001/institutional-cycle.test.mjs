@@ -161,3 +161,79 @@ test('stale lock fails closed and is not silently deleted as crash recovery', ()
   assert.equal(await readFile(lockPath, 'utf8'), 'simulated prior-process lock');
   assert.equal(store.snapshot().sequence, 1);
 }));
+
+test('two independent processes contend safely and preserve both INSTALL records', () => temp(async dir => {
+  const founder = pair(), executorA = pair(), executorB = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
+  await openStore(lib, path, founder);
+  const drafts = [
+    proposal(lib, executorA, { id: 'process-install-a', nonce: 'install-process-a-0001', maxUses: 1 }),
+    proposal(lib, executorB, { id: 'process-install-b', nonce: 'install-process-b-0001', maxUses: 1 })
+  ];
+  const signatures = drafts.map(draft => approve(lib, draft, founder.privateKey));
+  const startWorker = index => {
+    const child = spawn(process.execPath, [
+      new URL('./commit-worker.mjs', import.meta.url).pathname,
+      path,
+      pem(founder),
+      JSON.stringify(drafts[index]),
+      signatures[index]
+    ], {
+      env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    let stdout = '', stderr = '', readySettled = false, resolveReady, rejectReady;
+    const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    const done = new Promise(resolve => {
+      child.stdout.on('data', chunk => {
+        stdout += chunk.toString();
+        if (!readySettled && stdout.includes('READY\n')) {
+          readySettled = true;
+          resolveReady();
+        }
+      });
+      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+      child.once('error', error => {
+        if (!readySettled) { readySettled = true; rejectReady(error); }
+      });
+      child.once('close', (code, signal) => {
+        if (!readySettled) {
+          readySettled = true;
+          rejectReady(new Error('Worker exited before readiness: code=' + code + ' stderr=' + stderr + ' stdout=' + stdout));
+        }
+        resolve({ code, signal, stdout, stderr });
+      });
+    });
+    return { child, ready, done };
+  };
+
+  const workers = [startWorker(0), startWorker(1)];
+  await Promise.all(workers.map(worker => worker.ready));
+  for (const worker of workers) worker.child.stdin.end('GO\n');
+  const completed = await Promise.all(workers.map(worker => worker.done));
+  const outcomes = completed.map((result, index) => {
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const lines = result.stdout.trim().split(/\r?\n/);
+    return { ...JSON.parse(lines.at(-1)), index };
+  });
+  assert.ok(outcomes.every(outcome =>
+    outcome.outcome === 'committed' ||
+    (outcome.outcome === 'rejected' && outcome.error === 'LEDGER_LOCKED')
+  ), JSON.stringify(outcomes));
+
+  const rejected = outcomes.find(outcome => outcome.outcome === 'rejected');
+  if (rejected) {
+    const retry = startWorker(rejected.index);
+    await retry.ready;
+    retry.child.stdin.end('GO\n');
+    const result = await retry.done;
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const retryOutcome = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+    assert.equal(retryOutcome.outcome, 'committed', JSON.stringify(retryOutcome));
+  }
+
+  const reopened = await openStore(lib, path, founder);
+  const snapshot = reopened.snapshot();
+  assert.equal(snapshot.sequence, 2);
+  assert.deepEqual(snapshot.records.map(record => record.decision.id).sort(), drafts.map(draft => draft.id).sort());
+  assert.deepEqual(Object.keys(snapshot.capabilities).sort(), drafts.map(draft => draft.id).sort());
+}));
