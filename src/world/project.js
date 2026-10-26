@@ -111,6 +111,18 @@ export function isSafeEventPayload(event) {
   }
 }
 
+// Shared entry point for UI-facing projections: reject sparse/accessor arrays
+// and validate every event before any consumer reads event fields.
+export function validatedEventList(events, label = "event") {
+  const values = denseArrayValues(events, label + " list");
+  for (let index = 0; index < values.length; index += 1) {
+    if (!isSafeEventPayload(values[index])) {
+      throw new Error("invalid " + label + " payload at index " + index);
+    }
+  }
+  return values;
+}
+
 function trustedByHost(event, verifier) {
   if (typeof verifier !== "function") return false;
   try {
