@@ -13,9 +13,20 @@ Run on Node.js 24 or newer (the current repository CI runtime): `node --test exp
 - INSTALL approval is a detached Ed25519 signature over the canonical decision. The private signing key must remain outside the proposal-handling runtime; this repository does not implement a separate signing service or prove key custody.
 - The hash chain detects inconsistent record edits, but it is not externally anchored. Someone able to rewrite the complete ledger can recalculate its hashes.
 - Writes use an exclusive lock file, a synced temporary file, atomic rename, and directory sync. Stale-lock recovery is not automatic. A directory-sync failure after rename is reported as `COMMIT_DURABILITY_UNCERTAIN`; the visible file may already have changed.
-- The test now performs signed REUSE in a child Node process and reopens the ledger in the parent afterward. Concurrency and stale-lock tests remain acceptance work.
-- Do not merge, award in-world XP, or make commercial claims based on this experiment. Keep PR #16 draft until exact-head CI, adversarial review, and cross-process evidence are recorded.
+- The tests perform signed REUSE in a child Node process and race two separate Node processes attempting INSTALL against one ledger; the losing writer may only fail with LEDGER_LOCKED and must succeed on a fresh retry. Stale-lock recovery remains unimplemented: existing locks fail closed, and no lock is deleted merely because it appears old.
+- Do not merge, award in-world XP, or make commercial claims based on this experiment. PR #16 is closed unmerged; PR #18 is the merged replacement. Keep any new implementation draft until exact-head CI, adversarial review, and the limits of the trust boundary are recorded.
 
 ## Next experiment
 
 Test concurrent writers and stale-lock recovery, then compare the candidate with the real reducer/authority entry points for integration.
+
+## Implementation identity and ledger replay compatibility
+
+New INSTALL proposals identify a strategy with a stable, versioned semantic ID (`ngl-experiment-001:strategy:square:v1` or `ngl-experiment-001:strategy:double:v1`) rather than hashing JavaScript `Function.toString()`. This avoids rejecting historical records merely because implementation source formatting changes.
+
+The version-2 ledger reader retains a narrow compatibility path for INSTALL records written by the former source-hash scheme:
+
+- `square`: `a44644e2cb5f1e34cf0aac616d43631c4778a19585cb634128f9d4fbfe9d947d`
+- `double`: `8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436`
+
+Legacy hashes are accepted only when replaying existing ledger history; new INSTALL commits must use the current versioned identity. Existing legacy capabilities remain reusable under their recorded identity. This is a compatibility fix, not proof that a strategy's implementation is correct: strategy IDs are immutable behavior contracts, and any semantic change must introduce a new version and corresponding tests rather than silently changing the behavior associated with an existing ID. No ledger migration, production key provisioning, or capability installation is performed by this code change.
