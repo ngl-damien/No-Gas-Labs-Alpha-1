@@ -70,3 +70,32 @@ test('TownSquare states when no canonical work is recorded and flags inconsisten
   assert.match(output, /Record count mismatch/);
   assert.match(output, /These records do not award game XP/);
 }));
+
+
+test('TownSquare keeps project records visible when canonical kernel history is unavailable', () => withDocument(() => {
+  const root = element('div');
+  const availableProjects = { ...projects, projects: [{ title: 'Preserved project record', status: 'OPEN' }] };
+  renderInstitution(root, availableProjects, gate, { kernelUnavailable: true });
+  const output = textOf(root);
+  assert.match(output, /Canonical work receipts could not be loaded/);
+  assert.match(output, /Preserved project record/);
+  assert.doesNotMatch(output, /No canonical work events are recorded/);
+}));
+
+test('TownSquare warns about ungrouped events and accepted work without history even when event counts match', () => withDocument(() => {
+  const root = element('div');
+  renderInstitution(root, projects, gate, {
+    kernel: {
+      revision: 2,
+      eventCount: 2,
+      events: [
+        { id: 'e1', workId: 'work-1', type: 'claim', actor: 'local-forge', at: '2026-10-25T12:00:00.000Z', action: 'preserve-artifact-bytes', subject: { id: 'creation-1', version: 1 } },
+        { id: 'e2', type: 'execute', actor: 'local-forge', at: '2026-10-25T12:00:02.000Z' }
+      ],
+      accepted: [{ workId: 'orphan-work', stage: 'accepted', outputs: [] }]
+    }
+  });
+  const output = textOf(root);
+  assert.match(output, /1 retained event\(s\) have no valid work ID/);
+  assert.match(output, /1 accepted work record\(s\) have no retained event history/);
+}));
