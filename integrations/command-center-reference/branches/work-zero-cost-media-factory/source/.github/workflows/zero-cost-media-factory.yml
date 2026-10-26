@@ -1,0 +1,119 @@
+name: Zero-Cost Media Factory
+
+on:
+  push:
+    branches:
+      - "work/zero-cost-media-factory"
+    paths:
+      - ".github/workflows/zero-cost-media-factory.yml"
+      - "scripts/build-ngl-media.sh"
+      - "scripts/generate-ngl-ad-copy.py"
+      - "scripts/verify-and-advance-state.py"
+      - "scripts/test-illegal-state-jump.py"
+  pull_request:
+    paths:
+      - ".github/workflows/zero-cost-media-factory.yml"
+      - "scripts/build-ngl-media.sh"
+      - "scripts/generate-ngl-ad-copy.py"
+      - "scripts/verify-and-advance-state.py"
+      - "scripts/test-illegal-state-jump.py"
+      - "ngl/state/runtime.json"
+  workflow_dispatch:
+    inputs:
+      autonomous:
+        description: "After a verified state transition, dispatch the next permitted step"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ngl-media-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read canonical state and authorize one candidate transition
+        id: state
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          s=json.load(open("ngl/state/runtime.json"))
+          current=int(s["media"]["populated_seconds"])
+          target=int(s["media"]["target_seconds"])
+          if s["next_action"] == "NONE" or current >= target:
+              print("has_work=false")
+              print("next_step=0")
+          else:
+              assert s["next_action"] == "COMPILE_NEXT_SECOND"
+              print("has_work=true")
+              print(f"next_step={current+1}")
+          PY
+
+      - name: Prove illegal state jumps are rejected
+        run: |
+          python3 scripts/test-illegal-state-jump.py
+
+      - name: Install deterministic media compiler
+        if: steps.state.outputs.has_work == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Generate proprietary evidence-bound ad copy
+        if: steps.state.outputs.has_work == 'true'
+        run: |
+          python3 scripts/generate-ngl-ad-copy.py "${{ steps.state.outputs.next_step }}" out
+          test -s out/ad-copy.json
+
+      - name: Compile one candidate second of additional animation
+        if: steps.state.outputs.has_work == 'true'
+        run: |
+          chmod +x scripts/build-ngl-media.sh
+          TITLE="$(cat out/ad-title.txt)"
+          BODY="$(cat out/ad-body.txt)"
+          scripts/build-ngl-media.sh "$TITLE" "$BODY" out "${{ steps.state.outputs.next_step }}"
+
+      - name: Verify artifact and propose canonical state transition
+        if: steps.state.outputs.has_work == 'true'
+        run: |
+          test -s out/ngl-short.mp4
+          test -s out/receipt.json
+          python3 scripts/verify-and-advance-state.py             ngl/state/runtime.json             out/receipt.json             out/ad-copy.json             "${{ github.run_id }}"             out/runtime.next.json
+
+      - name: Persist verified state transition
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && steps.state.outputs.has_work == 'true'
+        shell: bash
+        run: |
+          cp out/runtime.next.json ngl/state/runtime.json
+          mkdir -p ngl/state/transitions
+          cp out/transition.json "ngl/state/transitions/run-${GITHUB_RUN_ID}.json"
+          git config user.name "NGL Runtime"
+          git config user.email "actions@users.noreply.github.com"
+          git add ngl/state/runtime.json "ngl/state/transitions/run-${GITHUB_RUN_ID}.json"
+          git commit -m "state: verified media transition ${{ steps.state.outputs.next_step }}/12"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload build evidence
+        if: steps.state.outputs.has_work == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-media-build-${{ steps.state.outputs.next_step }}
+          path: out/
+          retention-days: 1
+
+      - name: Dispatch next authorized transition
+        if: github.event_name == 'workflow_dispatch' && inputs.autonomous && steps.state.outputs.has_work == 'true' && steps.state.outputs.next_step != '12'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run zero-cost-media-factory.yml             --ref "${GITHUB_REF_NAME}"             -f autonomous=true
