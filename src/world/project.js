@@ -14,6 +14,44 @@ function setOwn(target, key, value) {
   });
 }
 
+// Produce a type-tagged, key-order-independent comparison value. Event IDs
+// identify one immutable payload; they are not permission to silently discard
+// a different payload that reuses the same ID.
+function stableEventValue(value, ancestors = new Set()) {
+  if (value === null) return ["null"];
+  const type = typeof value;
+  if (type === "undefined") return ["undefined"];
+  if (type === "string" || type === "boolean") return [type, value];
+  if (type === "number") {
+    const normalized = Number.isNaN(value) ? "NaN"
+      : value === Infinity ? "Infinity"
+      : value === -Infinity ? "-Infinity"
+      : Object.is(value, -0) ? "-0" : String(value);
+    return ["number", normalized];
+  }
+  if (type === "bigint") return ["bigint", String(value)];
+  if (type === "symbol") return ["symbol", String(value.description ?? "")];
+  if (type === "function") return ["function", String(value)];
+  if (ancestors.has(value)) throw new Error("cyclic event payload");
+  ancestors.add(value);
+  let result;
+  if (Array.isArray(value)) {
+    result = ["array", Array.from({ length: value.length }, (_, index) =>
+      index in value ? stableEventValue(value[index], ancestors) : ["hole"]
+    )];
+  } else {
+    result = ["object", Object.keys(value).sort().map(key =>
+      [key, stableEventValue(value[key], ancestors)]
+    )];
+  }
+  ancestors.delete(value);
+  return result;
+}
+
+function sameEventPayload(left, right) {
+  return JSON.stringify(stableEventValue(left)) === JSON.stringify(stableEventValue(right));
+}
+
 // Event labels are claims, not attestations. The host injects trust roots
 // independently of the event producer; missing, non-boolean or throwing
 // verifiers fail closed. Events are still retained in history for later review.
@@ -67,11 +105,29 @@ const terminalSuccess = (e, resolveArtifact, verifyObservation, verifyAuthorizat
 
 export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication, verifyAuthorization } = {}) {
   const state = structuredClone(seed);
+  const historyById = new Map();
+  for (const retained of state.history || []) {
+    if (!retained?.event_id) continue;
+    if (historyById.has(retained.event_id)) {
+      throw new Error("duplicate event_id in retained history: " + retained.event_id);
+    }
+    historyById.set(retained.event_id, retained);
+  }
   const seen = new Set(state.seen || []);
+  for (const id of historyById.keys()) seen.add(id);
   const revoked = new Set(state.revoked || []);
 
   for (const event of events) {
-    if (!event?.event_id || seen.has(event.event_id)) continue;
+    if (!event?.event_id) continue;
+
+    if (seen.has(event.event_id)) {
+      const prior = historyById.get(event.event_id);
+      if (!prior) throw new Error("duplicate event_id has no retained payload: " + event.event_id);
+      if (!sameEventPayload(prior, event)) {
+        throw new Error("conflicting duplicate event_id: " + event.event_id);
+      }
+      continue;
+    }
 
     const parents = Array.isArray(event.parents) ? event.parents : [];
     if (parents.some(parent => !seen.has(parent))) throw new Error("unresolved parent for " + event.event_id);
@@ -79,7 +135,9 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
     seen.add(event.event_id);
     // Keep a snapshot: later mutation of the caller's event object must not
     // silently rewrite the projection's retained evidence history.
-    state.history.push(structuredClone(event));
+    const retained = structuredClone(event);
+    state.history.push(retained);
+    historyById.set(event.event_id, retained);
 
     if (event.event_type === "REVOCATION") {
       if (isVerifiedAdjudication(event, verifyAdjudication) && typeof event.revokes === "string" && event.revokes) {
