@@ -268,3 +268,18 @@ test("event-controlled prototype keys cannot mutate projection prototypes", () =
   assert.equal(Object.getPrototypeOf(s.world).polluted, undefined);
   assert.equal(s.world.forgeOpen, true);
 });
+
+test("projection history snapshots are isolated from caller-owned event objects", () => {
+  const source = structuredClone(observed);
+  const projected = projectWorld([source], undefined, { resolveArtifact, verifyObservation, verifyAuthorization });
+  const originalDigest = projected.history[0].receipts[0].digest;
+
+  source.subject = "tampered-subject";
+  source.world_effect.xp = 900000;
+  source.receipts[0].digest = "tampered";
+
+  assert.equal(projected.xp, 25);
+  assert.equal(projected.history[0].subject, "forge-gate");
+  assert.equal(projected.history[0].world_effect.xp, 25);
+  assert.equal(projected.history[0].receipts[0].digest, originalDigest);
+});
