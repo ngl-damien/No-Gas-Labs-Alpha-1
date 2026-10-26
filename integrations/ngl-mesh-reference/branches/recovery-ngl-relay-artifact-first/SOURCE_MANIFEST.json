@@ -1,0 +1,339 @@
+{
+  "schema": "ngl.source-branch-recovery.v1",
+  "source_repository": "ngl-damien/ngl-mesh",
+  "source_branch": "recovery/ngl-relay-artifact-first",
+  "source_commit": "e99319ecb07f379f182586de44bbbdc899d82ce0",
+  "source_tree_sha": "4a785ebd7aeca3fa2a70d31624b68b5b046b1115",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/ngl-relay-artifact-first-recovery-2026-10-26",
+  "license_status": "No LICENSE file found in source branch tree; reuse license remains unconfirmed",
+  "runtime_status": "Reference-only; not Android-built or runtime-integrated",
+  "verification": {
+    "source_blob_count": 40,
+    "exact_target_blob_matches": 40,
+    "byte_identity_method": "Git blob SHA equality",
+    "build_test_performed": false
+  },
+  "entries": [
+    {
+      "source_path": "README.md",
+      "source_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "size_bytes": 2362,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/README.md",
+      "target_blob_sha": "c806f0fd0e2ed51b24177888634e618931a9be7b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/build.gradle",
+      "source_blob_sha": "16d2d882f837d937882615d197d975cca9ef62c4",
+      "size_bytes": 319,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/build.gradle",
+      "target_blob_sha": "16d2d882f837d937882615d197d975cca9ef62c4",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/AndroidManifest.xml",
+      "source_blob_sha": "209301d5ab477e069bc4ebe99aaf0a046ce1ba9a",
+      "size_bytes": 1374,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/AndroidManifest.xml",
+      "target_blob_sha": "209301d5ab477e069bc4ebe99aaf0a046ce1ba9a",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/ArtifactActivity.java",
+      "source_blob_sha": "e9cda2f98fd15bd589b189ae9b3aa7b758c7b163",
+      "size_bytes": 379,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/ArtifactActivity.java",
+      "target_blob_sha": "e9cda2f98fd15bd589b189ae9b3aa7b758c7b163",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/CaseActivity.java",
+      "source_blob_sha": "ac9e2bad1b957bed9ec09ab80ae218b9fcbb95fd",
+      "size_bytes": 371,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/CaseActivity.java",
+      "target_blob_sha": "ac9e2bad1b957bed9ec09ab80ae218b9fcbb95fd",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/CompareActivity.java",
+      "source_blob_sha": "79e8e6fc6920a5f1fb6d1c91bbae1793407d3da8",
+      "size_bytes": 377,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/CompareActivity.java",
+      "target_blob_sha": "79e8e6fc6920a5f1fb6d1c91bbae1793407d3da8",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/MainActivity.java",
+      "source_blob_sha": "a88498326835d80bbd729da85c955d92cdfba58a",
+      "size_bytes": 1019,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/MainActivity.java",
+      "target_blob_sha": "a88498326835d80bbd729da85c955d92cdfba58a",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/NodeRegistry.java",
+      "source_blob_sha": "999fd3c1660f4717cbe1a0be500cde8afedafe66",
+      "size_bytes": 3113,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/NodeRegistry.java",
+      "target_blob_sha": "999fd3c1660f4717cbe1a0be500cde8afedafe66",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/RelayApp.java",
+      "source_blob_sha": "97524f05a47b7a1bc251a441448ae55a29f28fc8",
+      "size_bytes": 606,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/RelayApp.java",
+      "target_blob_sha": "97524f05a47b7a1bc251a441448ae55a29f28fc8",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/app/SettingsActivity.java",
+      "source_blob_sha": "a03a7f64ea96cecd20b85069fe6252eac3878ed9",
+      "size_bytes": 1870,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/app/SettingsActivity.java",
+      "target_blob_sha": "a03a7f64ea96cecd20b85069fe6252eac3878ed9",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/Artifact.java",
+      "source_blob_sha": "b10348b92a1fec6f7e4f57ffa65a8ca5e8ba1ee7",
+      "size_bytes": 4507,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/Artifact.java",
+      "target_blob_sha": "b10348b92a1fec6f7e4f57ffa65a8ca5e8ba1ee7",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/CaseStore.java",
+      "source_blob_sha": "d0443e6c356699bc7267d1a0f61326a53df33e0a",
+      "size_bytes": 7469,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/CaseStore.java",
+      "target_blob_sha": "d0443e6c356699bc7267d1a0f61326a53df33e0a",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/ClaudeNode.java",
+      "source_blob_sha": "78f5f2a044e2e8531d15d3ef41c4ab1b8a3aa444",
+      "size_bytes": 1196,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/ClaudeNode.java",
+      "target_blob_sha": "78f5f2a044e2e8531d15d3ef41c4ab1b8a3aa444",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/ContextBuilder.java",
+      "source_blob_sha": "3e87c0977af0e7b6668ee12b14a8bc62de025013",
+      "size_bytes": 1680,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/ContextBuilder.java",
+      "target_blob_sha": "3e87c0977af0e7b6668ee12b14a8bc62de025013",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/CoreJson.java",
+      "source_blob_sha": "560b321a92e2fd782499f1c584f30b99b69950ef",
+      "size_bytes": 5339,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/CoreJson.java",
+      "target_blob_sha": "560b321a92e2fd782499f1c584f30b99b69950ef",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/GeminiNode.java",
+      "source_blob_sha": "683d088bebe9a25130d5a4530ddcf8558a9992ff",
+      "size_bytes": 933,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/GeminiNode.java",
+      "target_blob_sha": "683d088bebe9a25130d5a4530ddcf8558a9992ff",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/GrokNode.java",
+      "source_blob_sha": "6420f72e16086ec54cbc1b99bde05aab1e9833cd",
+      "size_bytes": 834,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/GrokNode.java",
+      "target_blob_sha": "6420f72e16086ec54cbc1b99bde05aab1e9833cd",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/HttpNode.java",
+      "source_blob_sha": "3c1eb5825cad97056431e920f2ad8fcdbc73a894",
+      "size_bytes": 3426,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/HttpNode.java",
+      "target_blob_sha": "3c1eb5825cad97056431e920f2ad8fcdbc73a894",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/Iso8601.java",
+      "source_blob_sha": "4aa00c4f474c29da7966c9560ea47a4d130d0258",
+      "size_bytes": 672,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/Iso8601.java",
+      "target_blob_sha": "4aa00c4f474c29da7966c9560ea47a4d130d0258",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/MethodologyEngine.java",
+      "source_blob_sha": "8563a528afb72a941182a1369b35c2bde8906d62",
+      "size_bytes": 2901,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/MethodologyEngine.java",
+      "target_blob_sha": "8563a528afb72a941182a1369b35c2bde8906d62",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/Node.java",
+      "source_blob_sha": "8f1a256df5783ab0e286b557604c96ad9e45e292",
+      "size_bytes": 708,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/Node.java",
+      "target_blob_sha": "8f1a256df5783ab0e286b557604c96ad9e45e292",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/java/ngl/relay/core/OpenAiNode.java",
+      "source_blob_sha": "4263b2534d6491295467d8faae5d9fca813ba8dc",
+      "size_bytes": 845,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/java/ngl/relay/core/OpenAiNode.java",
+      "target_blob_sha": "4263b2534d6491295467d8faae5d9fca813ba8dc",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/res/mipmap/ic_launcher.xml",
+      "source_blob_sha": "df18c46598cd3293086546aa76b8dde66265af32",
+      "size_bytes": 341,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/res/mipmap/ic_launcher.xml",
+      "target_blob_sha": "df18c46598cd3293086546aa76b8dde66265af32",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/res/values/strings.xml",
+      "source_blob_sha": "0d1cb1c5604d647d1dcfd62a4c92da4ddffda222",
+      "size_bytes": 66,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/res/values/strings.xml",
+      "target_blob_sha": "0d1cb1c5604d647d1dcfd62a4c92da4ddffda222",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/main/res/values/styles.xml",
+      "source_blob_sha": "5cbcf1b5a00d9d77a3451cbd601e85a79d462bf1",
+      "size_bytes": 201,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/main/res/values/styles.xml",
+      "target_blob_sha": "5cbcf1b5a00d9d77a3451cbd601e85a79d462bf1",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "app/src/test/java/ngl/relay/core/ArtifactFixture.java",
+      "source_blob_sha": "9f97f93fb58432149c7a7d67a4a87408499f9159",
+      "size_bytes": 737,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/app/src/test/java/ngl/relay/core/ArtifactFixture.java",
+      "target_blob_sha": "9f97f93fb58432149c7a7d67a4a87408499f9159",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "build.gradle",
+      "source_blob_sha": "48978475f39b1467943779a53122534c3d6a5f03",
+      "size_bytes": 73,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/build.gradle",
+      "target_blob_sha": "48978475f39b1467943779a53122534c3d6a5f03",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/NGL-CONTROL-SURFACE.md",
+      "source_blob_sha": "88e7f5a5b50d5627acc4628250da844540bc5293",
+      "size_bytes": 5036,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/docs/NGL-CONTROL-SURFACE.md",
+      "target_blob_sha": "88e7f5a5b50d5627acc4628250da844540bc5293",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/ngl-control-surface.schema.json",
+      "source_blob_sha": "50aa9a185863ff0739218453ff0f5228ed7ada86",
+      "size_bytes": 2244,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/docs/ngl-control-surface.schema.json",
+      "target_blob_sha": "50aa9a185863ff0739218453ff0f5228ed7ada86",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "forensics/relay/REFERENCE_ARTIFACT.md",
+      "source_blob_sha": "2f737fb9b5d4ca9d988a0754af18f74579e9f6e1",
+      "size_bytes": 2219,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/forensics/relay/REFERENCE_ARTIFACT.md",
+      "target_blob_sha": "2f737fb9b5d4ca9d988a0754af18f74579e9f6e1",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/BUILD_BLOCKER.md",
+      "source_blob_sha": "7bcbc79ef5b0717f60409e3511ac8ef7a67bb3e1",
+      "size_bytes": 524,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/BUILD_BLOCKER.md",
+      "target_blob_sha": "7bcbc79ef5b0717f60409e3511ac8ef7a67bb3e1",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/HISTORICAL_DISCREPANCIES.md",
+      "source_blob_sha": "f92ff1eefb050cae990a89d425f704196856df5b",
+      "size_bytes": 1035,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/HISTORICAL_DISCREPANCIES.md",
+      "target_blob_sha": "f92ff1eefb050cae990a89d425f704196856df5b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/README.md",
+      "source_blob_sha": "f6e1b6b3133c7c905a94ae3cac3082b343b99df9",
+      "size_bytes": 400,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/README.md",
+      "target_blob_sha": "f6e1b6b3133c7c905a94ae3cac3082b343b99df9",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/RECOVERY_NOTES.md",
+      "source_blob_sha": "ed0738b174cdac31493dcb19890272e448fb2414",
+      "size_bytes": 6419,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/RECOVERY_NOTES.md",
+      "target_blob_sha": "ed0738b174cdac31493dcb19890272e448fb2414",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/evidence/AndroidManifest.observed.txt",
+      "source_blob_sha": "98f9e8930d00984668723b2d098e88ab603e29c7",
+      "size_bytes": 1678,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/evidence/AndroidManifest.observed.txt",
+      "target_blob_sha": "98f9e8930d00984668723b2d098e88ab603e29c7",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/evidence/dex-member-inventory.txt.gz",
+      "source_blob_sha": "d96238f952ecde3215be9ae726dc63ab08f8ebb1",
+      "size_bytes": 5780,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/evidence/dex-member-inventory.txt.gz",
+      "target_blob_sha": "d96238f952ecde3215be9ae726dc63ab08f8ebb1",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/evidence/forensic-inventory.json",
+      "source_blob_sha": "1968cf1427c9d4d2998cbb31491ed47d6b55de2e",
+      "size_bytes": 1708,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/evidence/forensic-inventory.json",
+      "target_blob_sha": "1968cf1427c9d4d2998cbb31491ed47d6b55de2e",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/evidence/provenance.json",
+      "source_blob_sha": "dea348aef715d74e240bfeb9b6186021a9d3f69b",
+      "size_bytes": 1486,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/evidence/provenance.json",
+      "target_blob_sha": "dea348aef715d74e240bfeb9b6186021a9d3f69b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "recovery/fixtures/java/ngl/relay/core/ProviderFixture.java",
+      "source_blob_sha": "0d05b4ad0c777a963b5a063ba06f2175b1c8f559",
+      "size_bytes": 1204,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/recovery/fixtures/java/ngl/relay/core/ProviderFixture.java",
+      "target_blob_sha": "0d05b4ad0c777a963b5a063ba06f2175b1c8f559",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "settings.gradle",
+      "source_blob_sha": "b9ec26ce52d21f6268c9b10be83ce2439e0b883b",
+      "size_bytes": 276,
+      "target_path": "integrations/ngl-mesh-reference/branches/recovery-ngl-relay-artifact-first/source/settings.gradle",
+      "target_blob_sha": "b9ec26ce52d21f6268c9b10be83ce2439e0b883b",
+      "status": "IDENTICAL_BLOB"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema":"ngl-recovery-provenance/v1",
+  "reference_artifact":{"sha256":"6cee7b1ea12c435cc7705510b5d61c85c63764dcd9658a00b6ea99c2311e9ffe","size_bytes":49651,"drive_file_id":"external-gdrive:file:10aU0OomiAT-iieNczBBxdFCEYIQ_w27r"},
+  "evidence_to_source":[
+    {"evidence":"binary AndroidManifest.xml","classification":"observed","source":["app/src/main/AndroidManifest.xml","app/build.gradle"]},
+    {"evidence":"classes.dex class/method/field tables","classification":"observed","source":["recovery/evidence/dex-member-inventory.txt.gz"]},
+    {"evidence":"classes.dex provider bytecode","classification":"reconstructed_strong","source":["app/src/main/java/ngl/relay/core/HttpNode.java","app/src/main/java/ngl/relay/core/OpenAiNode.java","app/src/main/java/ngl/relay/core/GeminiNode.java","app/src/main/java/ngl/relay/core/GrokNode.java","app/src/main/java/ngl/relay/core/ClaudeNode.java"]},
+    {"evidence":"classes.dex NodeRegistry bytecode","classification":"reconstructed_strong","source":["app/src/main/java/ngl/relay/app/NodeRegistry.java"]},
+    {"evidence":"methodology prompt constants and stage methods","classification":"reconstructed_strong_partial","source":["app/src/main/java/ngl/relay/core/MethodologyEngine.java"]},
+    {"evidence":"APK UI strings + observed screenshots + Activity bytecode surface","classification":"inferred_partial","source":["app/src/main/java/ngl/relay/app/MainActivity.java","app/src/main/java/ngl/relay/app/SettingsActivity.java"]}
+  ]
+}

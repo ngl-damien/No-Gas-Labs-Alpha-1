@@ -1,0 +1,1 @@
+package ngl.relay.app; import android.app.*; import android.os.*; import android.widget.*; public final class ArtifactActivity extends Activity { public void onCreate(Bundle b){super.onCreate(b);TextView v=new TextView(this);v.setPadding(24,24,24,24);v.setText("ArtifactActivity — reconstruction baseline; UI wiring pending bytecode-equivalent recovery");setContentView(v);} }
