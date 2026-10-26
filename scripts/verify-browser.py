@@ -5,6 +5,7 @@ Requires Python Playwright plus Chromium for development only. No provider keys 
 import argparse
 import os
 import json
+import re
 import select
 import subprocess
 import tempfile
@@ -65,6 +66,8 @@ def basic(page,url,out,label):
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
     draft(page,'comic','The real comic lives here')
     page.locator('#preview-button').click()
@@ -73,6 +76,18 @@ def basic(page,url,out,label):
     assert frame.locator('img').first.evaluate('(img)=>img.decode().then(()=>img.naturalWidth>0)'), 'Original comic did not load'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('1')")
+    expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    evidence = page.locator('[data-objective-id="founder-first-place"] details.quest-evidence')
+    expect(evidence).to_have_count(1)
+    expect(evidence.locator('summary')).to_have_text('Inspect retained evidence')
+    evidence.locator('summary').click()
+    expect(evidence).to_contain_text('PUBLISH')
+    expect(evidence).to_contain_text('version 1')
+    expect(evidence).to_contain_text(re.compile(r'at \d{4}-\d{2}-\d{2}T[0-9:.]+Z'))
+    expect(evidence.locator('code')).to_contain_text('event-')
+    evidence.get_by_role('button', name='Open retained version 1 →', exact=True).click()
+    expect(page.locator('#version-select')).to_have_value('1')
+    close_sheet(page)
     draft(page,'loom','A sentence that sings')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
@@ -83,6 +98,7 @@ def basic(page,url,out,label):
     frame.locator('#stop').click()
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
+    expect(page.locator('[data-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
