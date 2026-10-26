@@ -189,7 +189,6 @@ def shared(browser,url,data,out):
         # navigate back to the exact version named by the report.
         close_sheet(b);b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
-        b.wait_for_timeout(3500);b.locator('#interact-button').click()
         b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='The institution at work.'")
         report_card=b.locator('[data-record-type="WORLD_EVENT"]').filter(has_text='Report retained')
         expect(report_card).to_have_count(1)
