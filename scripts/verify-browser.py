@@ -220,6 +220,8 @@ def shared(browser,url,data,out):
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
         b.unroute('**/api/action',lose_report_response)
+        # Safe retry closes the Journal; reopen the exact published place before challenging its version.
+        visit(b,'The shared observatory')
         b.get_by_text('Ask the Contradiction Clerk to challenge this version',exact=True).click()
         b.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
         b.locator('#contradiction-source').fill('The preserved HTML bytes and the cited source page.')
