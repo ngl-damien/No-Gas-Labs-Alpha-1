@@ -160,6 +160,22 @@ test('failed atomic persistence adopts neither world nor institutional acceptanc
   assert.equal((await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 })).response.status, 200);
 });
 
+test('serves every first-party module imported by the playable game client', async t => {
+  const f = await fixture(t); const client = f.client();
+  const source = await client.request('/client.mjs');
+  assert.equal(source.response.status, 200);
+  assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
+  for (const module of ['model', 'quests', 'character-sheet', 'world-view', 'launchpad', 'institution-view']) {
+    assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
+  }
+  for (const module of ['client', 'quests', 'character-sheet', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view']) {
+    const response = await client.request(`/${module}.mjs`);
+    assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
+    assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);
+    assert.ok(response.body.length > 0, `/${module}.mjs must not be empty`);
+  }
+});
+
 test('stored history tampering fails closed and static routes never serve source, keys or traversal', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login(); await publish(founder);
   for (const path of ['/server.mjs', '/game/server.mjs', '/service-store.mjs', '/.runtime/founder.key', '/.git/config', '/assets/comic/../../server.mjs', '/%2e%2e/.git/config']) {
