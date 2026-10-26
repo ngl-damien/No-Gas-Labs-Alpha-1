@@ -1,0 +1,336 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>No_Gas_Labs™ - Shrine of TONX</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: radial-gradient(circle at center, #000022, #0a0015);
+      color: #d0f0ff;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+    .shrine, .game-bridge {
+      border: 2px solid #48f;
+      border-radius: 12px;
+      background: rgba(16, 16, 58, 0.9);
+      padding: 24px;
+      box-shadow: 0 0 25px #33f8ff99;
+    }
+    .shrine.active {
+      animation: glow 2s infinite alternate;
+    }
+    @keyframes glow {
+      from { box-shadow: 0 0 10px #33f8ff66; }
+      to { box-shadow: 0 0 25px #33f8ffdd; }
+    }
+    input, button {
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background: #3ef;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    button:hover {
+      background: #5ff;
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      background: #555;
+      color: #888;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .relic-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .relic-card {
+      background: rgba(255, 170, 0, 0.1);
+      border: 1px solid #ffaa00;
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+    }
+    .relic-card.owned {
+      background: rgba(0, 255, 136, 0.1);
+      border-color: #00ff88;
+    }
+    .status-display {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff88, #00c1ff);
+      transition: width 0.5s ease;
+    }
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="shrine active">
+      <h1>🛕 Shrine of TONX</h1>
+      <p>Connect your TON wallet and sync your No_Gas_Labs™ progress with the blockchain.</p>
+      
+      <div class="status-display">
+        <div>Shrine XP: <strong id="xp-display">0</strong></div>
+        <div>Game XP: <strong id="game-xp-display">0</strong></div>
+        <div>Total Level: <strong id="level-display">1</strong></div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="xp-progress" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <input type="text" id="wallet" placeholder="Enter your TON testnet address"/>
+      <button onclick="saveAddress()">🔐 Save Wallet Address</button>
+      <button onclick="pingNode()" id="ping-btn">📡 Sync with TON Network</button>
+      <button onclick="bridgeToGame()" id="bridge-btn">🎮 Bridge to RPG</button>
+      
+      <div id="prophecy" class="status-display" style="display: none;">
+        <h3>🌌 Ancient Prophecy Unlocked</h3>
+        <p><em>"When the node speaks and your balance rises, so too shall your relic awaken in the endless loop of No_Gas_Labs™..."</em></p>
+      </div>
+    </div>
+    
+    <div class="game-bridge">
+      <h2>🗿 Relic Inventory</h2>
+      <p>Your collected relics across the No_Gas_Labs™ ecosystem.</p>
+      
+      <div class="relic-grid" id="relic-inventory">
+        <div class="relic-card">
+          <h4>Scroll of the First Loop</h4>
+          <p>PDF (Prophetic Message)</p>
+          <small>Initiation into DEF4US'28</small>
+          <div>Price: $7 USD</div>
+        </div>
+        
+        <div class="relic-card">
+          <h4>Echo Sigil v1</h4>
+          <p>PNG (Visual Relic)</p>
+          <small>Early node marker</small>
+          <div>Price: $5 USD</div>
+        </div>
+        
+        <div class="relic-card">
+          <h4>Glitch Zine Preview: Vol. 0</h4>
+          <p>PDF (Myth-Zine)</p>
+          <small>ShrineOS Lorecore fragment</small>
+          <div>Price: $11 USD</div>
+        </div>
+      </div>
+      
+      <div style="margin-top: 30px;">
+        <h3>🎮 Game Integration</h3>
+        <button onclick="syncGameProgress()">⚡ Sync RPG Progress</button>
+        <button onclick="exportRelics()">📤 Export Relic Data</button>
+        <button onclick="openMultiplayer()">🌐 Join Multiplayer Slaps</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const endpoint = "https://ton-testnet.core.chainstack.com/da46a896a109776d1ba6e6d8da18af46/api/v3";
+    const xpKey = "tonx_xp";
+    const addrKey = "tonx_wallet";
+    const gameXpKey = "ngl_xp";
+    const relicsKey = "ngl_relics";
+
+    let shrineXp = parseInt(localStorage.getItem(xpKey)) || 0;
+    let gameXp = parseInt(localStorage.getItem(gameXpKey)) || 0;
+    let relics = JSON.parse(localStorage.getItem(relicsKey)) || [];
+
+    function updateDisplay() {
+      const totalXp = shrineXp + gameXp;
+      const level = Math.floor(totalXp / 100) + 1;
+      const progressPercent = (totalXp % 100);
+      
+      document.getElementById("xp-display").textContent = shrineXp;
+      document.getElementById("game-xp-display").textContent = gameXp;
+      document.getElementById("level-display").textContent = level;
+      document.getElementById("xp-progress").style.width = progressPercent + "%";
+      
+      if (totalXp >= 100) {
+        document.getElementById("prophecy").style.display = "block";
+      }
+      
+      updateRelicDisplay();
+    }
+
+    function updateRelicDisplay() {
+      const relicCards = document.querySelectorAll('.relic-card');
+      const ownedRelics = relics.map(r => r.name);
+      
+      relicCards.forEach(card => {
+        const relicName = card.querySelector('h4').textContent;
+        if (ownedRelics.includes(relicName)) {
+          card.classList.add('owned');
+          card.innerHTML += '<div style="color: #00ff88; font-weight: bold;">✓ OWNED</div>';
+        }
+      });
+    }
+
+    function saveAddress() {
+      const addr = document.getElementById("wallet").value.trim();
+      if (addr.length > 30) {
+        localStorage.setItem(addrKey, addr);
+        alert("✅ TON wallet address saved successfully!");
+      } else {
+        alert("❌ Please enter a valid TON address.");
+      }
+    }
+
+    function pingNode() {
+      const wallet = localStorage.getItem(addrKey);
+      if (!wallet) {
+        alert("Please save your TON address first.");
+        return;
+      }
+
+      const pingBtn = document.getElementById("ping-btn");
+      pingBtn.disabled = true;
+      pingBtn.textContent = "📡 Syncing...";
+
+      const payload = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getAddressInformation",
+        params: [wallet]
+      };
+
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.result && data.result.balance) {
+          const nano = parseInt(data.result.balance.nanoTON || "0");
+          const ton = nano / 1e9;
+          
+          shrineXp += 15;
+          localStorage.setItem(xpKey, shrineXp);
+          
+          // Chance to award relic
+          if (Math.random() < 0.3 && relics.length < 3) {
+            awardRandomRelic();
+          }
+          
+          updateDisplay();
+          alert(`🎉 Ritual complete! TON Balance: ${ton.toFixed(3)} | +15 XP earned!`);
+        } else {
+          alert("⚠️ Shrine responded, but no balance data found.");
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert("❌ TON node unreachable. Please try again.");
+      })
+      .finally(() => {
+        pingBtn.disabled = false;
+        pingBtn.textContent = "📡 Sync with TON Network";
+      });
+    }
+
+    function awardRandomRelic() {
+      const availableRelics = [
+        { name: "Scroll of the First Loop", type: "PDF", function: "Initiation into DEF4US'28" },
+        { name: "Echo Sigil v1", type: "PNG", function: "Early node marker" },
+        { name: "Glitch Zine Preview: Vol. 0", type: "PDF", function: "ShrineOS Lorecore fragment" }
+      ];
+      
+      const newRelic = availableRelics[Math.floor(Math.random() * availableRelics.length)];
+      newRelic.id = Date.now().toString();
+      newRelic.dropDate = new Date().toISOString();
+      
+      relics.push(newRelic);
+      localStorage.setItem(relicsKey, JSON.stringify(relics));
+      
+      alert(`🗿 Relic discovered: ${newRelic.name}!`);
+    }
+
+    function bridgeToGame() {
+      // Bridge XP to RPG
+      const currentGameXp = parseInt(localStorage.getItem(gameXpKey)) || 0;
+      const bonusXp = Math.floor(shrineXp * 0.5);
+      
+      localStorage.setItem(gameXpKey, (currentGameXp + bonusXp).toString());
+      
+      alert(`🌉 Bridged ${bonusXp} XP to your RPG character!`);
+      window.open('./rpg.html', '_blank');
+    }
+
+    function syncGameProgress() {
+      gameXp = parseInt(localStorage.getItem(gameXpKey)) || 0;
+      relics = JSON.parse(localStorage.getItem(relicsKey)) || [];
+      updateDisplay();
+      alert("🔄 Game progress synced!");
+    }
+
+    function exportRelics() {
+      const exportData = {
+        shrineXp,
+        gameXp,
+        relics,
+        timestamp: new Date().toISOString(),
+        version: "No_Gas_Labs_v1.0"
+      };
+      
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'no_gas_labs_relics.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function openMultiplayer() {
+      window.open('./', '_blank');
+    }
+
+    // Initialize display
+    const saved = localStorage.getItem(addrKey);
+    if (saved) document.getElementById("wallet").value = saved;
+    updateDisplay();
+  </script>
+</body>
+</html>

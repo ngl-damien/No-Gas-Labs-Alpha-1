@@ -1,0 +1,362 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <title>No_Gas_Labs™ Mobile RPG</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #000022, #0a0015);
+      font-family: 'Courier New', monospace;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      touch-action: none;
+    }
+    .ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .stats-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(16, 16, 58, 0.9);
+      border: 2px solid #48f;
+      border-radius: 12px;
+      padding: 15px;
+      color: #d0f0ff;
+      pointer-events: auto;
+      box-shadow: 0 0 25px #33f8ff99;
+    }
+    .relic-inventory {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(16, 16, 58, 0.9);
+      border: 2px solid #ff8844;
+      border-radius: 12px;
+      padding: 15px;
+      color: #ffd0a0;
+      pointer-events: auto;
+      max-width: 200px;
+    }
+    .control-hints {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 20px;
+      border-radius: 20px;
+      color: #fff;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="ui-overlay">
+    <div class="stats-panel">
+      <h3>🛕 Shrine Stats</h3>
+      <div>XP: <span id="xp-display">0</span></div>
+      <div>Level: <span id="level-display">1</span></div>
+      <div>Gas: <span id="gas-display">100</span></div>
+      <div>Relics: <span id="relic-count">0</span></div>
+    </div>
+    
+    <div class="relic-inventory">
+      <h3>🗿 Relics</h3>
+      <div id="relic-list">
+        <div class="relic-slot empty">Empty Slot</div>
+        <div class="relic-slot empty">Empty Slot</div>
+        <div class="relic-slot empty">Empty Slot</div>
+      </div>
+    </div>
+    
+    <div class="control-hints">
+      WASD/Arrow Keys: Move • Space: Slap • Click: Target
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+  <script>
+    // No_Gas_Labs™ RPG Game
+    class GameScene extends Phaser.Scene {
+      constructor() {
+        super({ key: 'GameScene' });
+        this.player = null;
+        this.cursors = null;
+        this.wasd = null;
+        this.enemies = null;
+        this.particles = null;
+        this.gameStats = {
+          xp: parseInt(localStorage.getItem('ngl_xp')) || 0,
+          level: Math.floor((parseInt(localStorage.getItem('ngl_xp')) || 0) / 100) + 1,
+          gas: 100,
+          relics: JSON.parse(localStorage.getItem('ngl_relics')) || []
+        };
+      }
+
+      preload() {
+        // Create simple colored rectangles as placeholders
+        this.load.image('player', 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" fill="#00ff88" rx="4"/>
+            <circle cx="16" cy="16" r="8" fill="#ffffff"/>
+          </svg>
+        `));
+        
+        this.load.image('enemy', 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+            <rect width="24" height="24" fill="#ff3366" rx="4"/>
+            <circle cx="12" cy="12" r="6" fill="#000000"/>
+          </svg>
+        `));
+        
+        this.load.image('relic', 'data:image/svg+xml;base64,' + btoa(`
+          <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+            <rect width="20" height="20" fill="#ffaa00" rx="2"/>
+            <circle cx="10" cy="10" r="4" fill="#ffffff"/>
+          </svg>
+        `));
+      }
+
+      create() {
+        // Create player
+        this.player = this.add.sprite(400, 300, 'player');
+        this.player.setOrigin(0.5);
+        
+        // Create enemies group
+        this.enemies = this.add.group();
+        this.spawnEnemies();
+        
+        // Create particle effects
+        this.particles = this.add.particles(0, 0, 'relic', {
+          scale: { start: 0.5, end: 0 },
+          speed: { min: 50, max: 100 },
+          lifespan: 300,
+          emitting: false
+        });
+        
+        // Input setup
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.wasd = this.input.keyboard.addKeys('W,S,A,D,SPACE');
+        
+        // Click/tap input
+        this.input.on('pointerdown', (pointer) => {
+          this.slapAttack(pointer.x, pointer.y);
+        });
+        
+        // Update UI
+        this.updateUI();
+        
+        // Gas regeneration timer
+        this.time.addEvent({
+          delay: 1000,
+          callback: this.regenerateGas,
+          callbackScope: this,
+          loop: true
+        });
+      }
+
+      update() {
+        this.handleMovement();
+        this.checkCollisions();
+      }
+
+      handleMovement() {
+        const speed = 200;
+        let velocityX = 0;
+        let velocityY = 0;
+        
+        if (this.cursors.left.isDown || this.wasd.A.isDown) {
+          velocityX = -speed;
+        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+          velocityX = speed;
+        }
+        
+        if (this.cursors.up.isDown || this.wasd.W.isDown) {
+          velocityY = -speed;
+        } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
+          velocityY = speed;
+        }
+        
+        // Keep player within bounds
+        this.player.x = Phaser.Math.Clamp(this.player.x + velocityX * this.game.loop.delta / 1000, 16, 784);
+        this.player.y = Phaser.Math.Clamp(this.player.y + velocityY * this.game.loop.delta / 1000, 16, 584);
+        
+        // Space bar slap
+        if (Phaser.Input.Keyboard.JustDown(this.wasd.SPACE)) {
+          this.slapAttack(this.player.x, this.player.y);
+        }
+      }
+
+      slapAttack(x, y) {
+        if (this.gameStats.gas < 20) return;
+        
+        this.gameStats.gas -= 20;
+        
+        // Visual effect
+        this.particles.setPosition(this.player.x, this.player.y);
+        this.particles.explode(10);
+        
+        // Check for enemy hits
+        this.enemies.children.entries.forEach(enemy => {
+          const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+          if (distance < 80) {
+            this.hitEnemy(enemy);
+          }
+        });
+        
+        this.updateUI();
+      }
+
+      hitEnemy(enemy) {
+        // Award XP and remove enemy
+        this.gameStats.xp += 25;
+        this.gameStats.level = Math.floor(this.gameStats.xp / 100) + 1;
+        
+        // Chance to drop relic
+        if (Math.random() < 0.1) {
+          this.dropRelic(enemy.x, enemy.y);
+        }
+        
+        enemy.destroy();
+        
+        // Respawn enemy after delay
+        this.time.delayedCall(3000, this.spawnEnemy, [], this);
+        
+        // Save progress
+        localStorage.setItem('ngl_xp', this.gameStats.xp.toString());
+        localStorage.setItem('ngl_relics', JSON.stringify(this.gameStats.relics));
+        
+        this.updateUI();
+      }
+
+      dropRelic(x, y) {
+        const relicTypes = [
+          'Scroll of the First Loop',
+          'Echo Sigil v1',
+          'Glitch Zine Preview: Vol. 0'
+        ];
+        
+        const relic = {
+          name: relicTypes[Math.floor(Math.random() * relicTypes.length)],
+          id: Date.now().toString(),
+          dropDate: new Date().toISOString()
+        };
+        
+        this.gameStats.relics.push(relic);
+        
+        // Visual relic drop
+        const relicSprite = this.add.sprite(x, y, 'relic');
+        this.tweens.add({
+          targets: relicSprite,
+          y: y - 30,
+          alpha: 0,
+          duration: 2000,
+          onComplete: () => relicSprite.destroy()
+        });
+      }
+
+      spawnEnemies() {
+        for (let i = 0; i < 5; i++) {
+          this.spawnEnemy();
+        }
+      }
+
+      spawnEnemy() {
+        const x = Phaser.Math.Between(50, 750);
+        const y = Phaser.Math.Between(50, 550);
+        const enemy = this.add.sprite(x, y, 'enemy');
+        this.enemies.add(enemy);
+        
+        // Simple AI movement
+        this.tweens.add({
+          targets: enemy,
+          x: Phaser.Math.Between(50, 750),
+          y: Phaser.Math.Between(50, 550),
+          duration: Phaser.Math.Between(2000, 5000),
+          yoyo: true,
+          repeat: -1
+        });
+      }
+
+      regenerateGas() {
+        this.gameStats.gas = Math.min(100, this.gameStats.gas + 10);
+        this.updateUI();
+      }
+
+      checkCollisions() {
+        // Simple collision with enemies (damage player)
+        this.enemies.children.entries.forEach(enemy => {
+          const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+          if (distance < 25) {
+            // Push player away
+            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+            this.player.x += Math.cos(angle) * 2;
+            this.player.y += Math.sin(angle) * 2;
+          }
+        });
+      }
+
+      updateUI() {
+        document.getElementById('xp-display').textContent = this.gameStats.xp;
+        document.getElementById('level-display').textContent = this.gameStats.level;
+        document.getElementById('gas-display').textContent = this.gameStats.gas;
+        document.getElementById('relic-count').textContent = this.gameStats.relics.length;
+        
+        // Update relic list
+        const relicList = document.getElementById('relic-list');
+        relicList.innerHTML = '';
+        
+        if (this.gameStats.relics.length === 0) {
+          relicList.innerHTML = '<div class="relic-slot empty">No Relics</div>';
+        } else {
+          this.gameStats.relics.forEach(relic => {
+            const div = document.createElement('div');
+            div.className = 'relic-slot';
+            div.textContent = relic.name;
+            div.style.cssText = 'margin: 5px 0; padding: 5px; background: rgba(255,170,0,0.2); border-radius: 4px; font-size: 10px;';
+            relicList.appendChild(div);
+          });
+        }
+      }
+    }
+
+    // Game configuration
+    const config = {
+      type: Phaser.AUTO,
+      width: 800,
+      height: 600,
+      parent: document.body,
+      backgroundColor: '#001122',
+      scene: GameScene,
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      },
+      physics: {
+        default: 'arcade',
+        arcade: {
+          gravity: { y: 0 },
+          debug: false
+        }
+      }
+    };
+
+    // Start the game
+    const game = new Phaser.Game(config);
+  </script>
+</body>
+</html>

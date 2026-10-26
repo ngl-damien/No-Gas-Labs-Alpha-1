@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "source_repository": "ngl-damien/TaskAgile",
+  "source_commit": "66885999064997b332f61dac13333058c462e857",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_prefix": "integrations/taskagile-reference/",
+  "purpose": "Source-preserving import of selected files absent from the existing recovery/public-repos/TaskAgile snapshot.",
+  "verification": {
+    "source_blob_hashes_recorded": true,
+    "build_tested": false,
+    "runtime_integrated": false,
+    "security_reviewed": false
+  },
+  "entries": [
+    {
+      "source_path": "main.js",
+      "source_blob_sha": "46613d8d4200c158ba0affb401fa12ed499cefb6",
+      "target_path": "integrations/taskagile-reference/main.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "rpg.html",
+      "source_blob_sha": "5379d8f7be2edf9f30893bc53361844d26312787",
+      "target_path": "integrations/taskagile-reference/rpg.html",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "shrine.html",
+      "source_blob_sha": "957dc661f67ed58eb4ca4533584338ba5cb9832c",
+      "target_path": "integrations/taskagile-reference/shrine.html",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "package.json",
+      "source_blob_sha": "54b6f6fcc403d0224fccf112b08793a0b1f6f451",
+      "target_path": "integrations/taskagile-reference/package.json",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/state.js",
+      "source_blob_sha": "6121c630c50e44edb1026b06f4e9862febed2967",
+      "target_path": "integrations/taskagile-reference/modules/state.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/persistence.js",
+      "source_blob_sha": "60a93b096995de36cdecfe66603062d1ae5c758f",
+      "target_path": "integrations/taskagile-reference/modules/persistence.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/security.js",
+      "source_blob_sha": "cabfd725f3d41c580fc5f211616389a6b5d412e3",
+      "target_path": "integrations/taskagile-reference/modules/security.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/telegram-api.js",
+      "source_blob_sha": "d5fcd29040670c427eb3bebc66cbca522d35a2b6",
+      "target_path": "integrations/taskagile-reference/modules/telegram-api.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/leaderboard-api.js",
+      "source_blob_sha": "e32a36ac75e8de6368b976a6e758b15312c1d2e5",
+      "target_path": "integrations/taskagile-reference/modules/leaderboard-api.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/audio.js",
+      "source_blob_sha": "a2d8f5e50d9df7dfef17db6dbbe0aab659eeb75a",
+      "target_path": "integrations/taskagile-reference/modules/audio.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/ui.js",
+      "source_blob_sha": "0397dab902c852297c8c22291e855c32a2f0c402",
+      "target_path": "integrations/taskagile-reference/modules/ui.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/animations.js",
+      "source_blob_sha": "c6f55f14840ae35f68a3b694f8d356d27b7420fe",
+      "target_path": "integrations/taskagile-reference/modules/animations.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/error.js",
+      "source_blob_sha": "6ef32217a6bc56e8cf6797733372df2cb5fa5c5f",
+      "target_path": "integrations/taskagile-reference/modules/error.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "modules/testing.js",
+      "source_blob_sha": "ab57a2739e52e78540490fc735b73d51996a3abc",
+      "target_path": "integrations/taskagile-reference/modules/testing.js",
+      "disposition": "copied-as-reference"
+    },
+    {
+      "source_path": "production/deathmatch/research_deathmatch.md",
+      "source_blob_sha": "b787794c91a21367f35ef251178f3e8e36c00caa",
+      "target_path": "integrations/taskagile-reference/production/deathmatch/research_deathmatch.md",
+      "disposition": "copied-as-reference"
+    }
+  ],
+  "excluded_from_this_tranche": [
+    {
+      "category": "binary media/assets",
+      "reason": "Not copied in this text-source tranche; 3D geometry, audio and textures require binary-preserving transfer and asset/license review."
+    },
+    {
+      "category": "staging state and rollback scripts",
+      "reason": "Not copied pending review for operational effects, credentials, personal data, and whether transient state should be preserved."
+    },
+    {
+      "category": "remaining React client/server files",
+      "reason": "Not copied in this tranche; requires dependency-aware reconciliation to avoid creating an unbuildable partial application."
+    }
+  ]
+}
