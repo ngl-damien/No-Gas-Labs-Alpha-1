@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { constants as fsConstants } from 'node:fs';
-import { open, readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
@@ -34,25 +34,61 @@ async function readBoundedRegularFile(path, maxBytes, label, requirePrivatePermi
   }
 }
 
+async function readProposal(path) {
+  let text;
+  try {
+    text = await readBoundedRegularFile(resolve(path), MAX_PROPOSAL_BYTES, 'PROPOSAL');
+  } catch (error) {
+    throw new Error(error.code || error.message || 'PROPOSAL_READ_FAILED');
+  }
+  let decision;
+  try { decision = JSON.parse(text); }
+  catch { throw new Error('PROPOSAL_JSON_INVALID'); }
+  const validation = validateInstallationProposal(decision);
+  if (!validation.valid) throw new Error(validation.reason);
+  return decision;
+}
+
+function usage() {
+  process.stderr.write([
+    'Review proposal: node scripts/approve-install.mjs --inspect <proposal.json>',
+    'Sign after review: NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-hex> node scripts/approve-install.mjs --confirm <full-proposal-digest> <proposal.json> <private-key.pem>',
+    ''
+  ].join('\n'));
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length !== 2) {
-    process.stderr.write('Usage: NGL_FOUNDER_KEY_FINGERPRINT=<sha256-spki-hex> node scripts/approve-install.mjs <proposal.json> <private-key.pem>\n');
+  if (args.length === 2 && args[0] === '--inspect') {
+    const decision = await readProposal(args[1]);
+    process.stdout.write(JSON.stringify({
+      schema: 'ngl.founder-install-review.v1',
+      proposalDigest: proposalDigest(decision),
+      proposal: {
+        id: decision.id,
+        strategy: decision.strategy,
+        executorKeyFingerprint: publicKeyFingerprint(decision.executorPublicKeyPem),
+        nonce: decision.nonce,
+        issuedAt: decision.issuedAt,
+        expiresAt: decision.expiresAt,
+        maxUses: decision.maxUses,
+        proof: decision.proof
+      },
+      instruction: 'Review every field. Signing requires this exact full digest in a separate --confirm invocation.'
+    }, null, 2) + '\n');
+    return;
+  }
+
+  if (args.length !== 4 || args[0] !== '--confirm' || !FINGERPRINT.test(args[1])) {
+    usage();
     process.exitCode = 2;
     return;
   }
 
-  const [proposalPath, privateKeyPath] = args;
-  let decision;
-  try {
-    const proposalText = await readBoundedRegularFile(resolve(proposalPath), MAX_PROPOSAL_BYTES, 'PROPOSAL');
-    decision = JSON.parse(proposalText);
-  } catch (error) {
-    throw new Error(error instanceof SyntaxError ? 'PROPOSAL_JSON_INVALID' : (error.code || error.message || 'PROPOSAL_READ_FAILED'));
-  }
-
-  const validation = validateInstallationProposal(decision);
-  if (!validation.valid) throw new Error(validation.reason);
+  const [, confirmedDigest, proposalPath, privateKeyPath] = args;
+  const decision = await readProposal(proposalPath);
+  const digest = proposalDigest(decision);
+  if (digest !== confirmedDigest) throw new Error('PROPOSAL_CONFIRMATION_MISMATCH');
 
   const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', true);
   let privateKey;
@@ -69,16 +105,15 @@ async function main() {
   }
   if (fingerprint !== expectedFingerprint) throw new Error('FOUNDER_KEY_FINGERPRINT_MISMATCH');
 
-  const payload = Buffer.from(approvalPayload(decision), 'utf8');
-  const signature = sign(null, payload, privateKey).toString('base64url');
+  const signature = sign(null, Buffer.from(approvalPayload(decision), 'utf8'), privateKey).toString('base64url');
   const receipt = {
     schema: 'ngl.founder-install-approval.v1',
-    proposalDigest: proposalDigest(decision),
+    proposalDigest: digest,
     keyFingerprint: fingerprint,
     signature
   };
   process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
-  process.stderr.write(`Approval signature produced for proposal ${receipt.proposalDigest}. This proves key possession only; it does not identify the human operating this process.\n`);
+  process.stderr.write(`Approval signature produced for proposal ${digest}. This proves key possession only; it does not identify the human operating this process.\n`);
 }
 
 main().catch(error => {
