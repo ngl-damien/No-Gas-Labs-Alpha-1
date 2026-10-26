@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -307,4 +307,23 @@ test('two independent processes contend safely and preserve both INSTALL records
   assert.equal(snapshot.sequence, 2);
   assert.deepEqual(snapshot.records.map(record => record.decision.id).sort(), drafts.map(draft => draft.id).sort());
   assert.deepEqual(Object.keys(snapshot.capabilities).sort(), drafts.map(draft => draft.id).sort());
+}));
+
+
+test('exact schema key validation rejects NUL-delimiter collisions', async () => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const draft = proposal(lib, executor);
+  delete draft.expiresAt;
+  delete draft.id;
+  draft['expiresAt\0id'] = 'square-v1';
+  assert.equal(lib.validateInstallationProposal(draft).reason, 'INSTALL_SCHEMA_INVALID');
+});
+
+test('ledger reader rejects a symlinked institution ledger before reading its target', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'store');
+  await mkdir(storeDir, { recursive: true, mode: 0o700 });
+  const target = join(dir, 'target.json');
+  await writeFile(target, '{}', { mode: 0o600 });
+  await symlink(target, join(storeDir, 'institution.json'));
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_NOT_REGULAR_FILE/);
 }));
