@@ -11,6 +11,7 @@ const event = {
   event_id: "signed-observation-1",
   event_type: "SYSTEM_EVENT",
   subject: "forge-gate",
+  grant_id: "g1",
   observer_id: "external-observer-1",
   admission: "ACCEPTED",
   authority: "AUTHORIZED",
@@ -40,9 +41,10 @@ function attest(unsignedEvent, pair, fingerprint) {
     }
   };
 }
-function project(signedEvent, verifyObservation) {
-  return projectWorld([signedEvent], undefined, { resolveArtifact: () => artifact, verifyObservation });
+function project(signedEvent, verifyObservation, verifyAuthorization) {
+  return projectWorld([signedEvent], undefined, { resolveArtifact: () => artifact, verifyObservation, verifyAuthorization });
 }
+const verifyAuthorization = event => event?.grant_id === "g1" && event?.authority === "AUTHORIZED";
 
 test("pinned Ed25519 observer signature permits the exact signed event to project", () => {
   const pair = keyPair();
@@ -51,9 +53,11 @@ test("pinned Ed25519 observer signature permits the exact signed event to projec
   const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1" });
   const signed = attest(event, pair, fingerprint);
   assert.equal(verifyObservation(signed), true);
-  const state = project(signed, verifyObservation);
+  const state = project(signed, verifyObservation, verifyAuthorization);
   assert.equal(state.xp, 25);
   assert.equal(state.inventory.verified_shard, 1);
+  assert.equal(projectWorld([signed], undefined, { resolveArtifact: () => artifact, verifyObservation }).xp, 0,
+    "a valid observer signature cannot replace a separate authorization verifier");
 });
 
 test("changing a consequence after signing invalidates the observation attestation", () => {
@@ -64,7 +68,7 @@ test("changing a consequence after signing invalidates the observation attestati
   const signed = attest(event, pair, fingerprint);
   const tampered = { ...signed, world_effect: { ...signed.world_effect, xp: 999999 } };
   assert.equal(verifyObservation(tampered), false);
-  assert.equal(project(tampered, verifyObservation).xp, 0);
+  assert.equal(project(tampered, verifyObservation, verifyAuthorization).xp, 0);
 });
 
 test("missing, malformed, wrong-key and wrong-observer attestations fail closed", () => {
