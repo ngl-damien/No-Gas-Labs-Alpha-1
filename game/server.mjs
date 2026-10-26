@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -191,28 +191,39 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
   const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
-  const witness = () => ({ id: `witness-${randomUUID()}`, name: 'Witness', role: 'witness' });
+  const tokenDigest = token => createHash('sha256').update(token).digest('hex');
+  const witness = (token = randomBytes(32).toString('base64url')) => ({ id: `witness-${tokenDigest(token)}`, name: 'Witness', role: 'witness' });
+  const presenceIdFor = token => `presence-${tokenDigest(token)}`;
+  const validSessionToken = token => typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token);
+  const sessionCookie = (token, request, actor) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${actor.role === 'witness' ? `; Max-Age=${Math.floor(SESSION_TTL / 1000)}` : ''}${request.socket.encrypted ? '; Secure' : ''}`;
   function expireSession(token, session) {
-    presence.delete(session.token); session.actor = witness(); session.lastSeen = Date.now();
+    presence.delete(session.token); session.actor = witness(session.token); session.lastSeen = Date.now();
     for (const stream of [...streams]) if (stream.session === session) { sendEvent(stream, 'world', dto(session)); stream.response.end(); }
     broadcastPresence();
     if (token) sessions.delete(token);
   }
   function sessionFor(request, response) {
     const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
-    let session = token && sessions.get(token);
-    if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; }
+    const tokenIsValid = validSessionToken(token);
+    let session = tokenIsValid ? sessions.get(token) : null, expired = false;
+    if (session && Date.now() - session.lastSeen > SESSION_TTL) { expireSession(token, session); session = null; expired = true; }
     if (!session) {
       if (sessions.size >= 512) { const oldest = sessions.entries().next().value; expireSession(...oldest); }
-      const id = randomBytes(32).toString('base64url'); session = { token: id, presenceId: `presence-${randomUUID()}`, actor: witness(), lastSeen: Date.now() }; sessions.set(id, session);
-      response.setHeader('Set-Cookie', `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict${request.socket.encrypted ? '; Secure' : ''}`);
+      // A surviving opaque cookie can restore only its pseudonymous Witness identity
+      // after process restart. Founder authority is never reconstructed from a cookie.
+      const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
+      const actor = witness(id);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now() }; sessions.set(id, session);
+      response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
     session.lastSeen = Date.now(); return session;
   }
   function rotate(request, response, previous, actor) {
     expireSession(previous.token, previous);
-    const token = randomBytes(32).toString('base64url'); const session = { token, presenceId: `presence-${randomUUID()}`, actor, lastSeen: Date.now() }; sessions.set(token, session);
-    response.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${request.socket.encrypted ? '; Secure' : ''}`);
+    const token = randomBytes(32).toString('base64url');
+    const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now() }; sessions.set(token, session);
+    response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
   function json(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
