@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rm, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -198,6 +198,41 @@ test('stale queued append rejects without poisoning the serialized writer', asyn
   await ledger.append(events[1]);
   assert.equal(ledger.state.revision, 2);
   await ledger.close();
+});
+
+test('a ledger directory-sync failure after rename blocks later appends until validated reopen', async t => {
+  const directory = await temp(t);
+  let failNextSync = true;
+  const syncDirectory = async path => {
+    if (failNextSync) {
+      failNextSync = false;
+      throw new Error('injected directory-sync failure');
+    }
+    const parent = await open(path, 'r');
+    try { await parent.sync(); } finally { await parent.close(); }
+  };
+  const ledger = await ledgerModule.openLedger({ directory, ...config, syncDirectory });
+  const first = fixture().events[0];
+
+  await assert.rejects(ledger.append(first), error => error.code === 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.equal(ledger.state.revision, 0);
+  assert.equal(ledger.events.length, 0);
+  await assert.rejects(
+    ledger.append({ ...first, id: 'claim:two', workId: 'work:two' }),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN'
+  );
+
+  // The ledger rename already happened. Reopen validates whichever complete
+  // envelope is present; the live writer must not overwrite it from stale memory.
+  const saved = JSON.parse(await readFile(join(directory, 'ledger.json'), 'utf8'));
+  assert.equal(saved.records.length, 1);
+  assert.equal(saved.records[0].event.id, first.id);
+  await ledger.close();
+
+  const reopened = await ledgerModule.openLedger({ directory, ...config });
+  assert.equal(reopened.state.revision, 1);
+  assert.equal(reopened.events[0].id, first.id);
+  await reopened.close();
 });
 
 test('durable append failure never adopts an uncommitted projection', async t => {

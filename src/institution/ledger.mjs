@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -9,9 +9,26 @@ const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
 
-async function atomicWrite(file, bytes, directory) {
+async function syncDirectory(directory) {
+  const parent = await open(directory, 'r');
+  try { await parent.sync(); } finally { await parent.close(); }
+}
+
+// A copied lock token does not prove that the path still names our lease.
+async function unlinkOwnedLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  return true;
+}
+
+async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoundary = false } = {}) {
   const temporary = join(directory, `.atomic-${randomUUID()}`);
   let handle;
+  let renamed = false;
   try {
     handle = await open(temporary, 'wx', 0o600);
     await handle.writeFile(bytes);
@@ -19,16 +36,26 @@ async function atomicWrite(file, bytes, directory) {
     await handle.close();
     handle = undefined;
     await rename(temporary, file);
-    const parent = await open(directory, 'r');
-    try { await parent.sync(); } finally { await parent.close(); }
+    renamed = true;
+    try { await syncDirectoryFn(directory); }
+    catch (error) {
+      if (!commitBoundary) throw error;
+      const uncertain = new KernelError(
+        'COMMIT_DURABILITY_UNCERTAIN',
+        'Ledger replacement succeeded but directory sync failed; close and reopen the ledger to validate the committed envelope before writing again'
+      );
+      uncertain.cause = error;
+      throw uncertain;
+    }
   } finally {
-    await handle?.close();
-    await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    await handle?.close().catch(() => {});
+    // After a successful rename the target may already contain the new envelope.
+    if (!renamed) await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
 }
 
 /** One live writer per directory. A stale lock after process death requires explicit operator recovery. */
-export async function openLedger({ directory, actors, founderId } = {}) {
+export async function openLedger({ directory, actors, founderId, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
   if (typeof directory !== 'string' || !directory) fail('INVALID_CONFIG', 'A private ledger directory is required');
   const location = resolve(directory);
   await mkdir(location, { recursive: true, mode: 0o700 });
@@ -36,7 +63,10 @@ export async function openLedger({ directory, actors, founderId } = {}) {
   let lock;
   try { lock = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') fail('LEDGER_LOCKED', 'A writer already owns this ledger; inspect any stale lock before recovery'); throw error; }
+  let lockIdentity;
   try {
+    const stat = await lock.stat();
+    lockIdentity = { dev: stat.dev, ino: stat.ino };
     await lock.writeFile(JSON.stringify({ pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
     let state = createKernel({ actors, founderId });
@@ -91,6 +121,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
     let queue = Promise.resolve();
     let closing = false;
     let closed = false;
+    let durabilityUncertain = false;
     return {
       get state() { return clone(state); },
       get events() { return clone(state.events); },
@@ -111,6 +142,7 @@ export async function openLedger({ directory, actors, founderId } = {}) {
           }
         } catch (error) { return Promise.reject(error); }
         const operation = queue.then(async () => {
+          if (durabilityUncertain) fail('COMMIT_DURABILITY_UNCERTAIN', 'A previous ledger replacement had uncertain durability; close and reopen the ledger before writing again');
           const existing = state.events.find(candidate => candidate.id === event.id);
           if (existing) return clone(applyEvent(state, event));
           const actual = await eventArtifacts(event, supplied);
@@ -119,13 +151,18 @@ export async function openLedger({ directory, actors, founderId } = {}) {
             if (!actual.has(receipt.digest)) continue;
             const bytes = actual.get(receipt.digest);
             // Content is verified by applyEvent before any disk mutation.
-            await atomicWrite(join(blobDirectory, receipt.digest), bytes, blobDirectory);
+            await atomicWrite(join(blobDirectory, receipt.digest), bytes, blobDirectory, syncDirectoryFn);
           }
           const index = records.length;
           const previousHash = records.at(-1)?.hash ?? genesis;
           const record = { index, previousHash, event, hash: hash({ index, previousHash, event }) };
           const candidateRecords = [...records, record];
-          await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location);
+          try {
+            await atomicWrite(file, canonicalStringify({ schema, config, records: candidateRecords, projection: candidate }), location, syncDirectoryFn, { commitBoundary: true });
+          } catch (error) {
+            if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') durabilityUncertain = true;
+            throw error;
+          }
           // No in-memory authority or projection is adopted before durable replacement.
           records = candidateRecords;
           state = candidate;
@@ -141,12 +178,12 @@ export async function openLedger({ directory, actors, founderId } = {}) {
         if (closed) return;
         closed = true;
         await lock.close();
-        await unlink(lockPath);
+        await unlinkOwnedLock(lockPath, lockIdentity);
       },
     };
   } catch (error) {
-    await lock.close();
-    await unlink(lockPath);
+    await lock.close().catch(() => {});
+    await unlinkOwnedLock(lockPath, lockIdentity).catch(() => {});
     throw error;
   }
 }
