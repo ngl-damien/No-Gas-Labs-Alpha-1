@@ -98,7 +98,7 @@ export function canonicalAttestationPayload(event) {
  * The incoming event can supply neither its own trust pin nor its own verifier.
  */
 export function createSignedEventVerifier({
-  role, publicKey, expectedFingerprint, expectedIdentity
+  role, publicKey, expectedFingerprint, expectedIdentity, expectedAudience
 } = {}) {
   const profile = PROFILES[role];
   if (!profile) throw new Error("WORLD_TRUST_ROLE_INVALID");
@@ -111,12 +111,17 @@ export function createSignedEventVerifier({
       expectedIdentity !== expectedIdentity.trim() || expectedIdentity.length > 128) {
     throw new Error("WORLD_TRUST_IDENTITY_REQUIRED");
   }
+  if (typeof expectedAudience !== "string" || !expectedAudience.trim() ||
+      expectedAudience !== expectedAudience.trim() || expectedAudience.length > 256) {
+    throw new Error("WORLD_TRUST_AUDIENCE_REQUIRED");
+  }
 
   return function verifySignedEvent(event) {
     try {
       assertPlainData(event);
       if (!event || typeof event !== "object" || Array.isArray(event) ||
-          event[profile.identityField] !== expectedIdentity) return false;
+          event[profile.identityField] !== expectedIdentity ||
+          event.audience !== expectedAudience) return false;
       const envelope = event[profile.field];
       if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return false;
       const keys = Reflect.ownKeys(envelope);
@@ -149,6 +154,7 @@ export function createWorldTrust({ observation, authorization, adjudication } = 
   const verifiers = {};
   const fingerprints = [];
   const identities = [];
+  const audiences = [];
 
   for (const [role, config] of entries) {
     if (!config || typeof config !== "object") throw new Error("WORLD_TRUST_ROOTS_NOT_CONFIGURED");
@@ -156,9 +162,13 @@ export function createWorldTrust({ observation, authorization, adjudication } = 
     verifiers[role] = verifier;
     fingerprints.push(config.expectedFingerprint);
     identities.push(config.expectedIdentity);
+    audiences.push(config.expectedAudience);
   }
   if (new Set(fingerprints).size !== entries.length || new Set(identities).size !== entries.length) {
     throw new Error("WORLD_TRUST_ROOTS_MUST_BE_DISTINCT");
+  }
+  if (new Set(audiences).size !== 1) {
+    throw new Error("WORLD_TRUST_ROOTS_AUDIENCE_MISMATCH");
   }
 
   return Object.freeze({
@@ -173,23 +183,27 @@ export function createWorldTrustFromEnv(env = process.env) {
     observation: {
       publicKey: env.NGL_OBSERVER_PUBLIC_KEY_PEM,
       expectedFingerprint: env.NGL_OBSERVER_KEY_SHA256,
-      expectedIdentity: env.NGL_OBSERVER_ID
+      expectedIdentity: env.NGL_OBSERVER_ID,
+      expectedAudience: env.NGL_WORLD_TRUST_AUDIENCE
     },
     authorization: {
       publicKey: env.NGL_AUTHORIZER_PUBLIC_KEY_PEM,
       expectedFingerprint: env.NGL_AUTHORIZER_KEY_SHA256,
-      expectedIdentity: env.NGL_AUTHORIZER_ID
+      expectedIdentity: env.NGL_AUTHORIZER_ID,
+      expectedAudience: env.NGL_WORLD_TRUST_AUDIENCE
     },
     adjudication: {
       publicKey: env.NGL_ADJUDICATOR_PUBLIC_KEY_PEM,
       expectedFingerprint: env.NGL_ADJUDICATOR_KEY_SHA256,
-      expectedIdentity: env.NGL_ADJUDICATOR_ID
+      expectedIdentity: env.NGL_ADJUDICATOR_ID,
+      expectedAudience: env.NGL_WORLD_TRUST_AUDIENCE
     }
   };
   const required = [
     "NGL_OBSERVER_PUBLIC_KEY_PEM", "NGL_OBSERVER_KEY_SHA256", "NGL_OBSERVER_ID",
     "NGL_AUTHORIZER_PUBLIC_KEY_PEM", "NGL_AUTHORIZER_KEY_SHA256", "NGL_AUTHORIZER_ID",
-    "NGL_ADJUDICATOR_PUBLIC_KEY_PEM", "NGL_ADJUDICATOR_KEY_SHA256", "NGL_ADJUDICATOR_ID"
+    "NGL_ADJUDICATOR_PUBLIC_KEY_PEM", "NGL_ADJUDICATOR_KEY_SHA256", "NGL_ADJUDICATOR_ID",
+    "NGL_WORLD_TRUST_AUDIENCE"
   ];
   if (required.some(name => typeof env[name] !== "string" || !env[name].trim())) {
     throw new Error("WORLD_TRUST_ROOTS_NOT_CONFIGURED");
