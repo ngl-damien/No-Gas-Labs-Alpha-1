@@ -97,6 +97,18 @@ test("malformed parent metadata cannot be coerced into a root event", () => {
   }
 });
 
+test("malformed retained history cannot be silently discarded", () => {
+  const original = projectWorld([claim]);
+  assert.throws(
+    () => projectWorld([], { ...original, history: [{ ...claim, event_id: "" }] }),
+    /invalid retained event history/
+  );
+  assert.throws(
+    () => projectWorld([], { ...original, history: [{ ...claim, parents: "e1" }] }),
+    /invalid parents/
+  );
+});
+
 test("a seen event ID without retained bytes cannot serve as a parent", () => {
   const seed = { ...projectWorld([claim]), history: [], seen: ["e1"] };
   const orphan = { ...observed, event_id: "orphan-from-seen-only", parents: ["e1"] };
