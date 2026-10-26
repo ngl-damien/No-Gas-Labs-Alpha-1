@@ -69,3 +69,8 @@ The paragraph below preserves the earlier nucleus direction. The current world g
 This repository is the rebuild nucleus for the Android-first No_Gas_Labs world: Guild Hall, Command Center, Forge, RAE Workbench, Evidence Archive, NGL Mesh, Decision Chamber, and Quest Journal. Existing work should be recovered and verified before replacement.
 
 The world may be strange. The evidence rules may not be.
+
+
+## Independent observation trust boundary
+
+Canonical world and quest projections require a host-injected verifier that returns literal `true` for an observation, in addition to byte-verified artifact receipts. Rejections and revocations require a separate host-injected adjudication verifier. The Ed25519 adapter in `src/world/observation-attestation.js` pins a host-configured public-key fingerprint and observer ID and verifies a signature over the canonical event. It is a verifier component, not a production trust-root deployment: `game/server.mjs` does not yet provision or inject a separately controlled observer key. Test-generated keys prove signature handling only, not real-world observer identity or independent observation.

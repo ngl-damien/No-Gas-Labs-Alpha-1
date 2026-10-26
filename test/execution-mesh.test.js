@@ -7,13 +7,15 @@ const request=createExecutionRequest({request_id:"r1",quest_id:"q1",grant_id:"g1
 const bytes=Buffer.from("built artifact");
 const result=recordExecution({request,executor_id:"github-actions",outcome:"SUCCEEDED",artifacts:[{artifact_id:"apk",bytes}]});
 const resolve=({artifact_id,receipt}) => artifact_id==="apk" && receipt.digest===result.artifacts[0].receipt.digest ? bytes : null;
+const verifyObservation = event => event.event_id === "e1";
+const verifyAuthorization = event => event.grant_id === request.grant_id && event.authority === "AUTHORIZED";
 
 test("executor claim alone cannot create a world consequence",()=>{ assert.equal(adjudicateExecution({request,result:{...result,artifacts:[]},resolveArtifact:resolve}).status,"REJECTED"); });
 
 test("verified authorized artifact can cross adjudication into gameplay",()=>{
   const a=adjudicateExecution({request,result,resolveArtifact:resolve}); assert.equal(a.status,"ACCEPTED");
   const event=toWorldEvent({event_id:"e1",request,adjudication:a,world_effect:{xp:10,inventory:{execution_receipt:1}}});
-  const world=projectWorld([event],undefined,{resolveArtifact:r=>resolve({artifact_id:"apk",receipt:r})});
+  const world=projectWorld([event],undefined,{resolveArtifact:r=>resolve({artifact_id:"apk",receipt:r}),verifyObservation,verifyAuthorization});
   assert.equal(world.xp,10); assert.equal(world.inventory.execution_receipt,1);
 });
 

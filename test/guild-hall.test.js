@@ -17,9 +17,22 @@ test("proposal opens a route to Decision Chamber but not the Forge",()=>{
  assert.equal(room.proposals[0].status,"PROPOSED"); assert.equal(room.exits.decision_chamber,"AVAILABLE"); assert.equal(room.exits.forge,"LOCKED");
 });
 
+test("a self-asserted authorization label cannot unlock a proposal",()=>{
+ const auth={...authorizeQuest({quest,grant_id:"g1"}),proposal_id:"p1"};
+ const events=[proposal,auth];
+ const institution=replayInstitution({events,quests:[quest],resolveArtifact:()=>null});
+ const room=projectGuildHall({institution,quest_id:"q1",events,agents:[]});
+ assert.equal(room.proposals[0].status,"PROPOSED");
+ assert.equal(room.quest.status,"OPEN");
+ assert.equal(room.exits.forge,"LOCKED");
+});
+
 test("authorization changes proposal state without fabricating completion",()=>{
  const auth={...authorizeQuest({quest,grant_id:"g1"}),proposal_id:"p1"};
- const institution=replayInstitution({events:[proposal,auth],quests:[quest],resolveArtifact:()=>null});
+ const institution=replayInstitution({
+  events:[proposal,auth],quests:[quest],resolveArtifact:()=>null,
+  verifyAuthorization:event=>event.event_id===auth.event_id
+ });
  const room=projectGuildHall({institution,quest_id:"q1",events:[proposal,auth],agents:[]});
  assert.equal(room.proposals[0].status,"AUTHORIZED"); assert.equal(room.quest.status,"AUTHORIZED"); assert.equal(room.exits.forge,"LOCKED");
 });
