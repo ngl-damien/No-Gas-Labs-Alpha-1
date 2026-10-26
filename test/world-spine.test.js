@@ -84,6 +84,20 @@ test("event parent metadata must be a unique list of retained event IDs", () => 
   }
 });
 
+test("event parent accessors are rejected before replay", () => {
+  const accessor = { ...done, event_id: "accessor-edge" };
+  Object.defineProperty(accessor, "parents", {
+    enumerable: true,
+    get() { throw new Error("must not execute parent getter"); }
+  });
+  assert.throws(
+    () => replayInstitution({
+      events: [auth, accessor], quests: [quest], resolveArtifact, verifyObservation, verifyAuthorization
+    }),
+    /parent metadata must be an enumerable data property/
+  );
+});
+
 test("duplicate event identities are rejected instead of silently replayed", () => {
   assert.throws(() => replayInstitution({
     events: [auth, auth], quests: [quest], resolveArtifact, verifyObservation, verifyAuthorization
