@@ -1,0 +1,63 @@
+{
+  "schema": "ngl.source-branch-delta.v1",
+  "source_repository": "ngl-damien/ngl-mesh",
+  "source_branch": "feat/proof-carrying-work-exchange",
+  "source_commit": "66ade021202ad13a8691f290011dad35a45863bc",
+  "source_tree_sha": "91178c0011fb1ee67a62786908232f9a4fdb1942",
+  "source_base_branch": "main",
+  "source_base_commit": "be43452a2133ba920a3814e19d7812e5c964117d",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/ngl-mesh-feature-branch-recovery-2026-10-26",
+  "license_status": "No LICENSE file found in the inspected NGL Mesh branch tree; reuse license remains unconfirmed",
+  "runtime_status": "Reference-only; no execution or integration",
+  "verification": {
+    "branch_delta_file_count": 5,
+    "exact_target_blob_matches": 5,
+    "byte_identity_method": "Git blob SHA equality",
+    "credential_pattern_scan": "No configured private-key/API-key/credential patterns matched in copied files",
+    "build_test_performed": false,
+    "runtime_integrated": false
+  },
+  "entries": [
+    {
+      "source_path": "README.md",
+      "source_blob_sha": "9ecdcd5d20cbd5fb10977a9c96b03f1d4240c0a4",
+      "size_bytes": 2998,
+      "target_path": "integrations/ngl-mesh-reference/branches/feat-proof-carrying-work-exchange/source/README.md",
+      "target_blob_sha": "9ecdcd5d20cbd5fb10977a9c96b03f1d4240c0a4",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "docs/PROOF-CARRYING-WORK.md",
+      "source_blob_sha": "693ad190398a73a2f24e67f5fe22659c8c041cef",
+      "size_bytes": 9242,
+      "target_path": "integrations/ngl-mesh-reference/branches/feat-proof-carrying-work-exchange/source/docs/PROOF-CARRYING-WORK.md",
+      "target_blob_sha": "693ad190398a73a2f24e67f5fe22659c8c041cef",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/proof-package/README.md",
+      "source_blob_sha": "8d565ca7264a72548dc8bb71f609d9102ae8d032",
+      "size_bytes": 3112,
+      "target_path": "integrations/ngl-mesh-reference/branches/feat-proof-carrying-work-exchange/source/prototype/proof-package/README.md",
+      "target_blob_sha": "8d565ca7264a72548dc8bb71f609d9102ae8d032",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/proof-package/proof_package.py",
+      "source_blob_sha": "c9d8aab2b029483fa94819ddb59323844c0ece8b",
+      "size_bytes": 11326,
+      "target_path": "integrations/ngl-mesh-reference/branches/feat-proof-carrying-work-exchange/source/prototype/proof-package/proof_package.py",
+      "target_blob_sha": "c9d8aab2b029483fa94819ddb59323844c0ece8b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "prototype/proof-package/test_proof_package.py",
+      "source_blob_sha": "71585ad0051d0e3549f304b39115e57d2fcc8ae3",
+      "size_bytes": 5339,
+      "target_path": "integrations/ngl-mesh-reference/branches/feat-proof-carrying-work-exchange/source/prototype/proof-package/test_proof_package.py",
+      "target_blob_sha": "71585ad0051d0e3549f304b39115e57d2fcc8ae3",
+      "status": "IDENTICAL_BLOB"
+    }
+  ]
+}
