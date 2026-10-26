@@ -154,3 +154,138 @@ export function getLocationAction(locationId, world, viewer) {
     explanation: 'Create a playable home for the recovered pages. Missing pages remain labelled unavailable; no missing content is invented.'
   };
 }
+
+
+// Read-only objective trail. A milestone advances only when a retained event can
+// be matched unambiguously to the corresponding world record and, for publications,
+// to the exact retained artifact version. Event IDs must be unique across the whole
+// history; a reused ID cannot support two different claims.
+const trailRows = value => Array.isArray(value) ? value : [];
+const trailUnique = values => [...new Set(values.filter(value => typeof value === 'string' && value.length > 0))];
+
+function uniqueEventIds(events) {
+  const counts = new Map();
+  for (const event of trailRows(events)) {
+    if (typeof event?.id !== 'string' || event.id.length === 0) continue;
+    counts.set(event.id, (counts.get(event.id) || 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
+}
+
+function matchingTrailRecords(type, records, events, fields, actorId) {
+  const validIds = uniqueEventIds(events);
+  const owned = trailRows(records).filter(record => record?.actor?.id === actorId);
+  const candidates = trailRows(events).filter(event =>
+    event?.type === type && event?.actor?.id === actorId && validIds.has(event.id)
+  );
+  const key = entry => JSON.stringify([entry?.actor?.id, entry?.at, ...fields.map(field => entry?.[field])]);
+  const recordCounts = new Map(), eventCounts = new Map();
+  for (const record of owned) {
+    const fingerprint = key(record);
+    recordCounts.set(fingerprint, (recordCounts.get(fingerprint) || 0) + 1);
+  }
+  for (const event of candidates) {
+    const fingerprint = key(event);
+    eventCounts.set(fingerprint, (eventCounts.get(fingerprint) || 0) + 1);
+  }
+  return owned.flatMap(record => {
+    const fingerprint = key(record);
+    const matches = candidates.filter(event => key(event) === fingerprint);
+    return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1 && matches.length === 1
+      ? [{ record, event: matches[0] }] : [];
+  });
+}
+
+function retainedPublicationEvents(world, actorId = null) {
+  const events = trailRows(world?.events);
+  const validIds = uniqueEventIds(events);
+  const creations = trailRows(world?.creations);
+  const versions = creations.flatMap(creation => [...trailRows(creation?.versions), creation]);
+  return events.filter(event => {
+    if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
+        typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
+        typeof event.at !== 'string' || typeof event.actor?.id !== 'string' ||
+        (actorId !== null && event.actor.id !== actorId)) return false;
+    const matches = versions.filter(version => version?.id === event.creationId &&
+      version?.version === event.version && version?.publishedAt === event.at);
+    return matches.length === 1;
+  });
+}
+
+function distinctCreationEvents(events) {
+  const byCreation = new Map();
+  for (const event of events) {
+    if (typeof event.creationId === 'string' && event.creationId.length > 0 &&
+        typeof event.id === 'string' && event.id.length > 0 && !byCreation.has(event.creationId)) {
+      byCreation.set(event.creationId, event);
+    }
+  }
+  return [...byCreation.values()];
+}
+
+function trailMilestone(id, title, target, evidenceIds, evidenceEvents = []) {
+  const evidence = trailUnique(evidenceIds);
+  const allowed = new Set(evidence);
+  const seen = new Set();
+  const details = [];
+  for (const event of trailRows(evidenceEvents)) {
+    if (!allowed.has(event?.id) || seen.has(event.id)) continue;
+    seen.add(event.id);
+    details.push(Object.freeze({
+      id: event.id,
+      type: event.type,
+      at: typeof event.at === 'string' ? event.at : null,
+      actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
+      creationId: typeof event.creationId === 'string' ? event.creationId : null,
+      version: Number.isInteger(event.version) ? event.version : null,
+      locationId: typeof event.locationId === 'string' ? event.locationId : null,
+    }));
+  }
+  return Object.freeze({
+    id, title, target, progress: Math.min(target, evidence.length),
+    complete: evidence.length >= target,
+    evidenceIds: Object.freeze(evidence),
+    evidence: Object.freeze(details),
+  });
+}
+
+export function getQuestTrail(world, viewer) {
+  const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
+  if (!actorId) return Object.freeze([]);
+  const events = trailRows(world?.events);
+  const publications = retainedPublicationEvents(world);
+  const myPublications = publications.filter(event => event?.actor?.id === actorId);
+  const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
+  const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
+  const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId);
+  const locations = new Map();
+  for (const match of discoveries) {
+    if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
+      locations.set(match.record.locationId, match.event);
+    }
+  }
+  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId);
+  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId);
+  const earlierVersionRepairs = myPublications.filter(event => {
+    if (event.version <= 1) return false;
+    const creation = trailRows(world?.creations).find(item => item?.id === event.creationId);
+    return Boolean(creation && trailRows(creation.versions).some(version => Number.isInteger(version?.version) && version.version < event.version));
+  });
+
+  if (viewer?.role === 'founder') {
+    const locationEvents = [...locations.values()];
+    return Object.freeze([
+      trailMilestone('founder-first-place', 'Publish a first place', 1, firstPlaceEvents.map(event => event.id), firstPlaceEvents),
+      trailMilestone('founder-walk-institution', 'Discover a guide', 1, locationEvents.map(event => event.id), locationEvents),
+      trailMilestone('founder-field-note', 'Leave a field note', 1, notes.map(match => match.event.id), notes.map(match => match.event)),
+      trailMilestone('founder-second-place', 'Publish a second place', 2, firstPlaceEvents.map(event => event.id), firstPlaceEvents),
+      trailMilestone('founder-preserve-version', 'Preserve an earlier version', 1, earlierVersionRepairs.map(event => event.id), earlierVersionRepairs),
+    ]);
+  }
+  return Object.freeze([
+    trailMilestone('witness-map-grounds', 'Map the four guide locations', 4, [...locations.values()].map(event => event.id), [...locations.values()]),
+    trailMilestone('witness-work-available', 'Published work exists to inspect', 1, availablePlaceEvents.map(event => event.id), availablePlaceEvents),
+    trailMilestone('witness-field-note', 'Leave an attributed field note', 1, notes.map(match => match.event.id), notes.map(match => match.event)),
+    trailMilestone('witness-version-report', 'Submit a version-bound report', 1, reports.map(match => match.event.id), reports.map(match => match.event)),
+  ]);
+}
