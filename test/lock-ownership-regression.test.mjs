@@ -65,3 +65,36 @@ test('ledger close preserves a replacement writer lock even when bytes are ident
   await ledger.close();
   assert.deepEqual(await readFile(lockPath), replacement);
 });
+
+
+test('concurrent service-store opens admit exactly one writer', async t => {
+  const dataDir = await temp(t);
+  const results = await Promise.allSettled([
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate })
+  ]);
+  const opened = results.filter(result => result.status === 'fulfilled');
+  const rejected = results.filter(result => result.status === 'rejected');
+  assert.equal(opened.length, 1, 'only one service-store writer may acquire the directory lease');
+  assert.equal(rejected.length, 1, 'the competing initializer must be rejected');
+  assert.equal(rejected[0].reason.code, 'SERVICE_LOCKED');
+  await opened[0].value.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await reopened.close();
+});
+
+test('concurrent institutional-ledger opens admit exactly one writer', async t => {
+  const directory = await temp(t);
+  const results = await Promise.allSettled([
+    openLedger({ directory, ...config }),
+    openLedger({ directory, ...config })
+  ]);
+  const opened = results.filter(result => result.status === 'fulfilled');
+  const rejected = results.filter(result => result.status === 'rejected');
+  assert.equal(opened.length, 1, 'only one ledger writer may acquire the directory lease');
+  assert.equal(rejected.length, 1, 'the competing ledger initializer must be rejected');
+  assert.equal(rejected[0].reason.code, 'LEDGER_LOCKED');
+  await opened[0].value.close();
+  const reopened = await openLedger({ directory, ...config });
+  await reopened.close();
+});
