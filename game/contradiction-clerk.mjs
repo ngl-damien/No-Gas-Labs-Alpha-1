@@ -33,7 +33,7 @@ const FIELDS = Object.freeze([
 
 function boundedText(value, label, maxLength) {
   if (typeof value !== "string") throw new Error(label + " must be text");
-  const text = value.trim();
+  const text = value.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/\s+/gu, " ").trim();
   if (!text) throw new Error(label + " is required");
   if (Array.from(text).length > maxLength) {
     throw new Error(label + " exceeds " + maxLength + " characters");
