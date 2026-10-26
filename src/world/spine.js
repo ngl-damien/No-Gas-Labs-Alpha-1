@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { projectWorld } from "./project.js";
+import { projectWorld, eventParents } from "./project.js";
 import { projectQuest } from "../quest/engine.js";
 
 function canonical(value, ancestors = new Set()) {
@@ -64,12 +64,19 @@ export function hashState(value) {
 }
 
 export function validateHistory(events) {
-  const ids=new Set();
-  for (const e of events) {
-    if (!e?.event_id || ids.has(e.event_id)) throw new Error("duplicate or missing event_id");
-    const parents=Array.isArray(e.parents)?e.parents:[];
-    if (parents.some(p=>!ids.has(p))) throw new Error("unresolved parent for " + e.event_id);
-    ids.add(e.event_id);
+  if (!Array.isArray(events)) throw new Error("event history must be an array");
+  const ids = new Set();
+  for (const event of events) {
+    if (!event || typeof event !== "object" || Array.isArray(event) ||
+        typeof event.event_id !== "string" || event.event_id.trim().length === 0 ||
+        ids.has(event.event_id)) {
+      throw new Error("duplicate or missing event_id");
+    }
+    const parents = eventParents(event);
+    if (parents.some(parent => !ids.has(parent))) {
+      throw new Error("unresolved parent for " + event.event_id);
+    }
+    ids.add(event.event_id);
   }
   return true;
 }
