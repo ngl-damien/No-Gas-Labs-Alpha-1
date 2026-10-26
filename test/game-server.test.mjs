@@ -176,6 +176,29 @@ test('persisted Founder key rejects symlinks and group/world-readable files', as
   );
 });
 
+test('Founder data directory rejects symlinks and group/world-accessible directories', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-data-directory-'));
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+
+  const target = join(root, 'target');
+  await mkdir(target, { mode: 0o700 });
+  await writeFile(join(target, 'founder.key'), KEY + '\\n', { mode: 0o600 });
+  const linked = join(root, 'linked-data');
+  await symlink(target, linked, 'dir');
+  await assert.rejects(
+    createGameServer({ dataDir: linked }),
+    /Founder data directory must be a regular, non-symlink directory/
+  );
+
+  const exposed = join(root, 'exposed-data');
+  await mkdir(exposed, { mode: 0o700 });
+  await chmod(exposed, 0o755);
+  await assert.rejects(
+    createGameServer({ dataDir: exposed }),
+    /Founder data directory permissions must exclude group and other access/
+  );
+});
+
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'comic', title: 'Atomic', intent: 'Only adopt on disk success' });
