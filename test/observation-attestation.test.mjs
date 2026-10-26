@@ -7,9 +7,11 @@ import { projectWorld } from "../src/world/project.js";
 import { createObservationVerifier, observationKeyFingerprint } from "../src/world/observation-attestation.js";
 
 const artifact = Buffer.from("externally observed artifact bytes");
+const AUDIENCE = "ngl:institution:forge-gate";
 const event = {
   event_id: "signed-observation-1",
   event_type: "SYSTEM_EVENT",
+  audience: AUDIENCE,
   subject: "forge-gate",
   grant_id: "g1",
   observer_id: "external-observer-1",
@@ -46,11 +48,11 @@ function project(signedEvent, verifyObservation, verifyAuthorization) {
 }
 const verifyAuthorization = event => event?.grant_id === "g1" && event?.authority === "AUTHORIZED";
 
-test("pinned Ed25519 observer signature permits the exact signed event to project", () => {
+test("pinned Ed25519 observer signature permits the exact audience-bound event to project", () => {
   const pair = keyPair();
   const publicKey = publicPem(pair);
   const fingerprint = observationKeyFingerprint(publicKey);
-  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1" });
+  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1", expectedAudience: AUDIENCE });
   const signed = attest(event, pair, fingerprint);
   assert.equal(verifyObservation(signed), true);
   const state = project(signed, verifyObservation, verifyAuthorization);
@@ -60,11 +62,21 @@ test("pinned Ed25519 observer signature permits the exact signed event to projec
     "a valid observer signature cannot replace a separate authorization verifier");
 });
 
+test("a valid signature for another audience cannot be replayed into this institution", () => {
+  const pair = keyPair();
+  const publicKey = publicPem(pair);
+  const fingerprint = observationKeyFingerprint(publicKey);
+  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1", expectedAudience: AUDIENCE });
+  const otherAudience = attest({ ...event, audience: "ngl:institution:another-gate" }, pair, fingerprint);
+  assert.equal(verifyObservation(otherAudience), false);
+  assert.equal(project(otherAudience, verifyObservation, verifyAuthorization).xp, 0);
+});
+
 test("changing a consequence after signing invalidates the observation attestation", () => {
   const pair = keyPair();
   const publicKey = publicPem(pair);
   const fingerprint = observationKeyFingerprint(publicKey);
-  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1" });
+  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1", expectedAudience: AUDIENCE });
   const signed = attest(event, pair, fingerprint);
   const tampered = { ...signed, world_effect: { ...signed.world_effect, xp: 999999 } };
   assert.equal(verifyObservation(tampered), false);
@@ -76,7 +88,7 @@ test("missing, malformed, wrong-key and wrong-observer attestations fail closed"
   const untrusted = keyPair();
   const publicKey = publicPem(trusted);
   const fingerprint = observationKeyFingerprint(publicKey);
-  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1" });
+  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1", expectedAudience: AUDIENCE });
 
   assert.equal(verifyObservation(event), false);
   const wrongObserver = { ...event, observer_id: "spoofed-observer" };
@@ -95,7 +107,8 @@ test("verifier startup rejects a public key that does not match the host-pinned 
     () => createObservationVerifier({
       publicKey: publicPem(trusted),
       expectedFingerprint: observationKeyFingerprint(publicPem(other)),
-      observerId: "external-observer-1"
+      observerId: "external-observer-1",
+      expectedAudience: AUDIENCE
     }),
     /OBSERVATION_TRUST_FINGERPRINT_MISMATCH/
   );
@@ -107,18 +120,31 @@ test("verifier startup requires an explicit observer identity", () => {
   assert.throws(
     () => createObservationVerifier({
       publicKey,
-      expectedFingerprint: observationKeyFingerprint(publicKey)
+      expectedFingerprint: observationKeyFingerprint(publicKey),
+      expectedAudience: AUDIENCE
     }),
     /OBSERVATION_IDENTITY_REQUIRED/
   );
 });
 
+test("verifier startup requires a host-configured audience", () => {
+  const pair = keyPair();
+  const publicKey = publicPem(pair);
+  assert.throws(
+    () => createObservationVerifier({
+      publicKey,
+      expectedFingerprint: observationKeyFingerprint(publicKey),
+      observerId: "external-observer-1"
+    }),
+    /OBSERVATION_AUDIENCE_REQUIRED/
+  );
+});
 
 test("attestation envelope rejects extra metadata and algorithm downgrade", () => {
   const pair = keyPair();
   const publicKey = publicPem(pair);
   const fingerprint = observationKeyFingerprint(publicKey);
-  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1" });
+  const verifyObservation = createObservationVerifier({ publicKey, expectedFingerprint: fingerprint, observerId: "external-observer-1", expectedAudience: AUDIENCE });
   const signed = attest(event, pair, fingerprint);
   assert.equal(verifyObservation({ ...signed, observation_attestation: { ...signed.observation_attestation, extra: "not-signed-schema" } }), false);
   assert.equal(verifyObservation({ ...signed, observation_attestation: { ...signed.observation_attestation, algorithm: "RSA" } }), false);
