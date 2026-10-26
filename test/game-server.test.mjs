@@ -272,3 +272,95 @@ test('the host CSP permits authored srcdoc instrument scripts while its iframe r
   const sandbox = /<iframe[^>]*id="artifact-frame"[^>]*sandbox="([^"]+)"/.exec(page.body)?.[1];
   assert.ok(sandbox?.includes('allow-scripts')); assert.ok(!sandbox?.includes('allow-same-origin'));
 });
+
+test('concurrent retries with the same request ID commit one shared action', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Concurrent retry target');
+  const creation = published.world.creations[0];
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'Concurrent identical requests must be applied once.' };
+  const requestId = 'concurrent-report-001';
+  const [left, right] = await Promise.all([
+    founder.request('/api/action', { ...action, requestId }),
+    founder.request('/api/action', { ...action, requestId })
+  ]);
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  assert.equal(right.response.status, 200, JSON.stringify(right.body));
+  assert.equal(left.body.result.id, right.body.result.id);
+  assert.deepEqual([left.body.idempotentReplay, right.body.idempotentReplay].sort(), [false, true]);
+  assert.equal(left.body.world.revision, right.body.world.revision);
+  assert.equal(left.body.world.reports.filter(report => report.text === action.text).length, 1);
+  const finalState = await founder.request('/api/state');
+  assert.equal(finalState.body.world.reports.filter(report => report.text === action.text).length, 1);
+  assert.equal(finalState.body.world.revision, published.world.revision + 1);
+});
+
+test('an idempotency receipt cannot be replayed by a different Witness actor', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Actor-bound retry target');
+  const creation = published.world.creations[0];
+  const firstWitness = f.client(), secondWitness = f.client();
+  const firstState = await firstWitness.request('/api/state');
+  const secondState = await secondWitness.request('/api/state');
+  assert.equal(firstState.body.viewer.role, 'witness');
+  assert.equal(secondState.body.viewer.role, 'witness');
+  assert.notEqual(firstState.body.viewer.id, secondState.body.viewer.id);
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'This report belongs to one session.' };
+  const requestId = 'actor-bound-report-001';
+  const first = await firstWitness.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const replay = await secondWitness.request('/api/action', { ...action, requestId });
+  assert.equal(replay.response.status, 409);
+  assert.equal(replay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const state = await secondWitness.request('/api/state');
+  assert.equal(state.body.world.reports.filter(report => report.text === action.text).length, 1);
+  assert.equal(state.body.world.events.filter(event => event.requestId === requestId).length, 1);
+});
+
+test('shared action request IDs replay the original result across lost responses and service restart', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Idempotent report target');
+  const creation = published.world.creations[0];
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'The observed outcome is still uncertain.' };
+  const requestId = 'retry-report-001';
+  const first = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const revision = first.body.world.revision;
+  const reportId = first.body.result.id;
+  assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
+
+  const replay = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.id, reportId);
+  assert.equal(replay.body.world.revision, revision);
+  assert.equal(replay.body.world.reports.filter(report => report.text === action.text).length, 1);
+
+  const conflict = await founder.request('/api/action', { ...action, text: 'Different payload, same request ID.', requestId });
+  assert.equal(conflict.response.status, 409);
+  assert.equal(conflict.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  await f.closeGame();
+
+  const reopened = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => reopened.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${reopened.address().port}`;
+    let cookie = '';
+    async function request(path, body) {
+      const headers = { ...(cookie ? { cookie } : {}) };
+      if (body !== undefined) { headers['content-type'] = 'application/json'; headers.origin = url; }
+      const response = await fetch(url + path, { method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      if (response.headers.get('set-cookie')) cookie = response.headers.get('set-cookie').split(';')[0];
+      return { response, body: await response.json() };
+    }
+    const login = await request('/api/login', { key: KEY, name: 'Damien' });
+    assert.equal(login.response.status, 200);
+    const afterRestart = await request('/api/action', { ...action, requestId });
+    assert.equal(afterRestart.response.status, 200, JSON.stringify(afterRestart.body));
+    assert.equal(afterRestart.body.idempotentReplay, true);
+    assert.equal(afterRestart.body.result.id, reportId);
+    assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
+  } finally {
+    await reopened.closeGame();
+  }
+});
