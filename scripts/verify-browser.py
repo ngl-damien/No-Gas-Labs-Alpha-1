@@ -237,6 +237,16 @@ def shared(browser,url,data,out):
         assert 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
         assert 'no AI/provider call or independent observation occurred' in structured[0]['text']
         assert challenge_snapshot['world']['xp']==100, 'A structured report must not award XP'
+        # TownSquare makes the retained report a navigable world object, not a detached dashboard row.
+        close_sheet(b);b.locator('#journal-button').click()
+        b.locator('#institution-projects').click()
+        expect(b.locator('#sheet')).to_contain_text('TOWNSQUARE · WORLD CHRONICLE')
+        challenge_card=b.locator('[data-record-type="WORLD_EVENT"]').filter(has_text='CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+        expect(challenge_card).to_have_count(1)
+        challenge_card.get_by_role('button',name='Inspect The shared observatory · v1').click()
+        expect(b.locator('#sheet-title')).to_have_text('The shared observatory')
+        expect(b.locator('#version-select')).to_have_value('1')
+        close_sheet(b)
         a.locator('#repair-button').click();a.locator('#publish-button').wait_for()
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
