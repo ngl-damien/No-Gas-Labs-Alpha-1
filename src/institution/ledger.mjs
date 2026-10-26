@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -8,6 +8,17 @@ const digestPattern = /^[a-f0-9]{64}$/;
 const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
+
+// A copied lock token does not prove that the path still names our lease.
+async function unlinkOwnedLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  return true;
+}
 
 async function atomicWrite(file, bytes, directory) {
   const temporary = join(directory, `.atomic-${randomUUID()}`);
@@ -36,7 +47,10 @@ export async function openLedger({ directory, actors, founderId } = {}) {
   let lock;
   try { lock = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') fail('LEDGER_LOCKED', 'A writer already owns this ledger; inspect any stale lock before recovery'); throw error; }
+  let lockIdentity;
   try {
+    const stat = await lock.stat();
+    lockIdentity = { dev: stat.dev, ino: stat.ino };
     await lock.writeFile(JSON.stringify({ pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
     let state = createKernel({ actors, founderId });
@@ -141,12 +155,12 @@ export async function openLedger({ directory, actors, founderId } = {}) {
         if (closed) return;
         closed = true;
         await lock.close();
-        await unlink(lockPath);
+        await unlinkOwnedLock(lockPath, lockIdentity);
       },
     };
   } catch (error) {
-    await lock.close();
-    await unlink(lockPath);
+    await lock.close().catch(() => {});
+    await unlinkOwnedLock(lockPath, lockIdentity).catch(() => {});
     throw error;
   }
 }
