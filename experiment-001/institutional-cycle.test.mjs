@@ -168,6 +168,8 @@ test('versioned implementation identities are stable semantic IDs, not source-te
   assert.equal(lib.implementationHash('square'), createHash('sha256').update('ngl-experiment-001:strategy:square:v1').digest('hex'));
   assert.equal(lib.implementationHash('double'), createHash('sha256').update('ngl-experiment-001:strategy:double:v1').digest('hex'));
   assert.notEqual(lib.implementationHash('square'), lib.legacyImplementationHash('square'));
+  assert.equal(lib.legacyImplementationHash('square'), createHash('sha256').update('function square(n) { return n * n; }').digest('hex'));
+  assert.equal(lib.legacyImplementationHash('double'), createHash('sha256').update('function double(n) { return n * 2; }').digest('hex'));
 }));
 
 test('legacy source-hash ledger replays and reuses while new legacy INSTALL is rejected', () => temp(async dir => {
