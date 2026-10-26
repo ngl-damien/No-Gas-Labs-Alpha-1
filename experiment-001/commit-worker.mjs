@@ -4,7 +4,7 @@ import { openInstitution } from './institutional-cycle.mjs';
 
 const [directory, founderPublicKeyPem, decisionJSON, signature] = process.argv.slice(2);
 const store = await openInstitution(directory, founderPublicKeyPem);
-process.stdout.write('READY\\n');
+process.stdout.write('READY\n');
 
 let startSignal = '';
 for await (const chunk of process.stdin) startSignal += chunk;
@@ -16,9 +16,9 @@ try {
     outcome: 'committed',
     sequence: record.sequence,
     decisionId: record.decision?.id ?? null
-  }) + '\\n');
+  }) + '\n');
 } catch (error) {
   const message = error?.message ?? 'UNKNOWN_ERROR';
-  process.stdout.write(JSON.stringify({ outcome: 'rejected', error: message }) + '\\n');
+  process.stdout.write(JSON.stringify({ outcome: 'rejected', error: message }) + '\n');
   if (message !== 'LEDGER_LOCKED') process.exitCode = 1;
 }
