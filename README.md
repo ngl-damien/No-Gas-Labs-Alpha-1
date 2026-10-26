@@ -51,6 +51,8 @@ The Lab separates:
 
 No actor may promote its own claim directly to `OBSERVED`. Observation requires an evidence reference produced outside the claim itself. Canonical state is derived from accepted events; rejected and failed events remain history.
 
+The canonical `src/world/project.js` reducer also requires a host-injected `verifyObservation(event)` callback to validate observer provenance independently. The event's `observation_verification: "VERIFIED"` field is only a claim; it cannot authorize progress by itself. A deployment must supply a verifier rooted outside the event producer.
+
 ## Genesis acceptance condition
 
 The repository earns its first capability when an executable reducer:

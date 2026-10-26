@@ -4,18 +4,30 @@ const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
 });
 
-const terminalSuccess = (e, resolveArtifact) =>
+// The status field is not an attestation. The host must inject a trusted
+// verifier that validates observer provenance independently of the event producer.
+function independentlyVerifiedObservation(event, verifyObservation) {
+  if (typeof verifyObservation !== "function") return false;
+  try {
+    return verifyObservation(structuredClone(event)) === true;
+  } catch {
+    return false;
+  }
+}
+
+const terminalSuccess = (e, resolveArtifact, verifyObservation) =>
   e.admission === "ACCEPTED" &&
   e.authority === "AUTHORIZED" &&
   e.execution === "EXECUTED" &&
   e.evidence === "OBSERVED" &&
   e.outcome === "SUCCEEDED" &&
   e.observation_verification === "VERIFIED" &&
+  independentlyVerifiedObservation(e, verifyObservation) &&
   Array.isArray(e.receipts) &&
   e.receipts.length > 0 &&
   e.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
 
-export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
+export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation } = {}) {
   const state = structuredClone(seed);
   const seen = new Set(state.seen || []);
   const revoked = new Set(state.revoked || []);
@@ -50,7 +62,7 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact } = {}) {
       continue;
     }
 
-    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact)) continue;
+    if (revoked.has(event.grant_id) || !terminalSuccess(event, resolveArtifact, verifyObservation)) continue;
 
     state.quests[subject] = { ...(state.quests[subject] || {}), status: "COMPLETED", source_event: event.event_id };
     const effect = event.world_effect || {};
