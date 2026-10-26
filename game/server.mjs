@@ -83,9 +83,39 @@ function validateHistory(world) {
 }
 
 async function validatePayload(raw) {
-  exact(raw, ['world', 'institutionalEvents', 'artifacts', 'publicationBindings']);
+  exact(raw, ['world', 'institutionalEvents', 'artifacts', 'publicationBindings', 'actionReceipts']);
   const world = await validateWorld(raw.world);
   validateHistory(world);
+  const actionReceipts = Object.hasOwn(raw, 'actionReceipts') ? raw.actionReceipts : [];
+  if (!Array.isArray(actionReceipts)) throw new Error('Corrupt action idempotency receipts');
+  const requestIds = new Set(), receiptEventIds = new Set();
+  for (const receipt of actionReceipts) {
+    exact(receipt, ['requestId', 'fingerprint', 'result', 'eventId', 'revision']);
+    if (typeof receipt.requestId !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(receipt.requestId) || requestIds.has(receipt.requestId)) throw new Error('Corrupt action idempotency request ID');
+    if (typeof receipt.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.fingerprint)) throw new Error('Corrupt action idempotency fingerprint');
+    if (!receipt.result || typeof receipt.result !== 'object' || Array.isArray(receipt.result) || !Number.isSafeInteger(receipt.revision) || receipt.revision < 0 || receipt.revision > world.revision) throw new Error('Corrupt action idempotency result');
+    canonicalStringify(receipt.result);
+    requestIds.add(receipt.requestId);
+    if (receipt.eventId === null) {
+      if (Object.keys(receipt.result).length !== 1 || receipt.result.discovered !== false) throw new Error('Action receipt without an event is not a known no-op');
+      continue;
+    }
+    if (typeof receipt.eventId !== 'string' || receiptEventIds.has(receipt.eventId)) throw new Error('Corrupt action idempotency event reference');
+    const eventIndex = world.events.findIndex(event => event.id === receipt.eventId);
+    if (eventIndex < 0 || eventIndex + 1 !== receipt.revision) throw new Error('Action receipt does not match retained event revision');
+    const event = world.events[eventIndex], result = receipt.result, keys = Object.keys(result).sort().join(',');
+    let resultMatches = false;
+    if (event.type === 'draft' || event.type === 'repair') resultMatches = keys === 'draftId' && result.draftId === event.draftId;
+    else if (event.type === 'publish') resultMatches = keys === 'creationId,version' && result.creationId === event.creationId && result.version === event.version;
+    else if (event.type === 'contribute' || event.type === 'report') {
+      const entries = event.type === 'report' ? world.reports : world.contributions;
+      resultMatches = keys === 'id' && entries.some(entry => entry.id === result.id && entry.creationId === event.creationId && entry.version === event.version && entry.at === event.at && canonicalStringify(entry.actor) === canonicalStringify(event.actor));
+    } else if (event.type === 'discover') {
+      resultMatches = keys === 'discovered' && result.discovered === true && world.discoveries.some(entry => entry.locationId === event.locationId && entry.at === event.at && canonicalStringify(entry.actor) === canonicalStringify(event.actor));
+    }
+    if (!resultMatches) throw new Error('Action receipt result differs from retained activity');
+    receiptEventIds.add(receipt.eventId);
+  }
   if (!Array.isArray(raw.institutionalEvents) || !Array.isArray(raw.publicationBindings) || !raw.artifacts || typeof raw.artifacts !== 'object' || Array.isArray(raw.artifacts)) throw new Error('Corrupt institutional store');
   for (const [hash, bytes] of Object.entries(raw.artifacts)) {
     if (!/^[a-f0-9]{64}$/.test(hash) || typeof bytes !== 'string' || Buffer.from(bytes, 'base64').toString('base64') !== bytes || artifactReceipt(Buffer.from(bytes, 'base64')).digest !== hash) throw new Error('Artifact blob integrity mismatch');
@@ -128,7 +158,7 @@ function publicationCandidate(payload, world, result) {
   append('execute', 'local-forge', { grantId, executionId, subject, outputs });
   const observed = append('observe', 'local-byte-verifier', { grantId, executionId, subject, outputs, passed: true, checks: [{ id: 'exact-local-bytes', passed: true, detail: 'This service recomputed the preserved UTF-8 SHA-256 receipt under a distinct configured local verifier identity. This is local byte verification, not an independent human review or usefulness judgment.' }] });
   append('adjudicate', 'damien', { grantId, executionId, subject, outputs, observationId: observed.id, decision: 'accept' });
-  return { world, artifacts, institutionalEvents: kernel.events, publicationBindings: [...payload.publicationBindings, { creationId: creation.id, version: creation.version, digest: creation.receipt.digest, size: creation.receipt.size, workId }] };
+  return { world, artifacts, institutionalEvents: kernel.events, publicationBindings: [...payload.publicationBindings, { creationId: creation.id, version: creation.version, digest: creation.receipt.digest, size: creation.receipt.size, workId }], actionReceipts: structuredClone(payload.actionReceipts || []) };
 }
 async function getFounderKey(dataDir, provided) {
   if (provided !== undefined) {
@@ -150,7 +180,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const key = await getFounderKey(dataDir, founderKey);
   const forge = forgeCapabilities();
-  const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
+  const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [], actionReceipts: [] }, validate: validatePayload });
   let decisions,projects;
   try{projects=projectProjection(institutionReport);decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
@@ -274,13 +304,26 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         return json(response, 200, { presence: livePresence() });
       }
       if (path === '/api/action') {
-        if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.'); exact(input, actionFields[input.type]);
+        if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
+        const requestId = input.requestId === undefined ? randomUUID() : input.requestId;
+        if (typeof requestId !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(requestId)) fail('INVALID_REQUEST_ID', 'A bounded action request ID is required.');
+        const action = { ...input }; delete action.requestId;
+        exact(action, actionFields[action.type]);
+        const fingerprint = artifactReceipt(Buffer.from(canonicalStringify(action), 'utf8')).digest;
         return await enqueue(async () => {
+          const prior = store.value.actionReceipts.find(receipt => receipt.requestId === requestId);
+          if (prior) {
+            if (prior.fingerprint !== fingerprint) fail('IDEMPOTENCY_KEY_REUSED', 'This request ID already belongs to a different action.', 409);
+            return json(response, 200, { ...dto(session), result: structuredClone(prior.result), idempotentReplay: true });
+          }
           // Re-check after waiting: a logout may have demoted this live session.
-          const outcome = await applyAction(store.value.world, input, { ...session.actor });
-          const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
+          const outcome = await applyAction(store.value.world, action, { ...session.actor });
+          const eventId = outcome.world.revision > store.value.world.revision ? outcome.world.events.at(-1)?.id || null : null;
+          const receipt = { requestId, fingerprint, result: structuredClone(outcome.result), eventId, revision: outcome.world.revision };
+          const candidate = action.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
+          candidate.actionReceipts = [...(store.value.actionReceipts || []), receipt];
           try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
-          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result });
+          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, idempotentReplay: false });
         });
       }
       if (path === '/api/launch') {
