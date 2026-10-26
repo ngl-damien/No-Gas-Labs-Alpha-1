@@ -18,12 +18,16 @@ function setOwn(target, key, value) {
 // A malformed list or duplicate edge must fail closed instead of turning an
 // event into a root event or obscuring its causal path.
 export function eventParents(event) {
-  const label = typeof event?.event_id === "string" && event.event_id
-    ? event.event_id
-    : "<unknown>";
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     throw new Error("invalid event for parent validation");
   }
+  const idProperty = Object.getOwnPropertyDescriptor(event, "event_id");
+  if (idProperty && (!("value" in idProperty) || idProperty.enumerable !== true)) {
+    throw new Error("event ID metadata must be an enumerable data property");
+  }
+  const label = typeof idProperty?.value === "string" && idProperty.value
+    ? idProperty.value
+    : "<unknown>";
   const property = Object.getOwnPropertyDescriptor(event, "parents");
   if (!property) return [];
   // The parent edge must participate in canonical signing/serialization. Never
@@ -162,6 +166,8 @@ const terminalSuccess = (e, resolveArtifact, verifyObservation, verifyAuthorizat
   isVerifiedAuthorization(e, verifyAuthorization);
 
 export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyObservation, verifyAdjudication, verifyAuthorization } = {}) {
+  // Validate before structuredClone can execute getters or discard hidden data.
+  stableEventValue(seed);
   const state = structuredClone(seed);
   const historyById = new Map();
   const retainedHistory = state.history === undefined ? [] : state.history;
@@ -185,6 +191,8 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
   const revoked = new Set(state.revoked || []);
 
   for (const event of events) {
+    // Validate before any property read, including the event ID used for deduplication.
+    stableEventValue(event);
     if (!event?.event_id) continue;
 
     if (seen.has(event.event_id)) {
@@ -201,9 +209,6 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
       throw new Error("unresolved parent for " + event.event_id);
     }
 
-    // Validate the full payload before structuredClone can discard hidden keys
-    // or normalize sparse/exotic arrays into a different retained snapshot.
-    stableEventValue(event);
     seen.add(event.event_id);
     // Keep a snapshot: later mutation of the caller's event object must not
     // silently rewrite the projection's retained evidence history.
