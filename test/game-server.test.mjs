@@ -272,3 +272,52 @@ test('the host CSP permits authored srcdoc instrument scripts while its iframe r
   const sandbox = /<iframe[^>]*id="artifact-frame"[^>]*sandbox="([^"]+)"/.exec(page.body)?.[1];
   assert.ok(sandbox?.includes('allow-scripts')); assert.ok(!sandbox?.includes('allow-same-origin'));
 });
+
+test('shared action request IDs replay the original result across lost responses and service restart', async t => {
+  const f = await fixture(t); const founder = f.client(); await founder.login();
+  const published = await publish(founder, 'Idempotent report target');
+  const creation = published.world.creations[0];
+  const action = { type: 'report', creationId: creation.id, version: 1, text: 'The observed outcome is still uncertain.' };
+  const requestId = 'retry-report-001';
+  const first = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const revision = first.body.world.revision;
+  const reportId = first.body.result.id;
+  assert.equal(first.body.world.reports.filter(report => report.text === action.text).length, 1);
+
+  const replay = await founder.request('/api/action', { ...action, requestId });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.id, reportId);
+  assert.equal(replay.body.world.revision, revision);
+  assert.equal(replay.body.world.reports.filter(report => report.text === action.text).length, 1);
+
+  const conflict = await founder.request('/api/action', { ...action, text: 'Different payload, same request ID.', requestId });
+  assert.equal(conflict.response.status, 409);
+  assert.equal(conflict.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  await f.closeGame();
+
+  const reopened = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => reopened.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${reopened.address().port}`;
+    let cookie = '';
+    async function request(path, body) {
+      const headers = { ...(cookie ? { cookie } : {}) };
+      if (body !== undefined) { headers['content-type'] = 'application/json'; headers.origin = url; }
+      const response = await fetch(url + path, { method: body === undefined ? 'GET' : 'POST', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      if (response.headers.get('set-cookie')) cookie = response.headers.get('set-cookie').split(';')[0];
+      return { response, body: await response.json() };
+    }
+    const login = await request('/api/login', { key: KEY, name: 'Damien' });
+    assert.equal(login.response.status, 200);
+    const afterRestart = await request('/api/action', { ...action, requestId });
+    assert.equal(afterRestart.response.status, 200, JSON.stringify(afterRestart.body));
+    assert.equal(afterRestart.body.idempotentReplay, true);
+    assert.equal(afterRestart.body.result.id, reportId);
+    assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
+  } finally {
+    await reopened.closeGame();
+  }
+});
