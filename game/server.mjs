@@ -185,6 +185,11 @@ async function getFounderKey(dataDir, provided) {
     const file = await open(path, 'wx', 0o600);
     try { await file.writeFile(key + '\n'); await file.sync(); }
     finally { await file.close(); }
+
+    // The file contents are synced above; sync the containing directory too so
+    // the newly created founder.key name is durable before startup succeeds.
+    const directory = await open(dataDir, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+    try { await directory.sync(); } finally { await directory.close(); }
     return key;
   } catch (writeError) {
     if (writeError.code === 'EEXIST') return getFounderKey(dataDir);
