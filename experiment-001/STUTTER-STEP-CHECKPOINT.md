@@ -1,5 +1,41 @@
 # NGL Stutter-Step Checkpoint
 
+# Current handoff — 2026-10-26 UTC
+
+This handoff supersedes older state snapshots below. Reinspect live GitHub state at the start of the next run; this file does not imply work continued between runs.
+
+## This run's verified code changes
+
+- Base `main` at branch creation: `871e642886e3e9f51028f1614c6d6ccca2f9a7fd`.
+- Branch: `hardening/ledger-boundaries-20261026`; draft PR #58: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/58.
+- Code/test head before this checkpoint-only update: `a3fb3aeb25e3ca2af33905a716c89ddb881a6857`.
+- `experiment-001/institutional-cycle.mjs`: exact schema validation now checks key count and own-property membership instead of joining keys with a delimiter; ledger reads reject symlinks and compare path/file identity before and after reading.
+- `experiment-001/institutional-cycle.test.mjs`: added a real NUL-delimiter collision regression and a symlinked-ledger regression.
+- Exact code/test head CI: [verify run 40270599447](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40270599447) **success**; [Genesis Evidence Invariant run 40270599433](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40270599433) **success**. No local test run is claimed.
+- This handoff is a documentation-only update after that verified code/test head. Inspect CI on the live branch head before claiming that the checkpoint commit itself is green.
+
+## Fresh priority reconciliation
+
+- PR #16 is closed unmerged; merged PR #18 is its replacement. The prototype uses detached Ed25519 approval and a startup-pinned fingerprint, but real Founder identity/key custody remains unproven.
+- PR #26 remains open for independent observation verification. Its host verifier/trust root is not yet provisioned or wired into the live game server. Never substitute an always-true callback.
+- Issue #17 remains open for production key custody and crash/stale-lock recovery. Do not delete a lock automatically or claim crash recovery without a defined, tested protocol.
+- Current open Alpha One PRs at checkpoint time: #26, #48, #49, #57, and #58. #48/#49/#57 concern repository/source assimilation and do not by themselves establish runtime integration.
+- `ngl-damien/ngl-mesh` main `be43452a2133ba920a3814e19d7812e5c964117d`: no open PRs or Actions runs observed. `EvidenceAuthorizedTransition.apply` trusts a caller-supplied operator public-key file without checking a separately provisioned fingerprint; a self-selected key can therefore self-authorize if the caller controls both key and signature. The documented integration harness requires a recovered-source archive, reference APK, and RAE report that are not present in the repo. No code change or test claim was made there.
+- `ngl-damien/no-gas-labs-command-center` main `675aa2a2ec425614ec27081bbae5ffe45e396006`: no open PRs or Actions runs observed; README says usage docs are in progress, and package.json has no test script. Recovered source remains reference material, not proof of runtime integration.
+- Private `ngl-damien/Damien-Featherstone` main `021d358d3cabdd3887cef58bbebac1adbfd39bb8`: PR #1 and Issue #2 remain open about tracked private-key material. PR #1 explicitly must not be merged alone because runtime signing and historical receipts require coordinated migration. No key contents were read/copied, and no rotation/revocation was performed.
+
+## Next steps
+
+1. Inspect PR #26 against current main; port/rebase the independent-observation trust boundary safely, keeping production consequences fail-closed.
+2. Design a separately provisioned operator-key trust pin and key-substitution regression for NGL Mesh; establish a reproducible test fixture before claiming verification.
+3. Specify crash recovery across lock acquisition, atomic rename, and directory sync without deleting a potentially live lock.
+4. Coordinate private-repository key rotation/history remediation only with explicit Founder authorization.
+
+No merge, deployment, external release, spending, Founder-approval claim, or private-key rotation was performed.
+
+---
+
+
 > **Current handoff updated 2026-10-26 UTC.** This section supersedes the historical snapshots below; those earlier entries are retained as history, not current state.
 
 ## Fresh repository state before this run's implementation
