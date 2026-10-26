@@ -381,6 +381,12 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session;
       if (request.method === 'GET') {
+        // Resolve the route before creating a session. Unknown paths must not
+        // consume one of the bounded live-session slots or receive a cookie.
+        const knownArtifact = /^\\/api\\/artifacts\\/(creation-[a-zA-Z0-9-]+)$/.test(path);
+        if (!['/api/projects', '/api/decisions', '/api/state', '/api/export', '/api/institution', '/api/events'].includes(path) && !knownArtifact) {
+          fail('NOT_FOUND', 'Not found.', 404);
+        }
         session = sessionFor(request, response);
         if(path==='/api/projects')return json(response,200,projects);
         if(path==='/api/decisions')return json(response,200,await decisions.snapshot({id:session.actor.id,role:session.actor.role}));
@@ -406,6 +412,12 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         fail('NOT_FOUND', 'Not found.', 404);
       }
       if (request.method !== 'POST') fail('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+      // Resolve the route before reading a body or allocating a session. An
+      // unsupported endpoint must not consume capacity or mint a cookie.
+      if (!['/api/login', '/api/logout', '/api/presence', '/api/action', '/api/launch',
+        '/api/decisions/policy', '/api/decisions/proposals', '/api/decisions/choose'].includes(path)) {
+        fail('NOT_FOUND', 'Not found.', 404);
+      }
       // Reject cross-origin or malformed writes before allocating a session.
       // A failed request must not consume session capacity or set a new cookie.
       sameOrigin(request);
