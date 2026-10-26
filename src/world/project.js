@@ -191,25 +191,36 @@ export function projectWorld(events, seed = EMPTY(), { resolveArtifact, verifyOb
   const revoked = new Set(state.revoked || []);
 
   for (const event of events) {
-    // Validate before any property read, including the event ID used for deduplication.
-    stableEventValue(event);
-    if (!event?.event_id) continue;
+    if (!event || typeof event !== "object") continue;
+    if (Array.isArray(event)) throw new Error("invalid event payload");
 
-    if (seen.has(event.event_id)) {
-      const prior = historyById.get(event.event_id);
-      if (!prior) throw new Error("duplicate event_id has no retained payload: " + event.event_id);
+    const idProperty = Object.getOwnPropertyDescriptor(event, "event_id");
+    if (!idProperty) continue;
+    if (!("value" in idProperty) || idProperty.enumerable !== true) {
+      throw new Error("event ID metadata must be an enumerable data property");
+    }
+    const eventId = idProperty.value;
+    if (!eventId) continue;
+
+    // Validate ancestry metadata first to preserve its specific fail-closed
+    // error; then validate all remaining fields before deduplication or cloning.
+    const parents = eventParents(event);
+    stableEventValue(event);
+
+    if (seen.has(eventId)) {
+      const prior = historyById.get(eventId);
+      if (!prior) throw new Error("duplicate event_id has no retained payload: " + eventId);
       if (!sameEventPayload(prior, event)) {
-        throw new Error("conflicting duplicate event_id: " + event.event_id);
+        throw new Error("conflicting duplicate event_id: " + eventId);
       }
       continue;
     }
 
-    const parents = eventParents(event);
     if (parents.some(parent => !historyById.has(parent))) {
-      throw new Error("unresolved parent for " + event.event_id);
+      throw new Error("unresolved parent for " + eventId);
     }
 
-    seen.add(event.event_id);
+    seen.add(eventId);
     // Keep a snapshot: later mutation of the caller's event object must not
     // silently rewrite the projection's retained evidence history.
     const retained = structuredClone(event);
