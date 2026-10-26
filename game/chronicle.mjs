@@ -18,6 +18,37 @@ const eventTime = value => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+function retainedEventCollection(owner, key) {
+  const descriptor = owner && typeof owner === "object"
+    ? Object.getOwnPropertyDescriptor(owner, key)
+    : undefined;
+  if (!descriptor) return { present: false, valid: true, value: [] };
+  if (!Object.hasOwn(descriptor, "value") || !Array.isArray(descriptor.value)) {
+    return { present: true, valid: false, value: [] };
+  }
+  return { present: true, valid: true, value: descriptor.value };
+}
+
+function malformedCollectionEntry(source) {
+  const institutional = source === "kernel";
+  return {
+    id: `${source}:unclassified-events`,
+    source,
+    eventType: "unknown",
+    at: "",
+    actor: "unknown actor",
+    title: institutional ? "Unclassified institutional event collection" : "Unclassified retained world event collection",
+    category: institutional ? "INSTITUTIONAL WORK" : "WORLD ACTIVITY",
+    summary: `The ${institutional ? "institutional" : "world"} event collection is malformed; no individual events are inferred from it.`,
+    detail: "",
+    creationId: "",
+    version: null,
+    targetTitle: "",
+    targetAvailable: false,
+    warning: "Malformed retained event collection; inspect the source store before adjudicating it.",
+  };
+}
+
 function findVersion(world, creationId, version) {
   if (typeof creationId !== "string" || !Number.isInteger(version) || version < 1) return null;
   const creation = (Array.isArray(world?.creations) ? world.creations : []).find(item => item?.id === creationId);
@@ -154,8 +185,18 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     contributions: Array.isArray(world?.contributions) ? [...world.contributions] : [],
     consumed: new Set(),
   };
-  const worldEvents = Array.isArray(world?.events) ? world.events : [];
-  const kernelEvents = Array.isArray(kernel?.events) ? kernel.events : [];
+  const worldCollection = retainedEventCollection(world, "events");
+  const kernelCollection = retainedEventCollection(kernel, "events");
+  if (worldCollection.present && !worldCollection.valid) {
+    malformed += 1;
+    entries.push(malformedCollectionEntry("world"));
+  }
+  if (kernelCollection.present && !kernelCollection.valid) {
+    malformed += 1;
+    entries.push(malformedCollectionEntry("kernel"));
+  }
+  const worldEvents = worldCollection.value;
+  const kernelEvents = kernelCollection.value;
 
   for (let index = 0; index < worldEvents.length; index += 1) {
     const event = worldEvents[index];
