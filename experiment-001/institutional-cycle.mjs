@@ -2,6 +2,8 @@ import { constants as fsConstants } from 'node:fs';
 import { mkdir, readFile, rename, open, lstat, unlink } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { createHash, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
+import { TextDecoder } from 'node:util';
+import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT = 1_000_000;
@@ -280,9 +282,17 @@ async function readLedger(path, publicKey) {
   let bytes;
   try { bytes = await readBoundedRegularFile(path); }
   catch (error) { if (error.code === 'ENOENT') return initial(); throw error; }
+  let source;
+  try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  catch { throw new Error('LEDGER_UTF8_INVALID'); }
+  // This ledger is written as canonical JSON. Reject ambiguous object keys
+  // before JSON.parse can silently keep only the last value, then require the
+  // exact canonical byte representation before replaying signed records.
+  assertNoDuplicateJsonObjectKeys(source, { label: 'LEDGER', maxDepth: MAX_CANONICAL_DEPTH });
   let parsed;
-  try { parsed = JSON.parse(bytes.toString('utf8')); }
+  try { parsed = JSON.parse(source); }
   catch { throw new Error('LEDGER_JSON_INVALID'); }
+  if (canonical(parsed) !== source) throw new Error('LEDGER_JSON_NON_CANONICAL');
   if (parsed?.version !== 2) throw new Error('LEDGER_VERSION_UNSUPPORTED');
   if (!Array.isArray(parsed.records) || parsed.records.length > 100000) throw new Error('LEDGER_RECORDS_INVALID');
   const replay = initial();
