@@ -256,13 +256,29 @@ function worldEntry(event, index, world, notes) {
 function kernelEntry(event, index, world, derivedWork = null) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
-  // The live public institution endpoint deliberately omits its internal work
-  // map. Reconstruct the subject only from an earlier retained claim so a
-  // later revocation can name its recorded scope.
+  // The live public institution endpoint omits its internal work map. A
+  // revocation's scope is displayable only when one earlier authorization for
+  // this work has the same grant ID and exactly matches the prior claim.
   const work = derivedWork;
-  // A revoke event is not allowed to self-declare its target. Its scope comes
-  // only from the earlier retained claim for the same work ID.
-  const subject = type === "revoke" ? work?.subject || null : event?.subject || work?.subject || null;
+  const grantId = type === "revoke" ? text(event?.grantId) : "";
+  const expectedSubject = work?.subject;
+  const expectedAction = work?.action;
+  const priorGrantRecords = type === "revoke" && grantId && Array.isArray(work?.authorizations)
+    ? work.authorizations.filter(authorization => authorization?.grantId === grantId)
+    : [];
+  const scopeMatchesClaim = priorGrantRecords.length === 1 &&
+    typeof expectedSubject?.id === "string" &&
+    Number.isSafeInteger(expectedSubject?.version) &&
+    expectedSubject.version >= 1 &&
+    typeof expectedAction === "string" &&
+    Boolean(expectedAction.trim()) &&
+    priorGrantRecords[0]?.scope?.subjectId === expectedSubject.id &&
+    priorGrantRecords[0]?.scope?.subjectVersion === expectedSubject.version &&
+    priorGrantRecords[0]?.scope?.action === expectedAction;
+  const revokeBindingValid = scopeMatchesClaim;
+  const subject = type === "revoke"
+    ? (revokeBindingValid ? work?.subject || null : null)
+    : event?.subject || work?.subject || null;
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
   const target = findVersion(world, creationId, version);
@@ -275,7 +291,6 @@ function kernelEntry(event, index, world, derivedWork = null) {
     revoke: ["Grant revocation recorded", `Reason: ${text(event?.reason) || "not supplied"}.`],
   };
   const [title, summary] = labels[type] || ["Unclassified institutional event", "The institutional event is retained; no additional consequence is inferred."];
-  const grantId = type === "revoke" ? text(event?.grantId) : "";
   const workScope = creationId
     ? `${creationId}${version !== null ? ` v${version}` : ""}`
     : "";
@@ -289,8 +304,10 @@ function kernelEntry(event, index, world, derivedWork = null) {
     : !timestamp(event?.at)
       ? "The retained event has no parseable timestamp; it is shown after timestamped records."
       : "";
-  if (type === "revoke" && (!grantId || !creationId || version === null)) {
-    const bindingWarning = "Revocation binding is incomplete; do not infer a missing grant or exact work/version scope.";
+  if (type === "revoke" && (!grantId || !creationId || version === null || !revokeBindingValid)) {
+    const bindingWarning = priorGrantRecords.length > 1
+      ? "Revocation grant binding is ambiguous; do not infer a missing grant or exact work/version scope."
+      : "Revocation grant binding is missing or mismatched; do not infer a missing grant or exact work/version scope.";
     warning = warning ? warning + " " + bindingWarning : bindingWarning;
   }
   return {
@@ -376,6 +393,21 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     if (event.type === "claim" && !work.subject &&
         event.subject && typeof event.subject === "object" && !Array.isArray(event.subject)) {
       work.subject = event.subject;
+      work.action = typeof event.action === "string" ? event.action : "";
+    }
+    // Retain only prior authorization evidence. A revoke with a missing,
+    // mismatched, or ambiguous grant cannot inherit a claim's scope by work ID.
+    if (event.type === "authorize" && work.subject &&
+        typeof work.action === "string" && work.action.trim()) {
+      if (!Array.isArray(work.authorizations)) work.authorizations = [];
+      const scope = event.scope && typeof event.scope === "object" && !Array.isArray(event.scope)
+        ? {
+          subjectId: event.scope.subjectId,
+          subjectVersion: event.scope.subjectVersion,
+          action: event.scope.action,
+        }
+        : null;
+      work.authorizations.push({ grantId: text(event.grantId), scope });
     }
   }
 
