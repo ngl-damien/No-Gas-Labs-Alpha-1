@@ -3,7 +3,8 @@
 Date: 2026-10-27 UTC
 Repository: `ngl-damien/No-Gas-Labs-Alpha-1`
 Base `main`: `162ae451b52871f0c1f039fe689ac0d276a777f0`
-Code commit: `73b6401191f4c78057be9a6e492805295d2f6a2c`
+Code commit (scope/revocation): `73b6401191f4c78057be9a6e492805295d2f6a2c`
+Inventory hardening commit: `45b140ee40cb9f0f14d81fb25f90ebf4b4640f83`
 Branch: `fix/world-projection-scope-and-revocation-20261027`
 
 ## Fresh-state findings
@@ -17,10 +18,11 @@ PR #118 was merged; its explicit `quest_id` rule now exists in `src/quest/engine
 - Verified revocations with an explicit `quest_id` apply only to that quest when deciding whether later world effects or failed-execution status may be projected.
 - The public `state.revoked` audit list still records all verified revoked grant IDs; the retained history preserves the scope of each revocation.
 - Added four regressions: conflicting execution scope, cross-quest revocation isolation, same-quest revocation enforcement, and prevention of a revoked grant changing status through a later failed execution.
+- Second implementation cycle: inventory world effects now reject any delta that would reduce a stack below zero while allowing valid consumption of existing items. Added a regression for successful consumption and underflow rejection. Previously, any negative integer was accepted even when it produced impossible negative inventory.
 
 ## Verification status
 
-Code and tests are committed; exact-head GitHub Actions have not yet completed. Do not claim success until full verification, Genesis Evidence Invariant, and browser acceptance are inspected on the final PR head. No local test run is claimed.
+Both implementation cycles and tests are committed; exact-head GitHub Actions are being rerun after the latest code update. Do not claim success until full verification, Genesis Evidence Invariant, and browser acceptance are inspected on the final PR head. No local test run is claimed.
 
 ## Remaining blockers
 
