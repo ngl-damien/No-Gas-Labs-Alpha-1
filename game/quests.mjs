@@ -269,6 +269,18 @@ export function getQuestTrail(world, viewer) {
   const events = trailRows(world?.events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
+  const creationById = new Map(trailRows(world?.creations)
+    .filter(creation => creation && typeof creation.id === 'string')
+    .map(creation => [creation.id, creation]));
+  const observatoryPublications = distinctCreationEvents(myPublications.filter(event =>
+    creationById.get(event.creationId)?.kind === 'observatory'
+  ));
+  const latestObservatoryPublication = [...myPublications].reverse().find(event =>
+    creationById.get(event.creationId)?.kind === 'observatory'
+  ) || null;
+  const publishedObservatoryVersions = publications.filter(event =>
+    creationById.get(event.creationId)?.kind === 'observatory'
+  );
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
@@ -280,6 +292,12 @@ export function getQuestTrail(world, viewer) {
   }
   const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole);
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole);
+  const researchReports = reports.filter(match =>
+    creationById.get(match.record.creationId)?.kind === 'observatory' &&
+    publishedObservatoryVersions.some(event =>
+      event.creationId === match.record.creationId && event.version === match.record.version
+    )
+  );
   const earlierVersionRepairs = myPublications.filter(event => {
     if (event.version <= 1) return false;
     const creation = trailRows(world?.creations).find(item => item?.id === event.creationId);
@@ -299,6 +317,8 @@ export function getQuestTrail(world, viewer) {
   const hasNote = notes.length >= 1;
   const hasSecondPlace = firstPlaceEvents.length >= 2;
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
+  const hasObservatory = observatoryPublications.length >= 1;
+  const hasResearchReport = researchReports.length >= 1;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -342,6 +362,19 @@ export function getQuestTrail(world, viewer) {
           !hasNote ? 'Leave a field note first.' :
           !hasSecondPlace ? 'Publish a second place first.' :
           !firstCreation ? 'A published place is required before a version can be preserved.' : null
+      ),
+      trailMilestone(
+        'founder-source-observatory', 'Publish a source observatory', 1,
+        observatoryPublications.map(event => event.id), observatoryPublications,
+        !hasObservatory ? { type: 'workbench', recipe: 'observatory' } : null
+      ),
+      trailMilestone(
+        'founder-research-report', 'Record a version-bound research report', 1,
+        researchReports.map(match => match.event.id), researchReports.map(match => match.event),
+        hasObservatory && !hasResearchReport && latestObservatoryPublication
+          ? { type: 'creation', id: latestObservatoryPublication.creationId, version: latestObservatoryPublication.version } : null,
+        !hasObservatory ? 'Publish a source observatory first; an empty brief is not research evidence.' :
+          !latestObservatoryPublication ? 'A retained observatory publication is required before reporting.' : null
       ),
     ]);
   }

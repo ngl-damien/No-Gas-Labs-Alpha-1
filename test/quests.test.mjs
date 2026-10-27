@@ -316,3 +316,54 @@ test('Witness quest actions respect the map, published-work dependency, and role
   trail = getQuestTrail(world, witness);
   assert.deepEqual(trail[3].action, { type: 'creation', id: 'c-1', version: 1 });
 });
+
+
+test('Founder research objectives require a retained observatory publication and a report on that published version', () => {
+  const world = trailFixture();
+  world.creations = [
+    { ...publishedV1, id: 'custom-1', kind: 'custom', title: 'Portable request', versions: [] },
+    { ...publishedV1, id: 'observatory-1', kind: 'observatory', title: 'Source Observatory', versions: [] },
+  ];
+  world.events = [
+    { id: 'publish-custom', type: 'publish', actor: founder, at: at1, creationId: 'custom-1', version: 1 },
+    { id: 'publish-observatory', type: 'publish', actor: founder, at: at1, creationId: 'observatory-1', version: 1 },
+  ];
+
+  let trail = getQuestTrail(world, founder);
+  let observatory = trail.find(item => item.id === 'founder-source-observatory');
+  let researchReport = trail.find(item => item.id === 'founder-research-report');
+  assert.equal(observatory.complete, true);
+  assert.deepEqual(observatory.evidenceIds, ['publish-observatory']);
+  assert.equal(researchReport.complete, false);
+  assert.deepEqual(researchReport.action, { type: 'creation', id: 'observatory-1', version: 1 });
+
+  // A report about a different artifact is real activity, but not evidence for
+  // the source-observatory objective.
+  world.reports = [{
+    id: 'custom-report-record', creationId: 'custom-1', version: 1,
+    actor: founder, at: at2, text: 'This request needs a disconfirming source.'
+  }];
+  world.events.push({
+    id: 'custom-report-event', type: 'report', actor: founder, at: at2,
+    creationId: 'custom-1', version: 1
+  });
+  trail = getQuestTrail(world, founder);
+  researchReport = trail.find(item => item.id === 'founder-research-report');
+  assert.equal(researchReport.complete, false);
+  assert.deepEqual(researchReport.evidenceIds, []);
+
+  world.reports.push({
+    id: 'observatory-report-record', creationId: 'observatory-1', version: 1,
+    actor: founder, at: at2, text: 'The source conflicts with the original claim.'
+  });
+  world.events.push({
+    id: 'observatory-report-event', type: 'report', actor: founder, at: at2,
+    creationId: 'observatory-1', version: 1
+  });
+  trail = getQuestTrail(world, founder);
+  researchReport = trail.find(item => item.id === 'founder-research-report');
+  assert.equal(researchReport.complete, true);
+  assert.deepEqual(researchReport.evidenceIds, ['observatory-report-event']);
+  assert.equal(researchReport.evidence[0].creationId, 'observatory-1');
+  assert.equal(researchReport.evidence[0].version, 1);
+});
