@@ -48,6 +48,73 @@ async function assertPrivateDirectory(path, expectedIdentity) {
 }
 
 // A copied lock token does not prove that the path still names our lease.
+async function readBoundedRegularFile(path, limit, {
+  notRegularCode, tooLargeCode, changedCode, permissionsCode, ownerCode, label
+}) {
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) fail(notRegularCode, `${label} must be a regular, non-symlink file`);
+  if ((before.mode & 0o077) !== 0) fail(permissionsCode, `${label} must exclude group and other permissions (0600)`);
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+    fail(ownerCode, `${label} must be owned by the current process user`);
+  }
+  if (before.size > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+
+  let handle;
+  try {
+    try {
+      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    } catch (error) {
+      if (error.code === 'ELOOP') fail(notRegularCode, `${label} must not be a symlink`);
+      throw error;
+    }
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      fail(changedCode, `${label} changed while opening`);
+    }
+    if ((opened.mode & 0o077) !== 0) fail(permissionsCode, `${label} must exclude group and other permissions (0600)`);
+    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+      fail(ownerCode, `${label} must be owned by the current process user`);
+    }
+    if (opened.size > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+    if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) {
+      fail(changedCode, `${label} changed before reading`);
+    }
+
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= limit) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, limit + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+    }
+
+    let after;
+    try { after = await lstat(path); }
+    catch (error) {
+      if (error.code === 'ENOENT') fail(changedCode, `${label} disappeared during reading`);
+      throw error;
+    }
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() ||
+        after.dev !== opened.dev || after.ino !== opened.ino) {
+      fail(changedCode, `${label} path changed during reading`);
+    }
+    const unchanged = stat => stat.size === opened.size &&
+      stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
+    if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) {
+      fail(changedCode, `${label} changed during reading`);
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
 async function unlinkOwnedLock(path, identity) {
   if (!identity) return false;
   let current;
@@ -135,8 +202,13 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
     }
 
     let serialized;
-    try { serialized = await readFile(file, 'utf8'); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try {
+      serialized = (await readBoundedRegularFile(file, MAX_LEDGER_BYTES, {
+        notRegularCode: 'LEDGER_NOT_REGULAR_FILE', tooLargeCode: 'LEDGER_TOO_LARGE',
+        changedCode: 'LEDGER_CHANGED_DURING_READ', permissionsCode: 'LEDGER_FILE_PERMISSIONS_TOO_BROAD',
+        ownerCode: 'LEDGER_FILE_OWNER_MISMATCH', label: 'Ledger file'
+      })).toString('utf8');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (serialized !== undefined) {
       let saved;
       try { saved = JSON.parse(serialized); }
