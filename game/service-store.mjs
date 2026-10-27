@@ -1,13 +1,104 @@
-import { lstat, mkdir, readFile, open, rename, rm, unlink } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, mkdir, open, rename, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.mjs';
 
+const MAX_SERVICE_STORE_BYTES = 64 * 1024 * 1024;
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
+const storeReadError = (code, message) => Object.assign(new Error(message), { code });
 
 async function syncDirectory(directory) {
   const handle = await open(directory, 'r');
   try { await handle.sync(); } finally { await handle.close(); }
+}
+
+// Persisted state is untrusted input: bound allocation and verify the opened
+// regular file still matches the path inspected before and after the read.
+async function readBoundedStoreEnvelope(path) {
+  const label = 'Service store envelope';
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) {
+    throw storeReadError('SERVICE_STORE_NOT_REGULAR', `${label} must be a regular, non-symlink file`);
+  }
+  if ((before.mode & 0o077) !== 0) {
+    throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
+  }
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+    throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
+  }
+  if (before.size > MAX_SERVICE_STORE_BYTES) {
+    throw storeReadError('SERVICE_STORE_TOO_LARGE', `${label} exceeds its ${MAX_SERVICE_STORE_BYTES}-byte limit`);
+  }
+
+  let handle;
+  try {
+    try {
+      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+    } catch (error) {
+      if (error.code === 'ELOOP') {
+        throw storeReadError('SERVICE_STORE_NOT_REGULAR', `${label} must not be a symlink`);
+      }
+      if (error.code === 'ENOENT') {
+        throw storeReadError('SERVICE_STORE_CHANGED', `${label} disappeared while opening`);
+      }
+      throw error;
+    }
+
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw storeReadError('SERVICE_STORE_CHANGED', `${label} changed while opening`);
+    }
+    if ((opened.mode & 0o077) !== 0) {
+      throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
+    }
+    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+      throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
+    }
+    if (opened.size > MAX_SERVICE_STORE_BYTES) {
+      throw storeReadError('SERVICE_STORE_TOO_LARGE', `${label} exceeds its ${MAX_SERVICE_STORE_BYTES}-byte limit`);
+    }
+    if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) {
+      throw storeReadError('SERVICE_STORE_CHANGED', `${label} changed before reading`);
+    }
+
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= MAX_SERVICE_STORE_BYTES) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_SERVICE_STORE_BYTES + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > MAX_SERVICE_STORE_BYTES) {
+        throw storeReadError('SERVICE_STORE_TOO_LARGE', `${label} exceeds its ${MAX_SERVICE_STORE_BYTES}-byte limit`);
+      }
+    }
+
+    let after;
+    try { after = await lstat(path); }
+    catch (error) {
+      if (error.code === 'ENOENT') {
+        throw storeReadError('SERVICE_STORE_CHANGED', `${label} disappeared during reading`);
+      }
+      throw error;
+    }
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() ||
+        after.dev !== opened.dev || after.ino !== opened.ino) {
+      throw storeReadError('SERVICE_STORE_CHANGED', `${label} path changed during reading`);
+    }
+    const unchanged = stat => stat.size === opened.size &&
+      stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
+    if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) {
+      throw storeReadError('SERVICE_STORE_CHANGED', `${label} changed during reading`);
+    }
+    return Buffer.concat(chunks, total).toString('utf8');
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 function durabilityUncertain(cause) {
@@ -55,14 +146,20 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     await unlinkOwnedLock(lockPath, leaseIdentity);
   }
   let current;
-  try {
-    const raw = await readFile(path, 'utf8');
-    const envelope = JSON.parse(raw);
-    if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
-    current = await validate(envelope.payload);
-  } catch (error) {
+  let raw;
+  try { raw = await readBoundedStoreEnvelope(path); }
+  catch (error) {
     if (error.code !== 'ENOENT') { await close(); throw error; }
-    try { current = await validate(initial); await persist(current); } catch (initialError) { await close(); throw initialError; }
+  }
+  if (raw !== undefined) {
+    try {
+      const envelope = JSON.parse(raw);
+      if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
+      current = await validate(envelope.payload);
+    } catch (error) { await close(); throw error; }
+  } else {
+    try { current = await validate(initial); await persist(current); }
+    catch (error) { await close(); throw error; }
   }
   async function persist(payload) {
     const pending = join(dataDir, `.service-${randomUUID()}.tmp`);
@@ -89,7 +186,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     }
   }
   return {
-    get value() { return current; },
+    get value() { if (durabilityUncertainState) throw durabilityUncertain(); return current; },
     close,
     async commit(candidate) {
       if (released) throw new Error('Service writer lease has closed');
