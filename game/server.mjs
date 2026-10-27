@@ -276,7 +276,12 @@ async function readFounderKeyFile(path) {
       throw new Error('Founder key file changed while reading');
     }
 
-    const key = buffer.subarray(0, total).toString('utf8').trim();
+    const keyBytes = buffer.subarray(0, total);
+    const decodedKey = keyBytes.toString('utf8');
+    if (!Buffer.from(decodedKey, 'utf8').equals(keyBytes)) {
+      throw new Error('Founder key file is not valid UTF-8');
+    }
+    const key = decodedKey.trim();
     if (key.length < 32 || Buffer.byteLength(key) > 1024) {
       throw new Error('Invalid persisted Founder key');
     }

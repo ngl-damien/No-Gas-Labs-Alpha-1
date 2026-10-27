@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink, lstat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { constants as fsConstants } from 'node:fs';
+import { mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
+import { join, parse, resolve, sep } from 'node:path';
 import { canonicalStringify, artifactReceipt } from './kernel.mjs';
 
 const STORE_SCHEMA = 'ngl.decisions.store.v1';
@@ -164,6 +165,91 @@ async function atomicWrite(file, bytes, directory) {
   }
 }
 
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    if (stat.isSymbolicLink()) fail('INVALID_CONFIG', 'Decision storage paths may not contain symlink components');
+    if (!stat.isDirectory()) fail('INVALID_CONFIG', 'Every decision storage path component must be a directory');
+  }
+}
+
+async function assertPrivateDecisionDirectory(path, expectedIdentity) {
+  await assertNoSymlinkPathComponents(path);
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) fail('INVALID_CONFIG', 'The decision directory must be an actual directory, not a symbolic link');
+  if ((stat.mode & 0o077) !== 0) fail('INVALID_CONFIG', 'Decision directory permissions must exclude group and other access (0700)');
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) fail('INVALID_CONFIG', 'Decision directory must be owned by the current process user');
+  if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) fail('INVALID_CONFIG', 'Decision directory changed while acquiring its writer lease');
+  return { dev: stat.dev, ino: stat.ino };
+}
+
+async function readBoundedDecisionStore(path) {
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) fail('DECISIONS_TAMPERED', 'Persisted decisions must be a regular, non-symlink file');
+  if ((before.mode & 0o077) !== 0) fail('DECISIONS_TAMPERED', 'Persisted decision permissions must exclude group and other access (0600)');
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) fail('DECISIONS_TAMPERED', 'Persisted decision file must be owned by the current process user');
+  if (before.size > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions exceed the 64 MiB limit');
+
+  let handle;
+  try {
+    try {
+      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+    } catch (error) {
+      if (error.code === 'ELOOP' || error.code === 'ENOENT') fail('DECISIONS_TAMPERED', 'Persisted decision file changed while opening');
+      throw error;
+    }
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) fail('DECISIONS_TAMPERED', 'Persisted decision file changed while opening');
+    if ((opened.mode & 0o077) !== 0) fail('DECISIONS_TAMPERED', 'Persisted decision permissions must exclude group and other access (0600)');
+    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) fail('DECISIONS_TAMPERED', 'Persisted decision file must be owned by the current process user');
+    if (opened.size > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions exceed the 64 MiB limit');
+    if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) fail('DECISIONS_TAMPERED', 'Persisted decision file changed before reading');
+
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= MAX_STORE_BYTES) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_STORE_BYTES + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions exceed the 64 MiB limit');
+    }
+
+    let after;
+    try { after = await lstat(path); }
+    catch (error) { if (error.code === 'ENOENT') fail('DECISIONS_TAMPERED', 'Persisted decision file disappeared during reading'); throw error; }
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() || after.dev !== opened.dev || after.ino !== opened.ino) fail('DECISIONS_TAMPERED', 'Persisted decision path changed during reading');
+    const unchanged = stat => stat.size === opened.size && stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
+    if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) fail('DECISIONS_TAMPERED', 'Persisted decision file changed during reading');
+    const bytes = Buffer.concat(chunks, total);
+    const decoded = bytes.toString('utf8');
+    if (!Buffer.from(decoded, 'utf8').equals(bytes)) fail('DECISIONS_TAMPERED', 'Persisted decisions are not valid UTF-8');
+    return decoded;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+async function unlinkOwnedDecisionLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  return true;
+}
+
 /**
  * Durable local dispositions. The host MUST authenticate the actor argument;
  * this API does not authenticate an object copied from a network payload.
@@ -172,34 +258,38 @@ async function atomicWrite(file, bytes, directory) {
 export async function openDecisions({ directory, now = Date.now } = {}) {
   if (typeof directory !== 'string' || !directory || typeof now !== 'function') fail('INVALID_CONFIG', 'A private decision directory and server clock function are required');
   const location = resolve(directory);
+  // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
+  await assertNoSymlinkPathComponents(location);
   await mkdir(location, { recursive: true, mode: 0o700 });
-  if (!(await lstat(location)).isDirectory()) fail('INVALID_CONFIG', 'The decision directory must be an actual directory, not a symbolic link');
+  const directoryIdentity = await assertPrivateDecisionDirectory(location);
   const lockPath = join(location, '.decisions.lock');
   let lease;
   try { lease = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery'); throw error; }
   const ownership = randomUUID();
+  let leaseIdentity;
   let released = false;
   async function release() {
     if (released) return;
     released = true;
     await lease.close();
-    if (await readFile(lockPath, 'utf8').catch(() => null) === ownership) await unlink(lockPath);
+    await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
   }
   try {
+    const lockStat = await lease.stat();
+    leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
     await lease.writeFile(ownership); await lease.sync();
+    await assertPrivateDecisionDirectory(location, directoryIdentity);
     const file = join(location, 'decisions.json');
     let state = initial();
     let records = [];
     let raw;
-    try {
-      const stat = await lstat(file);
-      if (!stat.isFile() || stat.size > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions must be a bounded regular file');
-      raw = await readFile(file, 'utf8');
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { raw = await readBoundedDecisionStore(file); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (raw !== undefined) {
       try {
         const saved = JSON.parse(raw);
+        if (canonicalStringify(saved) !== raw) fail('DECISIONS_TAMPERED', 'Decision envelope is not canonical JSON');
         exact(saved, ['schema', 'payload', 'digest'], 'DECISIONS_TAMPERED');
         exact(saved.payload, ['records', 'projection'], 'DECISIONS_TAMPERED');
         if (saved.schema !== STORE_SCHEMA || !Array.isArray(saved.payload.records) || saved.digest !== digest(saved.payload)) fail('DECISIONS_TAMPERED', 'Decision envelope integrity check failed');

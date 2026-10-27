@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink, open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -235,6 +235,76 @@ test('mutating caller inputs or returned snapshots cannot alter queued or durabl
   state.decisions[0].status = 'APPROVED';
   assert.equal((await store.snapshot(founder)).decisions[0].status, 'PENDING');
   assert.equal((await store.snapshot(founder)).decisions[0].evaluation.bytes, proposal().evaluation.bytes);
+});
+
+test('rejects a group/world-accessible decision directory before acquiring a writer lock', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-directory-mode-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await chmod(directory, 0o755);
+  await assert.rejects(decisionsModule.openDecisions({ directory, now: () => instant }), error => error.code === 'INVALID_CONFIG');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
+test('rejects symlinked ancestors before recursive directory creation', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-decisions-symlink-ancestor-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const target = join(root, 'target');
+  const alias = join(root, 'alias');
+  await mkdir(target, { mode: 0o700 });
+  await symlink(target, alias);
+  const requested = join(alias, 'created', 'decisions');
+
+  await assert.rejects(
+    decisionsModule.openDecisions({ directory: requested, now: () => instant }),
+    error => error.code === 'INVALID_CONFIG'
+  );
+  await assert.rejects(lstat(join(target, 'created')), { code: 'ENOENT' });
+});
+
+test('rejects noncanonical persisted decision envelopes including duplicate schema keys', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const canonical = await readFile(file, 'utf8');
+  const ambiguous = canonical.replace('"schema":"ngl.decisions.store.v1"', '"schema":"wrong","schema":"ngl.decisions.store.v1"');
+  assert.notEqual(ambiguous, canonical, 'fixture must contain a duplicate schema key');
+  await writeFile(file, ambiguous);
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
+test('rejects symlinked persisted decision envelopes and releases the lock', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const target = join(directory, 'decisions-target.json');
+  await rename(file, target);
+  await symlink(target, file);
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
+test('rejects group/world-accessible decision envelopes and releases the lock', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  await chmod(file, 0o644);
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
+test('rejects oversized decision envelopes before allocating their contents', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, proposal());
+  await store.close();
+  const file = join(directory, 'decisions.json');
+  const handle = await open(file, 'r+');
+  try { await handle.truncate(64 * 1024 * 1024 + 1); } finally { await handle.close(); }
+  await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_TAMPERED');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
 });
 
 test('rejects tampered disk envelope even when an attacker recomputes the outer digest', async t => {

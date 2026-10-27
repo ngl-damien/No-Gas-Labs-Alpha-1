@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, open, rename, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -77,6 +77,25 @@ test('service-store rejects symlinked persisted envelopes and releases its lock'
   await assert.rejects(
     createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
     error => error.code === 'SERVICE_STORE_NOT_REGULAR'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+});
+
+test('service-store rejects noncanonical persisted envelopes, including duplicate JSON keys', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-noncanonical-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+
+  const file = join(dataDir, 'service.json');
+  const canonical = await readFile(file, 'utf8');
+  const ambiguous = canonical.replace('"schema":"ngl.service-store.v1"', '"schema":"wrong","schema":"ngl.service-store.v1"');
+  assert.notEqual(ambiguous, canonical, 'fixture must contain a duplicate schema key');
+  await writeFile(file, ambiguous);
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_STORE_NONCANONICAL'
   );
   await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
 });
