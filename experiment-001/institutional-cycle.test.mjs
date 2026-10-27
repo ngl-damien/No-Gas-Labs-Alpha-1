@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -432,4 +432,40 @@ test('two independent processes contend safely and preserve both INSTALL records
   assert.equal(snapshot.sequence, 2);
   assert.deepEqual(snapshot.records.map(record => record.decision.id).sort(), drafts.map(draft => draft.id).sort());
   assert.deepEqual(Object.keys(snapshot.capabilities).sort(), drafts.map(draft => draft.id).sort());
+}));
+
+
+test('ledger reader rejects a symlinked institution ledger before reading its target', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'store');
+  await mkdir(storeDir, { recursive: true, mode: 0o700 });
+  const target = join(dir, 'target.json');
+  await writeFile(target, '{}', { mode: 0o600 });
+  await symlink(target, join(storeDir, 'institution.json'));
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_NOT_REGULAR_FILE/);
+}));
+
+test('institution directory rejects a symlinked ancestor before creating the store path', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder);
+  const targetParent = join(dir, 'real-parent');
+  await mkdir(targetParent, { recursive: true, mode: 0o700 });
+  const linkedParent = join(dir, 'linked-parent');
+  await symlink(targetParent, linkedParent);
+  const storeDir = join(linkedParent, 'nested', 'store');
+
+  await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_PATH_SYMLINK/);
+  await assert.rejects(() => lstat(join(targetParent, 'nested')), { code: 'ENOENT' });
+}));
+
+test('ledger reader rejects oversized regular files without parsing them', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'store');
+  await mkdir(storeDir, { recursive: true, mode: 0o700 });
+  await writeFile(join(storeDir, 'institution.json'), Buffer.alloc(8 * 1024 * 1024 + 1), { mode: 0o600 });
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_TOO_LARGE/);
+}));
+
+test('institution ledger refuses group/world-readable existing directories', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'public-store');
+  await mkdir(storeDir, { mode: 0o700 });
+  await chmod(storeDir, 0o755);
+  await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD/);
 }));

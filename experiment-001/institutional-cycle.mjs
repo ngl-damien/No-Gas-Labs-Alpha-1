@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { mkdir, readFile, rename, open, lstat, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, parse, resolve, sep } from 'node:path';
 import { createHash, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
@@ -236,18 +236,46 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
 }
 
 async function readBoundedRegularFile(path) {
+  // Refuse symlinks even on platforms where O_NOFOLLOW is unavailable. Compare
+  // the path entry with the opened handle before and after reading to detect swaps.
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) throw new Error('LEDGER_NOT_REGULAR_FILE');
+  if (before.size > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
+
   const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
   const handle = await open(path, flags);
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error('LEDGER_NOT_REGULAR_FILE');
+    if (stat.dev !== before.dev || stat.ino !== before.ino) throw new Error('LEDGER_PATH_CHANGED');
     if (stat.size > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
-    const bytes = await handle.readFile();
-    if (bytes.length > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
-    return bytes;
+
+    // readFile() can allocate beyond the pre-read stat size if another writer
+    // grows the same inode during the read. Read at most limit + 1 bytes.
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= MAX_LEDGER_BYTES) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_LEDGER_BYTES + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
+    }
+
+    const after = await lstat(path);
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() ||
+        after.dev !== stat.dev || after.ino !== stat.ino) throw new Error('LEDGER_PATH_CHANGED');
+    if (afterHandle.size !== stat.size || total !== stat.size ||
+        afterHandle.mtimeMs !== stat.mtimeMs || afterHandle.ctimeMs !== stat.ctimeMs) {
+      throw new Error('LEDGER_CHANGED_DURING_READ');
+    }
+    return Buffer.concat(chunks, total);
   } finally { await handle.close(); }
 }
-
 async function readLedger(path, publicKey) {
   let bytes;
   try { bytes = await readBoundedRegularFile(path); }
@@ -276,6 +304,25 @@ async function syncDirectory(directory) {
   finally { await handle.close(); }
 }
 
+async function assertNoSymlinkPathComponents(path) {
+  // The final component check is insufficient: a symlinked grandparent can
+  // redirect both ledger and lock paths before their own lstat checks run.
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) throw new Error('INSTITUTION_PATH_SYMLINK');
+    if (!stat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
+  }
+}
+
 export async function openInstitution(directory, trustedPublicKeyPem) {
   if (typeof trustedPublicKeyPem !== 'string' || !trustedPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('TRUSTED_PUBLIC_KEY_REQUIRED');
   const expectedFingerprint = TRUSTED_FOUNDER_KEY_FINGERPRINT;
@@ -287,10 +334,14 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   const actualFingerprint = hashBytes(publicKey.export({ type: 'spki', format: 'der' }));
   if (actualFingerprint !== expectedFingerprint) throw new Error('FOUNDER_KEY_FINGERPRINT_MISMATCH');
 
+  directory = resolve(directory);
+  await assertNoSymlinkPathComponents(directory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await assertNoSymlinkPathComponents(directory);
   const dirStat = await lstat(directory);
   if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
-  if ((dirStat.mode & 0o022) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
+  // The institution ledger is private state: group/world read or execute is too broad too.
+  if ((dirStat.mode & 0o077) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
   const ledgerPath = join(directory, 'institution.json');
   const lockPath = join(directory, 'institution.json.lock');
   let state = await readLedger(ledgerPath, publicKey);
