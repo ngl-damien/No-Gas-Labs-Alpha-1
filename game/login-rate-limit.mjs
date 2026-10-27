@@ -22,7 +22,7 @@ export function createLoginRateLimiter(options = {}) {
     if (typeof address !== 'string' || address.length === 0 || address.length > 256) return 'unknown';
     // Node can represent the same IPv4 peer as either 192.0.2.1 or
     // ::ffff:192.0.2.1 on dual-stack listeners. Keep those forms in one bucket.
-    const mapped = /^::ffff:(\\d{1,3}(?:\\.\\d{1,3}){3})$/i.exec(address);
+    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address);
     return mapped && isIP(mapped[1]) === 4 ? mapped[1] : address;
   };
 
