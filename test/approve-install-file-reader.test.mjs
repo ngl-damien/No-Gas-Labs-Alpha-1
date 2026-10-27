@@ -283,3 +283,13 @@ test('approval refuses to sign when the configured trust fingerprint does not ma
   assert.match(result.stderr, /FOUNDER_KEY_FINGERPRINT_MISMATCH/);
   assert.equal(result.stdout, '');
 });
+
+
+test('bounded reader rejects unsafe configured limits before filesystem access', async t => {
+  const directory = await temp(t);
+  const missingPath = join(directory, 'does-not-exist.txt');
+  await assert.rejects(
+    readBoundedRegularFile(missingPath, 16 * 1024 * 1024 + 1, 'TEST'),
+    /BOUNDED_FILE_READER_INVALID_CONFIG/
+  );
+});
