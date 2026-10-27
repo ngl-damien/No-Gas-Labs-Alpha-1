@@ -257,10 +257,15 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
     let closing = false;
     let closed = false;
     let durabilityUncertain = false;
+    function assertReadable() {
+      if (durabilityUncertain) {
+        fail('COMMIT_DURABILITY_UNCERTAIN', 'A previous ledger replacement had uncertain durability; close and reopen the ledger to validate the committed envelope before reading again');
+      }
+    }
     return {
-      get state() { return clone(state); },
-      get events() { return clone(state.events); },
-      get head() { return records.at(-1)?.hash ?? genesis; },
+      get state() { assertReadable(); return clone(state); },
+      get events() { assertReadable(); return clone(state.events); },
+      get head() { assertReadable(); return records.at(-1)?.hash ?? genesis; },
       directory: location,
       getArtifact,
       append(input, { artifacts } = {}) {
