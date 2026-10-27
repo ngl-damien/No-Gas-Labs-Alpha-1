@@ -180,3 +180,20 @@ test("quest definitions keep frozen snapshots of acceptance and capabilities", (
   assert.throws(() => { defined.acceptance[0] = "mutated"; }, TypeError);
   assert.throws(() => { defined.capabilities.push("mutated"); }, TypeError);
 });
+
+test("an explicitly cross-quest revocation cannot revoke this quest's grant", () => {
+  const partial = execution("e0", ["mesh-protocol"]);
+  const later = execution("e-after-revocation", ["adversarial-tests"]);
+  const crossQuestRevocation = {
+    ...revokeGrant(),
+    quest_id: "another-quest",
+    subject: quest.quest_id
+  };
+  const result = projectQuest(quest, [auth, partial, crossQuestRevocation, later], trust);
+
+  assert.equal(result.status, QUEST_STATUS.COMPLETED);
+  assert.equal(result.authorized, true);
+  assert.equal(result.revoked, false);
+  assert.deepEqual(result.executions, ["e0", "e-after-revocation"]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, true]);
+});
