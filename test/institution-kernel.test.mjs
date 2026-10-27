@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir, rm, open } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rm, open, symlink, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -284,4 +284,116 @@ test('load verifies persisted artifact bytes and trusted roster', async t => {
   await assert.rejects(ledgerModule.openLedger({ directory, ...config, actors: config.actors.map(actor => ({ ...actor, name: actor.id })) }), error => error.code === 'CONFIG_MISMATCH');
   await writeFile(join(directory, 'blobs', receipt.digest), 'corrupt');
   await assert.rejects(ledgerModule.openLedger({ directory, ...config }), error => error.code === 'ARTIFACT_MISMATCH');
+});
+
+
+test('institution ledger rejects a symlinked ancestor before creating the redirected store path', async t => {
+  const root = await temp(t);
+  const realParent = join(root, 'real-parent');
+  await mkdir(realParent, { mode: 0o700 });
+  const linkedParent = join(root, 'linked-parent');
+  await symlink(realParent, linkedParent, 'dir');
+  const directory = join(linkedParent, 'nested', 'store');
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_PATH_SYMLINK'
+  );
+  await assert.rejects(lstat(join(realParent, 'nested')), { code: 'ENOENT' });
+});
+
+test('institution ledger rejects exposed directories before acquiring a writer lock', async t => {
+  const directory = await temp(t);
+  await chmod(directory, 0o755);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_DIRECTORY_PERMISSIONS_TOO_BROAD'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+
+test('ledger rejects symlinked persisted ledger files before parsing their targets', async t => {
+  const directory = await temp(t);
+  const target = join(directory, 'ledger-target.json');
+  await writeFile(target, '{}', { mode: 0o600 });
+  await symlink(target, join(directory, 'ledger.json'));
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_NOT_REGULAR_FILE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+test('ledger rejects oversized persisted history before reading or parsing it', async t => {
+  const directory = await temp(t);
+  const file = join(directory, 'ledger.json');
+  const handle = await open(file, 'wx', 0o600);
+  try { await handle.truncate(64 * 1024 * 1024 + 1); }
+  finally { await handle.close(); }
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_TOO_LARGE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+
+test('ledger refuses artifact receipts beyond the persistence bound before state changes', async t => {
+  const directory = await temp(t);
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  const oversized = {
+    algorithm: 'sha256',
+    digest: 'a'.repeat(64),
+    size: 16 * 1024 * 1024 + 1
+  };
+  await assert.rejects(
+    ledger.append({ ...fixture().events[2], outputs: [oversized] }),
+    error => error.code === 'ARTIFACT_TOO_LARGE'
+  );
+  assert.equal(ledger.state.revision, 0);
+  await ledger.close();
+});
+
+test('ledger replay rejects a symlinked content-addressed artifact before reading its target', async t => {
+  const directory = await temp(t);
+  const { events, artifacts, receipt } = fixture();
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  for (const event of events.slice(0, 3)) await ledger.append(event, { artifacts });
+  await ledger.close();
+
+  const blob = join(directory, 'blobs', receipt.digest);
+  const target = join(directory, 'artifact-target.bin');
+  await writeFile(target, bytes, { mode: 0o600 });
+  await unlink(blob);
+  await symlink(target, blob);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'ARTIFACT_NOT_REGULAR_FILE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+test('ledger replay rejects an oversized content-addressed artifact before reading it', async t => {
+  const directory = await temp(t);
+  const { events, artifacts, receipt } = fixture();
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  for (const event of events.slice(0, 3)) await ledger.append(event, { artifacts });
+  await ledger.close();
+
+  const blob = join(directory, 'blobs', receipt.digest);
+  await unlink(blob);
+  const handle = await open(blob, 'wx', 0o600);
+  try { await handle.truncate(16 * 1024 * 1024 + 1); }
+  finally { await handle.close(); }
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'ARTIFACT_TOO_LARGE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
 });

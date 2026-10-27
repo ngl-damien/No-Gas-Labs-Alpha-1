@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
+import { resolve, join, parse, sep } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
 const schema = 'ngl.institution.ledger.v1';
 const digestPattern = /^[a-f0-9]{64}$/;
+const MAX_LEDGER_BYTES = 64 * 1024 * 1024;
+const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024;
 const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
@@ -14,7 +17,104 @@ async function syncDirectory(directory) {
   try { await parent.sync(); } finally { await parent.close(); }
 }
 
+// Reject redirected path components before creating a private store. This is a
+// best-effort path walk, not an atomic openat-style capability boundary.
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    if (stat.isSymbolicLink()) fail('LEDGER_PATH_SYMLINK', 'Ledger paths may not contain symlink components');
+    if (!stat.isDirectory()) fail('LEDGER_DIRECTORY_UNSAFE', 'Every ledger path component must be a directory');
+  }
+}
+
+async function assertPrivateDirectory(path, expectedIdentity) {
+  await assertNoSymlinkPathComponents(path);
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) fail('LEDGER_DIRECTORY_UNSAFE', 'Ledger storage must be a regular directory');
+  if ((stat.mode & 0o077) !== 0) fail('LEDGER_DIRECTORY_PERMISSIONS_TOO_BROAD', 'Ledger directories must exclude group and other access (0700)');
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+    fail('LEDGER_DIRECTORY_OWNER_MISMATCH', 'Ledger directory must be owned by the current process user');
+  }
+  if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) {
+    fail('LEDGER_DIRECTORY_CHANGED', 'Ledger directory changed while acquiring the writer lease');
+  }
+  return { dev: stat.dev, ino: stat.ino };
+}
+
 // A copied lock token does not prove that the path still names our lease.
+async function readBoundedRegularFile(path, limit, {
+  notRegularCode, tooLargeCode, changedCode, permissionsCode, ownerCode, label
+}) {
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) fail(notRegularCode, `${label} must be a regular, non-symlink file`);
+  if ((before.mode & 0o077) !== 0) fail(permissionsCode, `${label} must exclude group and other permissions (0600)`);
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+    fail(ownerCode, `${label} must be owned by the current process user`);
+  }
+  if (before.size > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+
+  let handle;
+  try {
+    try {
+      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+    } catch (error) {
+      if (error.code === 'ELOOP') fail(notRegularCode, `${label} must not be a symlink`);
+      throw error;
+    }
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      fail(changedCode, `${label} changed while opening`);
+    }
+    if ((opened.mode & 0o077) !== 0) fail(permissionsCode, `${label} must exclude group and other permissions (0600)`);
+    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+      fail(ownerCode, `${label} must be owned by the current process user`);
+    }
+    if (opened.size > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+    if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) {
+      fail(changedCode, `${label} changed before reading`);
+    }
+
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= limit) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, limit + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > limit) fail(tooLargeCode, `${label} exceeds its ${limit}-byte limit`);
+    }
+
+    let after;
+    try { after = await lstat(path); }
+    catch (error) {
+      if (error.code === 'ENOENT') fail(changedCode, `${label} disappeared during reading`);
+      throw error;
+    }
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() ||
+        after.dev !== opened.dev || after.ino !== opened.ino) {
+      fail(changedCode, `${label} path changed during reading`);
+    }
+    const unchanged = stat => stat.size === opened.size &&
+      stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
+    if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) {
+      fail(changedCode, `${label} changed during reading`);
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
 async function unlinkOwnedLock(path, identity) {
   if (!identity) return false;
   let current;
@@ -58,7 +158,9 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoun
 export async function openLedger({ directory, actors, founderId, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
   if (typeof directory !== 'string' || !directory) fail('INVALID_CONFIG', 'A private ledger directory is required');
   const location = resolve(directory);
+  await assertNoSymlinkPathComponents(location);
   await mkdir(location, { recursive: true, mode: 0o700 });
+  const directoryIdentity = await assertPrivateDirectory(location);
   const lockPath = join(location, '.writer.lock');
   let lock;
   try { lock = await open(lockPath, 'wx', 0o600); }
@@ -69,19 +171,37 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
     lockIdentity = { dev: stat.dev, ino: stat.ino };
     await lock.writeFile(JSON.stringify({ pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
+    await assertPrivateDirectory(location, directoryIdentity);
     let state = createKernel({ actors, founderId });
     const config = { actors: state.actors, founderId: state.founderId };
     const genesis = hash({ schema, config });
     const file = join(location, 'ledger.json');
     const blobDirectory = join(location, 'blobs');
+    await assertNoSymlinkPathComponents(blobDirectory);
     await mkdir(blobDirectory, { recursive: true, mode: 0o700 });
+    await assertPrivateDirectory(blobDirectory);
     let records = [];
 
-    async function getArtifact(digest) {
+    async function getArtifact(digest, expectedSize) {
       if (typeof digest !== 'string' || !digestPattern.test(digest)) fail('INVALID_ARTIFACT', 'Artifact lookup requires a SHA-256 digest');
+      if (expectedSize !== undefined &&
+          (!Number.isSafeInteger(expectedSize) || expectedSize < 0 || expectedSize > MAX_ARTIFACT_BYTES)) {
+        fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
+      }
       let bytes;
-      try { bytes = await readFile(join(blobDirectory, digest)); }
-      catch (error) { if (error.code === 'ENOENT') fail('ARTIFACT_MISSING', `Persisted artifact is missing: ${digest}`); throw error; }
+      try {
+        bytes = await readBoundedRegularFile(join(blobDirectory, digest), MAX_ARTIFACT_BYTES, {
+          notRegularCode: 'ARTIFACT_NOT_REGULAR_FILE', tooLargeCode: 'ARTIFACT_TOO_LARGE',
+          changedCode: 'ARTIFACT_CHANGED_DURING_READ', permissionsCode: 'ARTIFACT_FILE_PERMISSIONS_TOO_BROAD',
+          ownerCode: 'ARTIFACT_FILE_OWNER_MISMATCH', label: 'Persisted artifact'
+        });
+      } catch (error) {
+        if (error.code === 'ENOENT') fail('ARTIFACT_MISSING', `Persisted artifact is missing: ${digest}`);
+        throw error;
+      }
+      if (expectedSize !== undefined && bytes.byteLength !== expectedSize) {
+        fail('ARTIFACT_MISMATCH', `Persisted artifact size differs from receipt: ${digest}`);
+      }
       if (artifactReceipt(bytes).digest !== digest) fail('ARTIFACT_MISMATCH', `Persisted artifact digest mismatch: ${digest}`);
       return bytes;
     }
@@ -89,16 +209,31 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
       const result = new Map();
       if (!['execute', 'observe'].includes(event.type) || !Array.isArray(event.outputs)) return result;
       for (const receipt of event.outputs) {
-        if (!receipt || typeof receipt.digest !== 'string' || !digestPattern.test(receipt.digest)) fail('INVALID_EVENT', 'Invalid output digest');
+        if (!receipt || typeof receipt.digest !== 'string' || !digestPattern.test(receipt.digest) ||
+            !Number.isSafeInteger(receipt.size) || receipt.size < 0) fail('INVALID_EVENT', 'Invalid output digest or size');
+        if (receipt.size > MAX_ARTIFACT_BYTES) {
+          fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
+        }
         const bytes = supplied instanceof Map ? supplied.get(receipt.digest) : supplied && Object.hasOwn(supplied, receipt.digest) ? supplied[receipt.digest] : undefined;
-        result.set(receipt.digest, bytes === undefined ? await getArtifact(receipt.digest) : bytes);
+        if (bytes === undefined) {
+          result.set(receipt.digest, await getArtifact(receipt.digest, receipt.size));
+        } else {
+          if (bytes.byteLength > MAX_ARTIFACT_BYTES) fail('ARTIFACT_TOO_LARGE', 'Supplied artifact exceeds the persistence limit');
+          if (bytes.byteLength !== receipt.size) fail('ARTIFACT_MISMATCH', 'Supplied artifact size differs from its receipt');
+          result.set(receipt.digest, bytes);
+        }
       }
       return result;
     }
 
     let serialized;
-    try { serialized = await readFile(file, 'utf8'); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try {
+      serialized = (await readBoundedRegularFile(file, MAX_LEDGER_BYTES, {
+        notRegularCode: 'LEDGER_NOT_REGULAR_FILE', tooLargeCode: 'LEDGER_TOO_LARGE',
+        changedCode: 'LEDGER_CHANGED_DURING_READ', permissionsCode: 'LEDGER_FILE_PERMISSIONS_TOO_BROAD',
+        ownerCode: 'LEDGER_FILE_OWNER_MISMATCH', label: 'Ledger file'
+      })).toString('utf8');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (serialized !== undefined) {
       let saved;
       try { saved = JSON.parse(serialized); }
@@ -138,6 +273,8 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
           supplied = new Map();
           for (const [digest, bytes] of artifacts instanceof Map ? artifacts : Object.entries(artifacts ?? {})) {
             if (typeof bytes !== 'string' && !(bytes instanceof Uint8Array)) fail('INVALID_ARTIFACT', 'Artifact must contain actual bytes');
+            const byteLength = typeof bytes === 'string' ? Buffer.byteLength(bytes, 'utf8') : bytes.byteLength;
+            if (byteLength > MAX_ARTIFACT_BYTES) fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
             supplied.set(digest, typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : Buffer.from(bytes));
           }
         } catch (error) { return Promise.reject(error); }
