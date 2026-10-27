@@ -255,7 +255,10 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   let durabilityUncertain = false;
 
   return {
-    snapshot: () => structuredClone(state),
+    snapshot: () => {
+      if (durabilityUncertain) throw new Error('COMMIT_DURABILITY_UNCERTAIN');
+      return structuredClone(state);
+    },
     async commit(decision, signature = null) {
       if (durabilityUncertain) throw new Error('COMMIT_DURABILITY_UNCERTAIN');
       let lockHandle;
