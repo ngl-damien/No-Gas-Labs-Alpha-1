@@ -163,6 +163,58 @@ test('stale lock fails closed and is not silently deleted as crash recovery', ()
 }));
 
 
+test('directory-sync failure latches the live store and permits recovery only after validated reopen', () => temp(async dir => {
+  const moduleUrl = new URL('./institutional-cycle.mjs', import.meta.url).href;
+  const storePath = join(dir, 'uncertain-store');
+  const script = [
+    "import { open } from 'node:fs/promises';",
+    "import { createHash, generateKeyPairSync, sign } from 'node:crypto';",
+    "const founder = generateKeyPairSync('ed25519');",
+    "const executor = generateKeyPairSync('ed25519');",
+    "const publicPem = founder.publicKey.export({ type: 'spki', format: 'pem' }).toString();",
+    "process.env.NGL_FOUNDER_KEY_FINGERPRINT = createHash('sha256').update(founder.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');",
+    "const probe = await open(process.cwd(), 'r');",
+    "const prototype = Object.getPrototypeOf(probe);",
+    "await probe.close();",
+    "const originalSync = prototype.sync;",
+    "let injected = false;",
+    "prototype.sync = async function (...args) { const stat = await this.stat(); if (!injected && stat.isDirectory()) { injected = true; const error = new Error('INJECTED_DIRECTORY_SYNC_FAILURE'); error.code = 'EIO'; throw error; } return originalSync.apply(this, args); };",
+    "const lib = await import(" + JSON.stringify(moduleUrl) + " + '?fault=' + Date.now());",
+    "const store = await lib.openInstitution(" + JSON.stringify(storePath) + ", publicPem);",
+    "const proposal = lib.makeInstallationProposal({ executorPublicKeyPem: executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(), nonce: 'install-fsync-fail-0001', issuedAt: Date.now(), expiresAt: Date.now() + 60000, maxUses: 2 });",
+    "const signature = sign(null, Buffer.from(lib.approvalPayload(proposal)), founder.privateKey).toString('base64url');",
+    "let firstError = null; try { await store.commit(proposal, signature); } catch (error) { firstError = error.message; }",
+    "let snapshotError = null; try { store.snapshot(); } catch (error) { snapshotError = error.message; }",
+    "const reuse = { kind: 'REUSE', id: proposal.id, nonce: 'reuse-after-fsync-fail-0001', input: 3, output: 9 };",
+    "const receipt = sign(null, Buffer.from(lib.executionReceiptPayload(reuse)), executor.privateKey).toString('base64url');",
+    "let secondError = null; try { await store.commit(reuse, receipt); } catch (error) { secondError = error.message; }",
+    "const reopened = await lib.openInstitution(" + JSON.stringify(storePath) + ", publicPem);",
+    "const reopenedSequence = reopened.snapshot().sequence;",
+    "const recovery = { kind: 'REUSE', id: proposal.id, nonce: 'reuse-after-reopen-0001', input: 4, output: 16 };",
+    "const recoveryReceipt = sign(null, Buffer.from(lib.executionReceiptPayload(recovery)), executor.privateKey).toString('base64url');",
+    "let recoveryError = null; try { await reopened.commit(recovery, recoveryReceipt); } catch (error) { recoveryError = error.message; }",
+    "const recoveredSequence = reopened.snapshot().sequence;",
+    "console.log(JSON.stringify({ firstError, snapshotError, secondError, reopenedSequence, recoveryError, recoveredSequence, injected }));",
+    "if (firstError !== 'COMMIT_DURABILITY_UNCERTAIN' || snapshotError !== 'COMMIT_DURABILITY_UNCERTAIN' || secondError !== 'COMMIT_DURABILITY_UNCERTAIN' || reopenedSequence !== 1 || recoveryError !== null || recoveredSequence !== 2 || !injected) process.exitCode = 1;"
+  ].join('\n');
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8',
+    timeout: 20_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: '' }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const outcome = JSON.parse(child.stdout.trim().split(/\r?\n/).at(-1));
+  assert.deepEqual(outcome, {
+    firstError: 'COMMIT_DURABILITY_UNCERTAIN',
+    snapshotError: 'COMMIT_DURABILITY_UNCERTAIN',
+    secondError: 'COMMIT_DURABILITY_UNCERTAIN',
+    reopenedSequence: 1,
+    recoveryError: null,
+    recoveredSequence: 2,
+    injected: true
+  });
+}));
+
 test('versioned implementation identities are stable semantic IDs, not source-text hashes', () => temp(async dir => {
   const founder = pair(), lib = await loadPinned(founder);
   assert.equal(lib.implementationHash('square'), createHash('sha256').update('ngl-experiment-001:strategy:square:v1').digest('hex'));
