@@ -123,3 +123,60 @@ test("a later revocation does not erase an earlier verified completion", () => {
   assert.deepEqual(result.executions, ["e-before-revocation"]);
   assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, true]);
 });
+
+
+test("explicit authorization for another quest cannot be pulled into this quest by subject", () => {
+  const crossQuestAuth = {
+    ...auth,
+    quest_id: "another-quest",
+    subject: quest.quest_id
+  };
+  const result = projectQuest(quest, [crossQuestAuth], trust);
+  assert.equal(result.status, QUEST_STATUS.OPEN);
+  assert.equal(result.authorized, false);
+});
+
+test("execution explicitly scoped to another quest cannot satisfy this quest via subject", () => {
+  const crossQuestExecution = {
+    ...execution("cross-quest-execution", quest.acceptance),
+    quest_id: "another-quest"
+  };
+  const result = projectQuest(quest, [auth, crossQuestExecution], {
+    ...trust,
+    verifyObservation: event => event.event_id === "cross-quest-execution"
+  });
+  assert.equal(result.status, QUEST_STATUS.AUTHORIZED);
+  assert.deepEqual(result.executions, []);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [false, false]);
+});
+
+
+test("quest definitions reject sparse acceptance and capability lists", () => {
+  const sparse = [];
+  sparse.length = 1;
+  assert.throws(() => defineQuest({
+    quest_id: "sparse-acceptance", title: "Sparse acceptance",
+    objective: "Reject missing conditions", acceptance: sparse
+  }), /acceptance conditions required/);
+  assert.throws(() => defineQuest({
+    quest_id: "sparse-capabilities", title: "Sparse capabilities",
+    objective: "Reject missing capabilities", acceptance: ["one"], capabilities: sparse
+  }), /capabilities must be a dense string array/);
+});
+
+test("quest definitions keep frozen snapshots of acceptance and capabilities", () => {
+  const acceptance = ["first-condition"];
+  const capabilities = ["repository.write"];
+  const defined = defineQuest({
+    quest_id: "immutable-quest", title: "Immutable quest",
+    objective: "Keep the accepted contract stable", acceptance, capabilities
+  });
+  acceptance[0] = "caller-mutated-condition";
+  capabilities.push("caller-added-capability");
+  assert.deepEqual(defined.acceptance, ["first-condition"]);
+  assert.deepEqual(defined.capabilities, ["repository.write"]);
+  assert.equal(Object.isFrozen(defined.acceptance), true);
+  assert.equal(Object.isFrozen(defined.capabilities), true);
+  assert.throws(() => { defined.acceptance[0] = "mutated"; }, TypeError);
+  assert.throws(() => { defined.capabilities.push("mutated"); }, TypeError);
+});

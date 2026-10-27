@@ -6,17 +6,34 @@ export const QUEST_STATUS = Object.freeze({
   COMPLETED: "COMPLETED", FAILED: "FAILED", REVOKED: "REVOKED"
 });
 
+function frozenStringList(values, label, { allowEmptyList = true } = {}) {
+  if (!Array.isArray(values) || Object.getPrototypeOf(values) !== Array.prototype ||
+      Object.keys(values).length !== values.length ||
+      Reflect.ownKeys(values).length !== values.length + 1) {
+    throw new Error(label);
+  }
+  const copy = [];
+  for (let index = 0; index < values.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(values, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !("value" in descriptor) ||
+        typeof descriptor.value !== "string" || !descriptor.value) {
+      throw new Error(label);
+    }
+    copy.push(descriptor.value);
+  }
+  if (!allowEmptyList && copy.length === 0) throw new Error(label);
+  return Object.freeze(copy);
+}
+
 export function defineQuest({ quest_id, title, objective, acceptance, capabilities = [] }) {
   if (![quest_id, title, objective].every(value => typeof value === "string" && value.length)) {
     throw new Error("quest identity required");
   }
-  if (!Array.isArray(acceptance) || acceptance.length === 0 ||
-      acceptance.some(value => typeof value !== "string" || !value)) {
-    throw new Error("acceptance conditions required");
-  }
+  const frozenAcceptance = frozenStringList(acceptance, "acceptance conditions required", { allowEmptyList: false });
+  const frozenCapabilities = frozenStringList(capabilities, "capabilities must be a dense string array");
   return Object.freeze({
     schema: "ngl.quest.v1", quest_id, title, objective,
-    acceptance: [...acceptance], capabilities: [...capabilities]
+    acceptance: frozenAcceptance, capabilities: frozenCapabilities
   });
 }
 
@@ -43,7 +60,11 @@ export function projectQuest(quest, events = [], options = {}) {
       continue;
     }
 
-    if (event.quest_id !== quest.quest_id && event.subject !== quest.quest_id) continue;
+    // An explicit quest_id is authoritative. The subject fallback is for
+    // older execution records that do not carry quest_id; it must never pull an
+    // event explicitly scoped to another quest into this projection.
+    const targetQuest = event.quest_id === undefined ? event.subject : event.quest_id;
+    if (targetQuest !== quest.quest_id) continue;
     relevant.push(event);
 
     const grantId = typeof event.grant_id === "string" && event.grant_id.length > 0
