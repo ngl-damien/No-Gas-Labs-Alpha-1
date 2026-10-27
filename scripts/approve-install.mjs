@@ -141,6 +141,12 @@ async function main() {
   const digest = proposalDigest(decision);
   if (digest !== confirmedDigest) throw new Error('PROPOSAL_CONFIRMATION_MISMATCH');
 
+  // Validate the independently provisioned trust pin before opening the secret key file.
+  const expectedFingerprint = process.env.NGL_FOUNDER_KEY_FINGERPRINT;
+  if (typeof expectedFingerprint !== 'string' || !FINGERPRINT.test(expectedFingerprint)) {
+    throw new Error('FOUNDER_KEY_FINGERPRINT_REQUIRED');
+  }
+
   const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', { requirePrivatePermissions: true, requireCurrentUserOwnership: true });
   let privateKey;
   try { privateKey = createPrivateKey(keyText); }
@@ -150,10 +156,6 @@ async function main() {
   const publicKey = createPublicKey(privateKey);
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
   const fingerprint = publicKeyFingerprint(publicKeyPem);
-  const expectedFingerprint = process.env.NGL_FOUNDER_KEY_FINGERPRINT;
-  if (typeof expectedFingerprint !== 'string' || !FINGERPRINT.test(expectedFingerprint)) {
-    throw new Error('FOUNDER_KEY_FINGERPRINT_REQUIRED');
-  }
   if (fingerprint !== expectedFingerprint) throw new Error('FOUNDER_KEY_FINGERPRINT_MISMATCH');
 
   const signature = sign(null, Buffer.from(approvalPayload(decision), 'utf8'), privateKey).toString('base64url');
