@@ -253,16 +253,16 @@ function worldEntry(event, index, world, notes) {
   return entry;
 }
 
-function kernelEntry(event, index, kernel, world, derivedWork = null) {
+function kernelEntry(event, index, world, derivedWork = null) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   // The live public institution endpoint deliberately omits its internal work
   // map. Reconstruct only display metadata from retained claim/authorization
   // events so later revocations can still name their recorded scope.
-  const work = typeof event?.workId === "string"
-    ? kernel?.works?.[event.workId] || derivedWork
-    : null;
-  const subject = event?.subject || work?.subject || null;
+  const work = derivedWork;
+  // A revoke event is not allowed to self-declare its target. Its scope comes
+  // only from the earlier retained claim for the same work ID.
+  const subject = type === "revoke" ? work?.subject || null : event?.subject || work?.subject || null;
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
   const target = findVersion(world, creationId, version);
@@ -281,7 +281,9 @@ function kernelEntry(event, index, kernel, world, derivedWork = null) {
     : "";
   const detail = type === "revoke"
     ? `Grant ID: ${grantId || "not recorded"} · Work scope: ${workScope || "not resolvable"}. This retained event does not erase earlier history.`
-    : "";
+    : type === "authorize"
+      ? `Grant ID: ${text(event?.grantId) || "not recorded"}.`
+      : "";
   let warning = !text(event?.id)
     ? "The retained event has no usable source ID; this display key is local to the view."
     : !timestamp(event?.at)
@@ -361,23 +363,21 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   // grant ID. Later entries can therefore expose a revocation's recorded scope
   // without trusting event labels as authority or manufacturing state.
   const derivedWorks = new Map();
-  for (const { event } of kernelSnapshots) {
-    if (typeof event.workId !== "string" || !event.workId) continue;
-    let work = derivedWorks.get(event.workId);
-    if (!work) {
-      work = {};
-      derivedWorks.set(event.workId, work);
-    }
+  for (const { event, index } of kernelSnapshots) {
+    const workId = typeof event.workId === "string" && event.workId ? event.workId : "";
+    const prior = workId ? derivedWorks.get(workId) : null;
+    // Snapshot context before applying this event. A later claim must never be
+    // used to invent the scope of an earlier revocation.
+    const priorContext = prior && Object.keys(prior).length ? { ...prior } : null;
+    entries.push(kernelEntry(event, index, world, priorContext));
+
+    if (!workId) continue;
+    const work = prior || {};
+    if (!prior) derivedWorks.set(workId, work);
     if (event.type === "claim" && !work.subject &&
         event.subject && typeof event.subject === "object" && !Array.isArray(event.subject)) {
       work.subject = event.subject;
     }
-    if (event.type === "authorize" && !work.grantId && text(event.grantId)) {
-      work.grantId = event.grantId;
-    }
-  }
-  for (const { event, index } of kernelSnapshots) {
-    entries.push(kernelEntry(event, index, kernel, world, derivedWorks.get(event.workId)));
   }
 
   entries.sort((a, b) => {
