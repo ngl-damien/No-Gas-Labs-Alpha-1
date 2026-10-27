@@ -45,6 +45,32 @@ test("host-verified authorization changes proposal state without fabricating com
   assert.equal(room.exits.forge, "LOCKED");
 });
 
+test("authorization for another quest cannot authorize this proposal", () => {
+  const mismatchedAuthorization = {
+    ...authorizeQuest({ quest, grant_id: "g2" }),
+    quest_id: "q2",
+    proposal_id: "p1"
+  };
+  const verifyOtherQuestAuthorization = event =>
+    event.type === "QUEST_AUTHORIZED" &&
+    event.quest_id === "q2" &&
+    event.grant_id === "g2" &&
+    event.actor === "founder";
+
+  const room = projectGuildHall({
+    institution: empty,
+    quest_id: "q1",
+    events: [proposal, mismatchedAuthorization],
+    agents: [],
+    verifyAuthorization: verifyOtherQuestAuthorization
+  });
+
+  assert.equal(room.proposals[0].status, "PROPOSED");
+  assert.equal(room.quest.status, "OPEN");
+  assert.equal(room.exits.decision_chamber, "AVAILABLE");
+  assert.equal(room.exits.forge, "LOCKED");
+});
+
 test("self-asserted authorization labels leave proposal and quest unapproved", () => {
   const auth = { ...authorizeQuest({ quest, grant_id: "g1" }), proposal_id: "p1" };
   const events = [proposal, auth];
