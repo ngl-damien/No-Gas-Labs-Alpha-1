@@ -258,6 +258,8 @@ async function unlinkOwnedDecisionLock(path, identity) {
 export async function openDecisions({ directory, now = Date.now } = {}) {
   if (typeof directory !== 'string' || !directory || typeof now !== 'function') fail('INVALID_CONFIG', 'A private decision directory and server clock function are required');
   const location = resolve(directory);
+  // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
+  await assertNoSymlinkPathComponents(location);
   await mkdir(location, { recursive: true, mode: 0o700 });
   const directoryIdentity = await assertPrivateDecisionDirectory(location);
   const lockPath = join(location, '.decisions.lock');
