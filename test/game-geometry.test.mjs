@@ -78,6 +78,10 @@ test('institution activity labels are deterministic projections of retained even
  assert.equal(institutionActivityCount('publication_house',world),1);
  assert.equal(institutionActivityCount('unknown',world),0);
  assert.equal(institutionActivityCount('forge',{events:[]}),0);
+ const donorHistory={history:[{event_type:'PROPOSAL'},{event_type:'MOONSHOT'},{admission:'REJECTED'},{outcome:'FAILED'}]};
+ assert.equal(institutionActivityCount('guild_hall',donorHistory),1,'recovered proposal events remain visible');
+ assert.equal(institutionActivityCount('moonshot_field',donorHistory),1,'recovered moonshot events remain visible');
+ assert.equal(institutionActivityCount('evidence_archive',donorHistory),2,'rejections and failures remain visible in the archive');
 });
 test('institutional destinations dispatch their own location identity',t=>{
  const {view,interactions}=makeView(t);
