@@ -228,8 +228,9 @@ test('a ledger directory-sync failure after rename blocks later appends until va
   const first = fixture().events[0];
 
   await assert.rejects(ledger.append(first), error => error.code === 'COMMIT_DURABILITY_UNCERTAIN');
-  assert.equal(ledger.state.revision, 0);
-  assert.equal(ledger.events.length, 0);
+  assert.throws(() => ledger.state, error => error.code === 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.throws(() => ledger.events, error => error.code === 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.throws(() => ledger.head, error => error.code === 'COMMIT_DURABILITY_UNCERTAIN');
   await assert.rejects(
     ledger.append({ ...first, id: 'claim:two', workId: 'work:two' }),
     error => error.code === 'COMMIT_DURABILITY_UNCERTAIN'
