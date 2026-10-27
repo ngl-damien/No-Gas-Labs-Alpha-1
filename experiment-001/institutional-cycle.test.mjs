@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -461,4 +461,11 @@ test('ledger reader rejects oversized regular files without parsing them', () =>
   await mkdir(storeDir, { recursive: true, mode: 0o700 });
   await writeFile(join(storeDir, 'institution.json'), Buffer.alloc(8 * 1024 * 1024 + 1), { mode: 0o600 });
   await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_TOO_LARGE/);
+}));
+
+test('institution ledger refuses group/world-readable existing directories', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'public-store');
+  await mkdir(storeDir, { mode: 0o700 });
+  await chmod(storeDir, 0o755);
+  await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD/);
 }));
