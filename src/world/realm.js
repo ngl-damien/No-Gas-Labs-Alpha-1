@@ -23,7 +23,9 @@ export const routes = Object.freeze({
 });
 
 export function canTravel(from, to) {
-  return Boolean(locations[from] && locations[to] && routes[from]?.includes(to));
+  return typeof from === "string" && typeof to === "string" &&
+    Object.hasOwn(locations, from) && Object.hasOwn(locations, to) &&
+    Object.hasOwn(routes, from) && routes[from].includes(to);
 }
 
 function isPlainRecord(value) {
