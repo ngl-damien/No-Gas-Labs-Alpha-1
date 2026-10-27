@@ -127,7 +127,8 @@ test('Evidence Archive exposes retained failed observations and rejected decisio
   assert.match(output, /Decision: reject/);
   assert.match(output, /not a truth verdict or independent-human review/);
   assert.match(output, /revocations remain inspectable/);
-  assert.equal(walk(root).filter(item => item.dataset?.eventSource === 'kernel').length, 3);
+  const kernelCards = walk(root).filter(item => item.dataset?.eventSource === 'kernel');
+  assert.equal(kernelCards.length, 3);
   const inspectableKernelEvents = kernelCards.reduce((total, card) => total + walk(card).filter(item => item.tagName === 'button' && item.dataset?.chronicleTarget === 'creation-1').length, 0);
   assert.equal(inspectableKernelEvents, 3);
 }));
