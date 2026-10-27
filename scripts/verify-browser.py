@@ -183,6 +183,8 @@ def shared(browser,url,data,out):
         # The artifact advertises readiness only after its inline recipe script has
         # attached handlers and rendered the initial receipt.
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        # Script readiness and the parent portal's painted/input surface are separate gates.
+        expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#sources article')).to_have_count(1)
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source').fill('Cliffy · https://example.org/source')

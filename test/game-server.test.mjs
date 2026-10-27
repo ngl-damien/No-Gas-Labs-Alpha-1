@@ -1,4 +1,5 @@
 import test from 'node:test';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, rename, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -364,5 +365,86 @@ test('shared action request IDs replay the original result across lost responses
     assert.equal(afterRestart.body.world.reports.filter(report => report.text === action.text).length, 1);
   } finally {
     await reopened.closeGame();
+  }
+});
+
+
+test('unknown API routes are rejected before session allocation', async t => {
+  const f = await fixture(t);
+  for (const path of ['/api/not-a-route', '/api/artifacts/not-a-creation-id']) {
+    const response = await fetch(f.url + path);
+    assert.equal(response.status, 404, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' must not mint a session cookie');
+    await response.text();
+  }
+  const unsupportedPost = await fetch(f.url + '/api/not-a-route', {
+    method: 'POST',
+    headers: { origin: f.url, 'content-type': 'application/json' },
+    body: '{}'
+  });
+  assert.equal(unsupportedPost.status, 404);
+  assert.equal(unsupportedPost.headers.get('set-cookie'), null, 'unsupported POST must not mint a session cookie');
+  await unsupportedPost.text();
+
+  const supported = await fetch(f.url + '/api/state');
+  assert.equal(supported.status, 200);
+  assert.match(supported.headers.get('set-cookie') || '', /^ngl_session=/, 'supported state route still creates a session');
+  await supported.text();
+});
+
+
+test('public catalog, institution summary, and retained artifacts do not allocate sessions', async t => {
+  const f = await fixture(t);
+  for (const path of ['/api/projects', '/api/institution']) {
+    const response = await fetch(f.url + path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' is public and must not mint a session');
+    await response.text();
+  }
+
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Public artifact route');
+  const artifact = await fetch(f.url + '/api/artifacts/' + published.result.creationId + '?version=1');
+  assert.equal(artifact.status, 200);
+  assert.equal(artifact.headers.get('set-cookie'), null, 'public artifact reads must not mint a session');
+  assert.match(artifact.headers.get('content-security-policy') || '', /sandbox allow-scripts/);
+  await artifact.text();
+});
+
+
+test('event-stream capacity rejection happens before a new session is allocated', async t => {
+  const f = await fixture(t);
+  const agent = new http.Agent({ keepAlive: false, maxSockets: 140 });
+  const active = [];
+  function openStream() {
+    return new Promise((resolve, reject) => {
+      let request;
+      request = http.get(f.url + '/api/events', { agent }, response => {
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          response,
+          close() { response.destroy(); request.destroy(); }
+        });
+      });
+      request.on('error', reject);
+    });
+  }
+
+  try {
+    for (let i = 0; i < 128; i++) {
+      const stream = await openStream();
+      assert.equal(stream.status, 200, 'each slot below the cap should be accepted');
+      active.push(stream);
+    }
+    const overflow = await openStream();
+    assert.equal(overflow.status, 429);
+    assert.equal(overflow.headers['set-cookie'], undefined, 'rejected stream must not allocate a session cookie');
+    overflow.response.resume();
+    await once(overflow.response, 'end');
+  } finally {
+    for (const stream of active) stream.close();
+    agent.destroy();
   }
 });
