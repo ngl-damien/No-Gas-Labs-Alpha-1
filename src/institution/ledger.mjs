@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
 import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, parse, sep } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
 const schema = 'ngl.institution.ledger.v1';
 const digestPattern = /^[a-f0-9]{64}$/;
+const MAX_LEDGER_BYTES = 64 * 1024 * 1024;
+const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024;
 const clone = value => JSON.parse(canonicalStringify(value));
 const hash = value => createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const fail = (code, message) => { throw new KernelError(code, message); };
@@ -12,6 +15,36 @@ const fail = (code, message) => { throw new KernelError(code, message); };
 async function syncDirectory(directory) {
   const parent = await open(directory, 'r');
   try { await parent.sync(); } finally { await parent.close(); }
+}
+
+// Reject redirected path components before creating a private store. This is a
+// best-effort path walk, not an atomic openat-style capability boundary.
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    if (stat.isSymbolicLink()) fail('LEDGER_PATH_SYMLINK', 'Ledger paths may not contain symlink components');
+    if (!stat.isDirectory()) fail('LEDGER_DIRECTORY_UNSAFE', 'Every ledger path component must be a directory');
+  }
+}
+
+async function assertPrivateDirectory(path, expectedIdentity) {
+  await assertNoSymlinkPathComponents(path);
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) fail('LEDGER_DIRECTORY_UNSAFE', 'Ledger storage must be a regular directory');
+  if ((stat.mode & 0o077) !== 0) fail('LEDGER_DIRECTORY_PERMISSIONS_TOO_BROAD', 'Ledger directories must exclude group and other access (0700)');
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+    fail('LEDGER_DIRECTORY_OWNER_MISMATCH', 'Ledger directory must be owned by the current process user');
+  }
+  if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) {
+    fail('LEDGER_DIRECTORY_CHANGED', 'Ledger directory changed while acquiring the writer lease');
+  }
+  return { dev: stat.dev, ino: stat.ino };
 }
 
 // A copied lock token does not prove that the path still names our lease.
@@ -58,7 +91,9 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn, { commitBoun
 export async function openLedger({ directory, actors, founderId, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
   if (typeof directory !== 'string' || !directory) fail('INVALID_CONFIG', 'A private ledger directory is required');
   const location = resolve(directory);
+  await assertNoSymlinkPathComponents(location);
   await mkdir(location, { recursive: true, mode: 0o700 });
+  const directoryIdentity = await assertPrivateDirectory(location);
   const lockPath = join(location, '.writer.lock');
   let lock;
   try { lock = await open(lockPath, 'wx', 0o600); }
@@ -69,12 +104,15 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
     lockIdentity = { dev: stat.dev, ino: stat.ino };
     await lock.writeFile(JSON.stringify({ pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
+    await assertPrivateDirectory(location, directoryIdentity);
     let state = createKernel({ actors, founderId });
     const config = { actors: state.actors, founderId: state.founderId };
     const genesis = hash({ schema, config });
     const file = join(location, 'ledger.json');
     const blobDirectory = join(location, 'blobs');
+    await assertNoSymlinkPathComponents(blobDirectory);
     await mkdir(blobDirectory, { recursive: true, mode: 0o700 });
+    await assertPrivateDirectory(blobDirectory);
     let records = [];
 
     async function getArtifact(digest) {
