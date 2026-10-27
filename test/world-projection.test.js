@@ -403,3 +403,67 @@ test("inventory deltas may consume existing items but cannot create negative sto
   assert.throws(() => projectWorld([acquire, underflow], undefined, trusted),
     /inventory world effect would underflow/);
 });
+
+
+test("revocation audit preserves event scope and repeated grant revocations", () => {
+  const first = {
+    event_id: "audit-revoke-a",
+    event_type: "REVOCATION",
+    quest_id: "quest-a",
+    revokes: "shared-grant"
+  };
+  const second = {
+    event_id: "audit-revoke-b",
+    event_type: "REVOCATION",
+    quest_id: "quest-b",
+    revokes: "shared-grant",
+    parents: ["audit-revoke-a"]
+  };
+  const global = {
+    event_id: "audit-revoke-global",
+    event_type: "REVOCATION",
+    revokes: "global-grant",
+    parents: ["audit-revoke-b"]
+  };
+  const untrusted = {
+    event_id: "audit-revoke-untrusted",
+    event_type: "REVOCATION",
+    quest_id: "quest-c",
+    revokes: "untrusted-grant",
+    parents: ["audit-revoke-global"]
+  };
+  const options = {
+    ...trusted,
+    verifyAdjudication: event =>
+      event.event_type === "REVOCATION" && event.event_id !== "audit-revoke-untrusted"
+  };
+  const state = projectWorld([first, second, global, untrusted], undefined, options);
+
+  // Compatibility projection remains a unique list of grant IDs.
+  assert.deepEqual(state.revoked, ["shared-grant", "global-grant"]);
+  // The additive audit retains every verified event and its effective scope.
+  assert.deepEqual(state.revocation_audit, [
+    { event_id: "audit-revoke-a", grant_id: "shared-grant", scope: "quest", quest_id: "quest-a" },
+    { event_id: "audit-revoke-b", grant_id: "shared-grant", scope: "quest", quest_id: "quest-b" },
+    { event_id: "audit-revoke-global", grant_id: "global-grant", scope: "global", quest_id: null }
+  ]);
+  assert.deepEqual(projectRealm(state).revocation_audit, state.revocation_audit);
+});
+
+test("legacy world projection seeds without revocation_audit remain replayable", () => {
+  const revocation = {
+    event_id: "legacy-audit-revoke",
+    event_type: "REVOCATION",
+    quest_id: "forge-gate",
+    revokes: "grant-1"
+  };
+  const options = {
+    ...trusted,
+    verifyAdjudication: event => event.event_type === "REVOCATION" && event.revokes === "grant-1"
+  };
+  const current = projectWorld([revocation], undefined, options);
+  const legacySeed = structuredClone(current);
+  delete legacySeed.revocation_audit;
+
+  assert.deepEqual(projectWorld([], legacySeed, options), current);
+});
