@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
 import { openLedger } from '../src/institution/ledger.mjs';
+import { openDecisions } from '../src/institution/decisions.mjs';
 
 const config = {
   founderId: 'founder',
@@ -77,6 +78,25 @@ test('ledger close preserves a replacement writer lock even when bytes are ident
   assert.deepEqual(await readFile(lockPath), replacement);
 });
 
+
+test('decision-store close preserves a replacement lock even when bytes are identical', async t => {
+  const directory = await temp(t);
+  const store = await openDecisions({ directory, now: () => Date.parse('2026-10-27T00:00:00.000Z') });
+  const lockPath = join(directory, '.decisions.lock');
+  const replacement = await replaceLockWithIdenticalBytes(lockPath);
+  await store.close();
+  assert.deepEqual(await readFile(lockPath), replacement);
+});
+
+test('decision-store close preserves a symlink replacement lock', async t => {
+  const directory = await temp(t);
+  const store = await openDecisions({ directory, now: () => Date.parse('2026-10-27T00:00:00.000Z') });
+  const lockPath = join(directory, '.decisions.lock');
+  const replacement = await replaceLockWithSymlink(lockPath);
+  await store.close();
+  assert.equal((await lstat(lockPath)).isSymbolicLink(), true);
+  assert.deepEqual(await readFile(lockPath), replacement);
+});
 
 test('concurrent service-store opens admit exactly one writer', async t => {
   const dataDir = await temp(t);
