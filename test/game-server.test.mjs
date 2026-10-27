@@ -455,7 +455,10 @@ test('Founder-only routes reject missing or Witness sessions without allocating 
     ['/api/launch', {}],
     ['/api/decisions/policy', {}],
     ['/api/decisions/proposals', {}],
-    ['/api/decisions/choose', {}]
+    ['/api/decisions/choose', {}],
+    ['/api/action', { type: 'draft', kind: 'comic', title: 'Denied draft', intent: 'Must not allocate a session' }],
+    ['/api/action', { type: 'publish', draftId: 'draft-1', expectedVersion: 0 }],
+    ['/api/action', { type: 'repair', creationId: 'creation-1', expectedVersion: 1 }]
   ];
 
   for (const [path, payload] of founderOnly) {
@@ -484,5 +487,24 @@ test('Founder-only routes reject missing or Witness sessions without allocating 
   const stillWitness = await witness.request('/api/state');
   assert.equal(stillWitness.response.status, 200);
   assert.equal(stillWitness.body.viewer.role, 'witness');
+});
+
+test('invalid or unsupported action payloads fail before session allocation', async t => {
+  const f = await fixture(t);
+  const invalid = [
+    {},
+    { type: 'not-an-action' },
+    { type: 'discover', locationId: 'relay', xp: 999 }
+  ];
+  for (const payload of invalid) {
+    const response = await fetch(f.url + '/api/action', {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('set-cookie'), null, 'invalid action must not allocate a session');
+    await response.text();
+  }
 });
 
