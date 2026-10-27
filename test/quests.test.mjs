@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getQuestTrail} from '../game/quests.mjs';
+import {getQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -215,4 +215,20 @@ test('quest trail fails closed for a missing or unsupported actor role', () => {
   world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
   assert.deepEqual(getQuestTrail(world, { id: 'f-1' }), []);
   assert.deepEqual(getQuestTrail(world, { id: 'f-1', role: 'administrator' }), []);
+});
+
+
+test('guide action projection rejects missing and unsupported viewer identities', () => {
+  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  assert.equal(getLocationAction('relay', world, null), null);
+  assert.equal(getLocationAction('relay', world, { role: 'witness' }), null);
+  assert.equal(getLocationAction('relay', world, { id: 'unknown' }), null);
+  assert.equal(getLocationAction('relay', world, { id: 'unknown', role: 'administrator' }), null);
+  assert.equal(getLocationAction('unknown-guide', world, founder), null);
+});
+
+test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
+  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  assert.equal(getLocationAction('relay', world, founder).type, 'workbench');
+  assert.equal(getLocationAction('relay', world, witness).type, 'inspect');
 });

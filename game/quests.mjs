@@ -83,6 +83,7 @@ const hasEarlierVersion = creation => Boolean(creation && Number.isInteger(creat
  */
 export function getLocationAction(locationId, world, viewer) {
   if (!GUIDE_LOCATIONS.has(locationId)) return null;
+  if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return null;
   const creations = rows(world?.creations).filter(creation =>
     creation && typeof creation.id === 'string' && creation.id.length > 0
   );
