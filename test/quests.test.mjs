@@ -174,8 +174,14 @@ test('quest trail keeps Founder and Witness evidence separate when actor IDs col
     { id: 'founder-note', type: 'contribute', actor: sameIdFounder, at: at2, creationId: 'c-1', version: 1 },
     { id: 'witness-report', type: 'report', actor: sameIdWitness, at: at2, creationId: 'c-1', version: 1 },
   ];
-  world.discoveries = [{ id: 'witness-discovery-record', locationId: 'river', actor: sameIdWitness, at: at1 }];
-  world.contributions = [{ id: 'witness-note-record', creationId: 'c-1', version: 1, actor: sameIdWitness, at: at2, text: 'Witness-only note' }];
+  world.discoveries = [
+    { id: 'founder-discovery-record', locationId: 'river', actor: sameIdFounder, at: at1 },
+    { id: 'witness-discovery-record', locationId: 'river', actor: sameIdWitness, at: at1 },
+  ];
+  world.contributions = [
+    { id: 'founder-note-record', creationId: 'c-1', version: 1, actor: sameIdFounder, at: at2, text: 'Founder note' },
+    { id: 'witness-note-record', creationId: 'c-1', version: 1, actor: sameIdWitness, at: at2, text: 'Witness-only note' },
+  ];
   world.reports = [{ id: 'witness-report-record', creationId: 'c-1', version: 1, actor: sameIdWitness, at: at2, text: 'Witness report' }];
 
   const witnessTrail = getQuestTrail(world, sameIdWitness);
