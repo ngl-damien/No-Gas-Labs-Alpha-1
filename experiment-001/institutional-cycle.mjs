@@ -12,14 +12,46 @@ const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const TRUSTED_FOUNDER_KEY_FINGERPRINT = process.env.NGL_FOUNDER_KEY_FINGERPRINT ?? null;
 const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
 
+const MAX_CANONICAL_DEPTH = 100;
+
 export function canonical(value) {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean' ||
-      (typeof value === 'number' && Number.isFinite(value))) return JSON.stringify(value);
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
-  if (value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) {
-    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
+  const ancestors = new Set();
+  function visit(current, depth = 0) {
+    if (depth > MAX_CANONICAL_DEPTH) throw new Error('NON_CANONICAL_VALUE');
+    if (current === null || typeof current === 'string' || typeof current === 'boolean' ||
+        (typeof current === 'number' && Number.isFinite(current))) return JSON.stringify(current);
+    if (typeof current !== 'object' || ancestors.has(current)) throw new Error('NON_CANONICAL_VALUE');
+
+    const array = Array.isArray(current);
+    const prototype = Object.getPrototypeOf(current);
+    if ((!array && prototype !== Object.prototype && prototype !== null) ||
+        Object.getOwnPropertySymbols(current).length) throw new Error('NON_CANONICAL_VALUE');
+
+    const keys = Object.keys(current);
+    const ownKeys = Reflect.ownKeys(current);
+    if (array) {
+      if (keys.length !== current.length ||
+          keys.some((key, index) => key !== String(index)) ||
+          ownKeys.length !== current.length + 1) throw new Error('NON_CANONICAL_VALUE');
+    } else if (ownKeys.length !== keys.length) {
+      throw new Error('NON_CANONICAL_VALUE');
+    }
+
+    const entries = keys.map(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new Error('NON_CANONICAL_VALUE');
+      return [key, descriptor.value];
+    });
+    if (!array) entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+
+    ancestors.add(current);
+    const result = array
+      ? '[' + entries.map(([, item]) => visit(item, depth + 1)).join(',') + ']'
+      : '{' + entries.map(([key, item]) => JSON.stringify(key) + ':' + visit(item, depth + 1)).join(',') + '}';
+    ancestors.delete(current);
+    return result;
   }
-  throw new Error('NON_CANONICAL_VALUE');
+  return visit(value);
 }
 
 const hash = value => hashBytes(Buffer.from(canonical(value)));
@@ -261,6 +293,9 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
     },
     async commit(decision, signature = null) {
       if (durabilityUncertain) throw new Error('COMMIT_DURABILITY_UNCERTAIN');
+      // Validate the caller's original value before structuredClone can discard
+      // hidden properties or normalize an accessor-backed decision.
+      canonical(decision);
       let lockHandle;
       let lockIdentity;
       let tempPath;
