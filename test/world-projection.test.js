@@ -203,6 +203,18 @@ test("MMORPG realm derives avatar and quests from verified canonical projection"
   assert.equal(realm.locations.guild_hall, "Guild Hall");
 });
 
+
+test("realm quest records are detached from canonical projection state", () => {
+  const state = projectWorld([claim, observed], undefined, trusted);
+  const realm = projectRealm(state);
+
+  realm.quests["forge-gate"].status = "FORGED";
+  realm.quests["forge-gate"].source_event = "attacker-edited-view";
+
+  assert.equal(state.quests["forge-gate"].status, "COMPLETED");
+  assert.equal(state.quests["forge-gate"].source_event, "e2");
+});
+
 test("an unverified observation cannot mint canonical progress", () => {
   const unverified = { ...observed, event_id: "e11" };
   delete unverified.observation_verification;
