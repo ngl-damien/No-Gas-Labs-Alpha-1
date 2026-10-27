@@ -62,7 +62,7 @@ async function readBoundedRegularFile(path, limit, {
   let handle;
   try {
     try {
-      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+      handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
     } catch (error) {
       if (error.code === 'ELOOP') fail(notRegularCode, `${label} must not be a symlink`);
       throw error;
