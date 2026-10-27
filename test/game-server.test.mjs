@@ -489,22 +489,32 @@ test('Founder-only routes reject missing or Witness sessions without allocating 
   assert.equal(stillWitness.body.viewer.role, 'witness');
 });
 
-test('invalid or unsupported action payloads fail before session allocation', async t => {
+test('malformed supported actions fail before allocating a session', async t => {
   const f = await fixture(t);
   const invalid = [
-    null,
-    {},
-    [],
-    { type: 'not-an-action' },
-    { type: 'discover', locationId: 'relay', xp: 999 }
+    { payload: null, status: 400 },
+    { payload: {}, status: 400 },
+    { payload: [], status: 400 },
+    { payload: { type: 'not-an-action' }, status: 400 },
+    { payload: { type: 'discover', locationId: 'relay', xp: 999 }, status: 400 },
+    { payload: { type: 'discover' }, status: 400 },
+    { payload: { type: 'discover', locationId: 'not-on-map' }, status: 400 },
+    { payload: { type: 'discover', locationId: 'relay', requestId: ' bad' }, status: 400 },
+    { payload: { type: 'draft', kind: 'custom', title: '', intent: 'missing title' }, status: 400 },
+    { payload: { type: 'draft', kind: 'unknown', title: 'Valid title', intent: '' }, status: 400 },
+    { payload: { type: 'draft', kind: 'custom', title: 'Valid title', intent: '', html: 'x'.repeat(131073) }, status: 413 },
+    { payload: { type: 'publish', draftId: 'draft-missing' }, status: 400 },
+    { payload: { type: 'repair', creationId: 'creation-missing', expectedVersion: 0 }, status: 400 },
+    { payload: { type: 'contribute', creationId: 'creation-missing', version: 0, text: 'note' }, status: 400 },
+    { payload: { type: 'report', creationId: 'creation-missing', version: 1, text: 'x'.repeat(1001) }, status: 413 }
   ];
-  for (const payload of invalid) {
+  for (const { payload, status } of invalid) {
     const response = await fetch(f.url + '/api/action', {
       method: 'POST',
       headers: { origin: f.url, 'content-type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    assert.equal(response.status, 400);
+    assert.equal(response.status, status, JSON.stringify(payload).slice(0, 120));
     assert.equal(response.headers.get('set-cookie'), null, 'invalid action must not allocate a session');
     await response.text();
   }

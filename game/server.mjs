@@ -37,6 +37,57 @@ const actionFields = {
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId']
 };
+
+const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
+const actionLocations = new Set(['relay', 'river', 'overlook', 'ruins']);
+function preflightText(value, max, label, { required = false, empty = false, nullable = false } = {}) {
+  if (value === undefined && !required) return;
+  if (value === null && nullable) return;
+  if (typeof value !== 'string' || (!empty && !value.trim())) fail('INVALID_INPUT', label + ' is required.');
+  if (Array.from(value).length > max) fail('TOO_LARGE', label + ' exceeds ' + max + ' characters.', 413);
+}
+function preflightHtml(value) {
+  if (value === undefined) return;
+  if (typeof value !== 'string') fail('INVALID_INPUT', 'HTML must be text.');
+  if (Buffer.byteLength(value) > 131072) fail('TOO_LARGE', 'Custom HTML exceeds 128 KiB.', 413);
+}
+function preflightAction(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
+  exact(input, actionFields[input.type]);
+  if (input.requestId !== undefined && input.requestId !== null && (typeof input.requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.requestId))) {
+    fail('INVALID_REQUEST_ID', 'Request ID must be a bounded stable identifier.');
+  }
+  const requiredId = (value, label) => {
+    if (typeof value !== 'string' || !value.trim()) fail('INVALID_INPUT', label + ' is required.');
+  };
+  switch (input.type) {
+    case 'draft':
+      if (!actionKinds.has(input.kind)) fail('INVALID_KIND', 'Choose a known recipe.');
+      preflightText(input.title, 80, 'Title', { required: true });
+      preflightText(input.intent ?? '', 2000, 'Intent', { required: true, empty: true });
+      preflightHtml(input.html);
+      break;
+    case 'publish':
+      requiredId(input.draftId, 'Draft ID');
+      if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) fail('INVALID_VERSION', 'Expected version must be a non-negative integer.');
+      break;
+    case 'repair':
+      requiredId(input.creationId, 'Creation ID');
+      if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) fail('INVALID_VERSION', 'Expected version must be a positive integer.');
+      if (input.intent !== undefined) preflightText(input.intent, 2000, 'Intent', { required: true, empty: true });
+      preflightHtml(input.html);
+      break;
+    case 'contribute':
+    case 'report':
+      requiredId(input.creationId, 'Creation ID');
+      if (!Number.isInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a published version.');
+      preflightText(input.text, input.type === 'report' ? 1000 : 500, input.type === 'report' ? 'Report' : 'Contribution', { required: true });
+      break;
+    case 'discover':
+      if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
+      break;
+  }
+}
 const snapshots = world => world.creations.flatMap(creation => [...creation.versions, creation]);
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
 
@@ -468,10 +519,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       // Validate action shape before allocating a session. Draft, publish, and repair
       // are Founder-only, so denied attempts must not mint a Witness session either.
-      if (path === '/api/action') {
-        if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
-        exact(input, actionFields[input.type]);
-      }
+      if (path === '/api/action') preflightAction(input);
       const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
       const founderOnlyRoute = path === '/api/launch' || founderOnlyAction || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
