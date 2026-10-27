@@ -155,3 +155,18 @@ test('active destination is replanned when a new creation changes walkability',t
   for(let i=0;i<100;i++)view.update(.045,i*45);
   assert.deepEqual(interactions,[{type:'institution',id:'forge'}],'the reachable destination opens exactly once');
 });
+
+
+test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
+  const {view,interactions}=makeView(t);
+  const institutions=PLACES.filter(place=>place.type==='institution');
+  assert.equal(institutions.length,8);
+  for(const place of institutions){
+    view.setPlayer({x:180,y:640});
+    view.setWorld({creations:[]});
+    view.goTo(place.id);
+    for(let i=0;i<500;i++)view.update(.045,i*45);
+    assert.deepEqual(interactions,[{type:'institution',id:place.id}],place.id+' must be reachable and dispatch exactly once');
+    interactions.length=0;
+  }
+});
