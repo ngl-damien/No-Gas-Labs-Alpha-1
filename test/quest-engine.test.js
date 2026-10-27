@@ -197,3 +197,21 @@ test("an explicitly cross-quest revocation cannot revoke this quest's grant", ()
   assert.deepEqual(result.executions, ["e0", "e-after-revocation"]);
   assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, true]);
 });
+
+
+test("an explicitly matching quest revocation still blocks later executions", () => {
+  const partial = execution("e0", ["mesh-protocol"]);
+  const later = execution("e-after-revocation", ["adversarial-tests"]);
+  const scopedRevocation = {
+    ...revokeGrant(),
+    quest_id: quest.quest_id,
+    subject: quest.quest_id
+  };
+  const result = projectQuest(quest, [auth, partial, scopedRevocation, later], trust);
+
+  assert.equal(result.status, QUEST_STATUS.REVOKED);
+  assert.equal(result.authorized, false);
+  assert.equal(result.revoked, true);
+  assert.deepEqual(result.executions, ["e0"]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, false]);
+});
