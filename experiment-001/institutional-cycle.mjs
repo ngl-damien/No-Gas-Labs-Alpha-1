@@ -123,8 +123,18 @@ export function proposalDigest(decision) {
 }
 
 function exactKeys(object, expected) {
-  return object && typeof object === 'object' && !Array.isArray(object) &&
-    Object.keys(object).sort().join('\0') === [...expected].sort().join('\0');
+  if (!object || typeof object !== 'object' || Array.isArray(object)) return false;
+  const prototype = Object.getPrototypeOf(object);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const keys = Object.keys(object);
+  const ownKeys = Reflect.ownKeys(object);
+  if (keys.length !== expected.length || ownKeys.length !== keys.length) return false;
+  for (const key of keys) {
+    if (!expected.includes(key)) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) return false;
+  }
+  return expected.every(key => Object.hasOwn(object, key));
 }
 
 export function validateInstallationProposal(decision, now = Date.now(), { allowLegacy = false } = {}) {
