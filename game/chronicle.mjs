@@ -179,10 +179,14 @@ function malformedEventEntry(source, index) {
 
 function findVersion(creations, creationId, version) {
   if (typeof creationId !== "string" || !Number.isInteger(version) || version < 1) return null;
-  const creation = creations.find(item => item.id === creationId);
-  if (!creation) return null;
+  const matchingCreations = creations.filter(item => item.id === creationId);
+  if (matchingCreations.length !== 1) return null;
+  const creation = matchingCreations[0];
   if (creation.version === version) return creation;
-  return Array.isArray(creation.versions) ? creation.versions.find(item => item.version === version) || null : null;
+  const matchingVersions = Array.isArray(creation.versions)
+    ? creation.versions.filter(item => item.version === version)
+    : [];
+  return matchingVersions.length === 1 ? matchingVersions[0] : null;
 }
 
 function matchingNote(records, event, consumed, collectionValid = true) {
