@@ -340,7 +340,8 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   await assertNoSymlinkPathComponents(directory);
   const dirStat = await lstat(directory);
   if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
-  if ((dirStat.mode & 0o022) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
+  // The institution ledger is private state: group/world read or execute is too broad too.
+  if ((dirStat.mode & 0o077) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
   const ledgerPath = join(directory, 'institution.json');
   const lockPath = join(directory, 'institution.json.lock');
   let state = await readLedger(ledgerPath, publicKey);
