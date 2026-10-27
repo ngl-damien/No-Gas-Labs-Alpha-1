@@ -84,6 +84,8 @@ def basic(page,url,out,label):
     expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     # The parent portal may still cover the child until its painted message arrives.
     expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+    # This marker is emitted after the parent frame following cover removal.
+    expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
     frame.locator('img').first.wait_for()
     assert frame.locator('img').first.evaluate('(img)=>img.decode().then(()=>img.naturalWidth>0)'), 'Original comic did not load'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
@@ -107,6 +109,8 @@ def basic(page,url,out,label):
     expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     # Child readiness does not mean the parent has removed its input-blocking cover.
     expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+    # This marker is emitted after the parent frame following cover removal.
+    expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
     frame.locator('#score').fill('café 🌍 🧶')
     frame.locator('#play').click()
     expect(frame.locator('#status')).to_have_text('Playing 8 Unicode notes.')
