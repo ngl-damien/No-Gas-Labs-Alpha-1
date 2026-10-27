@@ -324,3 +324,88 @@ test("a later claim cannot retroactively supply the scope of an earlier revocati
   assert.match(entry.detail, /Work scope: not resolvable/);
   assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
 });
+
+
+function revocationHistory({
+  authorizationGrantId = "grant-revoked",
+  revokeGrantId = "grant-revoked",
+  authorizationScope = { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+  includeAuthorization = true,
+  duplicateAuthorization = false,
+} = {}) {
+  const claim = {
+    id: "claim-binding",
+    type: "claim",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:00:00.000Z",
+    action: "preserve-artifact-bytes",
+    subject: { id: "creation-observatory", version: 1 },
+  };
+  const authorization = {
+    id: "authorize-binding",
+    type: "authorize",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:01:00.000Z",
+    grantId: authorizationGrantId,
+    executorId: "local-forge",
+    observerId: "local-byte-verifier",
+    scope: authorizationScope,
+  };
+  const revoke = {
+    id: "revoke-binding",
+    type: "revoke",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:02:00.000Z",
+    grantId: revokeGrantId,
+    reason: "The requested scope changed.",
+  };
+  const events = [claim];
+  if (includeAuthorization) {
+    events.push(authorization);
+    if (duplicateAuthorization) events.push({ ...authorization, id: "authorize-binding-duplicate" });
+  }
+  events.push(revoke);
+  return events;
+}
+
+function projectedRevocation(options) {
+  const { world } = fixture();
+  const kernel = { events: revocationHistory(options) };
+  return projectChronicle({ world, kernel }).entries.find(entry => entry.id === "kernel:revoke-binding");
+}
+
+test("revocation scope stays unresolved without a prior authorization or when its grant ID differs", () => {
+  for (const options of [
+    { includeAuthorization: false, revokeGrantId: "grant-never-authorized" },
+    { authorizationGrantId: "grant-authorized", revokeGrantId: "grant-other" },
+  ]) {
+    const entry = projectedRevocation(options);
+    assert.equal(entry.creationId, "");
+    assert.equal(entry.version, null);
+    assert.equal(entry.targetAvailable, false);
+    assert.match(entry.detail, /Work scope: not resolvable/);
+    assert.match(entry.warning, /missing or mismatched/);
+  }
+});
+
+test("revocation scope stays unresolved when the prior grant scope disagrees with the claim", () => {
+  const entry = projectedRevocation({
+    authorizationScope: { subjectId: "creation-other", subjectVersion: 1, action: "preserve-artifact-bytes" },
+  });
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.warning, /missing or mismatched/);
+});
+
+test("duplicate prior authorization records make a revocation binding ambiguous", () => {
+  const entry = projectedRevocation({ duplicateAuthorization: true });
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /ambiguous/);
+});
