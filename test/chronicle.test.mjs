@@ -510,3 +510,84 @@ test("authorization scope disagreement is visible while display scope remains an
   assert.equal(entry.version, 1);
   assert.match(entry.warning, /authorization scope disagrees with the earlier claim/);
 });
+
+
+test("accessor-bearing report records are rejected without executing getters or attaching text", () => {
+  const { world, kernel } = fixture();
+  let getterCalls = 0;
+  const record = {
+    id: "report-record-hostile",
+    creationId: "creation-observatory",
+    version: 1,
+    actor: { id: "witness-1", name: "Witness" },
+    at: "2026-10-26T10:05:00.000Z",
+  };
+  Object.defineProperty(record, "text", {
+    enumerable: true,
+    get() { getterCalls += 1; return "Injected report text"; },
+  });
+  world.reports = [record];
+
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(getterCalls, 0);
+  assert.equal(chronicle.malformed, 1);
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /reports text collection is malformed/i);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-reports"));
+});
+
+test("accessor-backed report collection properties are rejected without invoking the getter", () => {
+  const { world, kernel } = fixture();
+  let getterCalls = 0;
+  Object.defineProperty(world, "reports", {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return []; },
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(getterCalls, 0);
+  assert.equal(chronicle.malformed, 1);
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /reports text collection is malformed/i);
+});
+
+test("sparse contribution collections fail closed rather than attaching partial text", () => {
+  const { world, kernel } = fixture();
+  world.events.push({
+    id: "contribute-sparse-records",
+    type: "contribute",
+    creationId: "creation-observatory",
+    version: 1,
+    actor: { id: "contributor-1", name: "Contributor" },
+    at: "2026-10-26T10:08:00.000Z",
+  });
+  world.contributions = new Array(1);
+
+  const chronicle = projectChronicle({ world, kernel });
+  const contribution = chronicle.entries.find(entry => entry.id === "world:contribute-sparse-records");
+  assert.equal(chronicle.malformed, 1);
+  assert.equal(contribution.detail, "");
+  assert.match(contribution.warning, /contributions text collection is malformed/i);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-contributions"));
+});
+
+test("accessor-backed creation metadata is rejected without executing getters", () => {
+  const { world, kernel } = fixture();
+  let getterCalls = 0;
+  Object.defineProperty(world, "creations", {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return []; },
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  const publication = chronicle.entries.find(entry => entry.id === "world:publish-v1");
+  assert.equal(getterCalls, 0);
+  assert.equal(chronicle.malformed, 1);
+  assert.equal(publication.targetAvailable, false);
+  assert.match(publication.warning, /artifact version is unavailable/i);
+  assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-creations"));
+});
