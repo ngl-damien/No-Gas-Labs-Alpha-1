@@ -146,7 +146,7 @@ def institutional_locations(browser,url,out):
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
-    visitor=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
@@ -170,6 +170,12 @@ def shared(browser,url,data,out):
         draft(a,'observatory','The shared observatory')
         a.locator('#publish-button').click()
         b.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        assert b.locator('#xp-count').text_content()=='100', 'The shared world retains institution-wide XP'
+        expect(b.locator('#character-button')).to_be_visible()
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('0 character XP')
+        expect(b.locator('#sheet')).to_contain_text('100 institution-wide XP across the world.')
+        close_sheet(b)
         snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
