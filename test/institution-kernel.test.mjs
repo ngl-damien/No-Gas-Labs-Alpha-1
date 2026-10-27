@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir, rm, open } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rm, open, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -284,4 +284,31 @@ test('load verifies persisted artifact bytes and trusted roster', async t => {
   await assert.rejects(ledgerModule.openLedger({ directory, ...config, actors: config.actors.map(actor => ({ ...actor, name: actor.id })) }), error => error.code === 'CONFIG_MISMATCH');
   await writeFile(join(directory, 'blobs', receipt.digest), 'corrupt');
   await assert.rejects(ledgerModule.openLedger({ directory, ...config }), error => error.code === 'ARTIFACT_MISMATCH');
+});
+
+
+test('institution ledger rejects a symlinked ancestor before creating the redirected store path', async t => {
+  const root = await temp(t);
+  const realParent = join(root, 'real-parent');
+  await mkdir(realParent, { mode: 0o700 });
+  const linkedParent = join(root, 'linked-parent');
+  await symlink(realParent, linkedParent, 'dir');
+  const directory = join(linkedParent, 'nested', 'store');
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_PATH_SYMLINK'
+  );
+  await assert.rejects(lstat(join(realParent, 'nested')), { code: 'ENOENT' });
+});
+
+test('institution ledger rejects exposed directories before acquiring a writer lock', async t => {
+  const directory = await temp(t);
+  await chmod(directory, 0o755);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_DIRECTORY_PERMISSIONS_TOO_BROAD'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
 });
