@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, open, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGameServer } from '../game/server.mjs';
@@ -19,6 +19,29 @@ test('rejects a symlink in place of the persisted Founder key', async t => {
   await writeFile(target, VALID_KEY + '\n', { mode: 0o600 });
   await symlink(target, join(dataDir, 'founder.key'));
   await assert.rejects(createGameServer({ dataDir }), /regular, non-symlink file/);
+});
+
+test('accepts the maximum supported persisted Founder key size', async t => {
+  const dataDir = await directory(t);
+  const path = join(dataDir, 'founder.key');
+  await writeFile(path, 'k'.repeat(1024) + '\n', { mode: 0o600 });
+  const server = await createGameServer({ dataDir });
+  await server.closeGame();
+});
+
+test('rejects oversized persisted Founder keys before creating service state', async t => {
+  const dataDir = await directory(t);
+  const path = join(dataDir, 'founder.key');
+  const handle = await open(path, 'w', 0o600);
+  try {
+    await handle.writeFile(VALID_KEY + '\n');
+    await handle.truncate(1026);
+  } finally {
+    await handle.close();
+  }
+
+  await assert.rejects(createGameServer({ dataDir }), /Founder key file exceeds the 1025-byte limit/);
+  await assert.rejects(stat(join(dataDir, 'service.json')), { code: 'ENOENT' });
 });
 
 test('rejects persisted Founder keys readable by group or other users', async t => {
