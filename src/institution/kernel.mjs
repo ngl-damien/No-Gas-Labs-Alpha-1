@@ -27,9 +27,18 @@ export function canonicalStringify(value) {
     }
     let result;
     if (Array.isArray(current)) {
-      if (keys.length !== current.length || keys.some((key, index) => key !== String(index))) fail('INVALID_JSON', 'Sparse or decorated arrays are not JSON');
+      if (keys.length !== current.length ||
+          keys.some((key, index) => key !== String(index)) ||
+          Reflect.ownKeys(current).length !== current.length + 1) {
+        fail('INVALID_JSON', 'Sparse, decorated, or hidden-property arrays are not JSON');
+      }
       result = `[${current.map(item => visit(item, depth + 1)).join(',')}]`;
-    } else result = `{${keys.sort().map(key => `${JSON.stringify(key)}:${visit(current[key], depth + 1)}`).join(',')}}`;
+    } else {
+      if (Reflect.ownKeys(current).length !== keys.length) {
+        fail('INVALID_JSON', 'Non-enumerable properties are not JSON');
+      }
+      result = `{${keys.sort().map(key => `${JSON.stringify(key)}:${visit(current[key], depth + 1)}`).join(',')}}`;
+    }
     ancestors.delete(current);
     return result;
   }
