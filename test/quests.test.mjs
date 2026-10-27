@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getQuestTrail} from '../game/quests.mjs';
+import {getQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -159,4 +159,91 @@ test('objective trail exposes minimal frozen provenance for each counted event',
   }]);
   assert.equal(Object.isFrozen(milestone.evidence), true);
   assert.equal(Object.isFrozen(milestone.evidence[0]), true);
+});
+
+
+test('quest trail keeps Founder and Witness evidence separate when actor IDs collide', () => {
+  const sharedId = 'same-session-id';
+  const sameIdFounder = { id: sharedId, name: 'Founder', role: 'founder' };
+  const sameIdWitness = { id: sharedId, name: 'Witness', role: 'witness' };
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'founder-publish', type: 'publish', actor: sameIdFounder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'founder-discovery', type: 'discover', actor: sameIdFounder, at: at1, locationId: 'river' },
+    { id: 'founder-note', type: 'contribute', actor: sameIdFounder, at: at2, creationId: 'c-1', version: 1 },
+    { id: 'witness-report', type: 'report', actor: sameIdWitness, at: at2, creationId: 'c-1', version: 1 },
+  ];
+  world.discoveries = [
+    { id: 'founder-discovery-record', locationId: 'river', actor: sameIdFounder, at: at1 },
+    { id: 'witness-discovery-record', locationId: 'river', actor: sameIdWitness, at: at1 },
+  ];
+  world.contributions = [
+    { id: 'founder-note-record', creationId: 'c-1', version: 1, actor: sameIdFounder, at: at2, text: 'Founder note' },
+    { id: 'witness-note-record', creationId: 'c-1', version: 1, actor: sameIdWitness, at: at2, text: 'Witness-only note' },
+  ];
+  world.reports = [{ id: 'witness-report-record', creationId: 'c-1', version: 1, actor: sameIdWitness, at: at2, text: 'Witness report' }];
+
+  const witnessTrail = getQuestTrail(world, sameIdWitness);
+  assert.equal(witnessTrail.find(item => item.id === 'witness-work-available').complete, true,
+    'publicly retained work remains visible to the Witness');
+  assert.equal(witnessTrail.find(item => item.id === 'witness-map-grounds').progress, 0,
+    'a Founder discovery event cannot satisfy the Witness discovery record');
+  assert.equal(witnessTrail.find(item => item.id === 'witness-field-note').progress, 0,
+    'a Founder contribution event cannot satisfy the Witness note record');
+  assert.deepEqual(witnessTrail.find(item => item.id === 'witness-version-report').evidenceIds, ['witness-report']);
+
+  const founderTrail = getQuestTrail(world, sameIdFounder);
+  assert.deepEqual(founderTrail.find(item => item.id === 'founder-first-place').evidenceIds, ['founder-publish']);
+  assert.deepEqual(founderTrail.find(item => item.id === 'founder-walk-institution').evidenceIds, ['founder-discovery']);
+  assert.deepEqual(founderTrail.find(item => item.id === 'founder-field-note').evidenceIds, ['founder-note']);
+});
+
+test('quest summary ignores activity with the same actor ID but a different role', () => {
+  const sharedId = 'same-summary-id';
+  const sameIdFounder = { id: sharedId, name: 'Founder', role: 'founder' };
+  const sameIdWitness = { id: sharedId, name: 'Witness', role: 'witness' };
+  const world = base();
+  world.creations = [creation];
+  world.discoveries = [{ id: 'founder-discovery', locationId: 'river', actor: sameIdFounder }];
+  world.contributions = [{ id: 'witness-note', creationId: 'c-1', version: 1, actor: sameIdWitness, text: 'Witness-only note' }];
+  assert.equal(getQuest(world, sameIdFounder).id, 'founder-note');
+});
+
+test('quest trail fails closed for a missing or unsupported actor role', () => {
+  const world = trailFixture();
+  world.events = [{ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 }];
+  assert.deepEqual(getQuestTrail(world, { id: 'f-1' }), []);
+  assert.deepEqual(getQuestTrail(world, { id: 'f-1', role: 'administrator' }), []);
+});
+
+
+test('guide action projection rejects missing and unsupported viewer identities', () => {
+  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  assert.equal(getLocationAction('relay', world, null), null);
+  assert.equal(getLocationAction('relay', world, { role: 'witness' }), null);
+  assert.equal(getLocationAction('relay', world, { id: 'unknown' }), null);
+  assert.equal(getLocationAction('relay', world, { id: 'unknown', role: 'administrator' }), null);
+  assert.equal(getLocationAction('unknown-guide', world, founder), null);
+});
+
+test('guide action projection preserves Founder and Witness routes for supported viewers', () => {
+  const world = { creations: [{ id: 'c-1', kind: 'comic', version: 1 }] };
+  assert.equal(getLocationAction('relay', world, founder).type, 'workbench');
+  assert.equal(getLocationAction('relay', world, witness).type, 'inspect');
+});
+
+
+test('quest summary does not default unidentified or unsupported viewers to Witness', () => {
+  const world = base();
+  world.creations = [creation];
+  world.discoveries = [discovery('d1', 'river')];
+  const unavailable = {
+    id: 'quest-unavailable', title: 'Quest unavailable',
+    copy: 'Quest progress is unavailable until a valid Founder or Witness character is selected.',
+    button: 'Explore the world →', action: 'places'
+  };
+  for (const viewer of [null, { role: 'witness' }, { id: 'unknown' }, { id: 'unknown', role: 'administrator' }]) {
+    assert.deepEqual(getQuest(world, viewer), unavailable);
+  }
 });
