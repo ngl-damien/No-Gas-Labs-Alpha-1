@@ -142,3 +142,16 @@ test('an unknown destination cancels a previous route instead of preserving stal
   for(let i=0;i<10;i++)view.update(.045,i*45);
   assert.deepEqual(interactions,[]);
 });
+
+
+test('active destination is replanned when a new creation changes walkability',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('forge');
+  assert.equal(view.target,'forge');
+  view.setWorld({creations:[{id:'new-obstacle',position:{x:260,y:600}}]});
+  assert.equal(view.target,'forge','a still-reachable destination keeps its intent');
+  assert.ok(view.route.length>0,'the route is recomputed around the new obstacle');
+  assert.ok(view.route.every(point=>isWalkable(point.x,point.y,view.world.creations)),'the replacement route respects current collision geometry');
+  for(let i=0;i<100;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[{type:'institution',id:'forge'}],'the reachable destination opens exactly once');
+});
