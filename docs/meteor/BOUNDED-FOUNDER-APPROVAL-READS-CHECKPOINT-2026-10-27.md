@@ -18,7 +18,8 @@ Branch: `security/bounded-founder-install-file-reads-20261027`
 - Wired `scripts/approve-install.mjs` to use the helper for both proposal and private-key inputs.
 - Private-key reads additionally require private permissions and, where supported, current-process ownership.
 - Proposal parsing also rejects duplicate JSON object keys before validation/digest confirmation, including escaped spellings that decode to the same key.
-- Added `test/approve-install-file-reader.test.mjs` with nine tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file; and duplicate conflicting `strategy` keys that ordinary JSON.parse would collapse.
+- Proposal JSON traversal is capped at 128 nested values so adversarial nesting cannot drive unbounded recursive traversal in the duplicate-key scanner.
+- Added `test/approve-install-file-reader.test.mjs` with ten tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file; duplicate conflicting `strategy` keys that ordinary JSON.parse would collapse; and over-deep nested JSON rejection.
 
 ## Commit trail before this checkpoint
 
@@ -27,12 +28,13 @@ Branch: `security/bounded-founder-install-file-reads-20261027`
 - `1a9bcc8b65be1bc4f4a2e28b09e4ebfb5f3dabc3` — initial adversarial and positive-path tests.
 - `9621529871a03969df9913fb78a6ba4a24830aa9` — reject duplicate keys in proposal JSON.
 - `9e0b0e2d9342d86c538d93a7147e08b34114b8a5` and `217e5eee80c59a1bd529f7388e6a7afc23ccfe79` — correct escaped-string parsing and regression fixtures.
+- `1c5a6e46e99c79a5f2bec6affa81ad6c41065911` and `8900d0e9f331fc9305c64e44d575dc697a368d44` — cap proposal JSON nesting and test rejection.
 
 ## Verification status
 
-- Branch comparison after duplicate-key hardening: recheck the current final head before review; the branch is still based directly on `6a5bbf8d2c00f41f9bb8320dbc17431e00ea22c1`.
-- Source was re-read after implementation; `approve-install.mjs` no longer contains the unbounded `handle.readFile()` path and now rejects duplicate proposal keys before validation/digest confirmation.
-- On the earlier pre-duplicate-key head `32e0d8beb1e45bc4ebca53a928667023ab66496b`, Full verification and Genesis Evidence Invariant passed while Browser acceptance was still in progress. Those results do **not** verify the later duplicate-key commits. Re-run/inspect all workflows on the final PR head before claiming success.
+- Branch comparison after duplicate-key/depth hardening: recheck the current final head before review; the branch is still based directly on `6a5bbf8d2c00f41f9bb8320dbc17431e00ea22c1`.
+- Source was re-read after implementation; `approve-install.mjs` no longer contains the unbounded `handle.readFile()` path and now rejects duplicate proposal keys before validation/digest confirmation and caps scanner nesting at 128.
+- On the earlier pre-duplicate-key head `32e0d8beb1e45bc4ebca53a928667023ab66496b`, Full verification and Genesis Evidence Invariant passed while Browser acceptance was still in progress. Those results do **not** verify the later duplicate-key/depth commits. Re-run/inspect all workflows on the final PR head before claiming success.
 - No local test run is claimed.
 
 ## Limits and next priorities
