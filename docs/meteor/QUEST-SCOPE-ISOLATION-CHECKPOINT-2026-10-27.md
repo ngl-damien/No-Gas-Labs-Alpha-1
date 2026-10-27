@@ -14,6 +14,7 @@ Branch: `fix/quest-projection-explicit-scope-20261027`
 - When `quest_id` is present, it is now authoritative for projection scope.
 - `subject` is retained as a compatibility fallback only for older events that omit `quest_id`.
 - Added regressions for both a mismatched explicit authorization and an execution event that otherwise carries valid observation, authorization, and artifact evidence.
+- Second cycle: made quest definitions reject sparse/non-string acceptance and capability arrays, and froze defensive copies of both arrays so callers cannot mutate a supposedly frozen quest contract after projection setup.
 
 ## Evidence boundary
 
