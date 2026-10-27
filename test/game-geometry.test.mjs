@@ -118,3 +118,27 @@ test('routing from a bank edge never rounds the player into water',()=>{
   assert.ok(route.length>2);
   assert.ok(route.every(p=>isWalkable(p.x,p.y,[])));
 });
+
+
+test('an unreachable named destination cannot dispatch an arrival',t=>{
+  const {view,interactions}=makeView(t);
+  const wall=Array.from({length:11},(_,index)=>({id:'wall-'+index,position:{x:100+index*140,y:500}}));
+  view.setWorld({creations:wall});
+  const start=view.getPlayer();
+  view.goTo('relay');
+  view.update(.045,45);
+  assert.deepEqual(view.getPlayer(),start,'an unreachable route must not teleport or move the player');
+  assert.deepEqual(interactions,[],'an unreachable route is not arrival evidence');
+  assert.equal(view.target,null,'the impossible target is cleared');
+});
+
+test('an unknown destination cancels a previous route instead of preserving stale intent',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('relay');
+  assert.equal(view.target,'relay');
+  view.goTo('not-a-place');
+  assert.equal(view.target,null);
+  assert.deepEqual(view.route,[]);
+  for(let i=0;i<10;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[]);
+});
