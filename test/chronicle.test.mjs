@@ -409,3 +409,42 @@ test("duplicate prior authorization records make a revocation binding ambiguous"
   assert.match(entry.detail, /Work scope: not resolvable/);
   assert.match(entry.warning, /ambiguous/);
 });
+
+
+test("a grant ID reused by another work makes the revocation scope globally ambiguous", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-work-a", type: "claim", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-work-a", type: "authorize", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:01:00.000Z", grantId: "grant-shared",
+        scope: { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+      },
+      {
+        id: "claim-work-b", type: "claim", workId: "work-b", actor: "damien",
+        at: "2026-10-26T10:02:00.000Z", action: "deploy",
+        subject: { id: "creation-other", version: 1 },
+      },
+      {
+        id: "authorize-work-b", type: "authorize", workId: "work-b", actor: "damien",
+        at: "2026-10-26T10:03:00.000Z", grantId: "grant-shared",
+        scope: { subjectId: "creation-other", subjectVersion: 1, action: "deploy" },
+      },
+      {
+        id: "revoke-work-a", type: "revoke", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:04:00.000Z", grantId: "grant-shared", reason: "Review binding.",
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-work-a");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /ambiguous/);
+});
