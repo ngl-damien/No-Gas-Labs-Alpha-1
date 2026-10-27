@@ -4,36 +4,102 @@ import {projectCharacter} from '../game/character-sheet.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
-const event=(id,type,actor,at='2026-10-25T12:00:00.000Z')=>({id,type,actor,at});
+const t1='2026-10-25T12:00:00.000Z';
+const t2='2026-10-25T12:01:00.000Z';
+const t3='2026-10-25T12:02:00.000Z';
+const event=(id,type,actor,at=t1,detail={})=>({id,type,actor,at,...detail});
+const receipt=(version)=>({algorithm:'sha256',digest:String(version).padStart(2,'0')+'a'.repeat(62),size:100+version});
+function publishedCreation(id,times) {
+  const versions=times.map((publishedAt,index)=>({
+    id,version:index+1,publishedAt,receipt:receipt(index+1)
+  }));
+  return {...versions.at(-1),versions:versions.slice(0,-1),title:id,kind:'observatory'};
+}
+const publication=(id,actor,creationId,version,at,extra={})=>
+  event(id,'publish',actor,at,{creationId,version,reward:100,...extra});
 
-test('game level is a deterministic projection of game XP, not a new reward',()=>{
-  const world={xp:299,events:[]};
+test('character XP and level derive from unique publications matched to retained versions',()=>{
+  const world={
+    xp:300,
+    creations:[publishedCreation('c1',[t1,t2,t3])],
+    events:[
+      publication('p1',founder,'c1',1,t1),
+      publication('p2',founder,'c1',2,t2),
+      publication('p3',founder,'c1',3,t3)
+    ]
+  };
   const before=structuredClone(world);
+  const record=projectCharacter(world,founder);
   assert.deepEqual(
-    [projectCharacter(world,founder).level,projectCharacter(world,founder).xpIntoLevel,projectCharacter(world,founder).nextLevelXp],
-    [1,299,300]
+    [record.xp,record.worldXp,record.level,record.levelStartXp,record.xpIntoLevel,record.nextLevelXp],
+    [300,300,2,300,0,600]
   );
-  world.xp=300;
-  assert.deepEqual(
-    [projectCharacter(world,founder).level,projectCharacter(world,founder).xpIntoLevel,projectCharacter(world,founder).nextLevelXp],
-    [2,0,600]
-  );
-  assert.equal(before.xp,299);
+  assert.equal(record.skills.find(skill=>skill.id==='maker').count,3);
+  assert.deepEqual(world,before);
 });
 
-test('skill records count only demonstrated activity attributed to the active character',()=>{
+test('institution-wide XP never leaks into a Witness character level',()=>{
   const world={
-    xp:100,
+    xp:300,
+    creations:[publishedCreation('founder-work',[t1,t2,t3])],
     events:[
-      event('p1','publish',founder),
-      event('d1','draft',founder),
-      event('p2','publish',witness),
-      event('r1','report',founder)
+      publication('p1',founder,'founder-work',1,t1),
+      publication('p2',founder,'founder-work',2,t2),
+      publication('p3',founder,'founder-work',3,t3),
+      event('w-note','contribute',witness,t3,{creationId:'founder-work',version:3})
     ],
-    discoveries:[{id:'d1',actor:founder},{id:'d2',actor:witness}],
-    contributions:[{id:'n1',actor:founder},{id:'n2',actor:witness}],
-    reports:[{id:'r1',actor:founder}],
-    methods:[{id:'m1',actor:witness}]
+    contributions:[{id:'n1',actor:witness,creationId:'founder-work',version:3,text:'A real note.'}]
+  };
+  const record=projectCharacter(world,witness);
+  assert.deepEqual([record.xp,record.worldXp,record.level,record.xpIntoLevel],[0,300,1,0]);
+  assert.equal(record.skills.find(skill=>skill.id==='observer').count,1);
+  assert.equal(record.skills.find(skill=>skill.id==='maker').count,0);
+});
+
+test('ambiguous, duplicated, stale, non-Founder, and malformed publication claims earn no XP',()=>{
+  const world={
+    xp:700,
+    creations:[
+      publishedCreation('good',[t1]),
+      publishedCreation('ambiguous',[t1]),
+      publishedCreation('duplicate-a',[t1]),
+      publishedCreation('duplicate-b',[t1]),
+      publishedCreation('wrong-time',[t1]),
+      publishedCreation('wrong-reward',[t1]),
+      publishedCreation('non-founder',[t1])
+    ],
+    events:[
+      publication('good-event',founder,'good',1,t1),
+      publication('ambiguous-a',founder,'ambiguous',1,t1),
+      publication('ambiguous-b',founder,'ambiguous',1,t1),
+      publication('duplicate-id',founder,'duplicate-a',1,t1),
+      publication('duplicate-id',founder,'duplicate-b',1,t1),
+      publication('wrong-time-event',founder,'wrong-time',1,t2),
+      publication('wrong-reward-event',founder,'wrong-reward',1,t1,{reward:200}),
+      publication('non-founder-event',witness,'non-founder',1,t1),
+      publication('stale-version-event',founder,'good',99,t1),
+      event('malformed-event','publish',founder,t1,{creationId:'good',version:1,reward:99})
+    ]
+  };
+  const record=projectCharacter(world,founder);
+  assert.equal(record.xp,100);
+  assert.equal(record.skills.find(skill=>skill.id==='maker').count,1);
+});
+
+test('skills count activity attributed to the active character',()=>{
+  const world={
+    xp:200,
+    creations:[publishedCreation('founder-place',[t1]),publishedCreation('witness-place',[t2])],
+    events:[
+      publication('p1',founder,'founder-place',1,t1),
+      event('d1','draft',founder,t1),
+      publication('p2',witness,'witness-place',1,t2),
+      event('r1','report',founder,t2,{creationId:'founder-place',version:1})
+    ],
+    discoveries:[{id:'d-founder',actor:founder,locationId:'river'},{id:'d-witness',actor:witness,locationId:'relay'}],
+    contributions:[{id:'n-founder',actor:founder,creationId:'founder-place',version:1,text:'Note.'},{id:'n-witness',actor:witness,creationId:'founder-place',version:1,text:'Other note.'}],
+    reports:[{id:'r-founder',actor:founder,creationId:'founder-place',version:1,text:'Question.'}],
+    methods:[{id:'m-witness',actor:witness,creationId:'witness-place',version:1,title:'Repair',description:'',at:t2}]
   };
   const record=projectCharacter(world,founder);
   assert.deepEqual(record.skills.map(skill=>[skill.id,skill.count]),[
@@ -42,26 +108,35 @@ test('skill records count only demonstrated activity attributed to the active ch
   assert.equal(record.xp,100);
 });
 
-test('published places are inventory; drafts and other players\' activity are not silently added',()=>{
+test('published places are world inventory; drafts and other players’ activity are not added to the character trail',()=>{
   const world={
-    xp:0,
-    creations:[{id:'c1',title:'River Notes',kind:'observatory',version:2,receipt:{digest:'abc',size:12}}],
+    xp:200,
+    creations:[{
+      ...publishedCreation('c1',[t1,t2]),
+      receipt:{algorithm:'sha256',digest:'b'.repeat(64),size:12}
+    }],
     drafts:[{id:'d1',title:'Private draft'}],
-    events:[event('p1','publish',founder),event('p2','publish',witness)]
+    events:[
+      publication('p1',founder,'c1',1,t1),
+      event('p2','contribute',witness,t2,{creationId:'c1',version:2})
+    ]
   };
   const before=structuredClone(world);
   const record=projectCharacter(world,founder);
   assert.deepEqual(record.inventory,[{
-    id:'c1',title:'River Notes',kind:'observatory',version:2,receipt:{digest:'abc',size:12}
+    id:'c1',title:'c1',kind:'observatory',version:2,receipt:{digest:'b'.repeat(64),size:12}
   }]);
   assert.deepEqual(record.recentActivity.map(item=>item.type),['publish']);
+  assert.equal(record.xp,100);
+  assert.equal(record.worldXp,200);
   assert.deepEqual(world,before);
 });
 
-test('missing records fail closed to empty activity without inventing skill or XP',()=>{
+test('missing or malformed records fail closed to empty activity without inventing XP',()=>{
   const record=projectCharacter({},founder);
   assert.equal(record.level,1);
   assert.equal(record.xp,0);
+  assert.equal(record.worldXp,0);
   assert.ok(record.skills.every(skill=>skill.count===0));
   assert.deepEqual(record.inventory,[]);
   assert.deepEqual(record.recentActivity,[]);
