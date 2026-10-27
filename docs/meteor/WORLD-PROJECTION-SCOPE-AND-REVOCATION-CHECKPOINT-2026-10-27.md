@@ -20,9 +20,15 @@ PR #118 was merged; its explicit `quest_id` rule now exists in `src/quest/engine
 - Added four regressions: conflicting execution scope, cross-quest revocation isolation, same-quest revocation enforcement, and prevention of a revoked grant changing status through a later failed execution.
 - Second implementation cycle: inventory world effects now reject any delta that would reduce a stack below zero while allowing valid consumption of existing items. Added a regression for successful consumption and underflow rejection. Previously, any negative integer was accepted even when it produced impossible negative inventory.
 
-## Verification status
+## Exact-head verification
 
-Both implementation cycles and tests are committed; exact-head GitHub Actions are being rerun after the latest code update. Do not claim success until full verification, Genesis Evidence Invariant, and browser acceptance are inspected on the final PR head. No local test run is claimed.
+The complete code/test head `69392a9fb796e80cc3c6d199d60bfab355e4c163` passed all three PR-triggered workflows:
+
+- Full repository verification: [run 40571598263](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40571598263) — success. `npm run verify` reported Node test suite exit code 0, Python inspector exit code 0, package build exit code 0, bounded institutional exercise exit code 0, and final report `passed: true`.
+- Genesis Evidence Invariant: [run 40571598061](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40571598061) — success, including the attack-evidence-boundary regression.
+- Browser acceptance: [run 40571598030](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40571598030) — success. Desktop, phone, institutional-location actions, two-session shared-world, 320px/412px layouts, standalone-file, exact-byte packaging, and shared-restart journeys all passed. Artifact: [12764659716](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40571598030/artifacts/12764659716).
+
+These are GitHub-hosted results; no local test execution is claimed. This checkpoint evidence update is documentation-only and will trigger a fresh exact-head workflow run.
 
 ## Remaining blockers
 
