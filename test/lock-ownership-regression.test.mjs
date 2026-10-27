@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
-import { lstat, mkdtemp, readFile, rename, symlink, writeFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rename, symlink, writeFile, unlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -101,6 +101,11 @@ async function startChildHoldingLock(t, { modulePath, openExpression, env = {} }
       child.stdin.end('release');
       const [code, signal] = await once(child, 'exit');
       assert.equal(code, 0, `Lock owner child failed (signal ${signal}): ${stderr}`);
+    },
+    async kill() {
+      child.kill('SIGKILL');
+      const [code, signal] = await once(child, 'exit');
+      assert.equal(signal, 'SIGKILL', `Expected lock owner to be killed; exit code was ${code}`);
     }
   };
 }
@@ -264,5 +269,24 @@ test('decision-store writer lock excludes a competing process and reopens after 
   );
   await owner.release();
   const reopened = await openDecisions({ directory, now });
+  await reopened.close();
+});
+
+
+test('service-store remains fail-closed after a lock owner is killed until offline lock removal', async t => {
+  const dataDir = await temp(t);
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'game/service-store.mjs',
+    openExpression: "mod.createServiceStore({ dataDir: process.env.NGL_TEST_DIR, initial: { revision: 0 }, validate })",
+    env: { NGL_TEST_DIR: dataDir }
+  });
+
+  await owner.kill();
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED'
+  );
+  await unlink(join(dataDir, '.service.lock'));
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   await reopened.close();
 });
