@@ -122,3 +122,31 @@ test('service-store rejects an exposed existing data directory before creating a
   );
   await assert.rejects(lstat(join(dataDir, '.service.lock')), error => error.code === 'ENOENT');
 });
+
+
+
+test('service-store fails closed when its directory path is replaced after open', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-replaced-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dataDir = join(root, 'store');
+  const moved = join(root, 'original-store');
+  const replacement = join(root, 'replacement');
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+
+  await rename(dataDir, moved);
+  await mkdir(replacement);
+  await symlink(replacement, dataDir, 'dir');
+
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'SERVICE_DIRECTORY_CHANGED'
+  );
+  assert.throws(
+    () => store.value,
+    error => error.code === 'SERVICE_DIRECTORY_CHANGED'
+  );
+  const original = JSON.parse(await readFile(join(moved, 'service.json'), 'utf8'));
+  assert.deepEqual(original.payload, { revision: 0 });
+  await assert.rejects(lstat(join(replacement, 'service.json')), error => error.code === 'ENOENT');
+  await store.close();
+});
