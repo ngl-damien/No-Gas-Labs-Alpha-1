@@ -508,3 +508,16 @@ test('invalid or unsupported action payloads fail before session allocation', as
   }
 });
 
+test('an authenticated Founder retains access to the launch rehearsal after route preflight', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const result = await founder.request('/api/launch', {
+    title: 'Authorized local rehearsal',
+    tagline: 'Test-only; no external publication'
+  });
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  assert.equal(typeof result.body, 'object');
+  assert.equal(result.body?.title, 'Authorized local rehearsal');
+});
+
