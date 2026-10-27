@@ -2,6 +2,7 @@ import { constants as fsConstants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 
 const CHUNK_BYTES = 16 * 1024;
+const MAX_CONFIGURED_BYTES = 16 * 1024 * 1024;
 
 function fail(code) {
   throw new Error(code);
@@ -31,7 +32,7 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
   requirePrivatePermissions = false,
   requireCurrentUserOwnership = false
 } = {}) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_CONFIGURED_BYTES ||
       typeof label !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(label)) {
     fail('BOUNDED_FILE_READER_INVALID_CONFIG');
   }
