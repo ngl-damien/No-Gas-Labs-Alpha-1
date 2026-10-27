@@ -92,6 +92,14 @@ const snapshots = world => world.creations.flatMap(creation => [...creation.vers
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
 
 
+function preflightPresence(input) {
+  exact(input, ['x', 'y', 'name']);
+  if (!Number.isFinite(input.x) || !Number.isFinite(input.y) || input.x < 0 || input.x > 1600 || input.y < 0 || input.y > 1000 ||
+      (input.name !== undefined && (typeof input.name !== 'string' || Array.from(input.name).length > 80))) {
+    fail('INVALID_PRESENCE', 'Presence must be within the world bounds.');
+  }
+}
+
 function validateHistory(world) {
   if (world.revision !== world.events.length || world.createdAt > world.updatedAt || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'] };
@@ -520,6 +528,8 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       // Validate action shape before allocating a session. Draft, publish, and repair
       // are Founder-only, so denied attempts must not mint a Witness session either.
       if (path === '/api/action') preflightAction(input);
+      if (path === '/api/presence') preflightPresence(input);
+      if (path === '/api/logout') exact(input, []);
       const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
       const founderOnlyRoute = path === '/api/launch' || founderOnlyAction || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
@@ -527,10 +537,8 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
       }
-      if (path === '/api/logout') { exact(input, []); session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
+      if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
-        exact(input, ['x', 'y', 'name']);
-        if (!Number.isFinite(input.x) || !Number.isFinite(input.y) || input.x < 0 || input.x > 1600 || input.y < 0 || input.y > 1000 || (input.name !== undefined && (typeof input.name !== 'string' || Array.from(input.name).length > 80))) fail('INVALID_PRESENCE', 'Presence must be within the world bounds.');
         if ([...streams].some(stream => stream.session === session)) { presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: input.x, y: input.y }); broadcastPresence(); }
         return json(response, 200, { presence: livePresence() });
       }

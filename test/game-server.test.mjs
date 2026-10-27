@@ -520,6 +520,36 @@ test('malformed supported actions fail before allocating a session', async t => 
   }
 });
 
+test('invalid presence and logout payloads fail before allocating a session', async t => {
+  const f = await fixture(t);
+  const invalidPresence = [
+    { x: -1, y: 0 },
+    { x: 0, y: 1001 },
+    { x: '0', y: 1 },
+    { x: 0, y: 1, extra: true },
+    { x: 0, y: 1, name: 'n'.repeat(81) }
+  ];
+  for (const payload of invalidPresence) {
+    const response = await fetch(f.url + '/api/presence', {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    assert.equal(response.status, 400, JSON.stringify(payload).slice(0, 120));
+    assert.equal(response.headers.get('set-cookie'), null, 'invalid presence must not allocate a session');
+    await response.text();
+  }
+
+  const logout = await fetch(f.url + '/api/logout', {
+    method: 'POST',
+    headers: { origin: f.url, 'content-type': 'application/json' },
+    body: JSON.stringify({ unexpected: true })
+  });
+  assert.equal(logout.status, 400);
+  assert.equal(logout.headers.get('set-cookie'), null, 'malformed logout must not allocate a session');
+  await logout.text();
+});
+
 test('an authenticated Founder retains access to the launch rehearsal after route preflight', async t => {
   const f = await fixture(t);
   const founder = f.client();
