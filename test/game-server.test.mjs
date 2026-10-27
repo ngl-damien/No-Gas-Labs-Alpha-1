@@ -7,12 +7,13 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
+import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
-async function fixture(t, dataDir) {
+async function fixture(t, dataDir, options = {}) {
   dataDir ??= await mkdtemp(join(tmpdir(), 'ngl-http-'));
-  const server = await createGameServer({ dataDir, founderKey: KEY });
+  const server = await createGameServer({ dataDir, founderKey: KEY, ...options });
   const game = { server, closeGame: () => server.closeGame() };
   await new Promise(resolve => game.server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${game.server.address().port}`;
@@ -60,6 +61,74 @@ async function publish(founder, title = 'Observed bytes') {
   assert.equal(result.response.status, 200, JSON.stringify(result.body));
   return result.body;
 }
+
+
+test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
+  const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
+  limiter.failure('::ffff:192.0.2.44', 0);
+  assert.throws(() => limiter.assertAllowed('192.0.2.44', 1), error =>
+    error.code === 'LOGIN_RATE_LIMITED' && error.status === 429);
+});
+
+test('login limiter uses a rolling window and blocks a boundary-burst of failures', () => {
+  const limiter = createLoginRateLimiter({ maxFailures: 5, windowMs: 100, lockoutMs: 100 });
+  const peer = '192.0.2.44';
+  limiter.assertAllowed(peer, 0); limiter.failure(peer, 0);
+  for (const now of [80, 81, 82]) { limiter.assertAllowed(peer, now); limiter.failure(peer, now); }
+  // The first failure has expired, but the next three are still within the last 100 ms.
+  limiter.assertAllowed(peer, 101); limiter.failure(peer, 101);
+  limiter.assertAllowed(peer, 102); limiter.failure(peer, 102);
+  assert.throws(() => limiter.assertAllowed(peer, 103), error =>
+    error.code === 'LOGIN_RATE_LIMITED' && error.status === 429);
+});
+
+test('invalid Founder login throttle configuration fails before creating runtime state', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-invalid-login-throttle-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY, loginRateLimit: { maxFailures: 0 } }),
+    /INVALID_LOGIN_RATE_LIMIT_CONFIG/
+  );
+  await assert.rejects(readFile(join(dataDir, 'founder.key')), error => error.code === 'ENOENT');
+  await assert.rejects(readFile(join(dataDir, 'service.json')), error => error.code === 'ENOENT');
+});
+
+test('Founder login rate-limits repeated bad credentials by socket peer, not spoofable forwarding headers', async t => {
+  const f = await fixture(t, undefined, { loginRateLimit: { maxFailures: 2, windowMs: 500, lockoutMs: 500 } });
+  const client = f.client();
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const rejected = await client.request('/api/login', { key: 'wrong-key-' + attempt }, {
+      headers: { 'x-forwarded-for': '198.51.100.' + attempt }
+    });
+    assert.equal(rejected.response.status, 401);
+    assert.equal(rejected.response.headers.get('set-cookie'), null, 'failed login must not allocate a session');
+  }
+  const blocked = await client.request('/api/login', { key: KEY }, {
+    headers: { 'x-forwarded-for': '203.0.113.44' }
+  });
+  assert.equal(blocked.response.status, 429);
+  assert.equal(blocked.body.error.code, 'LOGIN_RATE_LIMITED');
+  assert.equal(blocked.response.headers.get('retry-after'), '1');
+  assert.equal(blocked.response.headers.get('set-cookie'), null, 'rate-limited login must not allocate a session');
+  await new Promise(resolve => setTimeout(resolve, 520));
+  const unlocked = await client.request('/api/login', { key: KEY, name: 'Damien' });
+  assert.equal(unlocked.response.status, 200, JSON.stringify(unlocked.body));
+  assert.equal(unlocked.body.viewer.role, 'founder');
+});
+
+test('successful Founder authentication clears the prior failure budget', async t => {
+  const f = await fixture(t, undefined, { loginRateLimit: { maxFailures: 2, windowMs: 5_000, lockoutMs: 1_000 } });
+  const first = f.client();
+  const rejected = await first.request('/api/login', { key: 'wrong-before-success' });
+  assert.equal(rejected.response.status, 401);
+  const founder = f.client();
+  assert.equal((await founder.request('/api/login', { key: KEY, name: 'Damien' })).response.status, 200);
+  const second = f.client();
+  assert.equal((await second.request('/api/login', { key: 'wrong-after-success' })).response.status, 401);
+  const third = f.client();
+  assert.equal((await third.request('/api/login', { key: 'wrong-after-success-again' })).response.status, 401,
+    'successful authentication must reset the prior failure count for this peer');
+});
 
 test('unknown sessions are Witness; role/reward injection, cross-origin and invalid bodies are rejected', async t => {
   const f = await fixture(t); const guest = f.client();

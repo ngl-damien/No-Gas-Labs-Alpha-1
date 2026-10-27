@@ -10,6 +10,7 @@ import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
 import { projectProjection } from '../src/institution/project-projection.mjs';
+import { createLoginRateLimiter } from './login-rate-limit.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -324,7 +325,8 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined } = {}) {
+  const loginLimiter = createLoginRateLimiter(loginRateLimit);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
@@ -552,10 +554,19 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       const input = await body(request);
       if (path === '/api/login') {
         exact(input, ['key', 'name']);
-        if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        const loginAddress = request.socket.remoteAddress || 'unknown';
+        loginLimiter.assertAllowed(loginAddress);
+        if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) {
+          loginLimiter.failure(loginAddress);
+          fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        }
         const candidate = Buffer.from(input.key), expected = Buffer.from(key);
-        if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) {
+          loginLimiter.failure(loginAddress);
+          fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        }
         if (input.name !== undefined && (typeof input.name !== 'string' || !input.name.trim() || Array.from(input.name).length > 80)) fail('INVALID_NAME', 'Name must be 1–80 characters.');
+        loginLimiter.success(loginAddress);
         const previous = sessionForFounderLogin(request);
         makeRoomForFounderLogin(previous);
         session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
@@ -606,8 +617,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       fail('NOT_FOUND', 'Not found.', 404);
     } catch (error) {
-      if (!response.headersSent) json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
-      else response.end();
+      if (!response.headersSent) {
+        if (Number.isSafeInteger(error.retryAfterSeconds)) response.setHeader('Retry-After', String(error.retryAfterSeconds));
+        json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
+      } else response.end();
     }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;
