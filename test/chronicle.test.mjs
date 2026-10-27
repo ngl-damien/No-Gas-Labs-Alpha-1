@@ -291,3 +291,36 @@ test("revocation with missing work binding stays visible and warns instead of in
   assert.match(entry.detail, /Work scope: not resolvable/);
   assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
 });
+
+
+test("a later claim cannot retroactively supply the scope of an earlier revocation", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "revoke-before-claim",
+        type: "revoke",
+        workId: "work-out-of-order",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        grantId: "grant-out-of-order",
+        reason: "Claim is missing at this point in history.",
+      },
+      {
+        id: "claim-after-revocation",
+        type: "claim",
+        workId: "work-out-of-order",
+        actor: "damien",
+        at: "2026-10-26T10:01:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-before-claim");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
+});
