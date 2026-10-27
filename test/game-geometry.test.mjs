@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -56,6 +56,41 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
+test('the playable map exposes all eight institutional functions as real destinations',()=>{
+ const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+ const institutions=PLACES.filter(place=>place.type==='institution');
+ assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
+ assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
+ assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
+});
+test('institution activity labels are deterministic projections of retained event records',()=>{
+ const world={events:[
+  {type:'proposal'},{type:'draft'},{type:'repair'},{type:'report'},{type:'decision'},
+  {type:'contribute'},{type:'learning'},{type:'experiment'},{type:'publish'}
+ ]};
+ assert.equal(institutionActivityCount('guild_hall',world),1);
+ assert.equal(institutionActivityCount('forge',world),2);
+ assert.equal(institutionActivityCount('evidence_archive',world),1);
+ assert.equal(institutionActivityCount('decision_chamber',world),1);
+ assert.equal(institutionActivityCount('town-square',world),1);
+ assert.equal(institutionActivityCount('academy',world),1);
+ assert.equal(institutionActivityCount('moonshot_field',world),1);
+ assert.equal(institutionActivityCount('publication_house',world),1);
+ assert.equal(institutionActivityCount('unknown',world),0);
+ assert.equal(institutionActivityCount('forge',{events:[]}),0);
+ const donorHistory={history:[{event_type:'PROPOSAL'},{event_type:'MOONSHOT'},{admission:'REJECTED'},{outcome:'FAILED'}]};
+ assert.equal(institutionActivityCount('guild_hall',donorHistory),1,'recovered proposal events remain visible');
+ assert.equal(institutionActivityCount('moonshot_field',donorHistory),1,'recovered moonshot events remain visible');
+ assert.equal(institutionActivityCount('evidence_archive',donorHistory),2,'rejections and failures remain visible in the archive');
+});
+test('institutional destinations dispatch their own location identity',t=>{
+ const {view,interactions}=makeView(t);
+ const place=PLACES.find(item=>item.id==='evidence_archive');
+ view.setPlayer({x:place.x,y:place.y+50});
+ view.goTo(place.id);
+ for(let i=0;i<30;i++)view.update(.045,i*45);
+ assert.deepEqual(interactions,[{type:'institution',id:'evidence_archive'}]);
+});
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
   assert.equal(isWalkable(850,360,[]),true);
@@ -82,4 +117,56 @@ test('routing from a bank edge never rounds the player into water',()=>{
   const route=findRoute(start,{x:1000,y:450},[]);
   assert.ok(route.length>2);
   assert.ok(route.every(p=>isWalkable(p.x,p.y,[])));
+});
+
+
+test('an unreachable named destination cannot dispatch an arrival',t=>{
+  const {view,interactions}=makeView(t);
+  const wall=Array.from({length:11},(_,index)=>({id:'wall-'+index,position:{x:100+index*140,y:500}}));
+  view.setWorld({creations:wall});
+  const start=view.getPlayer();
+  view.goTo('relay');
+  view.update(.045,45);
+  assert.deepEqual(view.getPlayer(),start,'an unreachable route must not teleport or move the player');
+  assert.deepEqual(interactions,[],'an unreachable route is not arrival evidence');
+  assert.equal(view.target,null,'the impossible target is cleared');
+});
+
+test('an unknown destination cancels a previous route instead of preserving stale intent',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('relay');
+  assert.equal(view.target,'relay');
+  view.goTo('not-a-place');
+  assert.equal(view.target,null);
+  assert.deepEqual(view.route,[]);
+  for(let i=0;i<10;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[]);
+});
+
+
+test('active destination is replanned when a new creation changes walkability',t=>{
+  const {view,interactions}=makeView(t);
+  view.goTo('forge');
+  assert.equal(view.target,'forge');
+  view.setWorld({creations:[{id:'new-obstacle',position:{x:260,y:600}}]});
+  assert.equal(view.target,'forge','a still-reachable destination keeps its intent');
+  assert.ok(view.route.length>0,'the route is recomputed around the new obstacle');
+  assert.ok(view.route.every(point=>isWalkable(point.x,point.y,view.world.creations)),'the replacement route respects current collision geometry');
+  for(let i=0;i<100;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[{type:'institution',id:'forge'}],'the reachable destination opens exactly once');
+});
+
+
+test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
+  const {view,interactions}=makeView(t);
+  const institutions=PLACES.filter(place=>place.type==='institution');
+  assert.equal(institutions.length,8);
+  for(const place of institutions){
+    view.setPlayer({x:180,y:640});
+    view.setWorld({creations:[]});
+    view.goTo(place.id);
+    for(let i=0;i<500;i++)view.update(.045,i*45);
+    assert.deepEqual(interactions,[{type:'institution',id:place.id}],place.id+' must be reachable and dispatch exactly once');
+    interactions.length=0;
+  }
 });
