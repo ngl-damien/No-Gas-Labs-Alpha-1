@@ -249,12 +249,31 @@ async function readBoundedRegularFile(path) {
     if (!stat.isFile()) throw new Error('LEDGER_NOT_REGULAR_FILE');
     if (stat.dev !== before.dev || stat.ino !== before.ino) throw new Error('LEDGER_PATH_CHANGED');
     if (stat.size > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
-    const bytes = await handle.readFile();
+
+    // readFile() can allocate beyond the pre-read stat size if another writer
+    // grows the same inode during the read. Read at most limit + 1 bytes.
+    const chunks = [];
+    let total = 0;
+    let position = 0;
+    while (total <= MAX_LEDGER_BYTES) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_LEDGER_BYTES + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+      position += bytesRead;
+      if (total > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
+    }
+
     const after = await lstat(path);
+    const afterHandle = await handle.stat();
     if (after.isSymbolicLink() || !after.isFile() ||
         after.dev !== stat.dev || after.ino !== stat.ino) throw new Error('LEDGER_PATH_CHANGED');
-    if (bytes.length > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
-    return bytes;
+    if (afterHandle.size !== stat.size || total !== stat.size ||
+        afterHandle.mtimeMs !== stat.mtimeMs || afterHandle.ctimeMs !== stat.ctimeMs) {
+      throw new Error('LEDGER_CHANGED_DURING_READ');
+    }
+    return Buffer.concat(chunks, total);
   } finally { await handle.close(); }
 }
 async function readLedger(path, publicKey) {
