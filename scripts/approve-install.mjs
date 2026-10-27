@@ -16,14 +16,14 @@ const FINGERPRINT = /^[a-f0-9]{64}$/;
 function assertNoDuplicateJsonObjectKeys(source) {
   let index = 0;
   const skipWhitespace = () => {
-    while (source[index] === ' ' || source[index] === '\\t' || source[index] === '\\r' || source[index] === '\\n') index += 1;
+    while (source[index] === ' ' || source[index] === '\t' || source[index] === '\r' || source[index] === '\n') index += 1;
   };
   const readStringToken = () => {
     const start = index;
     index += 1;
     while (index < source.length) {
       const character = source[index];
-      if (character === '\\\\') { index += 2; continue; }
+      if (character === '\\') { index += 2; continue; }
       index += 1;
       if (character === '"') return source.slice(start, index);
     }
@@ -71,7 +71,7 @@ function assertNoDuplicateJsonObjectKeys(source) {
     const start = index;
     while (index < source.length &&
       source[index] !== ',' && source[index] !== ']' && source[index] !== '}' &&
-      source[index] !== ' ' && source[index] !== '\\t' && source[index] !== '\\r' && source[index] !== '\\n') {
+      source[index] !== ' ' && source[index] !== '\t' && source[index] !== '\r' && source[index] !== '\n') {
       index += 1;
     }
     if (index === start) throw new Error('PROPOSAL_JSON_INVALID');
