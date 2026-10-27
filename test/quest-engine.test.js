@@ -13,13 +13,14 @@ const quest = defineQuest({
 const auth = authorizeQuest({ quest, grant_id: "g-alpha" });
 const bytes = Buffer.from("independently inspected acceptance artifact");
 const receipt = makeReceipt(bytes);
-const observedIds = new Set(["e0", "e1"]);
+const observedIds = new Set(["e0", "e1", "e-after-revocation", "e-before-revocation"]);
 const trust = {
   resolveArtifact: () => bytes,
   verifyAuthorization: event => event.type === "QUEST_AUTHORIZED"
     ? event.event_id === auth.event_id && event.grant_id === "g-alpha" && event.actor === "founder"
     : event.grant_id === "g-alpha" && event.authority === "AUTHORIZED",
-  verifyObservation: event => observedIds.has(event.event_id)
+  verifyObservation: event => observedIds.has(event.event_id),
+  verifyAdjudication: event => event.event_type === "REVOCATION" && event.revokes === "g-alpha"
 };
 const execution = (event_id, acceptance_satisfied, outcome = "SUCCEEDED") => ({
   event_id, event_type: "EXECUTION_ADJUDICATION", subject: quest.quest_id,
@@ -91,4 +92,34 @@ test("quest projection rejects accessor-bearing events before filtering", () => 
   const sparse = [];
   sparse.length = 1;
   assert.throws(() => projectQuest(quest, sparse, trust), /invalid quest event list/);
+});
+
+
+const revokeGrant = () => ({
+  event_id: "revoke-g-alpha",
+  event_type: "REVOCATION",
+  revokes: "g-alpha"
+});
+
+test("a verified revocation blocks later executions using that grant", () => {
+  const partial = execution("e0", ["mesh-protocol"]);
+  const later = execution("e-after-revocation", ["adversarial-tests"]);
+  const result = projectQuest(quest, [auth, partial, revokeGrant(), later], trust);
+
+  assert.equal(result.status, QUEST_STATUS.REVOKED);
+  assert.equal(result.authorized, false);
+  assert.equal(result.revoked, true);
+  assert.deepEqual(result.executions, ["e0"]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, false]);
+});
+
+test("a later revocation does not erase an earlier verified completion", () => {
+  const completed = execution("e-before-revocation", quest.acceptance);
+  const result = projectQuest(quest, [auth, completed, revokeGrant()], trust);
+
+  assert.equal(result.status, QUEST_STATUS.COMPLETED);
+  assert.equal(result.authorized, false);
+  assert.equal(result.revoked, true);
+  assert.deepEqual(result.executions, ["e-before-revocation"]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, true]);
 });

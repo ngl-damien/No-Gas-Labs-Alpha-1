@@ -1,9 +1,9 @@
 import { projectLocationEvidence } from "../location/evidence.js";
-import { hasVerifiedObservation, isVerifiedAuthorization, validatedEventList } from "../world/project.js";
+import { hasVerifiedObservation, isVerifiedAdjudication, isVerifiedAuthorization, validatedEventList } from "../world/project.js";
 
 export const QUEST_STATUS = Object.freeze({
   OPEN: "OPEN", AUTHORIZED: "AUTHORIZED", IN_PROGRESS: "IN_PROGRESS",
-  COMPLETED: "COMPLETED", FAILED: "FAILED"
+  COMPLETED: "COMPLETED", FAILED: "FAILED", REVOKED: "REVOKED"
 });
 
 export function defineQuest({ quest_id, title, objective, acceptance, capabilities = [] }) {
@@ -23,32 +23,61 @@ export function defineQuest({ quest_id, title, objective, acceptance, capabiliti
 // Quest status is a projection of host-verified grants and observations. Labels
 // and acceptance_satisfied arrays in untrusted events are only claims.
 export function projectQuest(quest, events = [], options = {}) {
-  const { resolveArtifact, verifyObservation, verifyAuthorization } = options;
+  const { resolveArtifact, verifyObservation, verifyAuthorization, verifyAdjudication } = options;
   const eventList = validatedEventList(events, "quest event");
-  const relevant = eventList.filter(event =>
-    event.quest_id === quest.quest_id || event.subject === quest.quest_id
-  );
-  const authorized = relevant.some(event => isVerifiedAuthorization(event, verifyAuthorization));
-  const executions = relevant.filter(event =>
-    event?.event_type === "EXECUTION_ADJUDICATION" &&
-    event.admission === "ACCEPTED" &&
-    hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
-    isVerifiedAuthorization(event, verifyAuthorization)
-  );
-  const succeeded = executions.filter(event => event.outcome === "SUCCEEDED");
-  const failed = executions.filter(event => event.outcome === "FAILED");
+  const revokedGrants = new Set();
+  const questGrantIds = new Set();
+  const relevant = [];
+  const executions = [];
+  const succeeded = [];
+  const failed = [];
+
+  // Replay revocations in event order, matching the world reducer. A verified
+  // revocation blocks later executions using that grant, but never erases an
+  // earlier verified outcome from the append-only history.
+  for (const event of eventList) {
+    if (event.event_type === "REVOCATION") {
+      if (isVerifiedAdjudication(event, verifyAdjudication)) {
+        revokedGrants.add(event.revokes);
+      }
+      continue;
+    }
+
+    if (event.quest_id !== quest.quest_id && event.subject !== quest.quest_id) continue;
+    relevant.push(event);
+
+    const grantId = typeof event.grant_id === "string" && event.grant_id.length > 0
+      ? event.grant_id : null;
+    const verifiedAuthorization = isVerifiedAuthorization(event, verifyAuthorization);
+    if (verifiedAuthorization && grantId) questGrantIds.add(grantId);
+
+    if (event.event_type !== "EXECUTION_ADJUDICATION" ||
+        event.admission !== "ACCEPTED" ||
+        !hasVerifiedObservation(event, resolveArtifact, verifyObservation) ||
+        !verifiedAuthorization ||
+        !grantId ||
+        revokedGrants.has(grantId)) continue;
+
+    executions.push(event);
+    if (event.outcome === "SUCCEEDED") succeeded.push(event);
+    if (event.outcome === "FAILED") failed.push(event);
+  }
+
+  const authorized = [...questGrantIds].some(grantId => !revokedGrants.has(grantId));
+  const revoked = [...questGrantIds].some(grantId => revokedGrants.has(grantId));
   const satisfied = new Set(succeeded.flatMap(event =>
     Array.isArray(event.acceptance_satisfied) ? event.acceptance_satisfied : []
   ));
   const complete = quest.acceptance.every(id => satisfied.has(id));
   const status = complete ? QUEST_STATUS.COMPLETED
-    : failed.length && authorized ? QUEST_STATUS.FAILED
+    : failed.length ? QUEST_STATUS.FAILED
+    : revoked && !authorized ? QUEST_STATUS.REVOKED
     : succeeded.length ? QUEST_STATUS.IN_PROGRESS
     : authorized ? QUEST_STATUS.AUTHORIZED
     : QUEST_STATUS.OPEN;
   const location_observations = projectLocationEvidence(relevant, quest.quest_id);
   return Object.freeze({
-    quest, status, authorized, location_observations,
+    quest, status, authorized, revoked, location_observations,
     acceptance: Object.freeze(quest.acceptance.map(id =>
       Object.freeze({ id, satisfied: satisfied.has(id) })
     )),

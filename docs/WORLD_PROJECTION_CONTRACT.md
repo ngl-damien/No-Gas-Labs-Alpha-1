@@ -19,6 +19,8 @@ Failures, refutations, and rejected candidates remain in history.
 
 Replay is idempotent by `event_id`.
 
+Verified revocations are replayed in event order. They block later executions using the revoked grant, and the quest projector applies the same boundary as the world reducer. A revocation does not silently erase earlier verified outcomes; the original event and its consequence remain auditable in history.
+
 ## Donor alignment
 
 This seam is intentionally compatible with the recovered NGL direction:
