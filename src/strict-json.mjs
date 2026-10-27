@@ -15,17 +15,17 @@ export function assertNoDuplicateJsonObjectKeys(source, {
       !Number.isSafeInteger(maxDepth) || maxDepth < 1 || maxDepth > 256) {
     throw new Error('STRICT_JSON_INVALID_CONFIG');
   }
-  const fail = code => { throw new Error(`${label}_${code}`); };
+  const fail = code => { throw new Error(label + '_' + code); };
   let index = 0;
   const skipWhitespace = () => {
-    while (source[index] === ' ' || source[index] === '\\t' || source[index] === '\\r' || source[index] === '\\n') index += 1;
+    while (source[index] === ' ' || source[index] === '\t' || source[index] === '\r' || source[index] === '\n') index += 1;
   };
   const readStringToken = () => {
     if (source[index] !== '"') fail('JSON_INVALID');
     const start = index++;
     while (index < source.length) {
       const character = source[index];
-      if (character === '\\\\') {
+      if (character === '\\') {
         if (index + 1 >= source.length) fail('JSON_INVALID');
         index += 2;
         continue;
@@ -79,7 +79,7 @@ export function assertNoDuplicateJsonObjectKeys(source, {
     const start = index;
     while (index < source.length &&
       source[index] !== ',' && source[index] !== ']' && source[index] !== '}' &&
-      source[index] !== ' ' && source[index] !== '\\t' && source[index] !== '\\r' && source[index] !== '\\n') {
+      source[index] !== ' ' && source[index] !== '\t' && source[index] !== '\r' && source[index] !== '\n') {
       index += 1;
     }
     if (index === start) fail('JSON_INVALID');
