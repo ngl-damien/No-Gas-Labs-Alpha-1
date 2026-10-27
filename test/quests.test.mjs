@@ -247,3 +247,72 @@ test('quest summary does not default unidentified or unsupported viewers to Witn
     assert.deepEqual(getQuest(world, viewer), unavailable);
   }
 });
+
+
+test('quest trail routes the next Founder objective to real activity in sequence', () => {
+  const world = trailFixture();
+  const before = structuredClone(world);
+  let trail = getQuestTrail(world, founder);
+  assert.deepEqual(trail[0].action, { type: 'workbench', recipe: 'comic' });
+  assert.equal(Object.isFrozen(trail[0].action), true);
+  assert.equal(trail[1].action, null);
+  assert.match(trail[1].blockedReason, /first place/i);
+  assert.deepEqual(world, before, 'routing an objective does not mutate the world or award progress');
+
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+  ];
+  trail = getQuestTrail(world, founder);
+  assert.deepEqual(trail[1].action, { type: 'location', id: 'relay' });
+
+  world.events.push({ id: 'discover-relay', type: 'discover', actor: founder, at: at2, locationId: 'relay' });
+  world.discoveries.push({ id: 'd-relay', locationId: 'relay', actor: founder, at: at2 });
+  trail = getQuestTrail(world, founder);
+  assert.deepEqual(trail[2].action, { type: 'creation', id: 'c-1', version: 1 });
+  assert.equal(trail[3].action, null);
+  assert.match(trail[3].blockedReason, /field note/i);
+
+  world.events.push({ id: 'field-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 });
+  world.contributions.push({ id: 'n-1', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'Observed' });
+  trail = getQuestTrail(world, founder);
+  assert.deepEqual(trail[3].action, { type: 'workbench', recipe: 'custom' });
+
+  const second = { id: 'c-2', title: 'Second place', version: 1, publishedAt: at2, versions: [] };
+  world.creations.push(second);
+  world.events.push({ id: 'publish-v1-second', type: 'publish', actor: founder, at: at2, creationId: 'c-2', version: 1 });
+  trail = getQuestTrail(world, founder);
+  assert.equal(trail[3].complete, true);
+  assert.deepEqual(trail[4].action, { type: 'creation', id: 'c-1', version: 1 });
+});
+
+test('Witness quest actions respect the map, published-work dependency, and role boundary', () => {
+  const world = trailFixture();
+  let trail = getQuestTrail(world, witness);
+  assert.deepEqual(trail[0].action, { type: 'location', id: 'relay' });
+  assert.equal(trail[1].action, null);
+  assert.match(trail[1].blockedReason, /Founder.*publish/i);
+  assert.equal(trail.some(item => item.action?.type === 'workbench'), false);
+
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events.push({ id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 });
+  trail = getQuestTrail(world, witness);
+  assert.equal(trail[1].complete, true);
+  assert.match(trail[2].blockedReason, /four guide locations/i);
+
+  for (const [index, locationId] of ['relay', 'river', 'overlook', 'ruins'].entries()) {
+    const at = index === 0 ? at1 : at2;
+    const id = 'witness-discover-' + locationId;
+    world.events.push({ id, type: 'discover', actor: witness, at, locationId });
+    world.discoveries.push({ id: id + '-record', locationId, actor: witness, at });
+  }
+  trail = getQuestTrail(world, witness);
+  assert.equal(trail[0].complete, true);
+  assert.deepEqual(trail[2].action, { type: 'creation', id: 'c-1', version: 1 });
+  assert.match(trail[3].blockedReason, /field note/i);
+
+  world.events.push({ id: 'witness-field-note', type: 'contribute', actor: witness, at: at2, creationId: 'c-1', version: 1 });
+  world.contributions.push({ id: 'witness-note-record', creationId: 'c-1', version: 1, actor: witness, at: at2, text: 'A specific observation' });
+  trail = getQuestTrail(world, witness);
+  assert.deepEqual(trail[3].action, { type: 'creation', id: 'c-1', version: 1 });
+});
