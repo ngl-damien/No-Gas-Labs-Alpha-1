@@ -312,3 +312,31 @@ test('institution ledger rejects exposed directories before acquiring a writer l
   );
   await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
 });
+
+
+test('ledger rejects symlinked persisted ledger files before parsing their targets', async t => {
+  const directory = await temp(t);
+  const target = join(directory, 'ledger-target.json');
+  await writeFile(target, '{}', { mode: 0o600 });
+  await symlink(target, join(directory, 'ledger.json'));
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_NOT_REGULAR_FILE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+test('ledger rejects oversized persisted history before reading or parsing it', async t => {
+  const directory = await temp(t);
+  const file = join(directory, 'ledger.json');
+  const handle = await open(file, 'wx', 0o600);
+  try { await handle.truncate(64 * 1024 * 1024 + 1); }
+  finally { await handle.close(); }
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_TOO_LARGE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
