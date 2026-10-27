@@ -146,9 +146,9 @@ def institutional_locations(browser,url,out):
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
-    visitor=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     try:
-        a,b=owner.new_page(viewport={"width":1280,"height":900}),visitor.new_page(viewport={"width":1280,"height":900})
+        a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
             page.on('pageerror',lambda error:errors.append(str(error)))
             page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
