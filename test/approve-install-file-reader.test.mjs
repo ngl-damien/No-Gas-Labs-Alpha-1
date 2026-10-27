@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { approvalPayload, makeInstallationProposal, proposalDigest, publicKeyFingerprint } from '../experiment-001/institutional-cycle.mjs';
-import { readBoundedRegularFile } from '../scripts/bounded-file-reader.mjs';
+import { readBoundedRegularFile } from '../src/bounded-file-reader.mjs';
 
 const script = fileURLToPath(new URL('../scripts/approve-install.mjs', import.meta.url));
 
