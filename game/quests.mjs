@@ -1,5 +1,7 @@
 const rows = value => Array.isArray(value) ? value : [];
-const mine = (entries, viewer) => rows(entries).filter(entry => entry?.actor?.id === viewer?.id);
+const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
+  ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
+  : [];
 
 export function getQuest(world, viewer) {
   const creations = rows(world?.creations);
@@ -172,13 +174,13 @@ function uniqueEventIds(events) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
 }
 
-function matchingTrailRecords(type, records, events, fields, actorId) {
+function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
   const validIds = uniqueEventIds(events);
-  const owned = trailRows(records).filter(record => record?.actor?.id === actorId);
+  const owned = trailRows(records).filter(record => record?.actor?.id === actorId && record.actor.role === actorRole);
   const candidates = trailRows(events).filter(event =>
-    event?.type === type && event?.actor?.id === actorId && validIds.has(event.id)
+    event?.type === type && event?.actor?.id === actorId && event?.actor?.role === actorRole && validIds.has(event.id)
   );
-  const key = entry => JSON.stringify([entry?.actor?.id, entry?.at, ...fields.map(field => entry?.[field])]);
+  const key = entry => JSON.stringify([entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])]);
   const recordCounts = new Map(), eventCounts = new Map();
   for (const record of owned) {
     const fingerprint = key(record);
@@ -196,7 +198,7 @@ function matchingTrailRecords(type, records, events, fields, actorId) {
   });
 }
 
-function retainedPublicationEvents(world, actorId = null) {
+function retainedPublicationEvents(world, actorId = null, actorRole = null) {
   const events = trailRows(world?.events);
   const validIds = uniqueEventIds(events);
   const creations = trailRows(world?.creations);
@@ -205,7 +207,7 @@ function retainedPublicationEvents(world, actorId = null) {
     if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
         typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
         typeof event.at !== 'string' || typeof event.actor?.id !== 'string' ||
-        (actorId !== null && event.actor.id !== actorId)) return false;
+        ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     const matches = versions.filter(version => version?.id === event.creationId &&
       version?.version === event.version && version?.publishedAt === event.at);
     return matches.length === 1;
@@ -251,21 +253,22 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = []) {
 
 export function getQuestTrail(world, viewer) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
-  if (!actorId) return Object.freeze([]);
+  const actorRole = viewer?.role;
+  if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
   const events = trailRows(world?.events);
   const publications = retainedPublicationEvents(world);
-  const myPublications = publications.filter(event => event?.actor?.id === actorId);
+  const myPublications = retainedPublicationEvents(world, actorId, actorRole);
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
-  const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId);
+  const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
       locations.set(match.record.locationId, match.event);
     }
   }
-  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId);
-  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId);
+  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole);
+  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole);
   const earlierVersionRepairs = myPublications.filter(event => {
     if (event.version <= 1) return false;
     const creation = trailRows(world?.creations).find(item => item?.id === event.creationId);
