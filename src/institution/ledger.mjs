@@ -228,11 +228,15 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
 
     let serialized;
     try {
-      serialized = (await readBoundedRegularFile(file, MAX_LEDGER_BYTES, {
+      const bytes = await readBoundedRegularFile(file, MAX_LEDGER_BYTES, {
         notRegularCode: 'LEDGER_NOT_REGULAR_FILE', tooLargeCode: 'LEDGER_TOO_LARGE',
         changedCode: 'LEDGER_CHANGED_DURING_READ', permissionsCode: 'LEDGER_FILE_PERMISSIONS_TOO_BROAD',
         ownerCode: 'LEDGER_FILE_OWNER_MISMATCH', label: 'Ledger file'
-      })).toString('utf8');
+      });
+      serialized = bytes.toString('utf8');
+      if (!Buffer.from(serialized, 'utf8').equals(bytes)) {
+        fail('LEDGER_TAMPERED', 'Ledger is not valid UTF-8');
+      }
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (serialized !== undefined) {
       let saved;
