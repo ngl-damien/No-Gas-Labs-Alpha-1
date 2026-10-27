@@ -467,3 +467,25 @@ test("legacy world projection seeds without revocation_audit remain replayable",
 
   assert.deepEqual(projectWorld([], legacySeed, options), current);
 });
+
+
+test("caller-supplied revocation audit cannot override replay-derived audit", () => {
+  const revocation = {
+    event_id: "audit-seed-revoke",
+    event_type: "REVOCATION",
+    quest_id: "forge-gate",
+    revokes: "grant-1"
+  };
+  const options = {
+    ...trusted,
+    verifyAdjudication: event => event.event_type === "REVOCATION" && event.revokes === "grant-1"
+  };
+  const valid = projectWorld([revocation], undefined, options);
+  const forged = structuredClone(valid);
+  forged.revocation_audit[0].quest_id = "other-quest";
+
+  assert.throws(
+    () => projectWorld([], forged, options),
+    /seed projection differs from verified retained history/
+  );
+});
