@@ -63,6 +63,13 @@ async function publish(founder, title = 'Observed bytes') {
 }
 
 
+test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
+  const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
+  limiter.failure('::ffff:192.0.2.44', 0);
+  assert.throws(() => limiter.assertAllowed('192.0.2.44', 1), error =>
+    error.code === 'LOGIN_RATE_LIMITED' && error.status === 429);
+});
+
 test('login limiter uses a rolling window and blocks a boundary-burst of failures', () => {
   const limiter = createLoginRateLimiter({ maxFailures: 5, windowMs: 100, lockoutMs: 100 });
   const peer = '192.0.2.44';
