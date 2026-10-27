@@ -186,7 +186,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     }
   }
   return {
-    get value() { return current; },
+    get value() { if (durabilityUncertainState) throw durabilityUncertain(); return current; },
     close,
     async commit(candidate) {
       if (released) throw new Error('Service writer lease has closed');
