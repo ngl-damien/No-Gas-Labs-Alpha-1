@@ -237,6 +237,14 @@ test('mutating caller inputs or returned snapshots cannot alter queued or durabl
   assert.equal((await store.snapshot(founder)).decisions[0].evaluation.bytes, proposal().evaluation.bytes);
 });
 
+test('rejects a group/world-accessible decision directory before acquiring a writer lock', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-directory-mode-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await chmod(directory, 0o755);
+  await assert.rejects(decisionsModule.openDecisions({ directory, now: () => instant }), error => error.code === 'INVALID_CONFIG');
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
 test('rejects noncanonical persisted decision envelopes including duplicate schema keys', async t => {
   const { store, directory } = await fixture(t);
   await store.create(evaluator, proposal());
