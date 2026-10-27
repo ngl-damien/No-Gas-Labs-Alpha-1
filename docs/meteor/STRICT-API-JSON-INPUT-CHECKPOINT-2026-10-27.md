@@ -12,13 +12,13 @@ The live HTTP body parser bounded request size at 256 KiB but decoded bytes with
 ## Functional changes
 
 - Extracted the duplicate-key / bounded-nesting preflight into shared `src/strict-json.mjs`.
-- Reused it in the Founder INSTALL approval CLI, preserving the existing `PROPOSAL_DUPLICATE_JSON_KEY` and `PROPOSAL_JSON_TOO_DEEP` errors.
+- Reused it in the Founder INSTALL approval CLI, preserving the existing `PROPOSAL_DUPLICATE_JSON_KEY` and `PROPOSAL_JSON_TOO_DEEP` errors. The bounded-depth scan now runs before `JSON.parse`, so over-deep input is rejected before the parsed object graph is built.
 - Hardened `game/server.mjs` request parsing: malformed UTF-8, duplicate object keys (including escaped key spellings), and nesting beyond 128 levels now fail as `INVALID_JSON` before route/session side effects.
 - Added HTTP regressions for duplicate login credentials, escaped duplicate keys, malformed UTF-8, and excessive nesting. Each asserts HTTP 400 and no Set-Cookie.
 
 ## Verification status
 
-Pending exact-head GitHub Actions after the branch and pull request are created. No local test run is claimed. Update this checkpoint after observing final-head workflow results.
+GitHub Actions are being evaluated against the evolving PR head; record the exact final-head results in the PR discussion after all three workflows complete. No local test run is claimed.
 
 ## Limits and next priorities
 
