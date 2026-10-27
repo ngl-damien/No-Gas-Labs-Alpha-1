@@ -263,9 +263,10 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
   const grantId = type === "revoke" ? text(event?.grantId) : "";
   const expectedSubject = work?.subject;
   const expectedAction = work?.action;
-  const claimBindingValid = typeof expectedSubject?.id === "string" &&
+  const claimSubjectValid = typeof expectedSubject?.id === "string" &&
     Number.isSafeInteger(expectedSubject?.version) &&
-    expectedSubject.version >= 1 &&
+    expectedSubject.version >= 1;
+  const claimBindingValid = claimSubjectValid &&
     typeof expectedAction === "string" &&
     Boolean(expectedAction.trim());
   const priorGrantRecords = type === "revoke" && grantId && Array.isArray(work?.authorizations)
@@ -283,10 +284,10 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
     ? event?.subject || null
     : type === "revoke"
       ? (revokeBindingValid ? work?.subject || null : null)
-      : (claimBindingValid ? work?.subject || null : null);
+      : (claimSubjectValid ? work?.subject || null : null);
   const stageSubjectRequired = ["execute", "observe", "adjudicate"].includes(type);
   const stageSubjectMissing = stageSubjectRequired && !event?.subject;
-  const stageSubjectMismatch = stageSubjectRequired && claimBindingValid && event?.subject &&
+  const stageSubjectMismatch = stageSubjectRequired && claimSubjectValid && event?.subject &&
     (event.subject.id !== expectedSubject.id || event.subject.version !== expectedSubject.version);
   const authorizationScopeMismatch = type === "authorize" && claimBindingValid &&
     (event?.scope?.subjectId !== expectedSubject.id ||
@@ -318,9 +319,12 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
       ? "The retained event has no parseable timestamp; it is shown after timestamped records."
       : "";
   const appendWarning = message => { warning = warning ? warning + " " + message : message; };
-  if (["authorize", "execute", "observe", "adjudicate"].includes(type) && !claimBindingValid) {
+  if (["authorize", "execute", "observe", "adjudicate"].includes(type) && !claimSubjectValid) {
     appendWarning("No valid earlier claim binds this institutional stage; no exact work/version scope is inferred.");
   } else {
+    if (type === "authorize" && !claimBindingValid) {
+      appendWarning("The earlier claim lacks a valid action binding; authorization scope cannot be fully checked.");
+    }
     if (stageSubjectMissing) appendWarning("The stage event omits its subject binding; displayed scope follows the earlier claim only.");
     if (stageSubjectMismatch) appendWarning("The event-supplied subject disagrees with the earlier claim; displayed scope follows the claim and requires source review.");
     if (authorizationScopeMismatch) appendWarning("The authorization scope disagrees with the earlier claim; the grant is not shown as claim-bound.");
