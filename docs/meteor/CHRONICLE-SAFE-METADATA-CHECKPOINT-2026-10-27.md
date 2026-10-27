@@ -21,7 +21,13 @@ The relevant source is `game/chronicle.mjs` with tests in `test/chronicle.test.m
 
 ## Verification status
 
-GitHub Actions verification for this branch's exact final head is pending. Do not treat the code as verified until the Node suite, Python inspector/build/institutional exercise, Genesis Evidence Invariant, and browser acceptance have completed on the final PR head. No local test run is claimed.
+The code-and-test head `99cd4f88f5c858e54f2f9d3674714c5c44c8661a` completed all three required GitHub Actions workflows successfully:
+
+- Repository verification: [run 40597106974](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40597106974) — success.
+- Genesis Evidence Invariant: [run 40597106927](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40597106927) — success.
+- Browser acceptance: [run 40597106908](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40597106908) — success.
+
+These results apply to that exact source revision. Any later commit, including a documentation-only commit, requires its own exact-head workflow check before merge. No local test run is claimed.
 
 ## Unresolved blockers / next priorities
 
