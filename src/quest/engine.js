@@ -54,6 +54,10 @@ export function projectQuest(quest, events = [], options = {}) {
   // earlier verified outcome from the append-only history.
   for (const event of eventList) {
     if (event.event_type === "REVOCATION") {
+      // Legacy revocations without quest_id remain grant-wide. Once a revocation
+      // declares a quest scope, it must not revoke a grant in another quest just
+      // because its subject field happens to name that quest.
+      if (event.quest_id !== undefined && event.quest_id !== quest.quest_id) continue;
       if (isVerifiedAdjudication(event, verifyAdjudication)) {
         revokedGrants.add(event.revokes);
       }
