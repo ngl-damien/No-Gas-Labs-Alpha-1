@@ -141,3 +141,43 @@ test('missing or malformed records fail closed to empty activity without inventi
   assert.deepEqual(record.inventory,[]);
   assert.deepEqual(record.recentActivity,[]);
 });
+
+test('character activity fails closed when actor role is missing or unsupported', () => {
+  const sharedId = 'reused-actor-id';
+  const world = {
+    xp: 200,
+    creations: [
+      publishedCreation('founder-work', [t1]),
+      publishedCreation('witness-work', [t2])
+    ],
+    events: [
+      publication('founder-pub', { id: sharedId, role: 'founder' }, 'founder-work', 1, t1),
+      event('witness-note', 'contribute', { id: sharedId, role: 'witness' }, t2, {
+        creationId: 'witness-work', version: 1
+      })
+    ],
+    discoveries: [
+      { id: 'founder-discovery', actor: { id: sharedId, role: 'founder' }, locationId: 'river' },
+      { id: 'witness-discovery', actor: { id: sharedId, role: 'witness' }, locationId: 'relay' }
+    ]
+  };
+
+  const ambiguous = projectCharacter(world, { id: sharedId });
+  assert.equal(ambiguous.xp, 0);
+  assert.ok(ambiguous.skills.every(skill => skill.count === 0));
+  assert.deepEqual(ambiguous.recentActivity, []);
+
+  const unsupported = projectCharacter(world, { id: sharedId, role: 'administrator' });
+  assert.equal(unsupported.xp, 0);
+  assert.ok(unsupported.skills.every(skill => skill.count === 0));
+  assert.deepEqual(unsupported.recentActivity, []);
+
+  const founderRecord = projectCharacter(world, { id: sharedId, role: 'founder' });
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'explorer').count, 1);
+
+  const witnessRecord = projectCharacter(world, { id: sharedId, role: 'witness' });
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
+});
+

@@ -1,7 +1,7 @@
 const rows = value => Array.isArray(value) ? value : [];
-const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id
-  ? rows(entries).filter(entry => entry?.actor?.id === viewer.id &&
-      (typeof viewer.role !== 'string' || entry.actor.role === viewer.role))
+const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
+  (viewer.role === 'founder' || viewer.role === 'witness')
+  ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
 
 const LEVEL_SPAN = 300;
