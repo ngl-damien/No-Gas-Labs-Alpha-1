@@ -211,6 +211,8 @@ function publicationCandidate(payload, world, result) {
   append('adjudicate', 'damien', { grantId, executionId, subject, outputs, observationId: observed.id, decision: 'accept' });
   return { world, artifacts, institutionalEvents: kernel.events, publicationBindings: [...payload.publicationBindings, { creationId: creation.id, version: creation.version, digest: creation.receipt.digest, size: creation.receipt.size, workId }] };
 }
+const MAX_FOUNDER_KEY_FILE_BYTES = 1025; // 1024-byte key plus the generated trailing newline.
+
 async function readFounderKeyFile(path) {
   // A pathname alone is not a trust anchor: reject symlinks and permissive
   // files, then verify the opened descriptor still names the inspected inode.
@@ -221,10 +223,16 @@ async function readFounderKeyFile(path) {
   if ((before.mode & 0o077) !== 0) {
     throw new Error('Founder key file permissions must exclude group and other access (0600)');
   }
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+    throw new Error('Founder key file must be owned by the current process user');
+  }
+  if (before.size > MAX_FOUNDER_KEY_FILE_BYTES) {
+    throw new Error('Founder key file exceeds the 1025-byte limit');
+  }
 
   let handle;
   try {
-    const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
+    const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
     handle = await open(path, flags);
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
@@ -233,12 +241,41 @@ async function readFounderKeyFile(path) {
     if ((opened.mode & 0o077) !== 0) {
       throw new Error('Founder key file permissions must exclude group and other access (0600)');
     }
+    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+      throw new Error('Founder key file must be owned by the current process user');
+    }
+    if (opened.size > MAX_FOUNDER_KEY_FILE_BYTES) {
+      throw new Error('Founder key file exceeds the 1025-byte limit');
+    }
+    if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) {
+      throw new Error('Founder key file changed before reading');
+    }
 
-    const key = (await handle.readFile('utf8')).trim();
+    // Never use readFile() on a persisted credential. Even if the path grows
+    // after lstat(), this fixed buffer reads at most limit + 1 bytes.
+    const buffer = Buffer.alloc(MAX_FOUNDER_KEY_FILE_BYTES + 1);
+    let total = 0;
+    while (total < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, total, buffer.length - total, total);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+    }
+    if (total > MAX_FOUNDER_KEY_FILE_BYTES) {
+      throw new Error('Founder key file exceeds the 1025-byte limit');
+    }
+
     const after = await lstat(path);
-    if (after.isSymbolicLink() || after.dev !== opened.dev || after.ino !== opened.ino) {
+    const afterHandle = await handle.stat();
+    if (after.isSymbolicLink() || !after.isFile() || after.dev !== opened.dev || after.ino !== opened.ino) {
       throw new Error('Founder key file changed while reading');
     }
+    const unchanged = stat => stat.size === opened.size &&
+      stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
+    if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) {
+      throw new Error('Founder key file changed while reading');
+    }
+
+    const key = buffer.subarray(0, total).toString('utf8').trim();
     if (key.length < 32 || Buffer.byteLength(key) > 1024) {
       throw new Error('Invalid persisted Founder key');
     }
@@ -247,7 +284,6 @@ async function readFounderKeyFile(path) {
     await handle?.close();
   }
 }
-
 async function getFounderKey(dataDir, provided) {
   if (provided !== undefined) {
     if (typeof provided !== 'string' || provided.length < 16 || Buffer.byteLength(provided) > 1024) throw new Error('Founder key must be 16–1024 bytes');
