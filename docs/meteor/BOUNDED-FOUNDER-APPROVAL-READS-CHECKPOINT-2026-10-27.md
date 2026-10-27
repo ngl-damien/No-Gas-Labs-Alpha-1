@@ -32,9 +32,11 @@ Branch: `security/bounded-founder-install-file-reads-20261027`
 
 ## Verification status
 
-- Branch comparison after duplicate-key/depth hardening: recheck the current final head before review; the branch is still based directly on `6a5bbf8d2c00f41f9bb8320dbc17431e00ea22c1`.
-- Source was re-read after implementation; `approve-install.mjs` no longer contains the unbounded `handle.readFile()` path and now rejects duplicate proposal keys before validation/digest confirmation and caps scanner nesting at 128.
-- On the earlier pre-duplicate-key head `32e0d8beb1e45bc4ebca53a928667023ab66496b`, Full verification and Genesis Evidence Invariant passed while Browser acceptance was still in progress. Those results do **not** verify the later duplicate-key/depth commits. Re-run/inspect all workflows on the final PR head before claiming success.
+- Exact code/test head `c4840b320581012a4557592d0641acf927f7be52`: 13 commits ahead, 0 behind current `main` `6a5bbf8d2c00f41f9bb8320dbc17431e00ea22c1`; 4 changed files.
+- Full repository verification — [run 40535863326](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40535863326): **success**. The workflow's test, inspector, package-build, and bounded institutional exercise step completed successfully.
+- Genesis Evidence Invariant — [run 40535863046](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40535863046): **success**.
+- Browser acceptance — [run 40535863237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40535863237): **success**. Dependency installation, standalone build, and desktop/mobile/shared-world/recovery journey step completed successfully.
+- These exact-head results verify the implementation and test commits through `c4840b320581012a4557592d0641acf927f7be52`. This checkpoint refresh is documentation-only; inspect its new head's checks before treating the entire PR head as verified.
 - No local test run is claimed.
 
 ## Limits and next priorities
