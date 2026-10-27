@@ -28,6 +28,55 @@ test('proposer cannot install without a separate Founder signature', () => temp(
   assert.equal(store.snapshot().sequence, 0);
 }));
 
+test('canonical rejects lossy JavaScript shapes without invoking getters', async () => {
+  const lib = await loadPinned(pair());
+  const hiddenObject = { visible: 1 };
+  Object.defineProperty(hiddenObject, 'hidden', { value: 2, enumerable: false });
+  const hiddenArray = [1];
+  Object.defineProperty(hiddenArray, 'hidden', { value: 2, enumerable: false });
+  const symbolObject = { visible: 1 };
+  symbolObject[Symbol('unserialized')] = 2;
+  const sparseArray = [];
+  sparseArray.length = 1;
+  const decoratedArray = [1];
+  decoratedArray.extra = 2;
+  let getterCalls = 0;
+  const accessorObject = {};
+  Object.defineProperty(accessorObject, 'value', {
+    enumerable: true,
+    get() { getterCalls++; return 1; }
+  });
+
+  for (const value of [hiddenObject, hiddenArray, symbolObject, sparseArray, decoratedArray, accessorObject]) {
+    assert.throws(() => lib.canonical(value), /NON_CANONICAL_VALUE/);
+  }
+  assert.equal(getterCalls, 0, 'canonical validation must inspect descriptors, not execute accessors');
+  assert.equal(lib.canonical({ z: 1, a: 2 }), '{"a":2,"z":1}');
+  assert.equal(lib.canonical([1, { a: 2 }]), '[1,{"a":2}]');
+});
+
+test('commit rejects noncanonical original decisions before structuredClone can erase them', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const store = await openStore(lib, join(dir, 'store'), founder);
+  const hidden = proposal(lib, executor, { nonce: 'install-hidden-prop-0001' });
+  const hiddenSignature = approve(lib, hidden, founder.privateKey);
+  Object.defineProperty(hidden, 'notInSignature', { value: 'hidden payload', enumerable: false });
+  await assert.rejects(() => store.commit(hidden, hiddenSignature), /NON_CANONICAL_VALUE/);
+  assert.equal(store.snapshot().sequence, 0);
+
+  const accessor = proposal(lib, executor, { nonce: 'install-accessor-0001' });
+  const accessorSignature = approve(lib, accessor, founder.privateKey);
+  let getterCalls = 0;
+  Object.defineProperty(accessor, 'strategy', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls++; return 'square'; }
+  });
+  await assert.rejects(() => store.commit(accessor, accessorSignature), /NON_CANONICAL_VALUE/);
+  assert.equal(getterCalls, 0);
+  assert.equal(store.snapshot().sequence, 0, 'rejected decisions must not advance the ledger');
+}));
+
 test('approved install persists and can be reused in a separate Node process; replay is rejected', () => temp(async dir => {
   const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
   const draft = proposal(lib, executor, { nonce: 'install-nonce-000002', maxUses: 1 });
@@ -88,6 +137,30 @@ test('missing startup pin fails closed in a clean child process', () => {
     env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: '' }
   });
   assert.equal(child.status, 0, child.stderr || child.stdout);
+});
+
+test('installation schema rejects NUL collisions, hidden keys, and accessors', async () => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+
+  const collision = proposal(lib, executor, { nonce: 'install-nul-collision-0001' });
+  delete collision.expiresAt;
+  delete collision.id;
+  collision['expiresAt\0id'] = 'square-v1';
+  assert.equal(lib.validateInstallationProposal(collision).reason, 'INSTALL_SCHEMA_INVALID');
+
+  const hidden = proposal(lib, executor, { nonce: 'install-hidden-schema-0001' });
+  Object.defineProperty(hidden, 'unlisted', { value: true, enumerable: false });
+  assert.equal(lib.validateInstallationProposal(hidden).reason, 'INSTALL_SCHEMA_INVALID');
+
+  const accessor = proposal(lib, executor, { nonce: 'install-accessor-schema-0001' });
+  let getterCalls = 0;
+  Object.defineProperty(accessor, 'id', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls++; return 'square-v1'; }
+  });
+  assert.equal(lib.validateInstallationProposal(accessor).reason, 'INSTALL_SCHEMA_INVALID');
+  assert.equal(getterCalls, 0, 'schema validation must not execute accessor-backed fields');
 });
 
 test('modified proof is rejected even when the modified proposal is signed', () => temp(async dir => {
