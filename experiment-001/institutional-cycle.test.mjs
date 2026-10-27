@@ -139,6 +139,30 @@ test('missing startup pin fails closed in a clean child process', () => {
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
+test('installation schema rejects NUL collisions, hidden keys, and accessors', async () => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+
+  const collision = proposal(lib, executor, { nonce: 'install-nul-collision-0001' });
+  delete collision.expiresAt;
+  delete collision.id;
+  collision['expiresAt\0id'] = 'square-v1';
+  assert.equal(lib.validateInstallationProposal(collision).reason, 'INSTALL_SCHEMA_INVALID');
+
+  const hidden = proposal(lib, executor, { nonce: 'install-hidden-schema-0001' });
+  Object.defineProperty(hidden, 'unlisted', { value: true, enumerable: false });
+  assert.equal(lib.validateInstallationProposal(hidden).reason, 'INSTALL_SCHEMA_INVALID');
+
+  const accessor = proposal(lib, executor, { nonce: 'install-accessor-schema-0001' });
+  let getterCalls = 0;
+  Object.defineProperty(accessor, 'id', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls++; return 'square-v1'; }
+  });
+  assert.equal(lib.validateInstallationProposal(accessor).reason, 'INSTALL_SCHEMA_INVALID');
+  assert.equal(getterCalls, 0, 'schema validation must not execute accessor-backed fields');
+});
+
 test('modified proof is rejected even when the modified proposal is signed', () => temp(async dir => {
   const founder = pair(), executor = pair(), lib = await loadPinned(founder), store = await openStore(lib, join(dir, 'store'), founder), draft = proposal(lib, executor);
   draft.proof = { ...draft.proof, passed: draft.proof.passed - 1 };
