@@ -492,7 +492,9 @@ test('Founder-only routes reject missing or Witness sessions without allocating 
 test('invalid or unsupported action payloads fail before session allocation', async t => {
   const f = await fixture(t);
   const invalid = [
+    null,
     {},
+    [],
     { type: 'not-an-action' },
     { type: 'discover', locationId: 'relay', xp: 999 }
   ];
