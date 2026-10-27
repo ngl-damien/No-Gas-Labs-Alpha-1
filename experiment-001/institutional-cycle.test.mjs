@@ -455,3 +455,10 @@ test('institution directory rejects a symlinked ancestor before creating the sto
   await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_PATH_SYMLINK/);
   await assert.rejects(() => lstat(join(targetParent, 'nested')), { code: 'ENOENT' });
 }));
+
+test('ledger reader rejects oversized regular files without parsing them', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder), storeDir = join(dir, 'store');
+  await mkdir(storeDir, { recursive: true, mode: 0o700 });
+  await writeFile(join(storeDir, 'institution.json'), Buffer.alloc(8 * 1024 * 1024 + 1), { mode: 0o600 });
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_TOO_LARGE/);
+}));
