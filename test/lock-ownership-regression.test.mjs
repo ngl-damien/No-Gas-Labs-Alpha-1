@@ -290,3 +290,41 @@ test('service-store remains fail-closed after a lock owner is killed until offli
   const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   await reopened.close();
 });
+
+
+test('institutional ledger remains fail-closed after a lock owner is killed until offline lock removal', async t => {
+  const directory = await temp(t);
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'src/institution/ledger.mjs',
+    openExpression: "mod.openLedger({ directory: process.env.NGL_TEST_DIR, ...config })",
+    env: { NGL_TEST_DIR: directory, NGL_TEST_CONFIG: JSON.stringify(config) }
+  });
+
+  await owner.kill();
+  await assert.rejects(
+    openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_LOCKED'
+  );
+  await unlink(join(directory, '.writer.lock'));
+  const reopened = await openLedger({ directory, ...config });
+  await reopened.close();
+});
+
+test('decision store remains fail-closed after a lock owner is killed until offline lock removal', async t => {
+  const directory = await temp(t);
+  const now = () => Date.parse('2026-10-27T00:00:00.000Z');
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'src/institution/decisions.mjs',
+    openExpression: "mod.openDecisions({ directory: process.env.NGL_TEST_DIR, now: () => Date.parse('2026-10-27T00:00:00.000Z') })",
+    env: { NGL_TEST_DIR: directory }
+  });
+
+  await owner.kill();
+  await assert.rejects(
+    openDecisions({ directory, now }),
+    error => error.code === 'DECISIONS_LOCKED'
+  );
+  await unlink(join(directory, '.decisions.lock'));
+  const reopened = await openDecisions({ directory, now });
+  await reopened.close();
+});
