@@ -316,6 +316,23 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     const id = tokenIsValid ? token : randomBytes(32).toString('base64url');
     return { token: id, presenceId: presenceIdFor(id), actor: witness(id), lastSeen: Date.now() };
   }
+  // Founder-only endpoints must not create a Witness session as a side effect
+  // of a denied request. Look up an existing authenticated session instead.
+  function existingFounderSession(request) {
+    const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1);
+    if (!validSessionToken(token)) fail('FORBIDDEN', 'An authenticated Founder session is required.', 403);
+    const session = sessions.get(token);
+    if (!session) fail('FORBIDDEN', 'Founder session is missing or expired; log in again.', 403);
+    if (Date.now() - session.lastSeen > SESSION_TTL) {
+      expireSession(token, session);
+      fail('FORBIDDEN', 'Founder session expired; log in again.', 403);
+    }
+    if (session.actor.role !== 'founder' || session.actor.id !== 'damien') {
+      fail('FORBIDDEN', 'An authenticated Founder session is required.', 403);
+    }
+    session.lastSeen = Date.now();
+    return session;
+  }
   function makeRoomForFounderLogin(previous) {
     // Rotation replaces an existing session, so it already has room.
     if (sessions.has(previous.token) || sessions.size < 512) return;
@@ -449,7 +466,8 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
         return json(response, 200, dto(session));
       }
-      session = sessionFor(request, response);
+      const founderOnlyRoute = path === '/api/launch' || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
+      session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
