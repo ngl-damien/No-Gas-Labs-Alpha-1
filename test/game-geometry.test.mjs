@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -55,6 +55,37 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  const {view,interactions}=makeView(t);view.setPlayer({x:1000,y:500});view.goTo('town-square');
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
+});
+test('the playable map exposes all eight institutional functions as real destinations',()=>{
+ const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+ const institutions=PLACES.filter(place=>place.type==='institution');
+ assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
+ assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
+ assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
+});
+test('institution activity labels are deterministic projections of retained event records',()=>{
+ const world={events:[
+  {type:'proposal'},{type:'draft'},{type:'repair'},{type:'report'},{type:'decision'},
+  {type:'contribute'},{type:'learning'},{type:'experiment'},{type:'publish'}
+ ]};
+ assert.equal(institutionActivityCount('guild_hall',world),1);
+ assert.equal(institutionActivityCount('forge',world),2);
+ assert.equal(institutionActivityCount('evidence_archive',world),1);
+ assert.equal(institutionActivityCount('decision_chamber',world),1);
+ assert.equal(institutionActivityCount('town-square',world),1);
+ assert.equal(institutionActivityCount('academy',world),1);
+ assert.equal(institutionActivityCount('moonshot_field',world),1);
+ assert.equal(institutionActivityCount('publication_house',world),1);
+ assert.equal(institutionActivityCount('unknown',world),0);
+ assert.equal(institutionActivityCount('forge',{events:[]}),0);
+});
+test('institutional destinations dispatch their own location identity',t=>{
+ const {view,interactions}=makeView(t);
+ const place=PLACES.find(item=>item.id==='evidence_archive');
+ view.setPlayer({x:place.x,y:place.y+50});
+ view.goTo(place.id);
+ for(let i=0;i<30;i++)view.update(.045,i*45);
+ assert.deepEqual(interactions,[{type:'institution',id:'evidence_archive'}]);
 });
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
