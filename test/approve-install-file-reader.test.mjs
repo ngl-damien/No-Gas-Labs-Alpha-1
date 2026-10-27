@@ -247,7 +247,7 @@ test('approval rejects a changed proposal digest before attempting to open the p
   const missingPrivateKeyPath = join(directory, 'does-not-exist.pem');
   const wrongDigest = '0'.repeat(64);
   assert.notEqual(wrongDigest, proposalDigest(proposal));
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
 
   const result = run([
     '--confirm',
@@ -268,7 +268,7 @@ test('approval refuses to sign when the configured trust fingerprint does not ma
   const proposal = proposalFor(executor.publicKeyPem);
   const proposalPath = join(directory, 'proposal.json');
   const privateKeyPath = join(directory, 'founder-private.pem');
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
   await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
   const wrongFingerprint = '0'.repeat(64);
   assert.notEqual(wrongFingerprint, publicKeyFingerprint(founder.publicKeyPem));
