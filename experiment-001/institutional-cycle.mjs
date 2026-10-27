@@ -252,14 +252,15 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   const ledgerPath = join(directory, 'institution.json');
   const lockPath = join(directory, 'institution.json.lock');
   let state = await readLedger(ledgerPath, publicKey);
+  let durabilityUncertain = false;
 
   return {
     snapshot: () => structuredClone(state),
     async commit(decision, signature = null) {
+      if (durabilityUncertain) throw new Error('COMMIT_DURABILITY_UNCERTAIN');
       let lockHandle;
       let lockIdentity;
       let tempPath;
-      let renamed = false;
       try {
         lockHandle = await open(lockPath, 'wx', 0o600);
         const lockStat = await lockHandle.stat();
@@ -290,11 +291,15 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
         try { await temp.writeFile(canonical(next)); await temp.sync(); }
         finally { await temp.close(); }
         await rename(tempPath, ledgerPath);
-        renamed = true;
         tempPath = null;
-        state = next;
         try { await syncDirectory(directory); }
-        catch { throw new Error('COMMIT_DURABILITY_UNCERTAIN'); }
+        catch {
+          // The rename is visible, but durability is unknown. Do not promote the
+          // in-memory snapshot or permit another commit until a fresh validated reopen.
+          durabilityUncertain = true;
+          throw new Error('COMMIT_DURABILITY_UNCERTAIN');
+        }
+        state = next;
         return structuredClone(record);
       } finally {
         if (tempPath) { try { await unlink(tempPath); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
@@ -305,7 +310,6 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
             if (currentLock.isFile() && currentLock.dev === lockIdentity.dev && currentLock.ino === lockIdentity.ino) await unlink(lockPath);
           } catch (error) { if (error.code !== 'ENOENT') throw error; }
         }
-        if (renamed) { /* state already reflects the visible replacement, even if directory sync failed */ }
       }
     }
   };
