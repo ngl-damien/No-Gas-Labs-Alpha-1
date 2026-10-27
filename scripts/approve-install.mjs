@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readBoundedRegularFile } from './bounded-file-reader.mjs';
+import { readBoundedRegularFile } from '../src/bounded-file-reader.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { resolve } from 'node:path';
