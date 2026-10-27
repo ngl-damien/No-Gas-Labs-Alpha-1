@@ -247,3 +247,22 @@ test('institutional ledger writer lock excludes a competing process and reopens 
   const reopened = await openLedger({ directory, ...config });
   await reopened.close();
 });
+
+
+test('decision-store writer lock excludes a competing process and reopens after owner release', async t => {
+  const directory = await temp(t);
+  const now = () => Date.parse('2026-10-27T00:00:00.000Z');
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'src/institution/decisions.mjs',
+    openExpression: "mod.openDecisions({ directory: process.env.NGL_TEST_DIR, now: () => Date.parse('2026-10-27T00:00:00.000Z') })",
+    env: { NGL_TEST_DIR: directory }
+  });
+
+  await assert.rejects(
+    openDecisions({ directory, now }),
+    error => error.code === 'DECISIONS_LOCKED'
+  );
+  await owner.release();
+  const reopened = await openDecisions({ directory, now });
+  await reopened.close();
+});
