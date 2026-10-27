@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { constants as fsConstants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
+import { readBoundedRegularFile } from './bounded-file-reader.mjs';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
@@ -13,31 +12,6 @@ import {
 const MAX_PROPOSAL_BYTES = 1024 * 1024;
 const MAX_PRIVATE_KEY_BYTES = 64 * 1024;
 const FINGERPRINT = /^[a-f0-9]{64}$/;
-
-async function readBoundedRegularFile(path, maxBytes, label, requirePrivatePermissions = false) {
-  // lstat closes the portability gap where O_NOFOLLOW is unavailable. Compare the
-  // opened handle's identity as well, so a path swapped between checks fails closed.
-  const before = await lstat(path);
-  if (before.isSymbolicLink() || !before.isFile()) throw new Error(`${label}_NOT_REGULAR_FILE`);
-  const flags = fsConstants.O_RDONLY |
-    (fsConstants.O_NOFOLLOW ?? 0) |
-    (fsConstants.O_NONBLOCK ?? 0);
-  const handle = await open(path, flags);
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error(`${label}_NOT_REGULAR_FILE`);
-    if (before.dev !== stat.dev || before.ino !== stat.ino) throw new Error(`${label}_FILE_CHANGED_DURING_OPEN`);
-    if (stat.size > maxBytes) throw new Error(`${label}_FILE_TOO_LARGE`);
-    if (requirePrivatePermissions && process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
-      throw new Error('FOUNDER_KEY_PERMISSIONS_TOO_BROAD');
-    }
-    const bytes = await handle.readFile();
-    if (bytes.length > maxBytes) throw new Error(`${label}_FILE_TOO_LARGE`);
-    return bytes.toString('utf8');
-  } finally {
-    await handle.close();
-  }
-}
 
 async function readProposal(path) {
   let text;
@@ -95,7 +69,7 @@ async function main() {
   const digest = proposalDigest(decision);
   if (digest !== confirmedDigest) throw new Error('PROPOSAL_CONFIRMATION_MISMATCH');
 
-  const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', true);
+  const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', { requirePrivatePermissions: true, requireCurrentUserOwnership: true });
   let privateKey;
   try { privateKey = createPrivateKey(keyText); }
   catch { throw new Error('FOUNDER_PRIVATE_KEY_INVALID'); }
