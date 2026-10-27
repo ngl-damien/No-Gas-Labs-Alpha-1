@@ -238,6 +238,10 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
       let saved;
       try { saved = JSON.parse(serialized); }
       catch { fail('LEDGER_TAMPERED', 'Ledger is not valid JSON'); }
+      let canonicalSaved;
+      try { canonicalSaved = canonicalStringify(saved); }
+      catch { fail('LEDGER_TAMPERED', 'Ledger is not canonical JSON'); }
+      if (canonicalSaved !== serialized) fail('LEDGER_TAMPERED', 'Ledger is not canonical JSON');
       if (saved?.schema !== schema || !Array.isArray(saved.records)) fail('LEDGER_TAMPERED', 'Unrecognized ledger schema or records');
       if (canonicalStringify(saved.config) !== canonicalStringify(config)) fail('CONFIG_MISMATCH', 'Saved roster differs from the trusted configured roster');
       let previousHash = genesis;
