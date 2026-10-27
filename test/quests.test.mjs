@@ -232,3 +232,18 @@ test('guide action projection preserves Founder and Witness routes for supported
   assert.equal(getLocationAction('relay', world, founder).type, 'workbench');
   assert.equal(getLocationAction('relay', world, witness).type, 'inspect');
 });
+
+
+test('quest summary does not default unidentified or unsupported viewers to Witness', () => {
+  const world = base();
+  world.creations = [creation];
+  world.discoveries = [discovery('d1', 'river')];
+  const unavailable = {
+    id: 'quest-unavailable', title: 'Quest unavailable',
+    copy: 'Quest progress is unavailable until a valid Founder or Witness character is selected.',
+    button: 'Explore the world →', action: 'places'
+  };
+  for (const viewer of [null, { role: 'witness' }, { id: 'unknown' }, { id: 'unknown', role: 'administrator' }]) {
+    assert.deepEqual(getQuest(world, viewer), unavailable);
+  }
+});

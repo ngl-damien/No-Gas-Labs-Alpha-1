@@ -4,11 +4,16 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   : [];
 
 export function getQuest(world, viewer) {
+  if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return {
+    id: 'quest-unavailable', title: 'Quest unavailable',
+    copy: 'Quest progress is unavailable until a valid Founder or Witness character is selected.',
+    button: 'Explore the world →', action: 'places'
+  };
   const creations = rows(world?.creations);
   const discoveries = mine(world?.discoveries, viewer);
   const notes = mine(world?.contributions, viewer);
   const reports = mine(world?.reports, viewer);
-  const role = viewer?.role === 'founder' ? 'founder' : 'witness';
+  const role = viewer.role;
 
   if (role === 'witness') {
     if (discoveries.length === 0) return {
