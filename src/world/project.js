@@ -192,9 +192,9 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
   const state = EMPTY();
   const historyById = new Map();
   const seen = new Set();
-  // Keep the public audit list of every verified revocation, but apply its scope
-  // correctly: legacy events without quest_id are grant-wide; scoped events are
-  // effective only for that quest.
+  // Preserve the legacy unique grant-ID list while retaining every verified
+  // revocation event and its scope in revocationAudit. Legacy events without
+  // quest_id are grant-wide; explicitly scoped events affect only that quest.
   const revoked = new Set();
   const revokedGlobally = new Set();
   const revokedByQuest = new Map();
