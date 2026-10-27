@@ -12,6 +12,7 @@ import {
 const MAX_PROPOSAL_BYTES = 1024 * 1024;
 const MAX_PRIVATE_KEY_BYTES = 64 * 1024;
 const FINGERPRINT = /^[a-f0-9]{64}$/;
+const MAX_PROPOSAL_JSON_DEPTH = 128;
 
 function assertNoDuplicateJsonObjectKeys(source) {
   let index = 0;
@@ -29,7 +30,8 @@ function assertNoDuplicateJsonObjectKeys(source) {
     }
     throw new Error('PROPOSAL_JSON_INVALID');
   };
-  const parseValue = () => {
+  const parseValue = (depth = 0) => {
+    if (depth > MAX_PROPOSAL_JSON_DEPTH) throw new Error('PROPOSAL_JSON_TOO_DEEP');
     skipWhitespace();
     if (source[index] === '{') {
       index += 1;
@@ -46,7 +48,7 @@ function assertNoDuplicateJsonObjectKeys(source) {
         keys.add(key);
         skipWhitespace();
         index += 1; // JSON.parse has already validated the colon.
-        parseValue();
+        parseValue(depth + 1);
         skipWhitespace();
         if (source[index] === ',') { index += 1; continue; }
         if (source[index] === '}') { index += 1; return; }
@@ -59,7 +61,7 @@ function assertNoDuplicateJsonObjectKeys(source) {
       skipWhitespace();
       if (source[index] === ']') { index += 1; return; }
       while (index < source.length) {
-        parseValue();
+        parseValue(depth + 1);
         skipWhitespace();
         if (source[index] === ',') { index += 1; continue; }
         if (source[index] === ']') { index += 1; return; }
