@@ -286,6 +286,7 @@ test('ledger rejects invalid UTF-8 even when replacement decoding would preserve
       : actor)
   };
   const ledger = await ledgerModule.openLedger({ directory, ...utf8Config });
+  await ledger.append(fixture().events[0]);
   await ledger.close();
 
   const file = join(directory, 'ledger.json');
