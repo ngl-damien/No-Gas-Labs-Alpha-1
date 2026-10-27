@@ -10,7 +10,7 @@ let institutionRequestGeneration=0;
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
-    guild_hall: ['Guild Hall', 'COUNCIL · CAPABILITIES · PROPOSALS'],
+    guild_hall: ['Guild Hall', 'COUNCIL · CAPABILITIES · EVIDENCE'],
     decision_chamber: ['Decision Chamber', 'HUMAN GATE · DECISIONS'],
   };
   const context = contexts[locationId] || contexts['town-square'];
@@ -19,7 +19,7 @@ async function openInstitution(locationId = null) {
     content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
     return;
   }
-  const requestGeneration = institutionRequestGeneration;
+  const requestGeneration = ++institutionRequestGeneration;
   const principalId = viewer.id;
   const principalRole = viewer.role;
   const [projects, gate, stateResult, institutionResult] = await Promise.all([
@@ -179,7 +179,7 @@ function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE CO
 function openGuildHall(){
   if(mode==='shared')return openInstitution('guild_hall');
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
-  content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Choose a role to frame an actual next action.'));
+  content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
 function openForge(){
