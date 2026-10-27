@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { lstat, mkdtemp, readFile, rename, symlink, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createServiceStore } from '../game/service-store.mjs';
 import { openLedger } from '../src/institution/ledger.mjs';
 
@@ -39,6 +42,52 @@ async function replaceLockWithSymlink(path) {
   await writeFile(target, original, { mode: 0o600 });
   await symlink(target, path);
   return original;
+}
+
+async function startChildHoldingLock(t, { modulePath, openExpression, env = {} }) {
+  const moduleUrl = pathToFileURL(join(process.cwd(), modulePath)).href;
+  const source = `
+    const mod = await import(${JSON.stringify(moduleUrl)});
+    const validate = async value => structuredClone(value);
+    const config = JSON.parse(process.env.NGL_TEST_CONFIG || '{}');
+    const handle = await ${openExpression};
+    console.log('LOCK_HELD');
+    await new Promise(resolve => process.stdin.once('data', resolve));
+    await handle.close();
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+    cwd: process.cwd(),
+    env: { ...process.env, ...env },
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  let stdout = '';
+  let stderr = '';
+  let ready = false;
+  const readyPromise = new Promise((resolve, reject) => {
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString();
+      if (!ready && stdout.includes('LOCK_HELD')) { ready = true; resolve(); }
+    });
+    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    child.once('error', reject);
+    child.once('exit', code => {
+      if (!ready) reject(new Error(`Lock owner exited before acquiring its lease (code ${code}): ${stderr}`));
+    });
+  });
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await once(child, 'exit').catch(() => {});
+    }
+  });
+  await readyPromise;
+  return {
+    async release() {
+      child.stdin.end('release\\n');
+      const [code, signal] = await once(child, 'exit');
+      assert.equal(code, 0, `Lock owner child failed (signal ${signal}): ${stderr}`);
+    }
+  };
 }
 
 test('service-store close preserves a replacement lock even when it copies the owner token', async t => {
@@ -128,4 +177,39 @@ test('ledger close preserves a symlink replacement writer lock', async t => {
   await ledger.close();
   assert.equal((await lstat(lockPath)).isSymbolicLink(), true);
   assert.deepEqual(await readFile(lockPath), replacement);
+});
+
+
+test('service-store writer lock excludes a competing process and recovers after owner exit', async t => {
+  const dataDir = await temp(t);
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'game/service-store.mjs',
+    openExpression: "mod.createServiceStore({ dataDir: process.env.NGL_TEST_DIR, initial: { revision: 0 }, validate })",
+    env: { NGL_TEST_DIR: dataDir }
+  });
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED'
+  );
+  await owner.release();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await reopened.close();
+});
+
+test('institutional ledger writer lock excludes a competing process and recovers after owner exit', async t => {
+  const directory = await temp(t);
+  const owner = await startChildHoldingLock(t, {
+    modulePath: 'src/institution/ledger.mjs',
+    openExpression: "mod.openLedger({ directory: process.env.NGL_TEST_DIR, ...config })",
+    env: { NGL_TEST_DIR: directory, NGL_TEST_CONFIG: JSON.stringify(config) }
+  });
+
+  await assert.rejects(
+    openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_LOCKED'
+  );
+  await owner.release();
+  const reopened = await openLedger({ directory, ...config });
+  await reopened.close();
 });
