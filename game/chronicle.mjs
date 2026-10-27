@@ -103,6 +103,40 @@ function retainedEventCollection(owner, key) {
   return { present: true, valid: true, value: snapshot };
 }
 
+// Text and target metadata are external retained data too. Snapshot their
+// collections through property descriptors, then reject the entire collection
+// if any slot is sparse, accessor-backed, hidden, or otherwise non-plain.
+function retainedPlainDataCollection(owner, key) {
+  const collection = retainedEventCollection(owner, key);
+  if (!collection.valid) return collection;
+  const snapshots = [];
+  for (const record of collection.value) {
+    const snapshot = safeEventSnapshot(record);
+    if (!snapshot) return { present: collection.present, valid: false, value: [] };
+    snapshots.push(snapshot);
+  }
+  return { ...collection, value: snapshots };
+}
+
+function malformedDataCollectionEntry(key) {
+  return {
+    id: `world:unclassified-${key}`,
+    source: "world",
+    eventType: "unknown",
+    at: "",
+    actor: "unknown actor",
+    title: `Unclassified retained ${key} collection`,
+    category: "WORLD ACTIVITY",
+    summary: `The retained ${key} collection is malformed; no individual records are inferred from it.`,
+    detail: "",
+    creationId: "",
+    version: null,
+    targetTitle: "",
+    targetAvailable: false,
+    warning: `Malformed retained ${key} collection; accessor, hidden, sparse, or non-JSON data was rejected without reading it.`,
+  };
+}
+
 function malformedCollectionEntry(source) {
   const institutional = source === "kernel";
   return {
@@ -143,15 +177,16 @@ function malformedEventEntry(source, index) {
   };
 }
 
-function findVersion(world, creationId, version) {
+function findVersion(creations, creationId, version) {
   if (typeof creationId !== "string" || !Number.isInteger(version) || version < 1) return null;
-  const creation = (Array.isArray(world?.creations) ? world.creations : []).find(item => item?.id === creationId);
+  const creation = creations.find(item => item.id === creationId);
   if (!creation) return null;
   if (creation.version === version) return creation;
-  return Array.isArray(creation.versions) ? creation.versions.find(item => item?.version === version) || null : null;
+  return Array.isArray(creation.versions) ? creation.versions.find(item => item.version === version) || null : null;
 }
 
-function matchingNote(records, event, consumed) {
+function matchingNote(records, event, consumed, collectionValid = true) {
+  if (!collectionValid) return { record: null, reason: "malformed-collection" };
   const creationId = text(event?.creationId);
   const version = event?.version;
   const at = timestamp(event?.at);
@@ -178,13 +213,13 @@ function matchingNote(records, event, consumed) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, world, notes) {
+function worldEntry(event, index, creations, notes) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId);
   const version = Number.isInteger(event?.version) ? event.version
     : Number.isInteger(event?.baseVersion) ? event.baseVersion : null;
-  const target = findVersion(world, creationId, version);
+  const target = findVersion(creations, creationId, version);
   const location = PLACE_NAMES[event?.locationId];
   const entry = {
     id: `world:${id}`,
@@ -216,8 +251,10 @@ function worldEntry(event, index, world, notes) {
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
   } else if (type === "contribute" || type === "report") {
-    const records = type === "report" ? notes.reports : notes.contributions;
-    const match = matchingNote(records, event, notes.consumed);
+    const isReport = type === "report";
+    const records = isReport ? notes.reports : notes.contributions;
+    const collectionValid = isReport ? notes.reportsValid : notes.contributionsValid;
+    const match = matchingNote(records, event, notes.consumed, collectionValid);
     const record = match.record;
     entry.title = type === "report"
       ? `Report retained · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`
@@ -228,7 +265,9 @@ function worldEntry(event, index, world, notes) {
       : "A contribution was retained against the referenced version.";
     entry.detail = text(record?.text);
     if (!record) {
-      if (match.reason === "ambiguous") {
+      if (match.reason === "malformed-collection") {
+        entry.warning = `The retained ${isReport ? "reports" : "contributions"} text collection is malformed; no text was attributed.`;
+      } else if (match.reason === "ambiguous") {
         entry.warning = "Multiple text records match this event's metadata; no text was attached because attribution is ambiguous.";
       } else if (match.reason === "insufficient-metadata") {
         entry.warning = "The event lacks a complete actor, version, or timestamp; its text record cannot be safely attributed.";
@@ -253,7 +292,7 @@ function worldEntry(event, index, world, notes) {
   return entry;
 }
 
-function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 0) {
+function kernelEntry(event, index, creations, derivedWork = null, priorGrantCount = 0) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   // The live public institution endpoint omits its internal work map. A
@@ -295,7 +334,7 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
      event?.scope?.action !== expectedAction);
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
-  const target = findVersion(world, creationId, version);
+  const target = findVersion(creations, creationId, version);
   const labels = {
     claim: ["Work proposal recorded", "A claim or proposal entered the institutional record; it is not an accepted outcome."],
     authorize: ["Authority grant recorded", "A grant record is visible. It does not by itself prove execution or successful observation."],
@@ -360,13 +399,29 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
 export function projectChronicle({ world = {}, kernel = null } = {}) {
   const entries = [];
   let malformed = 0;
-  const notes = {
-    reports: Array.isArray(world?.reports) ? [...world.reports] : [],
-    contributions: Array.isArray(world?.contributions) ? [...world.contributions] : [],
-    consumed: new Set(),
-  };
   const worldCollection = retainedEventCollection(world, "events");
   const kernelCollection = retainedEventCollection(kernel, "events");
+  const creationsCollection = retainedPlainDataCollection(world, "creations");
+  const reportsCollection = retainedPlainDataCollection(world, "reports");
+  const contributionsCollection = retainedPlainDataCollection(world, "contributions");
+  const creations = creationsCollection.valid ? creationsCollection.value : [];
+  const notes = {
+    reports: reportsCollection.value,
+    reportsValid: reportsCollection.valid,
+    contributions: contributionsCollection.value,
+    contributionsValid: contributionsCollection.valid,
+    consumed: new Set(),
+  };
+  for (const [key, collection] of [
+    ["creations", creationsCollection],
+    ["reports", reportsCollection],
+    ["contributions", contributionsCollection],
+  ]) {
+    if (!collection.valid) {
+      malformed += 1;
+      entries.push(malformedDataCollectionEntry(key));
+    }
+  }
   if (worldCollection.present && !worldCollection.valid) {
     malformed += 1;
     entries.push(malformedCollectionEntry("world"));
@@ -385,7 +440,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, world, notes));
+    entries.push(worldEntry(event, index, creations, notes));
   }
 
   const kernelSnapshots = [];
@@ -415,7 +470,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     const priorContext = prior && Object.keys(prior).length ? { ...prior } : null;
     const revokedGrantId = event.type === "revoke" ? text(event.grantId) : "";
     const priorGrantCount = revokedGrantId ? (priorGrantCounts.get(revokedGrantId) || 0) : 0;
-    entries.push(kernelEntry(event, index, world, priorContext, priorGrantCount));
+    entries.push(kernelEntry(event, index, creations, priorContext, priorGrantCount));
 
     if (event.type === "authorize") {
       const authorizedGrantId = text(event.grantId);
