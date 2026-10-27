@@ -292,3 +292,96 @@ test("unsafe XP and inventory quantities fail closed instead of producing non-ca
   ];
   assert.throws(() => projectWorld(overflow, undefined, trusted), /XP world effect exceeds safe integer range/);
 });
+
+
+test("explicit quest_id is authoritative when world execution subject conflicts", () => {
+  const scopedExecution = {
+    ...observed,
+    event_id: "scope-execution",
+    quest_id: "another-quest",
+    subject: "forge-gate",
+    world_effect: { xp: 7 }
+  };
+  const state = projectWorld([scopedExecution], undefined, {
+    ...trusted,
+    verifyObservation: event => event.event_id === "scope-execution"
+  });
+  assert.equal(state.quests["another-quest"].status, "COMPLETED");
+  assert.equal(state.quests["forge-gate"], undefined);
+  assert.equal(state.xp, 7);
+});
+
+test("a quest-scoped revocation cannot suppress another quest's world effect", () => {
+  const revocation = {
+    event_id: "scope-revoke-other",
+    event_type: "REVOCATION",
+    quest_id: "another-quest",
+    subject: "forge-gate",
+    revokes: "grant-1"
+  };
+  const after = {
+    ...observed,
+    event_id: "scope-execution",
+    parents: ["scope-revoke-other"],
+    quest_id: "forge-gate",
+    subject: "forge-gate",
+    world_effect: { xp: 13 }
+  };
+  const state = projectWorld([revocation, after], undefined, {
+    ...trusted,
+    verifyObservation: event => event.event_id === "scope-execution"
+  });
+  assert.equal(state.quests["forge-gate"].status, "COMPLETED");
+  assert.equal(state.xp, 13);
+  assert.deepEqual(state.revoked, ["grant-1"]);
+});
+
+test("a quest-scoped revocation still blocks later effects in that same quest", () => {
+  const revocation = {
+    event_id: "scope-revoke-own",
+    event_type: "REVOCATION",
+    quest_id: "forge-gate",
+    subject: "forge-gate",
+    revokes: "grant-1"
+  };
+  const after = {
+    ...observed,
+    event_id: "scope-execution",
+    parents: ["scope-revoke-own"],
+    quest_id: "forge-gate",
+    subject: "forge-gate",
+    world_effect: { xp: 13 }
+  };
+  const state = projectWorld([revocation, after], undefined, {
+    ...trusted,
+    verifyObservation: event => event.event_id === "scope-execution"
+  });
+  assert.equal(state.quests["forge-gate"], undefined);
+  assert.equal(state.xp, 0);
+  assert.deepEqual(state.revoked, ["grant-1"]);
+});
+
+test("a revoked grant cannot change quest status through a later failed execution", () => {
+  const revocation = {
+    event_id: "scope-revoke-failure",
+    event_type: "REVOCATION",
+    quest_id: "forge-gate",
+    subject: "forge-gate",
+    revokes: "grant-1"
+  };
+  const failed = {
+    ...observed,
+    event_id: "revoked-failure",
+    parents: ["scope-revoke-failure"],
+    quest_id: "forge-gate",
+    subject: "forge-gate",
+    outcome: "FAILED",
+    world_effect: { xp: 99 }
+  };
+  const state = projectWorld([revocation, failed], undefined, {
+    ...trusted,
+    verifyObservation: event => event.event_id === "revoked-failure"
+  });
+  assert.equal(state.quests["forge-gate"], undefined);
+  assert.equal(state.xp, 0);
+});
