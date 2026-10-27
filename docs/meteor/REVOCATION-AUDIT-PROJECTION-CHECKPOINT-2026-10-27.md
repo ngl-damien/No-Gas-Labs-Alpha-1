@@ -27,9 +27,15 @@ In `src/world/project.js`, `state.revoked` is a Set-derived unique list of grant
 - `6a95748e4e6d2969549567978562ce9b3d2aacad` — clarify compatibility semantics.
 - `c5848259fa281c652464f08ee32683eb01fd4491` — reject caller-supplied forged audit data.
 
-## Verification boundary
+## Verification evidence
 
-GitHub Actions exact-head workflows must be inspected after PR creation. No local test execution is claimed. Until those runs finish, these tests are added but not yet reported as passing.
+The code/test head `6937495d09df7ba8c1419e60e26872b6b63193a4` passed all three PR-triggered GitHub Actions workflows. The workflow checkout used PR merge ref `6c8d1d350ee0025d91279db6dcb42f216a44d015`, combining this head with base `e5421862a6632b4b705182fea6ef6c6de7f9686c`.
+
+- Full repository verification: [run 40580535525](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40580535525) — **success**. The log reports Node test suite exit code 0, Python inspector exit code 0, package build exit code 0, institutional exercise exit code 0, and final `passed: true`.
+- Genesis Evidence Invariant: [run 40580535533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40580535533) — **success**.
+- Browser acceptance: [run 40580535484](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40580535484) — **success**. All nine journeys passed: desktop, phone, institutional-location actions, two-session shared-world, 320px/412px layouts, standalone-file, exact-byte packaging, and shared restart. [Browser evidence artifact 12768808739](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40580535484/artifacts/12768808739).
+
+These are GitHub-hosted results; no local test execution is claimed. A documentation-only checkpoint refresh follows these code/test results, so the resulting new head must be inspected separately before claiming its exact-head CI is green.
 
 ## Unresolved blockers / next priorities
 
