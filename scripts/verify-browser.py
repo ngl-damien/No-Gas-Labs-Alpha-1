@@ -80,6 +80,8 @@ def basic(page,url,out,label):
     draft(page,'comic','The real comic lives here')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
+    # Wait for the recipe script to attach its handlers before interacting in mobile emulation.
+    expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     frame.locator('img').first.wait_for()
     assert frame.locator('img').first.evaluate('(img)=>img.decode().then(()=>img.naturalWidth>0)'), 'Original comic did not load'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
@@ -99,6 +101,8 @@ def basic(page,url,out,label):
     draft(page,'loom','A sentence that sings')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
+    # The iframe DOM can appear before its inline recipe script finishes on a phone viewport.
+    expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     frame.locator('#score').fill('café 🌍 🧶')
     frame.locator('#play').click()
     expect(frame.locator('#status')).to_have_text('Playing 8 Unicode notes.')
