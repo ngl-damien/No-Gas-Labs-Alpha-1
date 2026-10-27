@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   MAX_INSTITUTION_REPORT_BYTES,
   readInstitutionReport
@@ -66,4 +68,32 @@ test('institution report reader requires an object root', async t => {
   const path = join(directory, 'array.json');
   await writeFile(path, '[]', { mode: 0o600 });
   await assert.rejects(readInstitutionReport(path), /INSTITUTION_REPORT_INVALID_ROOT/);
+});
+
+test('server CLI rejects ambiguous institution reports before creating runtime state', async t => {
+  const directory = await temp(t);
+  const reportPath = join(directory, 'report.json');
+  const runtimeDirectory = join(directory, 'runtime');
+  await writeFile(reportPath, '{"schema":"first","\\\\u0073chema":"second"}', { mode: 0o600 });
+
+  const result = spawnSync(process.execPath, [
+    fileURLToPath(new URL('../game/server.mjs', import.meta.url))
+  ], {
+    encoding: 'utf8',
+    timeout: 5000,
+    env: {
+      ...process.env,
+      NGL_INSTITUTION_REPORT: reportPath,
+      NGL_DATA_DIR: runtimeDirectory,
+      PORT: '0',
+      HOST: '127.0.0.1'
+    }
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /Local world startup failed/);
+  await assert.rejects(
+    import('node:fs/promises').then(fs => fs.stat(runtimeDirectory)),
+    error => error.code === 'ENOENT'
+  );
 });
