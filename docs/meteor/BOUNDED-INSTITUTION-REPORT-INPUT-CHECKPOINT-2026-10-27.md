@@ -29,9 +29,17 @@ The executable startup path read `NGL_INSTITUTION_REPORT` using unbounded `readF
 - `800ec057711924c2c6772b23146a75f13f9b32fb` — add fail-before-side-effects integration test
 - `64b201606d8b172376e3079ef98d1b0f7d259e8c` — fix escaped-duplicate integration fixture
 
-## Verification status
+## Verification status — code head before this checkpoint refresh
 
-GitHub Actions exact-head verification is pending until the draft PR is opened and all workflows finish. Do not treat this checkpoint or a queued workflow as a passing test. No local test run is claimed.
+Code head `871f9c65ef3f29f36de3284df724d7458f19561c` completed all three PR-triggered GitHub Actions workflows successfully:
+
+- Full repository verification run [40553489901](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40553489901): success; workflow report `passed: true`.
+- Genesis Evidence Invariant run [40553489620](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40553489620): success.
+- Browser acceptance run [40553489689](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40553489689): success. Logs show all nine journeys passed: desktop, phone, four institutional-location actions, two-session shared world, 320px and 412px layouts, standalone file, exact-byte packaging, and restart persistence. Browser receipts/screenshots are preserved in [artifact 12757045181](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40553489689/artifacts/12757045181).
+
+An intermediate full-verification failure on `800ec057711924c2c6772b23146a75f13f9b32fb` was traced to a wrongly escaped duplicate-key fixture. The fixture was corrected in `64b201606d8b172376e3079ef98d1b0f7d259e8c`; the later code head passed full verification.
+
+This checkpoint refresh is documentation-only and changes the branch head. Inspect the new exact-head workflow runs before treating the final branch head as verified. No local test run is claimed.
 
 ## Limits and unresolved blockers
 
