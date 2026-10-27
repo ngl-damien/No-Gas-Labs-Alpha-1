@@ -28,6 +28,55 @@ test('proposer cannot install without a separate Founder signature', () => temp(
   assert.equal(store.snapshot().sequence, 0);
 }));
 
+test('canonical rejects lossy JavaScript shapes without invoking getters', async () => {
+  const lib = await loadPinned(pair());
+  const hiddenObject = { visible: 1 };
+  Object.defineProperty(hiddenObject, 'hidden', { value: 2, enumerable: false });
+  const hiddenArray = [1];
+  Object.defineProperty(hiddenArray, 'hidden', { value: 2, enumerable: false });
+  const symbolObject = { visible: 1 };
+  symbolObject[Symbol('unserialized')] = 2;
+  const sparseArray = [];
+  sparseArray.length = 1;
+  const decoratedArray = [1];
+  decoratedArray.extra = 2;
+  let getterCalls = 0;
+  const accessorObject = {};
+  Object.defineProperty(accessorObject, 'value', {
+    enumerable: true,
+    get() { getterCalls++; return 1; }
+  });
+
+  for (const value of [hiddenObject, hiddenArray, symbolObject, sparseArray, decoratedArray, accessorObject]) {
+    assert.throws(() => lib.canonical(value), /NON_CANONICAL_VALUE/);
+  }
+  assert.equal(getterCalls, 0, 'canonical validation must inspect descriptors, not execute accessors');
+  assert.equal(lib.canonical({ z: 1, a: 2 }), '{"a":2,"z":1}');
+  assert.equal(lib.canonical([1, { a: 2 }]), '[1,{"a":2}]');
+});
+
+test('commit rejects noncanonical original decisions before structuredClone can erase them', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const store = await openStore(lib, join(dir, 'store'), founder);
+  const hidden = proposal(lib, executor, { nonce: 'install-hidden-prop-0001' });
+  const hiddenSignature = approve(lib, hidden, founder.privateKey);
+  Object.defineProperty(hidden, 'notInSignature', { value: 'hidden payload', enumerable: false });
+  await assert.rejects(() => store.commit(hidden, hiddenSignature), /NON_CANONICAL_VALUE/);
+  assert.equal(store.snapshot().sequence, 0);
+
+  const accessor = proposal(lib, executor, { nonce: 'install-accessor-0001' });
+  const accessorSignature = approve(lib, accessor, founder.privateKey);
+  let getterCalls = 0;
+  Object.defineProperty(accessor, 'strategy', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls++; return 'square'; }
+  });
+  await assert.rejects(() => store.commit(accessor, accessorSignature), /NON_CANONICAL_VALUE/);
+  assert.equal(getterCalls, 0);
+  assert.equal(store.snapshot().sequence, 0, 'rejected decisions must not advance the ledger');
+}));
+
 test('approved install persists and can be reused in a separate Node process; replay is rejected', () => temp(async dir => {
   const founder = pair(), executor = pair(), lib = await loadPinned(founder), path = join(dir, 'store');
   const draft = proposal(lib, executor, { nonce: 'install-nonce-000002', maxUses: 1 });
