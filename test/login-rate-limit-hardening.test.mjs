@@ -40,3 +40,17 @@ test('capacity pressure never evicts existing lockouts to admit new peer address
   assert.doesNotThrow(() => limiter.assertAllowed('203.0.113.250', 10_001),
     'expired buckets should be pruned so the limiter can recover');
 });
+
+test('login lockout uses monotonic time despite wall-clock adjustments', () => {
+  const originalNow = Date.now;
+  const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1_000, lockoutMs: 1_000 });
+  try {
+    Date.now = () => 1_000;
+    limiter.failure('192.0.2.77');
+    Date.now = () => 1_000_000_000;
+    assert.throws(() => limiter.assertAllowed('192.0.2.77'), isLimited,
+      'a wall-clock jump must not erase a live lockout');
+  } finally {
+    Date.now = originalNow;
+  }
+});
