@@ -466,7 +466,14 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
         return json(response, 200, dto(session));
       }
-      const founderOnlyRoute = path === '/api/launch' || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
+      // Validate action shape before allocating a session. Draft, publish, and repair
+      // are Founder-only, so denied attempts must not mint a Witness session either.
+      if (path === '/api/action') {
+        if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
+        exact(input, actionFields[input.type]);
+      }
+      const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
+      const founderOnlyRoute = path === '/api/launch' || founderOnlyAction || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
@@ -480,7 +487,6 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         return json(response, 200, { presence: livePresence() });
       }
       if (path === '/api/action') {
-        if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.'); exact(input, actionFields[input.type]);
         const { requestId: suppliedRequestId, ...action } = input;
         const requestId = suppliedRequestId ?? randomUUID();
         if (typeof requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) fail('INVALID_REQUEST_ID', 'Request ID must be a bounded stable identifier.');
