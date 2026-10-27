@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rm, open, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rm, open, symlink, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -337,6 +337,63 @@ test('ledger rejects oversized persisted history before reading or parsing it', 
   await assert.rejects(
     ledgerModule.openLedger({ directory, ...config }),
     error => error.code === 'LEDGER_TOO_LARGE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+
+test('ledger refuses artifact receipts beyond the persistence bound before state changes', async t => {
+  const directory = await temp(t);
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  const oversized = {
+    algorithm: 'sha256',
+    digest: 'a'.repeat(64),
+    size: 16 * 1024 * 1024 + 1
+  };
+  await assert.rejects(
+    ledger.append({ ...fixture().events[2], outputs: [oversized] }),
+    error => error.code === 'ARTIFACT_TOO_LARGE'
+  );
+  assert.equal(ledger.state.revision, 0);
+  await ledger.close();
+});
+
+test('ledger replay rejects a symlinked content-addressed artifact before reading its target', async t => {
+  const directory = await temp(t);
+  const { events, artifacts, receipt } = fixture();
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  for (const event of events.slice(0, 3)) await ledger.append(event, { artifacts });
+  await ledger.close();
+
+  const blob = join(directory, 'blobs', receipt.digest);
+  const target = join(directory, 'artifact-target.bin');
+  await writeFile(target, bytes, { mode: 0o600 });
+  await unlink(blob);
+  await symlink(target, blob);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'ARTIFACT_NOT_REGULAR_FILE'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
+test('ledger replay rejects an oversized content-addressed artifact before reading it', async t => {
+  const directory = await temp(t);
+  const { events, artifacts, receipt } = fixture();
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  for (const event of events.slice(0, 3)) await ledger.append(event, { artifacts });
+  await ledger.close();
+
+  const blob = join(directory, 'blobs', receipt.digest);
+  await unlink(blob);
+  const handle = await open(blob, 'wx', 0o600);
+  try { await handle.truncate(16 * 1024 * 1024 + 1); }
+  finally { await handle.close(); }
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'ARTIFACT_TOO_LARGE'
   );
   await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
 });
