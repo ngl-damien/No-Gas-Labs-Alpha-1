@@ -469,3 +469,40 @@ test('institution ledger refuses group/world-readable existing directories', () 
   await chmod(storeDir, 0o755);
   await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD/);
 }));
+
+
+async function createLedgerForStrictJsonReadTest(dir) {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storeDir = join(dir, 'store');
+  const store = await openStore(lib, storeDir, founder);
+  const draft = proposal(lib, executor, { nonce: 'install-ledger-strict-0001' });
+  await store.commit(draft, approve(lib, draft, founder.privateKey));
+  return { founder, lib, storeDir, ledgerPath: join(storeDir, 'institution.json') };
+}
+
+test('ledger reader rejects duplicate JSON keys before replay', () => temp(async dir => {
+  const { founder, lib, storeDir, ledgerPath } = await createLedgerForStrictJsonReadTest(dir);
+  const source = await readFile(ledgerPath, 'utf8');
+  const duplicate = source.replace(/,"version":2}$/, ',"version":2,"version":2}');
+  assert.notEqual(duplicate, source, 'fixture must duplicate the canonical top-level version key');
+  await writeFile(ledgerPath, duplicate, { mode: 0o600 });
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_DUPLICATE_JSON_KEY/);
+}));
+
+test('ledger reader rejects noncanonical JSON bytes even when JSON.parse would accept them', () => temp(async dir => {
+  const { founder, lib, storeDir, ledgerPath } = await createLedgerForStrictJsonReadTest(dir);
+  const source = await readFile(ledgerPath, 'utf8');
+  await writeFile(ledgerPath, ' ' + source, { mode: 0o600 });
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_JSON_NON_CANONICAL/);
+}));
+
+test('ledger reader rejects malformed UTF-8 before parsing persisted approval records', () => temp(async dir => {
+  const { founder, lib, storeDir, ledgerPath } = await createLedgerForStrictJsonReadTest(dir);
+  const bytes = await readFile(ledgerPath);
+  const marker = Buffer.from('BEGIN PUBLIC KEY');
+  const index = bytes.indexOf(marker);
+  assert.notEqual(index, -1, 'fixture must contain the executor public-key PEM');
+  bytes[index + 1] = 0xff;
+  await writeFile(ledgerPath, bytes, { mode: 0o600 });
+  await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_UTF8_INVALID/);
+}));
