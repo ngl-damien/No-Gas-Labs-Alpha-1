@@ -201,6 +201,9 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   if (raw !== undefined) {
     try {
       const envelope = JSON.parse(raw);
+      if (canonicalStringify(envelope) !== raw) {
+        throw storeReadError('SERVICE_STORE_NONCANONICAL', 'Service store envelope must use canonical JSON encoding');
+      }
       if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
       current = await validate(envelope.payload);
     } catch (error) { await close(); throw error; }
