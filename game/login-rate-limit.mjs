@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { performance } from 'node:perf_hooks';
 
 const DEFAULT_LOGIN_RATE_LIMIT = Object.freeze({ maxFailures: 5, windowMs: 60_000, lockoutMs: 60_000 });
 const MAX_TRACKED_LOGIN_ADDRESSES = 1024;
@@ -63,7 +64,7 @@ export function createLoginRateLimiter(options = {}) {
   }
 
   return {
-    assertAllowed(address, now = Date.now()) {
+    assertAllowed(address, now = performance.now()) {
       const key = addressKey(address);
       prune(now);
       const state = attempts.get(key);
@@ -75,7 +76,7 @@ export function createLoginRateLimiter(options = {}) {
         rateLimited(state, now);
       }
     },
-    failure(address, now = Date.now()) {
+    failure(address, now = performance.now()) {
       const key = addressKey(address);
       prune(now);
       let state = attempts.get(key);
