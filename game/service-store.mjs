@@ -186,6 +186,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   }
   let released = false;
   let durabilityUncertainState = false;
+  let directoryUncertainState = false;
   async function close() {
     if (released) return; released = true;
     await lease.close();
@@ -207,10 +208,17 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     try { current = await validate(initial); await persist(current); }
     catch (error) { await close(); throw error; }
   }
+  async function assertStableDirectory() {
+    try { await assertPrivateDirectory(dataDir, directoryIdentity); }
+    catch (error) {
+      directoryUncertainState = true;
+      throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
+    }
+  }
   async function persist(payload) {
     // The caller may retain this store while the directory pathname is replaced.
     // Revalidate its identity before any path-based write.
-    await assertPrivateDirectory(dataDir, directoryIdentity);
+    await assertStableDirectory();
     const pending = join(dataDir, `.service-${randomUUID()}.tmp`);
     let file;
     let renamed = false;
@@ -221,7 +229,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       await file.close(); file = null;
       // Do not replace the envelope if the directory changed while the temp
       // file was being written.
-      await assertPrivateDirectory(dataDir, directoryIdentity);
+      await assertStableDirectory();
       await rename(pending, path);
       renamed = true;
       try {
@@ -242,10 +250,15 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     }
   }
   return {
-    get value() { if (durabilityUncertainState) throw durabilityUncertain(); return current; },
+    get value() {
+      if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
+      if (durabilityUncertainState) throw durabilityUncertain();
+      return current;
+    },
     close,
     async commit(candidate) {
       if (released) throw new Error('Service writer lease has closed');
+      if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
       const valid = await validate(candidate);
       await persist(valid);
