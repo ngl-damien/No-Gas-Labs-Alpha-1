@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -442,4 +442,16 @@ test('ledger reader rejects a symlinked institution ledger before reading its ta
   await writeFile(target, '{}', { mode: 0o600 });
   await symlink(target, join(storeDir, 'institution.json'));
   await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_NOT_REGULAR_FILE/);
+}));
+
+test('institution directory rejects a symlinked ancestor before creating the store path', () => temp(async dir => {
+  const founder = pair(), lib = await loadPinned(founder);
+  const targetParent = join(dir, 'real-parent');
+  await mkdir(targetParent, { recursive: true, mode: 0o700 });
+  const linkedParent = join(dir, 'linked-parent');
+  await symlink(targetParent, linkedParent);
+  const storeDir = join(linkedParent, 'nested', 'store');
+
+  await assert.rejects(() => openStore(lib, storeDir, founder), /INSTITUTION_PATH_SYMLINK/);
+  await assert.rejects(() => lstat(join(targetParent, 'nested')), { code: 'ENOENT' });
 }));
