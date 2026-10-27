@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { resolve, join, parse, sep } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -182,11 +182,26 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
     await assertPrivateDirectory(blobDirectory);
     let records = [];
 
-    async function getArtifact(digest) {
+    async function getArtifact(digest, expectedSize) {
       if (typeof digest !== 'string' || !digestPattern.test(digest)) fail('INVALID_ARTIFACT', 'Artifact lookup requires a SHA-256 digest');
+      if (expectedSize !== undefined &&
+          (!Number.isSafeInteger(expectedSize) || expectedSize < 0 || expectedSize > MAX_ARTIFACT_BYTES)) {
+        fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
+      }
       let bytes;
-      try { bytes = await readFile(join(blobDirectory, digest)); }
-      catch (error) { if (error.code === 'ENOENT') fail('ARTIFACT_MISSING', `Persisted artifact is missing: ${digest}`); throw error; }
+      try {
+        bytes = await readBoundedRegularFile(join(blobDirectory, digest), MAX_ARTIFACT_BYTES, {
+          notRegularCode: 'ARTIFACT_NOT_REGULAR_FILE', tooLargeCode: 'ARTIFACT_TOO_LARGE',
+          changedCode: 'ARTIFACT_CHANGED_DURING_READ', permissionsCode: 'ARTIFACT_FILE_PERMISSIONS_TOO_BROAD',
+          ownerCode: 'ARTIFACT_FILE_OWNER_MISMATCH', label: 'Persisted artifact'
+        });
+      } catch (error) {
+        if (error.code === 'ENOENT') fail('ARTIFACT_MISSING', `Persisted artifact is missing: ${digest}`);
+        throw error;
+      }
+      if (expectedSize !== undefined && bytes.byteLength !== expectedSize) {
+        fail('ARTIFACT_MISMATCH', `Persisted artifact size differs from receipt: ${digest}`);
+      }
       if (artifactReceipt(bytes).digest !== digest) fail('ARTIFACT_MISMATCH', `Persisted artifact digest mismatch: ${digest}`);
       return bytes;
     }
@@ -194,9 +209,19 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
       const result = new Map();
       if (!['execute', 'observe'].includes(event.type) || !Array.isArray(event.outputs)) return result;
       for (const receipt of event.outputs) {
-        if (!receipt || typeof receipt.digest !== 'string' || !digestPattern.test(receipt.digest)) fail('INVALID_EVENT', 'Invalid output digest');
+        if (!receipt || typeof receipt.digest !== 'string' || !digestPattern.test(receipt.digest) ||
+            !Number.isSafeInteger(receipt.size) || receipt.size < 0) fail('INVALID_EVENT', 'Invalid output digest or size');
+        if (receipt.size > MAX_ARTIFACT_BYTES) {
+          fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
+        }
         const bytes = supplied instanceof Map ? supplied.get(receipt.digest) : supplied && Object.hasOwn(supplied, receipt.digest) ? supplied[receipt.digest] : undefined;
-        result.set(receipt.digest, bytes === undefined ? await getArtifact(receipt.digest) : bytes);
+        if (bytes === undefined) {
+          result.set(receipt.digest, await getArtifact(receipt.digest, receipt.size));
+        } else {
+          if (bytes.byteLength > MAX_ARTIFACT_BYTES) fail('ARTIFACT_TOO_LARGE', 'Supplied artifact exceeds the persistence limit');
+          if (bytes.byteLength !== receipt.size) fail('ARTIFACT_MISMATCH', 'Supplied artifact size differs from its receipt');
+          result.set(receipt.digest, bytes);
+        }
       }
       return result;
     }
@@ -248,6 +273,8 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
           supplied = new Map();
           for (const [digest, bytes] of artifacts instanceof Map ? artifacts : Object.entries(artifacts ?? {})) {
             if (typeof bytes !== 'string' && !(bytes instanceof Uint8Array)) fail('INVALID_ARTIFACT', 'Artifact must contain actual bytes');
+            const byteLength = typeof bytes === 'string' ? Buffer.byteLength(bytes, 'utf8') : bytes.byteLength;
+            if (byteLength > MAX_ARTIFACT_BYTES) fail('ARTIFACT_TOO_LARGE', `Artifact exceeds the ${MAX_ARTIFACT_BYTES}-byte persistence limit`);
             supplied.set(digest, typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : Buffer.from(bytes));
           }
         } catch (error) { return Promise.reject(error); }
