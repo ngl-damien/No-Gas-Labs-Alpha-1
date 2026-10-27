@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, verify as verifySignature } from 'node:crypto';
 import { chmod, mkdtemp, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { makeInstallationProposal, proposalDigest, publicKeyFingerprint } from '../experiment-001/institutional-cycle.mjs';
+import { approvalPayload, makeInstallationProposal, proposalDigest, publicKeyFingerprint } from '../experiment-001/institutional-cycle.mjs';
 import { readBoundedRegularFile } from '../scripts/bounded-file-reader.mjs';
 
 const script = fileURLToPath(new URL('../scripts/approve-install.mjs', import.meta.url));
@@ -122,6 +122,19 @@ test('Founder approval still signs a valid proposal with a private owner-only ke
   assert.equal(receipt.proposalDigest, proposalDigest(proposal));
   assert.equal(receipt.keyFingerprint, publicKeyFingerprint(founder.publicKeyPem));
   assert.match(receipt.signature, /^[A-Za-z0-9_-]{86}$/);
+
+  const signatureBytes = Buffer.from(receipt.signature, 'base64url');
+  assert.equal(
+    verifySignature(null, Buffer.from(approvalPayload(proposal)), founder.publicKeyPem, signatureBytes),
+    true,
+    'receipt signature must verify against the complete canonical proposal'
+  );
+  const tamperedProposal = { ...proposal, strategy: proposal.strategy === 'square' ? 'double' : 'square' };
+  assert.equal(
+    verifySignature(null, Buffer.from(approvalPayload(tamperedProposal)), founder.publicKeyPem, signatureBytes),
+    false,
+    'changing a signed proposal field must invalidate the receipt'
+  );
 });
 
 test('Founder approval rejects malformed UTF-8 in the private-key file', async t => {
