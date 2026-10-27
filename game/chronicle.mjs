@@ -263,22 +263,35 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
   const grantId = type === "revoke" ? text(event?.grantId) : "";
   const expectedSubject = work?.subject;
   const expectedAction = work?.action;
+  const claimBindingValid = typeof expectedSubject?.id === "string" &&
+    Number.isSafeInteger(expectedSubject?.version) &&
+    expectedSubject.version >= 1 &&
+    typeof expectedAction === "string" &&
+    Boolean(expectedAction.trim());
   const priorGrantRecords = type === "revoke" && grantId && Array.isArray(work?.authorizations)
     ? work.authorizations.filter(authorization => authorization?.grantId === grantId)
     : [];
   const scopeMatchesClaim = priorGrantRecords.length === 1 && priorGrantCount === 1 &&
-    typeof expectedSubject?.id === "string" &&
-    Number.isSafeInteger(expectedSubject?.version) &&
-    expectedSubject.version >= 1 &&
-    typeof expectedAction === "string" &&
-    Boolean(expectedAction.trim()) &&
+    claimBindingValid &&
     priorGrantRecords[0]?.scope?.subjectId === expectedSubject.id &&
     priorGrantRecords[0]?.scope?.subjectVersion === expectedSubject.version &&
     priorGrantRecords[0]?.scope?.action === expectedAction;
   const revokeBindingValid = scopeMatchesClaim;
-  const subject = type === "revoke"
-    ? (revokeBindingValid ? work?.subject || null : null)
-    : event?.subject || work?.subject || null;
+  // A stage event's own subject is not its authority. The prior claim is the
+  // canonical display scope; a conflicting stage payload is shown with a warning.
+  const subject = type === "claim"
+    ? event?.subject || null
+    : type === "revoke"
+      ? (revokeBindingValid ? work?.subject || null : null)
+      : (claimBindingValid ? work?.subject || null : null);
+  const stageSubjectRequired = ["execute", "observe", "adjudicate"].includes(type);
+  const stageSubjectMissing = stageSubjectRequired && !event?.subject;
+  const stageSubjectMismatch = stageSubjectRequired && claimBindingValid && event?.subject &&
+    (event.subject.id !== expectedSubject.id || event.subject.version !== expectedSubject.version);
+  const authorizationScopeMismatch = type === "authorize" && claimBindingValid &&
+    (event?.scope?.subjectId !== expectedSubject.id ||
+     event?.scope?.subjectVersion !== expectedSubject.version ||
+     event?.scope?.action !== expectedAction);
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
   const target = findVersion(world, creationId, version);
@@ -304,11 +317,19 @@ function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 
     : !timestamp(event?.at)
       ? "The retained event has no parseable timestamp; it is shown after timestamped records."
       : "";
+  const appendWarning = message => { warning = warning ? warning + " " + message : message; };
+  if (["authorize", "execute", "observe", "adjudicate"].includes(type) && !claimBindingValid) {
+    appendWarning("No valid earlier claim binds this institutional stage; no exact work/version scope is inferred.");
+  } else {
+    if (stageSubjectMissing) appendWarning("The stage event omits its subject binding; displayed scope follows the earlier claim only.");
+    if (stageSubjectMismatch) appendWarning("The event-supplied subject disagrees with the earlier claim; displayed scope follows the claim and requires source review.");
+    if (authorizationScopeMismatch) appendWarning("The authorization scope disagrees with the earlier claim; the grant is not shown as claim-bound.");
+  }
   if (type === "revoke" && (!grantId || !creationId || version === null || !revokeBindingValid)) {
     const bindingWarning = priorGrantRecords.length > 1 || priorGrantCount > 1
       ? "Revocation grant binding is ambiguous; do not infer a missing grant or exact work/version scope."
       : "Revocation grant binding is missing or mismatched; do not infer a missing grant or exact work/version scope.";
-    warning = warning ? warning + " " + bindingWarning : bindingWarning;
+    appendWarning(bindingWarning);
   }
   return {
     id: `kernel:${id}`,
