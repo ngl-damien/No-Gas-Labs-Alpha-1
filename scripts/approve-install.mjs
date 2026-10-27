@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readBoundedRegularFile } from './bounded-file-reader.mjs';
+import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
@@ -14,76 +15,6 @@ const MAX_PRIVATE_KEY_BYTES = 64 * 1024;
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const MAX_PROPOSAL_JSON_DEPTH = 128;
 
-function assertNoDuplicateJsonObjectKeys(source) {
-  let index = 0;
-  const skipWhitespace = () => {
-    while (source[index] === ' ' || source[index] === '\t' || source[index] === '\r' || source[index] === '\n') index += 1;
-  };
-  const readStringToken = () => {
-    const start = index;
-    index += 1;
-    while (index < source.length) {
-      const character = source[index];
-      if (character === '\\') { index += 2; continue; }
-      index += 1;
-      if (character === '"') return source.slice(start, index);
-    }
-    throw new Error('PROPOSAL_JSON_INVALID');
-  };
-  const parseValue = (depth = 0) => {
-    if (depth > MAX_PROPOSAL_JSON_DEPTH) throw new Error('PROPOSAL_JSON_TOO_DEEP');
-    skipWhitespace();
-    if (source[index] === '{') {
-      index += 1;
-      skipWhitespace();
-      if (source[index] === '}') { index += 1; return; }
-      const keys = new Set();
-      while (index < source.length) {
-        skipWhitespace();
-        const token = readStringToken();
-        let key;
-        try { key = JSON.parse(token); }
-        catch { throw new Error('PROPOSAL_JSON_INVALID'); }
-        if (keys.has(key)) throw new Error('PROPOSAL_DUPLICATE_JSON_KEY');
-        keys.add(key);
-        skipWhitespace();
-        index += 1; // JSON.parse has already validated the colon.
-        parseValue(depth + 1);
-        skipWhitespace();
-        if (source[index] === ',') { index += 1; continue; }
-        if (source[index] === '}') { index += 1; return; }
-        throw new Error('PROPOSAL_JSON_INVALID');
-      }
-      throw new Error('PROPOSAL_JSON_INVALID');
-    }
-    if (source[index] === '[') {
-      index += 1;
-      skipWhitespace();
-      if (source[index] === ']') { index += 1; return; }
-      while (index < source.length) {
-        parseValue(depth + 1);
-        skipWhitespace();
-        if (source[index] === ',') { index += 1; continue; }
-        if (source[index] === ']') { index += 1; return; }
-        throw new Error('PROPOSAL_JSON_INVALID');
-      }
-      throw new Error('PROPOSAL_JSON_INVALID');
-    }
-    if (source[index] === '"') { readStringToken(); return; }
-    const start = index;
-    while (index < source.length &&
-      source[index] !== ',' && source[index] !== ']' && source[index] !== '}' &&
-      source[index] !== ' ' && source[index] !== '\t' && source[index] !== '\r' && source[index] !== '\n') {
-      index += 1;
-    }
-    if (index === start) throw new Error('PROPOSAL_JSON_INVALID');
-  };
-
-  parseValue();
-  skipWhitespace();
-  if (index !== source.length) throw new Error('PROPOSAL_JSON_INVALID');
-}
-
 async function readProposal(path) {
   let text;
   try {
@@ -94,7 +25,7 @@ async function readProposal(path) {
   let decision;
   try { decision = JSON.parse(text); }
   catch { throw new Error('PROPOSAL_JSON_INVALID'); }
-  assertNoDuplicateJsonObjectKeys(text);
+  assertNoDuplicateJsonObjectKeys(text, { label: 'PROPOSAL', maxDepth: MAX_PROPOSAL_JSON_DEPTH });
   const validation = validateInstallationProposal(decision);
   if (!validation.valid) throw new Error(validation.reason);
   return decision;
