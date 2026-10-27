@@ -170,6 +170,11 @@ def shared(browser,url,data,out):
         draft(a,'observatory','The shared observatory')
         a.locator('#publish-button').click()
         b.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        assert b.locator('#xp-count').text_content()=='100', 'The shared world retains institution-wide XP'
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('0 character XP')
+        expect(b.locator('#sheet')).to_contain_text('100 institution-wide XP across the world.')
+        close_sheet(b)
         snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
