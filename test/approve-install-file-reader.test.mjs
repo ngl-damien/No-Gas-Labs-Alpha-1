@@ -186,7 +186,7 @@ test('approval rejects missing trust pin before attempting to open the private k
   const proposal = proposalFor(executor.publicKeyPem);
   const proposalPath = join(directory, 'proposal.json');
   const missingPrivateKeyPath = join(directory, 'does-not-exist.pem');
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
 
   const result = run([
     '--confirm',
@@ -207,7 +207,7 @@ test('Founder approval rejects a private-key file with group/world permissions',
   const proposal = proposalFor(executor.publicKeyPem);
   const proposalPath = join(directory, 'proposal.json');
   const privateKeyPath = join(directory, 'founder-private.pem');
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
   await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o644 });
   await chmod(privateKeyPath, 0o644);
 
@@ -226,10 +226,10 @@ test('approval inspection rejects duplicate keys when one spelling uses a Unicod
   const executor = keyPair();
   const proposal = proposalFor(executor.publicKeyPem);
   const path = join(directory, 'proposal.json');
-  let serialized = JSON.stringify(proposal, null, 2) + '\\n';
+  let serialized = JSON.stringify(proposal, null, 2) + '\n';
   const strategy = '"strategy": "square",';
   assert.ok(serialized.includes(strategy), 'fixture must contain the strategy field');
-  serialized = serialized.replace(strategy, '"strategy": "double",\\n  "\\\\u0073trategy": "square",');
+  serialized = serialized.replace(strategy, '"strategy": "double",\n  "\\u0073trategy": "square",');
   await writeFile(path, serialized, { mode: 0o600 });
 
   const result = run(['--inspect', path]);
