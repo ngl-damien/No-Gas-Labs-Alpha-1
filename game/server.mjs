@@ -32,6 +32,67 @@ const fail = (code, message, status = 400) => { throw Object.assign(new Error(me
 const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
+const DEFAULT_LOGIN_RATE_LIMIT = Object.freeze({ maxFailures: 5, windowMs: 60_000, lockoutMs: 60_000 });
+const MAX_TRACKED_LOGIN_ADDRESSES = 1024;
+
+// This is a process-local guard for password guessing, not proof of identity.
+// Use the socket peer address; never trust caller-supplied X-Forwarded-For.
+function createLoginRateLimiter(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options) ||
+      Object.keys(options).some(key => !['maxFailures', 'windowMs', 'lockoutMs'].includes(key))) {
+    throw new Error('INVALID_LOGIN_RATE_LIMIT_CONFIG');
+  }
+  const config = { ...DEFAULT_LOGIN_RATE_LIMIT, ...options };
+  if (!Number.isSafeInteger(config.maxFailures) || config.maxFailures < 1 || config.maxFailures > 100 ||
+      !Number.isSafeInteger(config.windowMs) || config.windowMs < 10 || config.windowMs > 3_600_000 ||
+      !Number.isSafeInteger(config.lockoutMs) || config.lockoutMs < 10 || config.lockoutMs > 3_600_000) {
+    throw new Error('INVALID_LOGIN_RATE_LIMIT_CONFIG');
+  }
+  const attempts = new Map();
+  const addressKey = address => typeof address === 'string' && address.length > 0 && address.length <= 256 ? address : 'unknown';
+  function prune(now) {
+    for (const [address, state] of attempts) {
+      if (state.blockedUntil <= now && now - state.windowStartedAt >= config.windowMs) attempts.delete(address);
+    }
+    while (attempts.size > MAX_TRACKED_LOGIN_ADDRESSES) attempts.delete(attempts.keys().next().value);
+  }
+  return {
+    assertAllowed(address, now = Date.now()) {
+      const key = addressKey(address);
+      prune(now);
+      let state = attempts.get(key);
+      if (state && state.blockedUntil > now) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((state.blockedUntil - now) / 1000));
+        throw Object.assign(new Error('Too many failed Founder login attempts. Retry after the indicated delay.'), {
+          code: 'LOGIN_RATE_LIMITED', status: 429, retryAfterSeconds
+        });
+      }
+      if (!state || now - state.windowStartedAt >= config.windowMs || (state.blockedUntil > 0 && state.blockedUntil <= now)) {
+        state = { windowStartedAt: now, failures: 0, blockedUntil: 0 };
+      }
+      attempts.delete(key);
+      attempts.set(key, state);
+      prune(now);
+    },
+    failure(address, now = Date.now()) {
+      const key = addressKey(address);
+      prune(now);
+      let state = attempts.get(key);
+      if (!state || now - state.windowStartedAt >= config.windowMs || (state.blockedUntil > 0 && state.blockedUntil <= now)) {
+        state = { windowStartedAt: now, failures: 0, blockedUntil: 0 };
+      }
+      state.failures += 1;
+      if (state.failures >= config.maxFailures) state.blockedUntil = now + config.lockoutMs;
+      attempts.delete(key);
+      attempts.set(key, state);
+      prune(now);
+    },
+    success(address) {
+      attempts.delete(addressKey(address));
+    }
+  };
+}
+
 const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
@@ -324,7 +385,8 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined } = {}) {
+  const loginLimiter = createLoginRateLimiter(loginRateLimit);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
@@ -552,10 +614,19 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       const input = await body(request);
       if (path === '/api/login') {
         exact(input, ['key', 'name']);
-        if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        const loginAddress = request.socket.remoteAddress || 'unknown';
+        loginLimiter.assertAllowed(loginAddress);
+        if (typeof input.key !== 'string' || Buffer.byteLength(input.key) > 1024) {
+          loginLimiter.failure(loginAddress);
+          fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        }
         const candidate = Buffer.from(input.key), expected = Buffer.from(key);
-        if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) {
+          loginLimiter.failure(loginAddress);
+          fail('UNAUTHENTICATED', 'Founder key did not match.', 401);
+        }
         if (input.name !== undefined && (typeof input.name !== 'string' || !input.name.trim() || Array.from(input.name).length > 80)) fail('INVALID_NAME', 'Name must be 1–80 characters.');
+        loginLimiter.success(loginAddress);
         const previous = sessionForFounderLogin(request);
         makeRoomForFounderLogin(previous);
         session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
@@ -606,8 +677,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       }
       fail('NOT_FOUND', 'Not found.', 404);
     } catch (error) {
-      if (!response.headersSent) json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
-      else response.end();
+      if (!response.headersSent) {
+        if (Number.isSafeInteger(error.retryAfterSeconds)) response.setHeader('Retry-After', String(error.retryAfterSeconds));
+        json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
+      } else response.end();
     }
   });
   server.requestTimeout = 15000; server.headersTimeout = 10000;
