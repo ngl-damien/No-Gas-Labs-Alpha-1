@@ -17,19 +17,21 @@ Branch: `security/bounded-founder-install-file-reads-20261027`
 - Added `scripts/bounded-file-reader.mjs`: bounded 16 KiB chunk reads, a max+1 overflow sentinel, symlink/non-regular rejection, `O_NOFOLLOW`/`O_NONBLOCK` where supported, opened-file identity checks, pre/post size and timestamp checks, and strict UTF-8 round-trip validation.
 - Wired `scripts/approve-install.mjs` to use the helper for both proposal and private-key inputs.
 - Private-key reads additionally require private permissions and, where supported, current-process ownership.
-- Added `test/approve-install-file-reader.test.mjs` with eight tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file.
+- Added `test/approve-install-file-reader.test.mjs` with nine tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file.
 
 ## Commit trail before this checkpoint
 
 - `e152e7c84aadec253aff9861b4d0432f354c6b01` — bounded strict-UTF-8 reader.
 - `9ffac011b2108eb6bf781ff2bb76b4ec559ce341` — use it in Founder approval CLI.
-- `1a9bcc8b65be1bc4f4a2e28b09e4ebfb5f3dabc3` — adversarial and positive-path tests.
+- `1a9bcc8b65be1bc4f4a2e28b09e4ebfb5f3dabc3` — initial adversarial and positive-path tests.
+- `9621529871a03969df9913fb78a6ba4a24830aa9` — reject duplicate keys in proposal JSON.
+- `9e0b0e2d9342d86c538d93a7147e08b34114b8a5` and `217e5eee80c59a1bd529f7388e6a7afc23ccfe79` — correct escaped-string parsing and regression fixtures.
 
 ## Verification status
 
-- Branch comparison before checkpoint: 3 commits ahead, 0 behind, 3 changed files.
-- Source was re-read after implementation; `approve-install.mjs` no longer contains the unbounded `handle.readFile()` path.
-- Exact-head GitHub Actions verification is pending PR creation. Do not claim test success until the completed runs are inspected on the final PR head.
+- Branch comparison after duplicate-key hardening: recheck the current final head before review; the branch is still based directly on `6a5bbf8d2c00f41f9bb8320dbc17431e00ea22c1`.
+- Source was re-read after implementation; `approve-install.mjs` no longer contains the unbounded `handle.readFile()` path and now rejects duplicate proposal keys before validation/digest confirmation.
+- On the earlier pre-duplicate-key head `32e0d8beb1e45bc4ebca53a928667023ab66496b`, Full verification and Genesis Evidence Invariant passed while Browser acceptance was still in progress. Those results do **not** verify the later duplicate-key commits. Re-run/inspect all workflows on the final PR head before claiming success.
 - No local test run is claimed.
 
 ## Limits and next priorities
