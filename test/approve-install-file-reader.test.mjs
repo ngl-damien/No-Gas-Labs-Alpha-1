@@ -148,3 +148,19 @@ test('Founder approval rejects malformed UTF-8 in the private-key file', async t
   assert.equal(result.status, 1);
   assert.match(result.stderr, /FOUNDER_KEY_INVALID_UTF8/);
 });
+
+test('approval inspection rejects duplicate JSON keys before digest confirmation', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const path = join(directory, 'proposal.json');
+  let serialized = JSON.stringify(proposal, null, 2) + '\\n';
+  const strategy = '"strategy": "square",';
+  assert.ok(serialized.includes(strategy), 'fixture must contain the strategy field');
+  serialized = serialized.replace(strategy, '"strategy": "double",\\n  "strategy": "square",');
+  await writeFile(path, serialized, { mode: 0o600 });
+
+  const result = run(['--inspect', path]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PROPOSAL_DUPLICATE_JSON_KEY/);
+});
