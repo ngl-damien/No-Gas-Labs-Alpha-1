@@ -11,8 +11,10 @@ On current main `33f8aa9cb601788dc829097fe84553602112ea59`, `experiment-001/inst
 Branch: `fix/experiment001-durability-uncertain-latch-20261026`
 
 - `92b39350fb7885475e77d6f911d4c43a7d797767` — latch the store after post-rename directory-sync failure; keep the in-memory snapshot at the prior sequence; reject further commits with `COMMIT_DURABILITY_UNCERTAIN` until a fresh validated `openInstitution()`.
+- `374bb1fc15134ff5329220c96bbaea24fff0723c` — make `snapshot()` fail with the same uncertainty code after the latch, so callers cannot mistake the retained old in-memory projection for the current canonical ledger.
 - `9e017c7c4eba130f166f0e55c9c73fb3df5fb105` — add child-process fault injection against `FileHandle.sync` to force the directory-sync failure after the temp-file sync and rename.
-- `80888dd0c5fe10f25fb9753e3ed86e96c512ae6c` — strengthen the fault test: the first commit reports uncertainty, the live snapshot stays at sequence 0, a second commit is blocked, a fresh open validates the visible sequence-1 ledger, and a subsequent commit succeeds only through that newly opened store after directory sync recovers.
+- `80888dd0c5fe10f25fb9753e3ed86e96c512ae6c` — strengthen the fault test: the first commit reports uncertainty, a second commit is blocked, a fresh open validates the visible sequence-1 ledger, and a subsequent commit succeeds only through that newly opened store after directory sync recovers.
+- `e1403bf6f1a0b2cab81d80a0ac3bcc2ff05104ad` — assert that `snapshot()` also fails closed while the original store is latched.
 - This is separate from PR #60's service-store and `src/institution/ledger.mjs` changes; it closes the analogous gap in the Experiment 001 ledger.
 
 ## Reinspection and conflicts
@@ -25,7 +27,7 @@ Branch: `fix/experiment001-durability-uncertain-latch-20261026`
 
 ## Verification status
 
-GitHub Actions must verify the final PR head after the latest test strengthening. Earlier runs on the prior head were queued and are superseded by the final-head checks. No local test run is claimed. Do not count a workflow as passing until its completed exact-head result is inspected.
+GitHub Actions must verify the final PR head after the snapshot fail-closed change. Earlier runs on prior heads are superseded by the final-head checks. No local test run is claimed. Do not count a workflow as passing until its completed exact-head result is inspected.
 
 ## Limits / next priorities
 
