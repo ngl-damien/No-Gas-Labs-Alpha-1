@@ -231,7 +231,7 @@ function distinctCreationEvents(events) {
   return [...byCreation.values()];
 }
 
-function trailMilestone(id, title, target, evidenceIds, evidenceEvents = []) {
+function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
   const seen = new Set();
@@ -249,11 +249,16 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = []) {
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
     }));
   }
+  const complete = evidence.length >= target;
+  const nextAction = !complete && action && typeof action === 'object'
+    ? Object.freeze({ ...action }) : null;
   return Object.freeze({
     id, title, target, progress: Math.min(target, evidence.length),
-    complete: evidence.length >= target,
+    complete,
     evidenceIds: Object.freeze(evidence),
     evidence: Object.freeze(details),
+    action: nextAction,
+    blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
   });
 }
 
@@ -281,20 +286,98 @@ export function getQuestTrail(world, viewer) {
     return Boolean(creation && trailRows(creation.versions).some(version => Number.isInteger(version?.version) && version.version < event.version));
   });
 
+  const guideOrder = ['relay', 'river', 'overlook', 'ruins'];
+  const nextGuide = guideOrder.find(id => !locations.has(id)) || null;
+  const creations = trailRows(world?.creations).filter(creation =>
+    creation && typeof creation.id === 'string' && creation.id.length > 0 &&
+    Number.isInteger(creation.version) && creation.version >= 1
+  );
+  const firstCreation = creations[0] || null;
+  const latestCreation = creations.at(-1) || null;
+  const hasFirstPlace = firstPlaceEvents.length >= 1;
+  const hasWalked = locations.size >= 1;
+  const hasNote = notes.length >= 1;
+  const hasSecondPlace = firstPlaceEvents.length >= 2;
+  const hasPreservedVersion = earlierVersionRepairs.length >= 1;
+
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
     return Object.freeze([
-      trailMilestone('founder-first-place', 'Publish a first place', 1, firstPlaceEvents.map(event => event.id), firstPlaceEvents),
-      trailMilestone('founder-walk-institution', 'Discover a guide', 1, locationEvents.map(event => event.id), locationEvents),
-      trailMilestone('founder-field-note', 'Leave a field note', 1, notes.map(match => match.event.id), notes.map(match => match.event)),
-      trailMilestone('founder-second-place', 'Publish a second place', 2, firstPlaceEvents.map(event => event.id), firstPlaceEvents),
-      trailMilestone('founder-preserve-version', 'Preserve an earlier version', 1, earlierVersionRepairs.map(event => event.id), earlierVersionRepairs),
+      trailMilestone(
+        'founder-first-place', 'Publish a first place', 1,
+        firstPlaceEvents.map(event => event.id), firstPlaceEvents,
+        !hasFirstPlace ? { type: 'workbench', recipe: 'comic' } : null
+      ),
+      trailMilestone(
+        'founder-walk-institution', 'Discover a guide', 1,
+        locationEvents.map(event => event.id), locationEvents,
+        hasFirstPlace && !hasWalked && nextGuide ? { type: 'location', id: nextGuide } : null,
+        !hasFirstPlace ? 'Publish your first place before taking this step.' : null
+      ),
+      trailMilestone(
+        'founder-field-note', 'Leave a field note', 1,
+        notes.map(match => match.event.id), notes.map(match => match.event),
+        hasFirstPlace && hasWalked && !hasNote && latestCreation
+          ? { type: 'creation', id: latestCreation.id, version: latestCreation.version } : null,
+        !hasFirstPlace ? 'Publish your first place first.' :
+          !hasWalked ? 'Discover a guide before leaving a field note.' :
+          !latestCreation ? 'A published place is required before a field note can be attached.' : null
+      ),
+      trailMilestone(
+        'founder-second-place', 'Publish a second place', 2,
+        firstPlaceEvents.map(event => event.id), firstPlaceEvents,
+        hasFirstPlace && hasWalked && hasNote && !hasSecondPlace
+          ? { type: 'workbench', recipe: 'custom' } : null,
+        !hasFirstPlace ? 'Publish your first place first.' :
+          !hasWalked ? 'Discover a guide first.' :
+          !hasNote ? 'Leave a field note on a retained version first.' : null
+      ),
+      trailMilestone(
+        'founder-preserve-version', 'Preserve an earlier version', 1,
+        earlierVersionRepairs.map(event => event.id), earlierVersionRepairs,
+        hasFirstPlace && hasWalked && hasNote && hasSecondPlace && !hasPreservedVersion && firstCreation
+          ? { type: 'creation', id: firstCreation.id, version: firstCreation.version } : null,
+        !hasFirstPlace ? 'Publish your first place first.' :
+          !hasWalked ? 'Discover a guide first.' :
+          !hasNote ? 'Leave a field note first.' :
+          !hasSecondPlace ? 'Publish a second place first.' :
+          !firstCreation ? 'A published place is required before a version can be preserved.' : null
+      ),
     ]);
   }
+
+  const mapComplete = locations.size >= 4;
+  const workAvailable = availablePlaceEvents.length >= 1;
   return Object.freeze([
-    trailMilestone('witness-map-grounds', 'Map the four guide locations', 4, [...locations.values()].map(event => event.id), [...locations.values()]),
-    trailMilestone('witness-work-available', 'Published work exists to inspect', 1, availablePlaceEvents.map(event => event.id), availablePlaceEvents),
-    trailMilestone('witness-field-note', 'Leave an attributed field note', 1, notes.map(match => match.event.id), notes.map(match => match.event)),
-    trailMilestone('witness-version-report', 'Submit a version-bound report', 1, reports.map(match => match.event.id), reports.map(match => match.event)),
+    trailMilestone(
+      'witness-map-grounds', 'Map the four guide locations', 4,
+      [...locations.values()].map(event => event.id), [...locations.values()],
+      !mapComplete && nextGuide ? { type: 'location', id: nextGuide } : null
+    ),
+    trailMilestone(
+      'witness-work-available', 'Published work exists to inspect', 1,
+      availablePlaceEvents.map(event => event.id), availablePlaceEvents,
+      null,
+      !workAvailable ? 'Waiting for the Founder to publish a real place; Witnesses cannot draft or publish shared work.' : null
+    ),
+    trailMilestone(
+      'witness-field-note', 'Leave an attributed field note', 1,
+      notes.map(match => match.event.id), notes.map(match => match.event),
+      mapComplete && workAvailable && !hasNote && latestCreation
+        ? { type: 'creation', id: latestCreation.id, version: latestCreation.version } : null,
+      !mapComplete ? 'Discover all four guide locations first.' :
+        !workAvailable ? 'Wait for a Founder to publish a real place.' :
+        !latestCreation ? 'No retained published place is available to open.' : null
+    ),
+    trailMilestone(
+      'witness-version-report', 'Submit a version-bound report', 1,
+      reports.map(match => match.event.id), reports.map(match => match.event),
+      mapComplete && workAvailable && hasNote && !reports.length && latestCreation
+        ? { type: 'creation', id: latestCreation.id, version: latestCreation.version } : null,
+      !mapComplete ? 'Discover all four guide locations first.' :
+        !workAvailable ? 'Wait for a Founder to publish a real place.' :
+        !hasNote ? 'Leave an attributed field note before submitting a report.' :
+        !latestCreation ? 'No retained published place is available to open.' : null
+    ),
   ]);
 }
