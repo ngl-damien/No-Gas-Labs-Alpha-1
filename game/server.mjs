@@ -469,7 +469,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       // Validate action shape before allocating a session. Draft, publish, and repair
       // are Founder-only, so denied attempts must not mint a Witness session either.
       if (path === '/api/action') {
-        if (typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
+        if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
         exact(input, actionFields[input.type]);
       }
       const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
