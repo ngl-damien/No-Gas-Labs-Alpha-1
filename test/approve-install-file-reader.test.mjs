@@ -164,3 +164,17 @@ test('approval inspection rejects duplicate JSON keys before digest confirmation
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PROPOSAL_DUPLICATE_JSON_KEY/);
 });
+
+test('approval inspection bounds nested JSON depth before schema validation', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const path = join(directory, 'proposal.json');
+  const nested = '['.repeat(160) + '0' + ']'.repeat(160);
+  const serialized = JSON.stringify(proposal).replace('{', '{"extra":' + nested + ',');
+  await writeFile(path, serialized, { mode: 0o600 });
+
+  const result = run(['--inspect', path]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PROPOSAL_JSON_TOO_DEEP/);
+});
