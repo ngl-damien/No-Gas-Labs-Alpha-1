@@ -31,7 +31,7 @@ test('service-store latches post-rename directory-sync uncertainty until validat
     store.commit({ revision: 1 }),
     error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
   );
-  assert.deepEqual(store.value, { revision: 0 }, 'uncertain commit must not promote in-memory state');
+  assert.throws(() => store.value, error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503, 'uncertain commit must not expose a possibly stale projection');
 
   const onDisk = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
   assert.deepEqual(onDisk.payload, { revision: 1 }, 'atomic rename may already expose the replacement');
