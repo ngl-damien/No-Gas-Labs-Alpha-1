@@ -632,3 +632,33 @@ test('an authenticated Founder retains access to the launch rehearsal after rout
   assert.equal(result.body?.title, 'Authorized local rehearsal');
 });
 
+test('HTTP JSON rejects malformed UTF-8, duplicate keys, and excessive nesting before session allocation', async t => {
+  const f = await fixture(t);
+  const escapedDuplicate = '{"key":"wrong","\\u006bey":"' + KEY + '","name":"Damien"}';
+  const duplicateCredential = '{"key":"wrong","key":"' + KEY + '","name":"Damien"}';
+  const malformedUtf8 = Buffer.concat([
+    Buffer.from('{"key":"'),
+    Buffer.from([0xff]),
+    Buffer.from('"}')
+  ]);
+  const deeplyNested = '{"key":"wrong","extra":' + '['.repeat(130) + '0' + ']'.repeat(130) + '}';
+  const invalidBodies = [
+    ['duplicate credential key', Buffer.from(duplicateCredential)],
+    ['escaped duplicate credential key', Buffer.from(escapedDuplicate)],
+    ['malformed UTF-8', malformedUtf8],
+    ['excessive nesting', Buffer.from(deeplyNested)]
+  ];
+
+  for (const [label, bytes] of invalidBodies) {
+    const response = await fetch(f.url + '/api/login', {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: bytes
+    });
+    assert.equal(response.status, 400, label);
+    assert.equal(response.headers.get('set-cookie'), null, label + ' must not allocate a session');
+    const payload = await response.json();
+    assert.equal(payload.error.code, 'INVALID_JSON', label);
+  }
+});
+

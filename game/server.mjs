@@ -11,6 +11,7 @@ import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
 import { projectProjection } from '../src/institution/project-projection.mjs';
 import { createLoginRateLimiter } from './login-rate-limit.mjs';
+import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -480,7 +481,18 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     if (Number(request.headers['content-length']) > MAX_BODY) fail('TOO_LARGE', 'JSON body exceeds 256 KiB.', 413);
     const chunks = []; let size = 0;
     for await (const chunk of request) { size += chunk.length; if (size > MAX_BODY) fail('TOO_LARGE', 'JSON body exceeds 256 KiB.', 413); chunks.push(chunk); }
-    let value; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { fail('INVALID_JSON', 'Malformed JSON body.'); }
+    const bytes = Buffer.concat(chunks);
+    let value;
+    try {
+      const text = bytes.toString('utf8');
+      // Buffer's UTF-8 decoder replaces malformed sequences. Round-trip the
+      // bytes so malformed input cannot silently become a different request.
+      if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error('INVALID_UTF8');
+      assertNoDuplicateJsonObjectKeys(text, { label: 'REQUEST', maxDepth: 128 });
+      value = JSON.parse(text);
+    } catch {
+      fail('INVALID_JSON', 'Malformed JSON body.');
+    }
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_JSON', 'Request body must be an object.');
     return value;
   }
