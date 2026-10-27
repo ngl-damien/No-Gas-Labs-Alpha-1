@@ -1,12 +1,54 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, mkdir, open, rename, rm, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, parse, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.mjs';
 
 const MAX_SERVICE_STORE_BYTES = 64 * 1024 * 1024;
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
 const storeReadError = (code, message) => Object.assign(new Error(message), { code });
+
+// Best-effort path walk: reject symlinked ancestors before recursive creation,
+// then validate the final directory's identity, owner and privacy. This is not
+// an atomic openat-style boundary against a hostile process racing path changes.
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw storeReadError('SERVICE_DIRECTORY_SYMLINK', 'Service store paths may not contain symbolic links');
+    }
+    if (!stat.isDirectory()) {
+      throw storeReadError('SERVICE_DIRECTORY_UNSAFE', 'Every service store path component must be a directory');
+    }
+  }
+}
+
+async function assertPrivateDirectory(path, expectedIdentity) {
+  await assertNoSymlinkPathComponents(path);
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw storeReadError('SERVICE_DIRECTORY_UNSAFE', 'Service store storage must be a regular directory');
+  }
+  if ((stat.mode & 0o077) !== 0) {
+    throw storeReadError('SERVICE_DIRECTORY_PERMISSIONS_TOO_BROAD', 'Service store directories must exclude group and other access (0700)');
+  }
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+    throw storeReadError('SERVICE_DIRECTORY_OWNER_MISMATCH', 'Service store directory must be owned by the current process user');
+  }
+  if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) {
+    throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed while acquiring the writer lease');
+  }
+  return { dev: stat.dev, ino: stat.ino };
+}
 
 async function syncDirectory(directory) {
   const handle = await open(directory, 'r');
@@ -121,7 +163,10 @@ async function unlinkOwnedLock(path, identity) {
 
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
 export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory }) {
+  dataDir = resolve(dataDir);
+  await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const directoryIdentity = await assertPrivateDirectory(dataDir);
   const path = join(dataDir, 'service.json');
   const lockPath = join(dataDir, '.service.lock');
   let lease;
@@ -133,6 +178,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     const stat = await lease.stat();
     leaseIdentity = { dev: stat.dev, ino: stat.ino };
     await lease.writeFile(ownership);
+    await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
     await lease.close().catch(() => {});
     await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
