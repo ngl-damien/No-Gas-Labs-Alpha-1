@@ -21,6 +21,15 @@ test('rejects a symlink in place of the persisted Founder key', async t => {
   await assert.rejects(createGameServer({ dataDir }), /regular, non-symlink file/);
 });
 
+test('rejects malformed UTF-8 in a persisted Founder key before service initialization', async t => {
+  const dataDir = await directory(t);
+  const path = join(dataDir, 'founder.key');
+  await writeFile(path, Buffer.concat([Buffer.from(VALID_KEY, 'utf8'), Buffer.from([0xff])]), { mode: 0o600 });
+
+  await assert.rejects(createGameServer({ dataDir }), /Founder key file is not valid UTF-8/);
+  await assert.rejects(stat(join(dataDir, 'service.json')), { code: 'ENOENT' });
+});
+
 test('accepts the maximum supported persisted Founder key size', async t => {
   const dataDir = await directory(t);
   const path = join(dataDir, 'founder.key');
