@@ -217,3 +217,296 @@ test("hidden and symbol properties make an event payload visibly malformed", () 
   assert.equal(chronicle.entries.some(entry => entry.id === "world:hidden-event"), false);
   assert.equal(chronicle.entries.some(entry => entry.id === "world:symbol-event"), false);
 });
+
+
+test("revocation history exposes the recorded grant and exact work/version without a private work map", () => {
+  const { world } = fixture();
+  const kernel = {
+    revision: 3,
+    eventCount: 3,
+    events: [
+      {
+        id: "claim-revoked-work",
+        type: "claim",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-revoked-work",
+        type: "authorize",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:01:00.000Z",
+        grantId: "grant-revoked",
+        executorId: "local-forge",
+        observerId: "local-byte-verifier",
+        scope: { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+      },
+      {
+        id: "revoke-work",
+        type: "revoke",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:02:00.000Z",
+        grantId: "grant-revoked",
+        reason: "The requested scope changed.",
+      },
+    ],
+  };
+  const before = { world: structuredClone(world), kernel: structuredClone(kernel) };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-work");
+
+  assert.equal(entry.eventType, "revoke");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.detail, /Grant ID: grant-revoked/);
+  assert.match(entry.detail, /Work scope: creation-observatory v1/);
+  assert.match(entry.detail, /does not erase earlier history/);
+  assert.match(entry.summary, /Reason: The requested scope changed/);
+  assert.equal(entry.warning, "");
+  assert.deepEqual({ world, kernel }, before);
+});
+
+test("revocation with missing work binding stays visible and warns instead of inventing scope", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [{
+      id: "revoke-unbound",
+      type: "revoke",
+      workId: "missing-work",
+      actor: "damien",
+      at: "2026-10-26T10:02:00.000Z",
+      grantId: "grant-unknown",
+      reason: "Scope cannot be resolved.",
+    }],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-unbound");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
+});
+
+
+test("a later claim cannot retroactively supply the scope of an earlier revocation", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "revoke-before-claim",
+        type: "revoke",
+        workId: "work-out-of-order",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        grantId: "grant-out-of-order",
+        reason: "Claim is missing at this point in history.",
+      },
+      {
+        id: "claim-after-revocation",
+        type: "claim",
+        workId: "work-out-of-order",
+        actor: "damien",
+        at: "2026-10-26T10:01:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-before-claim");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
+});
+
+
+function revocationHistory({
+  authorizationGrantId = "grant-revoked",
+  revokeGrantId = "grant-revoked",
+  authorizationScope = { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+  includeAuthorization = true,
+  duplicateAuthorization = false,
+} = {}) {
+  const claim = {
+    id: "claim-binding",
+    type: "claim",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:00:00.000Z",
+    action: "preserve-artifact-bytes",
+    subject: { id: "creation-observatory", version: 1 },
+  };
+  const authorization = {
+    id: "authorize-binding",
+    type: "authorize",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:01:00.000Z",
+    grantId: authorizationGrantId,
+    executorId: "local-forge",
+    observerId: "local-byte-verifier",
+    scope: authorizationScope,
+  };
+  const revoke = {
+    id: "revoke-binding",
+    type: "revoke",
+    workId: "work-binding",
+    actor: "damien",
+    at: "2026-10-26T10:02:00.000Z",
+    grantId: revokeGrantId,
+    reason: "The requested scope changed.",
+  };
+  const events = [claim];
+  if (includeAuthorization) {
+    events.push(authorization);
+    if (duplicateAuthorization) events.push({ ...authorization, id: "authorize-binding-duplicate" });
+  }
+  events.push(revoke);
+  return events;
+}
+
+function projectedRevocation(options) {
+  const { world } = fixture();
+  const kernel = { events: revocationHistory(options) };
+  return projectChronicle({ world, kernel }).entries.find(entry => entry.id === "kernel:revoke-binding");
+}
+
+test("revocation scope stays unresolved without a prior authorization or when its grant ID differs", () => {
+  for (const options of [
+    { includeAuthorization: false, revokeGrantId: "grant-never-authorized" },
+    { authorizationGrantId: "grant-authorized", revokeGrantId: "grant-other" },
+  ]) {
+    const entry = projectedRevocation(options);
+    assert.equal(entry.creationId, "");
+    assert.equal(entry.version, null);
+    assert.equal(entry.targetAvailable, false);
+    assert.match(entry.detail, /Work scope: not resolvable/);
+    assert.match(entry.warning, /missing or mismatched/);
+  }
+});
+
+test("revocation scope stays unresolved when the prior grant scope disagrees with the claim", () => {
+  const entry = projectedRevocation({
+    authorizationScope: { subjectId: "creation-other", subjectVersion: 1, action: "preserve-artifact-bytes" },
+  });
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.warning, /missing or mismatched/);
+});
+
+test("duplicate prior authorization records make a revocation binding ambiguous", () => {
+  const entry = projectedRevocation({ duplicateAuthorization: true });
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /ambiguous/);
+});
+
+
+test("a grant ID reused by another work makes the revocation scope globally ambiguous", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-work-a", type: "claim", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-work-a", type: "authorize", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:01:00.000Z", grantId: "grant-shared",
+        scope: { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+      },
+      {
+        id: "claim-work-b", type: "claim", workId: "work-b", actor: "damien",
+        at: "2026-10-26T10:02:00.000Z", action: "deploy",
+        subject: { id: "creation-other", version: 1 },
+      },
+      {
+        id: "authorize-work-b", type: "authorize", workId: "work-b", actor: "damien",
+        at: "2026-10-26T10:03:00.000Z", grantId: "grant-shared",
+        scope: { subjectId: "creation-other", subjectVersion: 1, action: "deploy" },
+      },
+      {
+        id: "revoke-work-a", type: "revoke", workId: "work-a", actor: "damien",
+        at: "2026-10-26T10:04:00.000Z", grantId: "grant-shared", reason: "Review binding.",
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-work-a");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /ambiguous/);
+});
+
+
+test("institutional stage scope follows the prior claim and warns on a conflicting event subject", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-stage-scope", type: "claim", workId: "work-stage-scope", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "observe-conflicting-subject", type: "observe", workId: "work-stage-scope", actor: "local-byte-verifier",
+        at: "2026-10-26T10:01:00.000Z", passed: true,
+        subject: { id: "creation-other", version: 9 },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:observe-conflicting-subject");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /disagrees with the earlier claim/);
+});
+
+test("an institutional stage cannot establish scope from its own subject when no prior claim exists", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [{
+      id: "observe-self-declared-scope", type: "observe", workId: "work-unclaimed",
+      actor: "local-byte-verifier", at: "2026-10-26T10:01:00.000Z", passed: true,
+      subject: { id: "creation-observatory", version: 1 },
+    }],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:observe-self-declared-scope");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.warning, /No valid earlier claim binds this institutional stage/);
+});
+
+test("authorization scope disagreement is visible while display scope remains anchored to the claim", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-authorize-scope", type: "claim", workId: "work-authorize-scope", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-wrong-scope", type: "authorize", workId: "work-authorize-scope", actor: "damien",
+        at: "2026-10-26T10:01:00.000Z", grantId: "grant-wrong-scope",
+        scope: { subjectId: "creation-other", subjectVersion: 9, action: "deploy" },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:authorize-wrong-scope");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.match(entry.warning, /authorization scope disagrees with the earlier claim/);
+});

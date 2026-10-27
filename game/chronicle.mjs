@@ -253,11 +253,46 @@ function worldEntry(event, index, world, notes) {
   return entry;
 }
 
-function kernelEntry(event, index, kernel, world) {
+function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 0) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
-  const work = typeof event?.workId === "string" ? kernel?.works?.[event.workId] : null;
-  const subject = event?.subject || work?.subject || null;
+  // The live public institution endpoint omits its internal work map. A
+  // revocation's scope is displayable only when one earlier authorization for
+  // this work has the same grant ID and exactly matches the prior claim.
+  const work = derivedWork;
+  const grantId = type === "revoke" ? text(event?.grantId) : "";
+  const expectedSubject = work?.subject;
+  const expectedAction = work?.action;
+  const claimSubjectValid = typeof expectedSubject?.id === "string" &&
+    Number.isSafeInteger(expectedSubject?.version) &&
+    expectedSubject.version >= 1;
+  const claimBindingValid = claimSubjectValid &&
+    typeof expectedAction === "string" &&
+    Boolean(expectedAction.trim());
+  const priorGrantRecords = type === "revoke" && grantId && Array.isArray(work?.authorizations)
+    ? work.authorizations.filter(authorization => authorization?.grantId === grantId)
+    : [];
+  const scopeMatchesClaim = priorGrantRecords.length === 1 && priorGrantCount === 1 &&
+    claimBindingValid &&
+    priorGrantRecords[0]?.scope?.subjectId === expectedSubject.id &&
+    priorGrantRecords[0]?.scope?.subjectVersion === expectedSubject.version &&
+    priorGrantRecords[0]?.scope?.action === expectedAction;
+  const revokeBindingValid = scopeMatchesClaim;
+  // A stage event's own subject is not its authority. The prior claim is the
+  // canonical display scope; a conflicting stage payload is shown with a warning.
+  const subject = type === "claim"
+    ? event?.subject || null
+    : type === "revoke"
+      ? (revokeBindingValid ? work?.subject || null : null)
+      : (claimSubjectValid ? work?.subject || null : null);
+  const stageSubjectRequired = ["execute", "observe", "adjudicate"].includes(type);
+  const stageSubjectMissing = stageSubjectRequired && !event?.subject;
+  const stageSubjectMismatch = stageSubjectRequired && claimSubjectValid && event?.subject &&
+    (event.subject.id !== expectedSubject.id || event.subject.version !== expectedSubject.version);
+  const authorizationScopeMismatch = type === "authorize" && claimBindingValid &&
+    (event?.scope?.subjectId !== expectedSubject.id ||
+     event?.scope?.subjectVersion !== expectedSubject.version ||
+     event?.scope?.action !== expectedAction);
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
   const target = findVersion(world, creationId, version);
@@ -270,6 +305,36 @@ function kernelEntry(event, index, kernel, world) {
     revoke: ["Grant revocation recorded", `Reason: ${text(event?.reason) || "not supplied"}.`],
   };
   const [title, summary] = labels[type] || ["Unclassified institutional event", "The institutional event is retained; no additional consequence is inferred."];
+  const workScope = creationId
+    ? `${creationId}${version !== null ? ` v${version}` : ""}`
+    : "";
+  const detail = type === "revoke"
+    ? `Grant ID: ${grantId || "not recorded"} · Work scope: ${workScope || "not resolvable"}. This retained event does not erase earlier history.`
+    : type === "authorize"
+      ? `Grant ID: ${text(event?.grantId) || "not recorded"}.`
+      : "";
+  let warning = !text(event?.id)
+    ? "The retained event has no usable source ID; this display key is local to the view."
+    : !timestamp(event?.at)
+      ? "The retained event has no parseable timestamp; it is shown after timestamped records."
+      : "";
+  const appendWarning = message => { warning = warning ? warning + " " + message : message; };
+  if (["authorize", "execute", "observe", "adjudicate"].includes(type) && !claimSubjectValid) {
+    appendWarning("No valid earlier claim binds this institutional stage; no exact work/version scope is inferred.");
+  } else {
+    if (type === "authorize" && !claimBindingValid) {
+      appendWarning("The earlier claim lacks a valid action binding; authorization scope cannot be fully checked.");
+    }
+    if (stageSubjectMissing) appendWarning("The stage event omits its subject binding; displayed scope follows the earlier claim only.");
+    if (stageSubjectMismatch) appendWarning("The event-supplied subject disagrees with the earlier claim; displayed scope follows the claim and requires source review.");
+    if (authorizationScopeMismatch) appendWarning("The authorization scope disagrees with the earlier claim; the grant is not shown as claim-bound.");
+  }
+  if (type === "revoke" && (!grantId || !creationId || version === null || !revokeBindingValid)) {
+    const bindingWarning = priorGrantRecords.length > 1 || priorGrantCount > 1
+      ? "Revocation grant binding is ambiguous; do not infer a missing grant or exact work/version scope."
+      : "Revocation grant binding is missing or mismatched; do not infer a missing grant or exact work/version scope.";
+    appendWarning(bindingWarning);
+  }
   return {
     id: `kernel:${id}`,
     source: "kernel",
@@ -279,13 +344,12 @@ function kernelEntry(event, index, kernel, world) {
     title,
     category: "INSTITUTIONAL WORK",
     summary: `Work ${text(event?.workId) || "ID unavailable"} · ${summary}`,
-    detail: "",
+    detail,
     creationId,
     version,
     targetTitle: target ? text(target.title) || creationId : "",
     targetAvailable: Boolean(target),
-    warning: !text(event?.id) ? "The retained event has no usable source ID; this display key is local to the view."
-      : !timestamp(event?.at) ? "The retained event has no parseable timestamp; it is shown after timestamped records." : "",
+    warning,
   };
 }
 
@@ -324,6 +388,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     entries.push(worldEntry(event, index, world, notes));
   }
 
+  const kernelSnapshots = [];
   for (let index = 0; index < kernelEvents.length; index += 1) {
     const event = safeEventSnapshot(kernelEvents[index]);
     if (!event) {
@@ -331,7 +396,53 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("kernel", index));
       continue;
     }
-    entries.push(kernelEntry(event, index, kernel, world));
+    kernelSnapshots.push({ event, index });
+  }
+
+  // Build a read-only index from safe retained event snapshots. The public API
+  // supplies event history but not the reducer's mutable work map. Only a prior
+  // claim establishes the subject; a revocation must carry its own grant ID.
+  // Later entries can expose recorded scope without manufacturing authority.
+  const derivedWorks = new Map();
+  const priorGrantCounts = new Map();
+  for (const { event, index } of kernelSnapshots) {
+    const workId = typeof event.workId === "string" && event.workId ? event.workId : "";
+    const prior = workId ? derivedWorks.get(workId) : null;
+    // Snapshot context before applying this event. A later claim must never be
+    // used to invent the scope of an earlier revocation. Grant IDs are unique
+    // across the whole institution, so duplicate prior authorizations elsewhere
+    // also make this binding ambiguous.
+    const priorContext = prior && Object.keys(prior).length ? { ...prior } : null;
+    const revokedGrantId = event.type === "revoke" ? text(event.grantId) : "";
+    const priorGrantCount = revokedGrantId ? (priorGrantCounts.get(revokedGrantId) || 0) : 0;
+    entries.push(kernelEntry(event, index, world, priorContext, priorGrantCount));
+
+    if (event.type === "authorize") {
+      const authorizedGrantId = text(event.grantId);
+      if (authorizedGrantId) priorGrantCounts.set(authorizedGrantId, (priorGrantCounts.get(authorizedGrantId) || 0) + 1);
+    }
+    if (!workId) continue;
+    const work = prior || {};
+    if (!prior) derivedWorks.set(workId, work);
+    if (event.type === "claim" && !work.subject &&
+        event.subject && typeof event.subject === "object" && !Array.isArray(event.subject)) {
+      work.subject = event.subject;
+      work.action = typeof event.action === "string" ? event.action : "";
+    }
+    // Retain only prior authorization evidence. A revoke with a missing,
+    // mismatched, or ambiguous grant cannot inherit a claim's scope by work ID.
+    if (event.type === "authorize" && work.subject &&
+        typeof work.action === "string" && work.action.trim()) {
+      if (!Array.isArray(work.authorizations)) work.authorizations = [];
+      const scope = event.scope && typeof event.scope === "object" && !Array.isArray(event.scope)
+        ? {
+          subjectId: event.scope.subjectId,
+          subjectVersion: event.scope.subjectVersion,
+          action: event.scope.action,
+        }
+        : null;
+      work.authorizations.push({ grantId: text(event.grantId), scope });
+    }
   }
 
   entries.sort((a, b) => {
