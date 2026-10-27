@@ -236,3 +236,50 @@ test('approval inspection rejects duplicate keys when one spelling uses a Unicod
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PROPOSAL_DUPLICATE_JSON_KEY/);
 });
+
+
+test('approval rejects a changed proposal digest before attempting to open the private key path', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const missingPrivateKeyPath = join(directory, 'does-not-exist.pem');
+  const wrongDigest = '0'.repeat(64);
+  assert.notEqual(wrongDigest, proposalDigest(proposal));
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+
+  const result = run([
+    '--confirm',
+    wrongDigest,
+    proposalPath,
+    missingPrivateKeyPath
+  ], { NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem) });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PROPOSAL_CONFIRMATION_MISMATCH/);
+  assert.doesNotMatch(result.stderr, /ENOENT|NOT_FOUND/);
+  assert.equal(result.stdout, '');
+});
+
+test('approval refuses to sign when the configured trust fingerprint does not match the private key', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  const wrongFingerprint = '0'.repeat(64);
+  assert.notEqual(wrongFingerprint, publicKeyFingerprint(founder.publicKeyPem));
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], { NGL_FOUNDER_KEY_FINGERPRINT: wrongFingerprint });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /FOUNDER_KEY_FINGERPRINT_MISMATCH/);
+  assert.equal(result.stdout, '');
+});
