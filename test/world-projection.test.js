@@ -258,6 +258,11 @@ test("institutional traversal is constrained by the realm graph", async () => {
   assert.equal(canTravel("guild_hall", "decision_chamber"), true);
   assert.equal(canTravel("guild_hall", "forge"), false);
   assert.equal(canTravel("nowhere", "forge"), false);
+  for (const prototypeKey of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    assert.equal(canTravel(prototypeKey, "forge"), false);
+    assert.equal(canTravel("guild_hall", prototypeKey), false);
+  }
+  assert.equal(canTravel({}, "forge"), false);
   const realm = projectRealm(projectWorld([claim]));
   assert.deepEqual(realm.institutions.guild_hall.exits, ["decision_chamber", "town_square", "academy"]);
 });
