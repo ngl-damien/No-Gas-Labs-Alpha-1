@@ -32,3 +32,10 @@ GitHub Actions verification for this branch's exact final head is pending. Do no
 5. Continue reviewing Chronicle projection boundaries for malformed or ambiguous retained data, without making the display projection an authority source.
 
 No merge, deployment, release, spending, production key provisioning/rotation/revocation, or Founder-identity claim occurred.
+
+
+## Second implementation cycle — ambiguous target identities
+
+A second source review found that safe snapshots alone did not prevent `findVersion()` from choosing the first match when retained data contained duplicate creation IDs or duplicate historical version numbers. Target resolution now succeeds only when the creation ID is unique and the requested historical version has exactly one match. Ambiguous targets remain visible but unavailable; no arbitrary title is selected.
+
+Regression tests cover duplicate creation identities and duplicate historical version entries. These changes are included in the final branch head; exact-head GitHub Actions must be rechecked after this update.
