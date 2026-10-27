@@ -53,7 +53,8 @@ export function projectRealm(state) {
     locations,
     institutions,
     avatar: { xp: state.xp || 0, inventory: { ...(state.inventory || {}) } },
-    quests: { ...(state.quests || {}) },
+    // Detach nested quest records so editing a UI realm cannot mutate canonical state.
+    quests: structuredClone(state.quests || {}),
     history: (state.history || []).map(event => event.event_id),
     // Preserve scope and event identity for the realm's evidence/audit view.
     revocation_audit: (state.revocation_audit || []).map(entry => ({
