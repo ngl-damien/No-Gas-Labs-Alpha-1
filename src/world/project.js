@@ -191,7 +191,12 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
   const state = EMPTY();
   const historyById = new Map();
   const seen = new Set();
+  // Keep the public audit list of every verified revocation, but apply its scope
+  // correctly: legacy events without quest_id are grant-wide; scoped events are
+  // effective only for that quest.
   const revoked = new Set();
+  const revokedGlobally = new Set();
+  const revokedByQuest = new Map();
 
   for (const event of eventList) {
     if (!event || typeof event !== "object" || Array.isArray(event)) {
@@ -220,15 +225,39 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
     state.history.push(retained);
 
     if (event.event_type === "REVOCATION") {
-      if (isVerifiedAdjudication(event, verifyAdjudication)) revoked.add(event.revokes);
+      if (isVerifiedAdjudication(event, verifyAdjudication)) {
+        const grantId = event.revokes;
+        revoked.add(grantId);
+        if (event.quest_id === undefined) {
+          revokedGlobally.add(grantId);
+        } else {
+          if (typeof event.quest_id !== "string" || event.quest_id.trim().length === 0) {
+            throw new Error("invalid revocation quest scope");
+          }
+          let scopedGrants = revokedByQuest.get(event.quest_id);
+          if (!scopedGrants) {
+            scopedGrants = new Set();
+            revokedByQuest.set(event.quest_id, scopedGrants);
+          }
+          scopedGrants.add(grantId);
+        }
+      }
       continue;
     }
 
-    const subject = event.subject === undefined || event.subject === null
-      ? event.event_id : event.subject;
+    // The quest reducer treats an explicit quest_id as authoritative for
+    // execution/adjudication events. Keep that invariant here so a conflicting
+    // subject cannot redirect canonical quest status to another quest.
+    const subject = OBSERVATION_EVENT_TYPES.has(event.event_type) && event.quest_id !== undefined
+      ? event.quest_id
+      : event.subject === undefined || event.subject === null
+        ? event.event_id : event.subject;
     if (typeof subject !== "string" || subject.trim().length === 0) {
       throw new Error("invalid event subject for " + id);
     }
+    const scopedRevocations = revokedByQuest.get(subject);
+    const grantRevoked = typeof event.grant_id === "string" &&
+      (revokedGlobally.has(event.grant_id) || scopedRevocations?.has(event.grant_id));
 
     if (event.event_type === "CLAIM" || event.event_type === "PROPOSAL") {
       setOwn(state.quests, subject, { status: "PROPOSED", source_event: id });
@@ -244,7 +273,8 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
     }
 
     if (event.outcome === "FAILED" || event.evidence === "REFUTED") {
-      if (hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
+      if (!grantRevoked &&
+          hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
           isVerifiedAuthorization(event, verifyAuthorization)) {
         const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
         setOwn(state.quests, subject, {
@@ -256,7 +286,7 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
       continue;
     }
 
-    if (revoked.has(event.grant_id) ||
+    if (grantRevoked ||
         !terminalSuccess(event, resolveArtifact, verifyObservation, verifyAuthorization)) continue;
 
     const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
@@ -286,6 +316,7 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
         const priorAmount = Object.hasOwn(state.inventory, item) ? state.inventory[item] : 0;
         const nextAmount = priorAmount + amount;
         if (!Number.isSafeInteger(nextAmount)) throw new Error("inventory world effect exceeds safe integer range");
+        if (nextAmount < 0) throw new Error("inventory world effect would underflow");
         setOwn(state.inventory, item, nextAmount);
       }
     }
