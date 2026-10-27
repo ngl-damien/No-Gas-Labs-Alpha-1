@@ -591,3 +591,34 @@ test("accessor-backed creation metadata is rejected without executing getters", 
   assert.match(publication.warning, /artifact version is unavailable/i);
   assert.ok(chronicle.entries.some(entry => entry.id === "world:unclassified-creations"));
 });
+
+
+test("duplicate creation identities do not select an arbitrary target", () => {
+  const { world, kernel } = fixture();
+  world.creations.push({
+    id: "creation-observatory",
+    title: "Conflicting duplicate creation",
+    version: 1,
+    versions: [],
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  const publication = chronicle.entries.find(entry => entry.id === "world:publish-v1");
+  assert.equal(publication.targetAvailable, false);
+  assert.equal(publication.targetTitle, "");
+  assert.match(publication.warning, /artifact version is unavailable/i);
+});
+
+test("duplicate historical version entries do not select an arbitrary title", () => {
+  const { world, kernel } = fixture();
+  world.creations[0].versions.push({
+    version: 1,
+    title: "Conflicting duplicate version",
+  });
+
+  const chronicle = projectChronicle({ world, kernel });
+  const report = chronicle.entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.targetAvailable, false);
+  assert.equal(report.targetTitle, "");
+  assert.match(report.warning, /artifact version is unavailable/i);
+});
