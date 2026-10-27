@@ -275,6 +275,15 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet-title')).to_have_text('The shared observatory')
         expect(b.locator('#version-select')).to_have_value('1')
         close_sheet(b)
+        # Evidence Archive is a world destination for canonical work stages, not only user notes.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='Evidence Archive'")
+        expect(b.locator('#sheet')).to_contain_text('CANONICAL INSTITUTIONAL HISTORY')
+        expect(b.locator('#sheet')).to_contain_text('OBSERVE')
+        expect(b.locator('#sheet')).to_contain_text('ADJUDICATE')
+        expect(b.locator('#sheet')).to_contain_text('Local byte check: passed')
+        close_sheet(b)
         a.locator('#repair-button').click();a.locator('#publish-button').wait_for()
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()

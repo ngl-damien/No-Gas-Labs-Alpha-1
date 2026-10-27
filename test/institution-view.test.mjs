@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderInstitution } from '../game/institution-view.mjs';
+import { renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 
 function element(tag) {
   return {
@@ -98,4 +98,51 @@ test('TownSquare warns about ungrouped events and accepted work without history 
   const output = textOf(root);
   assert.match(output, /1 retained event\(s\) have no valid work ID/);
   assert.match(output, /1 accepted work record\(s\) have no retained event history/);
+}));
+
+
+test('Evidence Archive exposes retained failed observations and rejected decisions as inspectable objects', () => withDocument(() => {
+  const root = element('div');
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Source Observatory', version: 1, versions: [] }],
+    events: [{
+      id: 'publish-v1', type: 'publish', creationId: 'creation-1', version: 1,
+      actor: { id: 'damien', name: 'Damien' }, at: '2026-10-27T09:00:00.000Z'
+    }],
+    reports: [], contributions: []
+  };
+  const subject = { id: 'creation-1', version: 1 };
+  const kernel = {
+    revision: 3, eventCount: 3, works: {},
+    events: [
+      { id: 'claim-1', workId: 'work-1', type: 'claim', actor: 'local-forge', at: '2026-10-27T09:01:00.000Z', subject },
+      { id: 'observe-1', workId: 'work-1', type: 'observe', actor: 'local-byte-verifier', at: '2026-10-27T09:02:00.000Z', passed: false, subject },
+      { id: 'adjudicate-1', workId: 'work-1', type: 'adjudicate', actor: 'damien', at: '2026-10-27T09:03:00.000Z', decision: 'reject', subject }
+    ]
+  };
+  renderEvidenceArchive(root, { world, kernel, shared: true, onOpenArtifact: () => {} });
+  const output = textOf(root);
+  assert.match(output, /CANONICAL INSTITUTIONAL HISTORY/);
+  assert.match(output, /Local byte check: failed/);
+  assert.match(output, /Decision: reject/);
+  assert.match(output, /not a truth verdict or independent-human review/);
+  assert.match(output, /revocations remain inspectable/);
+  const kernelCards = walk(root).filter(item => item.dataset?.eventSource === 'kernel');
+  assert.equal(kernelCards.length, 3);
+  const inspectableKernelEvents = kernelCards.reduce((total, card) => total + walk(card).filter(item => item.tagName === 'button' && item.dataset?.chronicleTarget === 'creation-1').length, 0);
+  assert.equal(inspectableKernelEvents, 3);
+}));
+
+test('Evidence Archive does not mistake unavailable canonical history for an empty institution', () => withDocument(() => {
+  const root = element('div');
+  const world = {
+    creations: [],
+    events: [{ id: 'draft-1', type: 'draft', actor: { id: 'damien', name: 'Damien' }, at: '2026-10-27T09:00:00.000Z' }],
+    reports: [], contributions: []
+  };
+  renderEvidenceArchive(root, { world, kernel: null, kernelUnavailable: true, shared: true });
+  const output = textOf(root);
+  assert.match(output, /Canonical institutional history could not be loaded/);
+  assert.match(output, /not being treated as empty/);
+  assert.match(output, /Private draft created/);
 }));

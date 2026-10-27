@@ -3,10 +3,10 @@ import {getQuest,getQuestTrail,getLocationAction} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderInstitution} from './institution-view.mjs';
+import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 
-let institutionRequestGeneration=0;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0;
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -199,8 +199,9 @@ function openForge(){
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
 function openEvidenceArchive(){
-  const content=showSheet('Evidence Archive','REPORTS · CONTRIBUTIONS · DISAGREEMENT');
-  content.append(paragraph('This archive shows retained notes and reports tied to actual published versions. Receipts identify bytes; they do not establish truth. Reports remain dissent, not automatic verdicts.'));
+  const kicker='REPORTS · CONTRIBUTIONS · DISAGREEMENT';
+  const content=showSheet('Evidence Archive',kicker);
+  content.append(paragraph('This archive preserves attributed reports and contributions against actual published versions. Receipts identify bytes; they do not establish truth. Reports remain dissent, not automatic verdicts.'));
   const entries=[...world.reports.map(entry=>({...entry,kind:'Report'})),...world.contributions.map(entry=>({...entry,kind:'Contribution'}))].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
   if(!entries.length)content.append(paragraph('No reports or contributions have been retained yet. The empty archive is an honest state, not a failed claim.','empty-note'));
   for(const entry of entries){
@@ -212,7 +213,32 @@ function openEvidenceArchive(){
       button('Inspect referenced version →',()=>openCreation(entry.creationId,entry.version),{class:'list-button'})
     ]));
   }
+  const history=node('section',{class:'evidence-history'});
+  content.append(history);
+  const generation=++evidenceArchiveGeneration;
+  const principalId=viewer.id;
+  const principalRole=viewer.role;
+  const stillCurrent=()=>generation===evidenceArchiveGeneration&&mode==='shared'&&viewer.id===principalId&&viewer.role===principalRole&&!$('sheet').hidden&&content===$('sheet-content')&&$('sheet-kicker').textContent===kicker;
+  const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
+    world,kernel,kernelUnavailable,shared:mode==='shared',
+    onOpenArtifact:(id,version)=>openCreation(id,version)
+  });
+  if(mode!=='shared'){
+    renderHistory(null,false);
+    return;
+  }
+  history.append(paragraph('Loading canonical institutional history…','form-help'));
+  request('/api/institution').then(result=>{
+    if(!stillCurrent())return;
+    history.replaceChildren();
+    renderHistory(result?.kernel||null,!result?.kernel);
+  }).catch(()=>{
+    if(!stillCurrent())return;
+    history.replaceChildren();
+    renderHistory(null,true);
+  });
 }
+
 function openAcademy(){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
   content.append(paragraph('Study published work and compare its claims with its retained sources. Visits and notes do not certify mastery; skill status remains a deterministic projection of recorded activity.'));
