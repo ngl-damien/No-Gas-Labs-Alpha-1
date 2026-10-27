@@ -54,6 +54,13 @@ export function projectRealm(state) {
     institutions,
     avatar: { xp: state.xp || 0, inventory: { ...(state.inventory || {}) } },
     quests: { ...(state.quests || {}) },
-    history: (state.history || []).map(event => event.event_id)
+    history: (state.history || []).map(event => event.event_id),
+    // Preserve scope and event identity for the realm's evidence/audit view.
+    revocation_audit: (state.revocation_audit || []).map(entry => ({
+      event_id: entry.event_id,
+      grant_id: entry.grant_id,
+      scope: entry.scope,
+      quest_id: entry.quest_id
+    }))
   };
 }

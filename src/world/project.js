@@ -1,7 +1,8 @@
 import { verifyReceipt } from "../evidence/content-addressed.js";
 
 const EMPTY = () => ({
-  history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: []
+  history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: [],
+  revocation_audit: []
 });
 const OBSERVATION_EVENT_TYPES = new Set(["SYSTEM_EVENT", "EXECUTION_ADJUDICATION"]);
 
@@ -191,12 +192,13 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
   const state = EMPTY();
   const historyById = new Map();
   const seen = new Set();
-  // Keep the public audit list of every verified revocation, but apply its scope
-  // correctly: legacy events without quest_id are grant-wide; scoped events are
-  // effective only for that quest.
+  // Preserve the legacy unique grant-ID list while retaining every verified
+  // revocation event and its scope in revocationAudit. Legacy events without
+  // quest_id are grant-wide; explicitly scoped events affect only that quest.
   const revoked = new Set();
   const revokedGlobally = new Set();
   const revokedByQuest = new Map();
+  const revocationAudit = [];
 
   for (const event of eventList) {
     if (!event || typeof event !== "object" || Array.isArray(event)) {
@@ -227,13 +229,20 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
     if (event.event_type === "REVOCATION") {
       if (isVerifiedAdjudication(event, verifyAdjudication)) {
         const grantId = event.revokes;
+        const scoped = event.quest_id !== undefined;
+        if (scoped && (typeof event.quest_id !== "string" || event.quest_id.trim().length === 0)) {
+          throw new Error("invalid revocation quest scope");
+        }
         revoked.add(grantId);
-        if (event.quest_id === undefined) {
+        revocationAudit.push({
+          event_id: id,
+          grant_id: grantId,
+          scope: scoped ? "quest" : "global",
+          quest_id: scoped ? event.quest_id : null
+        });
+        if (!scoped) {
           revokedGlobally.add(grantId);
         } else {
-          if (typeof event.quest_id !== "string" || event.quest_id.trim().length === 0) {
-            throw new Error("invalid revocation quest scope");
-          }
           let scopedGrants = revokedByQuest.get(event.quest_id);
           if (!scopedGrants) {
             scopedGrants = new Set();
@@ -329,6 +338,7 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
 
   state.seen = [...seen];
   state.revoked = [...revoked];
+  state.revocation_audit = revocationAudit;
   return state;
 }
 
@@ -344,7 +354,13 @@ export function projectWorld(events, seed = EMPTY(), options = {}) {
   const eventList = denseArrayValues(events, "event list");
 
   const replayedSeed = reduceWorld(seed.history, options);
-  if (!sameEventPayload(replayedSeed, seed)) {
+  // Accept pre-audit projections only when every legacy field still matches
+  // deterministic replay. The new audit is derived from retained history and
+  // host verification; caller-supplied audit data is never trusted.
+  const comparableSeed = Object.hasOwn(seed, "revocation_audit")
+    ? seed
+    : { ...seed, revocation_audit: replayedSeed.revocation_audit };
+  if (!sameEventPayload(replayedSeed, comparableSeed)) {
     throw new Error("seed projection differs from verified retained history");
   }
   return reduceWorld([...seed.history, ...eventList], options);
