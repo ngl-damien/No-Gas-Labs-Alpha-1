@@ -47,6 +47,32 @@ test('service-store latches post-rename directory-sync uncertainty until validat
 });
 
 
+test('service-store rejects invalid UTF-8 even when replacement decoding would preserve canonical JSON', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-invalid-utf8-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, note: '\uFFFD' };
+  const seed = await createServiceStore({ dataDir, initial, validate });
+  await seed.close();
+
+  const file = join(dataDir, 'service.json');
+  const original = await readFile(file);
+  const replacement = Buffer.from('\uFFFD', 'utf8');
+  const index = original.indexOf(replacement);
+  assert.notEqual(index, -1, 'fixture must contain the UTF-8 replacement character');
+  const malformed = Buffer.concat([
+    original.subarray(0, index),
+    Buffer.from([0xff]),
+    original.subarray(index + replacement.length)
+  ]);
+  await writeFile(file, malformed);
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial, validate }),
+    error => error.code === 'SERVICE_STORE_INVALID_UTF8'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+});
+
 test('service-store rejects oversized persisted envelopes before reading them', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-oversized-'));
   t.after(() => rm(dataDir, { recursive: true, force: true }));
