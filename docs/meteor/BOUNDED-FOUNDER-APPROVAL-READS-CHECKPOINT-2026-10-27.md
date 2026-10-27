@@ -17,7 +17,8 @@ Branch: `security/bounded-founder-install-file-reads-20261027`
 - Added `scripts/bounded-file-reader.mjs`: bounded 16 KiB chunk reads, a max+1 overflow sentinel, symlink/non-regular rejection, `O_NOFOLLOW`/`O_NONBLOCK` where supported, opened-file identity checks, pre/post size and timestamp checks, and strict UTF-8 round-trip validation.
 - Wired `scripts/approve-install.mjs` to use the helper for both proposal and private-key inputs.
 - Private-key reads additionally require private permissions and, where supported, current-process ownership.
-- Added `test/approve-install-file-reader.test.mjs` with nine tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file.
+- Proposal parsing also rejects duplicate JSON object keys before validation/digest confirmation, including escaped spellings that decode to the same key.
+- Added `test/approve-install-file-reader.test.mjs` with nine tests: multi-chunk valid reads; symlink rejection; oversized sparse-file rejection; malformed UTF-8 rejection; valid proposal inspection; malformed UTF-8 in an otherwise parseable proposal; successful signing using ephemeral test keys; and malformed UTF-8 rejection for a private-key file; and duplicate conflicting `strategy` keys that ordinary JSON.parse would collapse.
 
 ## Commit trail before this checkpoint
 
