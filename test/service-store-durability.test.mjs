@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdtemp, readFile, open, rename, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, open, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -93,4 +93,32 @@ test('service-store rejects group/world-accessible persisted envelopes', async t
     error => error.code === 'SERVICE_STORE_PERMISSIONS_TOO_BROAD'
   );
   await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+});
+
+
+test('service-store rejects a symlinked ancestor before creating redirected storage', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-path-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const actual = join(root, 'actual');
+  const alias = join(root, 'alias');
+  await mkdir(actual);
+  await symlink(actual, alias, 'dir');
+
+  await assert.rejects(
+    createServiceStore({ dataDir: join(alias, 'nested', 'store'), initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_DIRECTORY_SYMLINK'
+  );
+  await assert.rejects(lstat(join(actual, 'nested')), error => error.code === 'ENOENT');
+});
+
+test('service-store rejects an exposed existing data directory before creating a writer lock', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-directory-mode-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  await chmod(dataDir, 0o755);
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_DIRECTORY_PERMISSIONS_TOO_BROAD'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), error => error.code === 'ENOENT');
 });
