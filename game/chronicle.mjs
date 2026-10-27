@@ -253,7 +253,7 @@ function worldEntry(event, index, world, notes) {
   return entry;
 }
 
-function kernelEntry(event, index, world, derivedWork = null) {
+function kernelEntry(event, index, world, derivedWork = null, priorGrantCount = 0) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   // The live public institution endpoint omits its internal work map. A
@@ -266,7 +266,7 @@ function kernelEntry(event, index, world, derivedWork = null) {
   const priorGrantRecords = type === "revoke" && grantId && Array.isArray(work?.authorizations)
     ? work.authorizations.filter(authorization => authorization?.grantId === grantId)
     : [];
-  const scopeMatchesClaim = priorGrantRecords.length === 1 &&
+  const scopeMatchesClaim = priorGrantRecords.length === 1 && priorGrantCount === 1 &&
     typeof expectedSubject?.id === "string" &&
     Number.isSafeInteger(expectedSubject?.version) &&
     expectedSubject.version >= 1 &&
@@ -305,7 +305,7 @@ function kernelEntry(event, index, world, derivedWork = null) {
       ? "The retained event has no parseable timestamp; it is shown after timestamped records."
       : "";
   if (type === "revoke" && (!grantId || !creationId || version === null || !revokeBindingValid)) {
-    const bindingWarning = priorGrantRecords.length > 1
+    const bindingWarning = priorGrantRecords.length > 1 || priorGrantCount > 1
       ? "Revocation grant binding is ambiguous; do not infer a missing grant or exact work/version scope."
       : "Revocation grant binding is missing or mismatched; do not infer a missing grant or exact work/version scope.";
     warning = warning ? warning + " " + bindingWarning : bindingWarning;
@@ -379,14 +379,23 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   // claim establishes the subject; a revocation must carry its own grant ID.
   // Later entries can expose recorded scope without manufacturing authority.
   const derivedWorks = new Map();
+  const priorGrantCounts = new Map();
   for (const { event, index } of kernelSnapshots) {
     const workId = typeof event.workId === "string" && event.workId ? event.workId : "";
     const prior = workId ? derivedWorks.get(workId) : null;
     // Snapshot context before applying this event. A later claim must never be
-    // used to invent the scope of an earlier revocation.
+    // used to invent the scope of an earlier revocation. Grant IDs are unique
+    // across the whole institution, so duplicate prior authorizations elsewhere
+    // also make this binding ambiguous.
     const priorContext = prior && Object.keys(prior).length ? { ...prior } : null;
-    entries.push(kernelEntry(event, index, world, priorContext));
+    const revokedGrantId = event.type === "revoke" ? text(event.grantId) : "";
+    const priorGrantCount = revokedGrantId ? (priorGrantCounts.get(revokedGrantId) || 0) : 0;
+    entries.push(kernelEntry(event, index, world, priorContext, priorGrantCount));
 
+    if (event.type === "authorize") {
+      const authorizedGrantId = text(event.grantId);
+      if (authorizedGrantId) priorGrantCounts.set(authorizedGrantId, (priorGrantCounts.get(authorizedGrantId) || 0) + 1);
+    }
     if (!workId) continue;
     const work = prior || {};
     if (!prior) derivedWorks.set(workId, work);
