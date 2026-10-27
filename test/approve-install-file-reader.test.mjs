@@ -154,10 +154,10 @@ test('approval inspection rejects duplicate JSON keys before digest confirmation
   const executor = keyPair();
   const proposal = proposalFor(executor.publicKeyPem);
   const path = join(directory, 'proposal.json');
-  let serialized = JSON.stringify(proposal, null, 2) + '\\n';
+  let serialized = JSON.stringify(proposal, null, 2) + '\n';
   const strategy = '"strategy": "square",';
   assert.ok(serialized.includes(strategy), 'fixture must contain the strategy field');
-  serialized = serialized.replace(strategy, '"strategy": "double",\\n  "strategy": "square",');
+  serialized = serialized.replace(strategy, '"strategy": "double",\n  "strategy": "square",');
   await writeFile(path, serialized, { mode: 0o600 });
 
   const result = run(['--inspect', path]);
