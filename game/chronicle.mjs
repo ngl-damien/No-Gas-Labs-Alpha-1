@@ -257,8 +257,8 @@ function kernelEntry(event, index, world, derivedWork = null) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   // The live public institution endpoint deliberately omits its internal work
-  // map. Reconstruct only display metadata from retained claim/authorization
-  // events so later revocations can still name their recorded scope.
+  // map. Reconstruct the subject only from an earlier retained claim so a
+  // later revocation can name its recorded scope.
   const work = derivedWork;
   // A revoke event is not allowed to self-declare its target. Its scope comes
   // only from the earlier retained claim for the same work ID.
@@ -357,11 +357,10 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     kernelSnapshots.push({ event, index });
   }
 
-  // Build a read-only work index from validated retained events. The public
-  // API supplies event history but not the private reducer's mutable work map.
-  // Only a claim event establishes the subject; authorization supplies the
-  // grant ID. Later entries can therefore expose a revocation's recorded scope
-  // without trusting event labels as authority or manufacturing state.
+  // Build a read-only index from safe retained event snapshots. The public API
+  // supplies event history but not the reducer's mutable work map. Only a prior
+  // claim establishes the subject; a revocation must carry its own grant ID.
+  // Later entries can expose recorded scope without manufacturing authority.
   const derivedWorks = new Map();
   for (const { event, index } of kernelSnapshots) {
     const workId = typeof event.workId === "string" && event.workId ? event.workId : "";
