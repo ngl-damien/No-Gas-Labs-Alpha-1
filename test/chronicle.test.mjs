@@ -217,3 +217,77 @@ test("hidden and symbol properties make an event payload visibly malformed", () 
   assert.equal(chronicle.entries.some(entry => entry.id === "world:hidden-event"), false);
   assert.equal(chronicle.entries.some(entry => entry.id === "world:symbol-event"), false);
 });
+
+
+test("revocation history exposes the recorded grant and exact work/version without a private work map", () => {
+  const { world } = fixture();
+  const kernel = {
+    revision: 3,
+    eventCount: 3,
+    events: [
+      {
+        id: "claim-revoked-work",
+        type: "claim",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-revoked-work",
+        type: "authorize",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:01:00.000Z",
+        grantId: "grant-revoked",
+        executorId: "local-forge",
+        observerId: "local-byte-verifier",
+        scope: { subjectId: "creation-observatory", subjectVersion: 1, action: "preserve-artifact-bytes" },
+      },
+      {
+        id: "revoke-work",
+        type: "revoke",
+        workId: "work-revoked",
+        actor: "damien",
+        at: "2026-10-26T10:02:00.000Z",
+        grantId: "grant-revoked",
+        reason: "The requested scope changed.",
+      },
+    ],
+  };
+  const before = { world: structuredClone(world), kernel: structuredClone(kernel) };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-work");
+
+  assert.equal(entry.eventType, "revoke");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.detail, /Grant ID: grant-revoked/);
+  assert.match(entry.detail, /Work scope: creation-observatory v1/);
+  assert.match(entry.detail, /does not erase earlier history/);
+  assert.match(entry.summary, /Reason: The requested scope changed/);
+  assert.equal(entry.warning, "");
+  assert.deepEqual({ world, kernel }, before);
+});
+
+test("revocation with missing work binding stays visible and warns instead of inventing scope", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [{
+      id: "revoke-unbound",
+      type: "revoke",
+      workId: "missing-work",
+      actor: "damien",
+      at: "2026-10-26T10:02:00.000Z",
+      grantId: "grant-unknown",
+      reason: "Scope cannot be resolved.",
+    }],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:revoke-unbound");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.detail, /Work scope: not resolvable/);
+  assert.match(entry.warning, /do not infer a missing grant or exact work\/version scope/);
+});
