@@ -385,3 +385,21 @@ test("a revoked grant cannot change quest status through a later failed executio
   assert.equal(state.quests["forge-gate"], undefined);
   assert.equal(state.xp, 0);
 });
+
+
+test("inventory deltas may consume existing items but cannot create negative stock", () => {
+  const acquire = { ...observed, event_id: "e2", world_effect: { inventory: { verified_shard: 2 } } };
+  const consume = {
+    ...observed, event_id: "e17", parents: ["e2"],
+    world_effect: { inventory: { verified_shard: -1 } }
+  };
+  const consumed = projectWorld([acquire, consume], undefined, trusted);
+  assert.equal(consumed.inventory.verified_shard, 1);
+
+  const underflow = {
+    ...observed, event_id: "e17", parents: ["e2"],
+    world_effect: { inventory: { verified_shard: -3 } }
+  };
+  assert.throws(() => projectWorld([acquire, underflow], undefined, trusted),
+    /inventory world effect would underflow/);
+});

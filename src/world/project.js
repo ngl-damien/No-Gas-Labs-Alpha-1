@@ -316,6 +316,7 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
         const priorAmount = Object.hasOwn(state.inventory, item) ? state.inventory[item] : 0;
         const nextAmount = priorAmount + amount;
         if (!Number.isSafeInteger(nextAmount)) throw new Error("inventory world effect exceeds safe integer range");
+        if (nextAmount < 0) throw new Error("inventory world effect would underflow");
         setOwn(state.inventory, item, nextAmount);
       }
     }
