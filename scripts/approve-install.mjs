@@ -22,10 +22,12 @@ async function readProposal(path) {
   } catch (error) {
     throw new Error(error.code || error.message || 'PROPOSAL_READ_FAILED');
   }
+  // Run the bounded scanner before JSON.parse so excessive nesting is
+  // rejected before the runtime builds a parsed object graph.
+  assertNoDuplicateJsonObjectKeys(text, { label: 'PROPOSAL', maxDepth: MAX_PROPOSAL_JSON_DEPTH });
   let decision;
   try { decision = JSON.parse(text); }
   catch { throw new Error('PROPOSAL_JSON_INVALID'); }
-  assertNoDuplicateJsonObjectKeys(text, { label: 'PROPOSAL', maxDepth: MAX_PROPOSAL_JSON_DEPTH });
   const validation = validateInstallationProposal(decision);
   if (!validation.valid) throw new Error(validation.reason);
   return decision;
