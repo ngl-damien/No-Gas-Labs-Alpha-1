@@ -236,18 +236,27 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
 }
 
 async function readBoundedRegularFile(path) {
+  // Refuse symlinks even on platforms where O_NOFOLLOW is unavailable. Compare
+  // the path entry with the opened handle before and after reading to detect swaps.
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) throw new Error('LEDGER_NOT_REGULAR_FILE');
+  if (before.size > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
+
   const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
   const handle = await open(path, flags);
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error('LEDGER_NOT_REGULAR_FILE');
+    if (stat.dev !== before.dev || stat.ino !== before.ino) throw new Error('LEDGER_PATH_CHANGED');
     if (stat.size > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
     const bytes = await handle.readFile();
+    const after = await lstat(path);
+    if (after.isSymbolicLink() || !after.isFile() ||
+        after.dev !== stat.dev || after.ino !== stat.ino) throw new Error('LEDGER_PATH_CHANGED');
     if (bytes.length > MAX_LEDGER_BYTES) throw new Error('LEDGER_TOO_LARGE');
     return bytes;
   } finally { await handle.close(); }
 }
-
 async function readLedger(path, publicKey) {
   let bytes;
   try { bytes = await readBoundedRegularFile(path); }
