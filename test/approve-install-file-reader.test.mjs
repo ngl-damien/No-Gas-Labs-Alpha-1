@@ -178,3 +178,61 @@ test('approval inspection bounds nested JSON depth before schema validation', as
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PROPOSAL_JSON_TOO_DEEP/);
 });
+
+
+test('approval rejects missing trust pin before attempting to open the private key path', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const missingPrivateKeyPath = join(directory, 'does-not-exist.pem');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    missingPrivateKeyPath
+  ], { NGL_FOUNDER_KEY_FINGERPRINT: '' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /FOUNDER_KEY_FINGERPRINT_REQUIRED/);
+  assert.doesNotMatch(result.stderr, /ENOENT|NOT_FOUND/);
+});
+
+test('Founder approval rejects a private-key file with group/world permissions', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX permission bits are not enforced on Windows');
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o644 });
+  await chmod(privateKeyPath, 0o644);
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], { NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem) });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /FOUNDER_KEY_PERMISSIONS_TOO_BROAD/);
+});
+
+test('approval inspection rejects duplicate keys when one spelling uses a Unicode escape', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const path = join(directory, 'proposal.json');
+  let serialized = JSON.stringify(proposal, null, 2) + '\\n';
+  const strategy = '"strategy": "square",';
+  assert.ok(serialized.includes(strategy), 'fixture must contain the strategy field');
+  serialized = serialized.replace(strategy, '"strategy": "double",\\n  "\\\\u0073trategy": "square",');
+  await writeFile(path, serialized, { mode: 0o600 });
+
+  const result = run(['--inspect', path]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /PROPOSAL_DUPLICATE_JSON_KEY/);
+});
