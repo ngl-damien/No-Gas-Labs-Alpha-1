@@ -7,8 +7,14 @@ import {renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 
 let institutionRequestGeneration=0;
-async function openInstitution() {
-  const content = showSheet('The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE');
+async function openInstitution(locationId = null) {
+  const contexts = {
+    'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
+    guild_hall: ['Guild Hall', 'COUNCIL · CAPABILITIES · PROPOSALS'],
+    decision_chamber: ['Decision Chamber', 'HUMAN GATE · DECISIONS'],
+  };
+  const context = contexts[locationId] || contexts['town-square'];
+  const content = showSheet(context[0], context[1]);
   if (mode !== 'shared') {
     content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
     return;
@@ -24,7 +30,7 @@ async function openInstitution() {
   ]);
   if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
       viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
-      content !== $('sheet-content') || $('sheet-kicker').textContent !== 'PROJECTS · EVIDENCE · FOUNDER GATE') return;
+      content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return;
   renderInstitution(content, projects, gate, {
     founder: viewer.role === 'founder',
     world: stateResult.data?.world,
@@ -41,6 +47,17 @@ async function openInstitution() {
       await openInstitution();
     }),
   });
+}
+
+function openInstitutionLocation(id) {
+  if (id === 'guild_hall') return openGuildHall();
+  if (id === 'forge') return openForge();
+  if (id === 'evidence_archive') return openEvidenceArchive();
+  if (id === 'decision_chamber' || id === 'town-square') return openInstitution(id);
+  if (id === 'academy') return openAcademy();
+  if (id === 'moonshot_field') return openMoonshotField();
+  if (id === 'publication_house') return openPublicationHouse();
+  return openGuide(id);
 }
 
 const $=id=>document.getElementById(id);
@@ -67,7 +84,7 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=dto.institution||institution;setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
 async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(openInstitution)();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y})})});
+const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y})})});
 view.setWorld(world);
 function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
 function followQuestAction(action){if(!action||typeof action.type!=='string')return;if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}if(action.type==='location'&&['relay','river','overlook','ruins'].includes(action.id)){closeSheet();view.goTo(action.id);return}if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}}
@@ -158,7 +175,65 @@ function openCreation(id,requestedVersion=null){const creation=world.creations.f
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
 function openGuide(id){const g=guides[id];if(!g)return;const action=getLocationAction(id,world,viewer);const content=showSheet(g.title,g.name);content.append(paragraph(g.voice,'attribution'),paragraph(g.body),node('div',{class:'field-card'},[node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),paragraph(g.practice)]),paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),node('div',{class:'button-row'},[button(action?.label||'Explore another guide →',()=>{if(action?.type==='workbench')openWorkshop(action.recipe);else if(action?.type==='inspect')openCreation(action.creationId);else openPlaces();},{class:'primary-button'})]));}
-function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?'Read actual projects, evidence, disputes and scoped decisions.':guides[p.id].voice})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));}
+function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));}
+function openGuildHall(){
+  if(mode==='shared')return openInstitution('guild_hall');
+  const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
+  content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Choose a role to frame an actual next action.'));
+  for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
+}
+function openForge(){
+  if(viewer.role==='founder')return openWorkshop();
+  const content=showSheet('Forge','FOUNDER-GATED CREATION');
+  content.append(paragraph('Drafting, repair and publication require an authenticated Founder session. Witnesses can inspect published work and leave attributed contributions or reports.'));
+  content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
+}
+function openEvidenceArchive(){
+  const content=showSheet('Evidence Archive','REPORTS · CONTRIBUTIONS · DISAGREEMENT');
+  content.append(paragraph('This archive shows retained notes and reports tied to actual published versions. Receipts identify bytes; they do not establish truth. Reports remain dissent, not automatic verdicts.'));
+  const entries=[...world.reports.map(entry=>({...entry,kind:'Report'})),...world.contributions.map(entry=>({...entry,kind:'Contribution'}))].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  if(!entries.length)content.append(paragraph('No reports or contributions have been retained yet. The empty archive is an honest state, not a failed claim.','empty-note'));
+  for(const entry of entries){
+    const creation=world.creations.find(item=>item.id===entry.creationId);
+    content.append(node('article',{class:'field-card'},[
+      node('h3',{text:entry.kind+' · '+(creation?.title||entry.creationId)+' · v'+entry.version}),
+      paragraph(entry.text),
+      paragraph('By '+(entry.actor?.name||'Unknown')+' · '+entry.at+' · retained record, not a verdict.','attribution'),
+      button('Inspect referenced version →',()=>openCreation(entry.creationId,entry.version),{class:'list-button'})
+    ]));
+  }
+}
+function openAcademy(){
+  const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
+  content.append(paragraph('Study published work and compare its claims with its retained sources. Visits and notes do not certify mastery; skill status remains a deterministic projection of recorded activity.'));
+  const works=[...world.creations].reverse();
+  if(!works.length){
+    content.append(paragraph('No published study objects are available yet. The Founder can make the first artifact at the Forge.','empty-note'));
+    if(viewer.role==='founder')content.append(button('Visit the Forge →',()=>{closeSheet();view.goTo('forge')},{class:'list-button'}));
+  }
+  for(const creation of works)content.append(node('article',{class:'field-card'},[
+    node('h3',{text:creation.title}),
+    paragraph(creation.kind+' · published v'+creation.version+' · '+creation.receipt.size+' retained bytes'),
+    button('Study this artifact →',()=>openCreation(creation.id,creation.version),{class:'list-button'})
+  ]));
+}
+function openMoonshotField(){
+  const content=showSheet('Moonshot Field','BOUNDED EXPERIMENTS · NO FREE SUCCESS');
+  content.append(paragraph('A moonshot begins as a bounded question, not a claimed breakthrough. A useful brief names what could disconfirm it and which evidence would be needed. Drafting a proposal does not count as a successful experiment.'));
+  const studies=world.creations.filter(creation=>creation.kind==='observatory');
+  if(studies.length){
+    for(const creation of studies)content.append(button(creation.title+' · source observatory v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
+  }else content.append(paragraph('No published source observatory is present yet.','empty-note'));
+  if(viewer.role==='founder')content.append(button('Draft a source observatory →',()=>openWorkshop('observatory'),{class:'primary-button'}));
+  else content.append(paragraph('Witnesses cannot draft or publish. Inspect existing work and leave a specific report instead.'));
+}
+function openPublicationHouse(kindFilter=null){
+  const content=showSheet('Publication House','PUBLISHED ARTIFACTS · PRESERVED VERSIONS');
+  content.append(paragraph('Only retained published artifacts appear here. Publication means a version was preserved by this service; it is not a truth verdict.'));
+  const works=[...world.creations].filter(creation=>!kindFilter||creation.kind===kindFilter).reverse();
+  if(!works.length)content.append(paragraph(kindFilter?'No published '+kindFilter+' artifacts are present yet.':'No published artifacts are present yet.','empty-note'));
+  for(const creation of works)content.append(button(creation.title+' · '+creation.kind+' · v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
+}
 function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOURNAL');content.append(paragraph(mode==='shared'?`Shared world · ${viewer.role==='founder'?'authenticated Founder':'Witness'} · ${viewer.name}`:'Private world · this device · local saves and backup'),node('div',{class:'journal-summary'},[node('span',{},[node('strong',{text:world.creations.length}),node('small',{text:'PLACES MADE'})]),node('span',{},[node('strong',{text:world.xp}),node('small',{text:'WORLD XP'})]),node('span',{},[node('strong',{text:world.methods.length}),node('small',{text:'METHODS EARNED'})])]),paragraph('Every accepted published version adds 100 WORLD XP to this institution-wide total. Character XP is derived separately from unique Founder publication events matched to retained versions. Neither total proves external truth, competence, provider execution or authority.','form-help'));
   if(world.drafts.length&&viewer.role==='founder'){content.append(node('h3',{class:'section-title',text:'PRIVATE DRAFTS'}));for(const d of world.drafts)content.append(button(d.title+` · draft v${d.version} →`,()=>openWorkshop(d.kind,d.id),{class:'list-button'}));}
   let pendingAction=null;try{pendingAction=readPendingSharedAction()}catch(error){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph(error.message,'evidence-warning'))}if(pendingAction){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph('A shared write may have committed even if its response was lost. The request ID and exact action are saved on this device; retrying reuses that ID so the server can return the original result without creating a duplicate.','form-help'),node('article',{class:'field-card'},[node('h3',{text:'Pending action · '+pendingAction.action.type.toUpperCase()}),paragraph('Request ID · '+pendingAction.requestId),paragraph('Original actor · '+pendingAction.actorId+' ('+pendingAction.actorRole+')')]));if(mode==='shared'&&pendingAction.actorId===viewer.id&&pendingAction.actorRole===viewer.role)content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));else content.append(paragraph('This session does not match the original actor. The action will not be replayed under a different identity or role.','evidence-warning'))}  content.append(node('h3',{class:'section-title',text:'YOUR DISCOVERIES'}));const discoveries=world.discoveries.filter(d=>d.actor.id===viewer.id);if(!discoveries.length)content.append(paragraph('Four authored field notes wait across the grounds.','empty-note'));for(const d of discoveries)content.append(button(guides[d.locationId].name+' →',()=>openGuide(d.locationId),{class:'list-button'}));
