@@ -281,9 +281,8 @@ test('ledger rejects invalid UTF-8 even when replacement decoding would preserve
   const replacement = '\uFFFD';
   const utf8Config = {
     ...config,
-    founderId: `${config.founderId}${replacement}`,
     actors: config.actors.map(actor => actor.id === config.founderId
-      ? { ...actor, id: `${actor.id}${replacement}` }
+      ? { ...actor, name: `Founder ${replacement}` }
       : actor)
   };
   const ledger = await ledgerModule.openLedger({ directory, ...utf8Config });
