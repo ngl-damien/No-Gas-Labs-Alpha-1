@@ -448,3 +448,78 @@ test('event-stream capacity rejection happens before a new session is allocated'
     agent.destroy();
   }
 });
+
+test('Founder-only routes reject missing or Witness sessions without allocating sessions', async t => {
+  const f = await fixture(t);
+  const founderOnly = [
+    ['/api/launch', {}],
+    ['/api/decisions/policy', {}],
+    ['/api/decisions/proposals', {}],
+    ['/api/decisions/choose', {}],
+    ['/api/action', { type: 'draft', kind: 'comic', title: 'Denied draft', intent: 'Must not allocate a session' }],
+    ['/api/action', { type: 'publish', draftId: 'draft-1', expectedVersion: 0 }],
+    ['/api/action', { type: 'repair', creationId: 'creation-1', expectedVersion: 1 }]
+  ];
+
+  for (const [path, payload] of founderOnly) {
+    const response = await fetch(f.url + path, {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    assert.equal(response.status, 403, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' must not allocate a denied Witness session');
+    await response.text();
+  }
+
+  const witness = f.client();
+  await witness.request('/api/state');
+  const originalCookie = witness.cookie;
+  assert.match(originalCookie, /^ngl_session=/);
+
+  for (const [path, payload] of founderOnly) {
+    const denied = await witness.request(path, payload);
+    assert.equal(denied.response.status, 403, path);
+    assert.equal(denied.response.headers.get('set-cookie'), null, path + ' must not replace the existing Witness cookie');
+    assert.equal(witness.cookie, originalCookie, path + ' must preserve the existing Witness session');
+  }
+
+  const stillWitness = await witness.request('/api/state');
+  assert.equal(stillWitness.response.status, 200);
+  assert.equal(stillWitness.body.viewer.role, 'witness');
+});
+
+test('invalid or unsupported action payloads fail before session allocation', async t => {
+  const f = await fixture(t);
+  const invalid = [
+    null,
+    {},
+    [],
+    { type: 'not-an-action' },
+    { type: 'discover', locationId: 'relay', xp: 999 }
+  ];
+  for (const payload of invalid) {
+    const response = await fetch(f.url + '/api/action', {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('set-cookie'), null, 'invalid action must not allocate a session');
+    await response.text();
+  }
+});
+
+test('an authenticated Founder retains access to the launch rehearsal after route preflight', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const result = await founder.request('/api/launch', {
+    title: 'Authorized local rehearsal',
+    tagline: 'Test-only; no external publication'
+  });
+  assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  assert.equal(typeof result.body, 'object');
+  assert.equal(result.body?.title, 'Authorized local rehearsal');
+});
+
