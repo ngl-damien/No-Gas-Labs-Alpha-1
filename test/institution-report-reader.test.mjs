@@ -74,7 +74,7 @@ test('server CLI rejects ambiguous institution reports before creating runtime s
   const directory = await temp(t);
   const reportPath = join(directory, 'report.json');
   const runtimeDirectory = join(directory, 'runtime');
-  await writeFile(reportPath, '{"schema":"first","\\\\u0073chema":"second"}', { mode: 0o600 });
+  await writeFile(reportPath, '{"schema":"first","\\u0073chema":"second"}', { mode: 0o600 });
 
   const result = spawnSync(process.execPath, [
     fileURLToPath(new URL('../game/server.mjs', import.meta.url))
