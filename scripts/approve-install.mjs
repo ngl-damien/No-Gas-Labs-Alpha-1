@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { constants as fsConstants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
+import { readBoundedRegularFile } from './bounded-file-reader.mjs';
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
@@ -13,30 +12,76 @@ import {
 const MAX_PROPOSAL_BYTES = 1024 * 1024;
 const MAX_PRIVATE_KEY_BYTES = 64 * 1024;
 const FINGERPRINT = /^[a-f0-9]{64}$/;
+const MAX_PROPOSAL_JSON_DEPTH = 128;
 
-async function readBoundedRegularFile(path, maxBytes, label, requirePrivatePermissions = false) {
-  // lstat closes the portability gap where O_NOFOLLOW is unavailable. Compare the
-  // opened handle's identity as well, so a path swapped between checks fails closed.
-  const before = await lstat(path);
-  if (before.isSymbolicLink() || !before.isFile()) throw new Error(`${label}_NOT_REGULAR_FILE`);
-  const flags = fsConstants.O_RDONLY |
-    (fsConstants.O_NOFOLLOW ?? 0) |
-    (fsConstants.O_NONBLOCK ?? 0);
-  const handle = await open(path, flags);
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error(`${label}_NOT_REGULAR_FILE`);
-    if (before.dev !== stat.dev || before.ino !== stat.ino) throw new Error(`${label}_FILE_CHANGED_DURING_OPEN`);
-    if (stat.size > maxBytes) throw new Error(`${label}_FILE_TOO_LARGE`);
-    if (requirePrivatePermissions && process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
-      throw new Error('FOUNDER_KEY_PERMISSIONS_TOO_BROAD');
+function assertNoDuplicateJsonObjectKeys(source) {
+  let index = 0;
+  const skipWhitespace = () => {
+    while (source[index] === ' ' || source[index] === '\t' || source[index] === '\r' || source[index] === '\n') index += 1;
+  };
+  const readStringToken = () => {
+    const start = index;
+    index += 1;
+    while (index < source.length) {
+      const character = source[index];
+      if (character === '\\') { index += 2; continue; }
+      index += 1;
+      if (character === '"') return source.slice(start, index);
     }
-    const bytes = await handle.readFile();
-    if (bytes.length > maxBytes) throw new Error(`${label}_FILE_TOO_LARGE`);
-    return bytes.toString('utf8');
-  } finally {
-    await handle.close();
-  }
+    throw new Error('PROPOSAL_JSON_INVALID');
+  };
+  const parseValue = (depth = 0) => {
+    if (depth > MAX_PROPOSAL_JSON_DEPTH) throw new Error('PROPOSAL_JSON_TOO_DEEP');
+    skipWhitespace();
+    if (source[index] === '{') {
+      index += 1;
+      skipWhitespace();
+      if (source[index] === '}') { index += 1; return; }
+      const keys = new Set();
+      while (index < source.length) {
+        skipWhitespace();
+        const token = readStringToken();
+        let key;
+        try { key = JSON.parse(token); }
+        catch { throw new Error('PROPOSAL_JSON_INVALID'); }
+        if (keys.has(key)) throw new Error('PROPOSAL_DUPLICATE_JSON_KEY');
+        keys.add(key);
+        skipWhitespace();
+        index += 1; // JSON.parse has already validated the colon.
+        parseValue(depth + 1);
+        skipWhitespace();
+        if (source[index] === ',') { index += 1; continue; }
+        if (source[index] === '}') { index += 1; return; }
+        throw new Error('PROPOSAL_JSON_INVALID');
+      }
+      throw new Error('PROPOSAL_JSON_INVALID');
+    }
+    if (source[index] === '[') {
+      index += 1;
+      skipWhitespace();
+      if (source[index] === ']') { index += 1; return; }
+      while (index < source.length) {
+        parseValue(depth + 1);
+        skipWhitespace();
+        if (source[index] === ',') { index += 1; continue; }
+        if (source[index] === ']') { index += 1; return; }
+        throw new Error('PROPOSAL_JSON_INVALID');
+      }
+      throw new Error('PROPOSAL_JSON_INVALID');
+    }
+    if (source[index] === '"') { readStringToken(); return; }
+    const start = index;
+    while (index < source.length &&
+      source[index] !== ',' && source[index] !== ']' && source[index] !== '}' &&
+      source[index] !== ' ' && source[index] !== '\t' && source[index] !== '\r' && source[index] !== '\n') {
+      index += 1;
+    }
+    if (index === start) throw new Error('PROPOSAL_JSON_INVALID');
+  };
+
+  parseValue();
+  skipWhitespace();
+  if (index !== source.length) throw new Error('PROPOSAL_JSON_INVALID');
 }
 
 async function readProposal(path) {
@@ -49,6 +94,7 @@ async function readProposal(path) {
   let decision;
   try { decision = JSON.parse(text); }
   catch { throw new Error('PROPOSAL_JSON_INVALID'); }
+  assertNoDuplicateJsonObjectKeys(text);
   const validation = validateInstallationProposal(decision);
   if (!validation.valid) throw new Error(validation.reason);
   return decision;
@@ -95,7 +141,13 @@ async function main() {
   const digest = proposalDigest(decision);
   if (digest !== confirmedDigest) throw new Error('PROPOSAL_CONFIRMATION_MISMATCH');
 
-  const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', true);
+  // Validate the independently provisioned trust pin before opening the secret key file.
+  const expectedFingerprint = process.env.NGL_FOUNDER_KEY_FINGERPRINT;
+  if (typeof expectedFingerprint !== 'string' || !FINGERPRINT.test(expectedFingerprint)) {
+    throw new Error('FOUNDER_KEY_FINGERPRINT_REQUIRED');
+  }
+
+  const keyText = await readBoundedRegularFile(resolve(privateKeyPath), MAX_PRIVATE_KEY_BYTES, 'FOUNDER_KEY', { requirePrivatePermissions: true, requireCurrentUserOwnership: true });
   let privateKey;
   try { privateKey = createPrivateKey(keyText); }
   catch { throw new Error('FOUNDER_PRIVATE_KEY_INVALID'); }
@@ -104,10 +156,6 @@ async function main() {
   const publicKey = createPublicKey(privateKey);
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
   const fingerprint = publicKeyFingerprint(publicKeyPem);
-  const expectedFingerprint = process.env.NGL_FOUNDER_KEY_FINGERPRINT;
-  if (typeof expectedFingerprint !== 'string' || !FINGERPRINT.test(expectedFingerprint)) {
-    throw new Error('FOUNDER_KEY_FINGERPRINT_REQUIRED');
-  }
   if (fingerprint !== expectedFingerprint) throw new Error('FOUNDER_KEY_FINGERPRINT_MISMATCH');
 
   const signature = sign(null, Buffer.from(approvalPayload(decision), 'utf8'), privateKey).toString('base64url');
