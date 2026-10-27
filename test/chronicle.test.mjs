@@ -448,3 +448,65 @@ test("a grant ID reused by another work makes the revocation scope globally ambi
   assert.match(entry.detail, /Work scope: not resolvable/);
   assert.match(entry.warning, /ambiguous/);
 });
+
+
+test("institutional stage scope follows the prior claim and warns on a conflicting event subject", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-stage-scope", type: "claim", workId: "work-stage-scope", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "observe-conflicting-subject", type: "observe", workId: "work-stage-scope", actor: "local-byte-verifier",
+        at: "2026-10-26T10:01:00.000Z", passed: true,
+        subject: { id: "creation-other", version: 9 },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:observe-conflicting-subject");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /disagrees with the earlier claim/);
+});
+
+test("an institutional stage cannot establish scope from its own subject when no prior claim exists", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [{
+      id: "observe-self-declared-scope", type: "observe", workId: "work-unclaimed",
+      actor: "local-byte-verifier", at: "2026-10-26T10:01:00.000Z", passed: true,
+      subject: { id: "creation-observatory", version: 1 },
+    }],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:observe-self-declared-scope");
+  assert.equal(entry.creationId, "");
+  assert.equal(entry.version, null);
+  assert.equal(entry.targetAvailable, false);
+  assert.match(entry.warning, /No valid earlier claim binds this institutional stage/);
+});
+
+test("authorization scope disagreement is visible while display scope remains anchored to the claim", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "claim-authorize-scope", type: "claim", workId: "work-authorize-scope", actor: "damien",
+        at: "2026-10-26T10:00:00.000Z", action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      {
+        id: "authorize-wrong-scope", type: "authorize", workId: "work-authorize-scope", actor: "damien",
+        at: "2026-10-26T10:01:00.000Z", grantId: "grant-wrong-scope",
+        scope: { subjectId: "creation-other", subjectVersion: 9, action: "deploy" },
+      },
+    ],
+  };
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "kernel:authorize-wrong-scope");
+  assert.equal(entry.creationId, "creation-observatory");
+  assert.equal(entry.version, 1);
+  assert.match(entry.warning, /authorization scope disagrees with the earlier claim/);
+});
