@@ -253,10 +253,15 @@ function worldEntry(event, index, world, notes) {
   return entry;
 }
 
-function kernelEntry(event, index, kernel, world) {
+function kernelEntry(event, index, kernel, world, derivedWork = null) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
-  const work = typeof event?.workId === "string" ? kernel?.works?.[event.workId] : null;
+  // The live public institution endpoint deliberately omits its internal work
+  // map. Reconstruct only display metadata from retained claim/authorization
+  // events so later revocations can still name their recorded scope.
+  const work = typeof event?.workId === "string"
+    ? kernel?.works?.[event.workId] || derivedWork
+    : null;
   const subject = event?.subject || work?.subject || null;
   const creationId = text(subject?.id);
   const version = Number.isInteger(subject?.version) ? subject.version : null;
@@ -270,6 +275,22 @@ function kernelEntry(event, index, kernel, world) {
     revoke: ["Grant revocation recorded", `Reason: ${text(event?.reason) || "not supplied"}.`],
   };
   const [title, summary] = labels[type] || ["Unclassified institutional event", "The institutional event is retained; no additional consequence is inferred."];
+  const grantId = type === "revoke" ? text(event?.grantId) : "";
+  const workScope = creationId
+    ? `${creationId}${version !== null ? ` v${version}` : ""}`
+    : "";
+  const detail = type === "revoke"
+    ? `Grant ID: ${grantId || "not recorded"} · Work scope: ${workScope || "not resolvable"}. This retained event does not erase earlier history.`
+    : "";
+  let warning = !text(event?.id)
+    ? "The retained event has no usable source ID; this display key is local to the view."
+    : !timestamp(event?.at)
+      ? "The retained event has no parseable timestamp; it is shown after timestamped records."
+      : "";
+  if (type === "revoke" && (!grantId || !creationId || version === null)) {
+    const bindingWarning = "Revocation binding is incomplete; do not infer a missing grant or exact work/version scope.";
+    warning = warning ? warning + " " + bindingWarning : bindingWarning;
+  }
   return {
     id: `kernel:${id}`,
     source: "kernel",
@@ -279,13 +300,12 @@ function kernelEntry(event, index, kernel, world) {
     title,
     category: "INSTITUTIONAL WORK",
     summary: `Work ${text(event?.workId) || "ID unavailable"} · ${summary}`,
-    detail: "",
+    detail,
     creationId,
     version,
     targetTitle: target ? text(target.title) || creationId : "",
     targetAvailable: Boolean(target),
-    warning: !text(event?.id) ? "The retained event has no usable source ID; this display key is local to the view."
-      : !timestamp(event?.at) ? "The retained event has no parseable timestamp; it is shown after timestamped records." : "",
+    warning,
   };
 }
 
@@ -324,6 +344,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     entries.push(worldEntry(event, index, world, notes));
   }
 
+  const kernelSnapshots = [];
   for (let index = 0; index < kernelEvents.length; index += 1) {
     const event = safeEventSnapshot(kernelEvents[index]);
     if (!event) {
@@ -331,7 +352,32 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("kernel", index));
       continue;
     }
-    entries.push(kernelEntry(event, index, kernel, world));
+    kernelSnapshots.push({ event, index });
+  }
+
+  // Build a read-only work index from validated retained events. The public
+  // API supplies event history but not the private reducer's mutable work map.
+  // Only a claim event establishes the subject; authorization supplies the
+  // grant ID. Later entries can therefore expose a revocation's recorded scope
+  // without trusting event labels as authority or manufacturing state.
+  const derivedWorks = new Map();
+  for (const { event } of kernelSnapshots) {
+    if (typeof event.workId !== "string" || !event.workId) continue;
+    let work = derivedWorks.get(event.workId);
+    if (!work) {
+      work = {};
+      derivedWorks.set(event.workId, work);
+    }
+    if (event.type === "claim" && !work.subject &&
+        event.subject && typeof event.subject === "object" && !Array.isArray(event.subject)) {
+      work.subject = event.subject;
+    }
+    if (event.type === "authorize" && !work.grantId && text(event.grantId)) {
+      work.grantId = event.grantId;
+    }
+  }
+  for (const { event, index } of kernelSnapshots) {
+    entries.push(kernelEntry(event, index, kernel, world, derivedWorks.get(event.workId)));
   }
 
   entries.sort((a, b) => {
