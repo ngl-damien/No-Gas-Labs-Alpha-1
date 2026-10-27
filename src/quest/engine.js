@@ -43,7 +43,11 @@ export function projectQuest(quest, events = [], options = {}) {
       continue;
     }
 
-    if (event.quest_id !== quest.quest_id && event.subject !== quest.quest_id) continue;
+    // An explicit quest_id is authoritative. The subject fallback is for
+    // older execution records that do not carry quest_id; it must never pull an
+    // event explicitly scoped to another quest into this projection.
+    const targetQuest = event.quest_id === undefined ? event.subject : event.quest_id;
+    if (targetQuest !== quest.quest_id) continue;
     relevant.push(event);
 
     const grantId = typeof event.grant_id === "string" && event.grant_id.length > 0
