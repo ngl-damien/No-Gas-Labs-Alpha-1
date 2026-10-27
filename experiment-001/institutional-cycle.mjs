@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { mkdir, readFile, rename, open, lstat, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, parse, resolve, sep } from 'node:path';
 import { createHash, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
@@ -285,6 +285,25 @@ async function syncDirectory(directory) {
   finally { await handle.close(); }
 }
 
+async function assertNoSymlinkPathComponents(path) {
+  // The final component check is insufficient: a symlinked grandparent can
+  // redirect both ledger and lock paths before their own lstat checks run.
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) throw new Error('INSTITUTION_PATH_SYMLINK');
+    if (!stat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
+  }
+}
+
 export async function openInstitution(directory, trustedPublicKeyPem) {
   if (typeof trustedPublicKeyPem !== 'string' || !trustedPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('TRUSTED_PUBLIC_KEY_REQUIRED');
   const expectedFingerprint = TRUSTED_FOUNDER_KEY_FINGERPRINT;
@@ -296,7 +315,10 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   const actualFingerprint = hashBytes(publicKey.export({ type: 'spki', format: 'der' }));
   if (actualFingerprint !== expectedFingerprint) throw new Error('FOUNDER_KEY_FINGERPRINT_MISMATCH');
 
+  directory = resolve(directory);
+  await assertNoSymlinkPathComponents(directory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await assertNoSymlinkPathComponents(directory);
   const dirStat = await lstat(directory);
   if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
   if ((dirStat.mode & 0o022) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
