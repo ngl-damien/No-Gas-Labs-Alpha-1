@@ -75,6 +75,17 @@ test('login limiter uses a rolling window and blocks a boundary-burst of failure
     error.code === 'LOGIN_RATE_LIMITED' && error.status === 429);
 });
 
+test('invalid Founder login throttle configuration fails before creating runtime state', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-invalid-login-throttle-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY, loginRateLimit: { maxFailures: 0 } }),
+    /INVALID_LOGIN_RATE_LIMIT_CONFIG/
+  );
+  await assert.rejects(readFile(join(dataDir, 'founder.key')), error => error.code === 'ENOENT');
+  await assert.rejects(readFile(join(dataDir, 'service.json')), error => error.code === 'ENOENT');
+});
+
 test('Founder login rate-limits repeated bad credentials by socket peer, not spoofable forwarding headers', async t => {
   const f = await fixture(t, undefined, { loginRateLimit: { maxFailures: 2, windowMs: 500, lockoutMs: 500 } });
   const client = f.client();
