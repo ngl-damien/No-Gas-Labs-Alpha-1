@@ -40,7 +40,7 @@ test('character XP and level derive from unique publications matched to retained
 
 test('institution-wide XP never leaks into a Witness character level',()=>{
   const world={
-    xp:900,
+    xp:300,
     creations:[publishedCreation('founder-work',[t1,t2,t3])],
     events:[
       publication('p1',founder,'founder-work',1,t1),
@@ -51,7 +51,7 @@ test('institution-wide XP never leaks into a Witness character level',()=>{
     contributions:[{id:'n1',actor:witness,creationId:'founder-work',version:3,text:'A real note.'}]
   };
   const record=projectCharacter(world,witness);
-  assert.deepEqual([record.xp,record.worldXp,record.level,record.xpIntoLevel],[0,900,1,0]);
+  assert.deepEqual([record.xp,record.worldXp,record.level,record.xpIntoLevel],[0,300,1,0]);
   assert.equal(record.skills.find(skill=>skill.id==='observer').count,1);
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,0);
 });
