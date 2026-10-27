@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, open, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, open, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -44,4 +44,53 @@ test('service-store latches post-rename directory-sync uncertainty until validat
   const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   assert.deepEqual(reopened.value, { revision: 1 }, 'reopen must validate the actual retained envelope');
   await reopened.close();
+});
+
+
+test('service-store rejects oversized persisted envelopes before reading them', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-oversized-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+
+  const path = join(dataDir, 'service.json');
+  const handle = await open(path, 'r+');
+  try { await handle.truncate(64 * 1024 * 1024 + 1); } finally { await handle.close(); }
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_STORE_TOO_LARGE'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+});
+
+test('service-store rejects symlinked persisted envelopes and releases its lock', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-symlink-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+
+  const path = join(dataDir, 'service.json');
+  await rename(path, join(dataDir, 'service-target.json'));
+  await symlink('service-target.json', path);
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_STORE_NOT_REGULAR'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+});
+
+test('service-store rejects group/world-accessible persisted envelopes', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-permissions-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+  await chmod(join(dataDir, 'service.json'), 0o644);
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_STORE_PERMISSIONS_TOO_BROAD'
+  );
+  await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
 });
