@@ -48,23 +48,51 @@ function renderKernelHistory(container,kernel){
  if(histories.size===0)container.append(el('p','The service returned kernel events without work IDs; they cannot be grouped into work receipts.'));
 }
 
-function renderChronicle(container, chronicle, onOpenArtifact) {
- container.append(el('h3','TOWNSQUARE · WORLD CHRONICLE'));
- container.append(el('p','A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.'));
- if(chronicle.malformed>0){const warning=el('p',`${chronicle.malformed} malformed retained event slot(s) remain visible for investigation.`);warning.className='evidence-warning';container.append(warning);}
- if(chronicle.entries.length===0){container.append(el('p','No retained world or institutional events are recorded in this snapshot.'));return;}
+function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
+ const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
+ const intro = options.intro || "A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.";
+ const emptyMessage = options.emptyMessage || "No retained world or institutional events are recorded in this snapshot.";
+ container.append(el('h3', heading));
+ container.append(el('p', intro));
+ if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
+ if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
  for(const entry of chronicle.entries){
   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
   card.append(el('h3',entry.title));
-  card.append(el('p',`${entry.category} · ${entry.eventType.toUpperCase()} · ${entry.actor} · ${entry.at||'time unavailable'}`));
+  card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
-   const inspect=el('button',`Inspect ${entry.targetTitle} · v${entry.version}`);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
+   const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
   }
   container.append(card);
  }
+}
+
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
+ if(shared&&kernelUnavailable){
+  const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
+  warning.className='evidence-warning';container.append(warning);
+ }
+ if(shared&&kernel&&Array.isArray(kernel.events)&&Number.isInteger(kernel.eventCount)&&kernel.eventCount!==kernel.events.length){
+  const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
+  warning.className='evidence-warning';container.append(warning);
+ }
+ const chronicle=projectChronicle({world,kernel});
+ const entries=chronicle.entries.filter(entry=>{
+  if(entry.source==='kernel')return shared;
+  return entry.source==='world'&&!['report','contribute'].includes(entry.eventType);
+ });
+ renderChronicle(container,{entries,malformed:chronicle.malformed},onOpenArtifact,{
+  heading:shared?'CANONICAL INSTITUTIONAL HISTORY':'LOCAL WORLD HISTORY',
+  intro:shared
+   ?'Retained institutional work stages appear beside world events. Failed byte checks, rejected decisions and revocations remain inspectable; none is silently converted into success or truth.'
+   :'Retained local world events are shown separately from the reports and contributions above. A saved event records activity, not external truth or authority.',
+  emptyMessage:shared
+   ?'No retained institutional or world events are recorded in this snapshot.'
+   :'No retained world events are recorded in this local snapshot.'
+ });
 }
 
 export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact}={}){
