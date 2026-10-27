@@ -102,13 +102,23 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
   const generation=++portalGeneration,oldFrame=$('artifact-frame'),frame=oldFrame.cloneNode(false);
   oldFrame.onload=null;frame.removeAttribute('srcdoc');
   frame.style.removeProperty('visibility');frame.style.removeProperty('pointer-events');
-  frame.setAttribute('aria-busy','true');$('portal').classList.add('portal-loading');
+  frame.removeAttribute('data-ngl-input-ready');frame.setAttribute('aria-busy','true');$('portal').classList.add('portal-loading');
   $('portal-title').textContent=title;$('portal-kicker').textContent=kicker;
   if(portalReadyListener)removeEventListener('message',portalReadyListener);
   portalReadyListener=event=>{
     if(generation!==portalGeneration||event.source!==frame.contentWindow||event.data?.type!=='ngl-portal-painted'||event.data.generation!==generation)return;
-    frame.setAttribute('aria-busy','false');$('portal').classList.remove('portal-loading');
-    removeEventListener('message',portalReadyListener);portalReadyListener=null;
+    const listener=portalReadyListener;removeEventListener('message',listener);portalReadyListener=null;
+    // The child's message proves its own paint, not that the parent has painted
+    // the removal of the input-blocking cover. Signal readiness only after one
+    // parent frame has removed the cover and a following frame has elapsed.
+    requestAnimationFrame(()=>{
+      if(generation!==portalGeneration||$('artifact-frame')!==frame)return;
+      frame.setAttribute('aria-busy','false');$('portal').classList.remove('portal-loading');
+      requestAnimationFrame(()=>{
+        if(generation!==portalGeneration||$('artifact-frame')!==frame)return;
+        frame.setAttribute('data-ngl-input-ready','true');
+      });
+    });
   };
   addEventListener('message',portalReadyListener);
   const bootstrap=`<script>addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\/script>`;
