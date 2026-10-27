@@ -17,6 +17,7 @@ export function projectGuildHall({
     status: eventList.some(candidate =>
       candidate?.type === "QUEST_AUTHORIZED" &&
       candidate.proposal_id === event.event_id &&
+      candidate.quest_id === event.quest_id &&
       isVerifiedAuthorization(candidate, verifyAuthorization)
     ) ? "AUTHORIZED" : "PROPOSED"
   }));
