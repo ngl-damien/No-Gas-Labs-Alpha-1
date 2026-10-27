@@ -123,3 +123,29 @@ test("a later revocation does not erase an earlier verified completion", () => {
   assert.deepEqual(result.executions, ["e-before-revocation"]);
   assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, true]);
 });
+
+
+test("explicit authorization for another quest cannot be pulled into this quest by subject", () => {
+  const crossQuestAuth = {
+    ...auth,
+    quest_id: "another-quest",
+    subject: quest.quest_id
+  };
+  const result = projectQuest(quest, [crossQuestAuth], trust);
+  assert.equal(result.status, QUEST_STATUS.OPEN);
+  assert.equal(result.authorized, false);
+});
+
+test("execution explicitly scoped to another quest cannot satisfy this quest via subject", () => {
+  const crossQuestExecution = {
+    ...execution("cross-quest-execution", quest.acceptance),
+    quest_id: "another-quest"
+  };
+  const result = projectQuest(quest, [auth, crossQuestExecution], {
+    ...trust,
+    verifyObservation: event => event.event_id === "cross-quest-execution"
+  });
+  assert.equal(result.status, QUEST_STATUS.AUTHORIZED);
+  assert.deepEqual(result.executions, []);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [false, false]);
+});
