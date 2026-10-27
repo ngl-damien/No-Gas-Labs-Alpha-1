@@ -163,7 +163,7 @@ test('stale lock fails closed and is not silently deleted as crash recovery', ()
 }));
 
 
-test('directory-sync failure leaves the in-memory ledger unpromoted and latches commits until reopen', () => temp(async dir => {
+test('directory-sync failure latches the live store and permits recovery only after validated reopen', () => temp(async dir => {
   const moduleUrl = new URL('./institutional-cycle.mjs', import.meta.url).href;
   const storePath = join(dir, 'uncertain-store');
   const script = [
@@ -190,8 +190,12 @@ test('directory-sync failure leaves the in-memory ledger unpromoted and latches 
     "let secondError = null; try { await store.commit(reuse, receipt); } catch (error) { secondError = error.message; }",
     "const reopened = await lib.openInstitution(" + JSON.stringify(storePath) + ", publicPem);",
     "const reopenedSequence = reopened.snapshot().sequence;",
-    "console.log(JSON.stringify({ firstError, sequenceAfterFailure, secondError, reopenedSequence, injected }));",
-    "if (firstError !== 'COMMIT_DURABILITY_UNCERTAIN' || sequenceAfterFailure !== 0 || secondError !== 'COMMIT_DURABILITY_UNCERTAIN' || reopenedSequence !== 1 || !injected) process.exitCode = 1;"
+    "const recovery = { kind: 'REUSE', id: proposal.id, nonce: 'reuse-after-reopen-0001', input: 4, output: 16 };",
+    "const recoveryReceipt = sign(null, Buffer.from(lib.executionReceiptPayload(recovery)), executor.privateKey).toString('base64url');",
+    "let recoveryError = null; try { await reopened.commit(recovery, recoveryReceipt); } catch (error) { recoveryError = error.message; }",
+    "const recoveredSequence = reopened.snapshot().sequence;",
+    "console.log(JSON.stringify({ firstError, sequenceAfterFailure, secondError, reopenedSequence, recoveryError, recoveredSequence, injected }));",
+    "if (firstError !== 'COMMIT_DURABILITY_UNCERTAIN' || sequenceAfterFailure !== 0 || secondError !== 'COMMIT_DURABILITY_UNCERTAIN' || reopenedSequence !== 1 || recoveryError !== null || recoveredSequence !== 2 || !injected) process.exitCode = 1;"
   ].join('\n');
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     encoding: 'utf8',
@@ -205,6 +209,8 @@ test('directory-sync failure leaves the in-memory ledger unpromoted and latches 
     sequenceAfterFailure: 0,
     secondError: 'COMMIT_DURABILITY_UNCERTAIN',
     reopenedSequence: 1,
+    recoveryError: null,
+    recoveredSequence: 2,
     injected: true
   });
 }));
