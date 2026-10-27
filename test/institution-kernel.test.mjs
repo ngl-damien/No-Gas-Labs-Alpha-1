@@ -267,12 +267,31 @@ test('load rejects event-chain tampering and does not trust saved projection', a
   const original = JSON.parse(await readFile(file, 'utf8'));
   const changed = structuredClone(original);
   changed.records[0].event.action = 'deploy';
-  await writeFile(file, JSON.stringify(changed));
+  await writeFile(file, kernel.canonicalStringify(changed));
   await assert.rejects(ledgerModule.openLedger({ directory, ...config }), error => error.code === 'LEDGER_TAMPERED');
   const projection = structuredClone(original);
   projection.projection.revision = 80;
-  await writeFile(file, JSON.stringify(projection));
+  await writeFile(file, kernel.canonicalStringify(projection));
   await assert.rejects(ledgerModule.openLedger({ directory, ...config }), error => error.code === 'PROJECTION_MISMATCH');
+});
+
+test('ledger rejects noncanonical persisted JSON, including duplicate schema keys', async t => {
+  const directory = await temp(t);
+  const ledger = await ledgerModule.openLedger({ directory, ...config });
+  await ledger.append(fixture().events[0]);
+  await ledger.close();
+
+  const file = join(directory, 'ledger.json');
+  const canonical = await readFile(file, 'utf8');
+  const ambiguous = canonical.replace('"schema":"ngl.institution.ledger.v1"', '"schema":"wrong","schema":"ngl.institution.ledger.v1"');
+  assert.notEqual(ambiguous, canonical, 'fixture must contain a duplicate schema key');
+  await writeFile(file, ambiguous);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...config }),
+    error => error.code === 'LEDGER_TAMPERED'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
 });
 
 test('load verifies persisted artifact bytes and trusted roster', async t => {
