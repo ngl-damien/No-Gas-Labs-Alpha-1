@@ -83,7 +83,7 @@ async function startChildHoldingLock(t, { modulePath, openExpression, env = {} }
   await readyPromise;
   return {
     async release() {
-      child.stdin.end('release\\n');
+      child.stdin.end('release');
       const [code, signal] = await once(child, 'exit');
       assert.equal(code, 0, `Lock owner child failed (signal ${signal}): ${stderr}`);
     }
