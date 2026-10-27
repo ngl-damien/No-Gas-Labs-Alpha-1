@@ -145,7 +145,7 @@ async function readBoundedStoreEnvelope(path) {
 
 function durabilityUncertain(cause) {
   return Object.assign(new Error(
-    'Service store replacement succeeded but directory sync failed; commit durability is uncertain. Reopen and validate the store before writing again.'
+    'Service store replacement succeeded but directory durability could not be confirmed; reopen and validate the store before reading or writing again.'
   ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503, ...(cause ? { cause } : {}) });
 }
 
@@ -208,6 +208,9 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     catch (error) { await close(); throw error; }
   }
   async function persist(payload) {
+    // The caller may retain this store while the directory pathname is replaced.
+    // Revalidate its identity before any path-based write.
+    await assertPrivateDirectory(dataDir, directoryIdentity);
     const pending = join(dataDir, `.service-${randomUUID()}.tmp`);
     let file;
     let renamed = false;
@@ -216,10 +219,17 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       await file.writeFile(canonicalStringify({ schema: 'ngl.service-store.v1', payload, digest: digest(payload) }));
       await file.sync();
       await file.close(); file = null;
+      // Do not replace the envelope if the directory changed while the temp
+      // file was being written.
+      await assertPrivateDirectory(dataDir, directoryIdentity);
       await rename(pending, path);
       renamed = true;
-      try { await syncDirectoryFn(dataDir); }
-      catch (error) {
+      try {
+        // A post-rename path change is itself an uncertain durability boundary:
+        // never expose stale in-memory state or permit another write.
+        await assertPrivateDirectory(dataDir, directoryIdentity);
+        await syncDirectoryFn(dataDir);
+      } catch (error) {
         durabilityUncertainState = true;
         throw durabilityUncertain(error);
       }
