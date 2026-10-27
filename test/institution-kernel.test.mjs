@@ -276,6 +276,38 @@ test('load rejects event-chain tampering and does not trust saved projection', a
   await assert.rejects(ledgerModule.openLedger({ directory, ...config }), error => error.code === 'PROJECTION_MISMATCH');
 });
 
+test('ledger rejects invalid UTF-8 even when replacement decoding would preserve canonical history', async t => {
+  const directory = await temp(t);
+  const replacement = '\uFFFD';
+  const utf8Config = {
+    ...config,
+    actors: config.actors.map(actor => actor.id === config.founderId
+      ? { ...actor, name: `Founder ${replacement}` }
+      : actor)
+  };
+  const ledger = await ledgerModule.openLedger({ directory, ...utf8Config });
+  await ledger.append(fixture().events[0]);
+  await ledger.close();
+
+  const file = join(directory, 'ledger.json');
+  const original = await readFile(file);
+  const marker = Buffer.from(replacement, 'utf8');
+  const index = original.indexOf(marker);
+  assert.notEqual(index, -1, 'fixture must contain the UTF-8 replacement character');
+  const malformed = Buffer.concat([
+    original.subarray(0, index),
+    Buffer.from([0xff]),
+    original.subarray(index + marker.length)
+  ]);
+  await writeFile(file, malformed);
+
+  await assert.rejects(
+    ledgerModule.openLedger({ directory, ...utf8Config }),
+    error => error.code === 'LEDGER_TAMPERED'
+  );
+  await assert.rejects(lstat(join(directory, '.writer.lock')), { code: 'ENOENT' });
+});
+
 test('ledger rejects noncanonical persisted JSON, including duplicate schema keys', async t => {
   const directory = await temp(t);
   const ledger = await ledgerModule.openLedger({ directory, ...config });

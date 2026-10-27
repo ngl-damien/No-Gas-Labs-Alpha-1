@@ -261,6 +261,30 @@ test('rejects symlinked ancestors before recursive directory creation', async t 
   await assert.rejects(lstat(join(target, 'created')), { code: 'ENOENT' });
 });
 
+test('rejects invalid UTF-8 in persisted decision envelopes before replay', async t => {
+  const { store, directory } = await fixture(t);
+  await store.create(evaluator, { ...proposal(), title: 'Synthetic packaging review \uFFFD' });
+  await store.close();
+
+  const file = join(directory, 'decisions.json');
+  const original = await readFile(file);
+  const marker = Buffer.from('\uFFFD', 'utf8');
+  const index = original.indexOf(marker);
+  assert.notEqual(index, -1, 'fixture must contain the UTF-8 replacement character');
+  const malformed = Buffer.concat([
+    original.subarray(0, index),
+    Buffer.from([0xff]),
+    original.subarray(index + marker.length)
+  ]);
+  await writeFile(file, malformed);
+
+  await rejected(
+    decisionsModule.openDecisions({ directory, now: () => instant }),
+    'DECISIONS_TAMPERED'
+  );
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
 test('rejects noncanonical persisted decision envelopes including duplicate schema keys', async t => {
   const { store, directory } = await fixture(t);
   await store.create(evaluator, proposal());

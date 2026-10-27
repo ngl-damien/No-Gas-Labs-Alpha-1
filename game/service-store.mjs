@@ -137,7 +137,12 @@ async function readBoundedStoreEnvelope(path) {
     if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) {
       throw storeReadError('SERVICE_STORE_CHANGED', `${label} changed during reading`);
     }
-    return Buffer.concat(chunks, total).toString('utf8');
+    const bytes = Buffer.concat(chunks, total);
+    const decoded = bytes.toString('utf8');
+    if (!Buffer.from(decoded, 'utf8').equals(bytes)) {
+      throw storeReadError('SERVICE_STORE_INVALID_UTF8', `${label} is not valid UTF-8`);
+    }
+    return decoded;
   } finally {
     await handle?.close().catch(() => {});
   }
