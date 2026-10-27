@@ -245,6 +245,22 @@ test('rejects a group/world-accessible decision directory before acquiring a wri
   await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
 });
 
+test('rejects symlinked ancestors before recursive directory creation', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-decisions-symlink-ancestor-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const target = join(root, 'target');
+  const alias = join(root, 'alias');
+  await mkdir(target, { mode: 0o700 });
+  await symlink(target, alias);
+  const requested = join(alias, 'created', 'decisions');
+
+  await assert.rejects(
+    decisionsModule.openDecisions({ directory: requested, now: () => instant }),
+    error => error.code === 'INVALID_CONFIG'
+  );
+  await assert.rejects(lstat(join(target, 'created')), { code: 'ENOENT' });
+});
+
 test('rejects noncanonical persisted decision envelopes including duplicate schema keys', async t => {
   const { store, directory } = await fixture(t);
   await store.create(evaluator, proposal());
