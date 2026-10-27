@@ -448,3 +448,41 @@ test('event-stream capacity rejection happens before a new session is allocated'
     agent.destroy();
   }
 });
+
+test('Founder-only routes reject missing or Witness sessions without allocating sessions', async t => {
+  const f = await fixture(t);
+  const founderOnly = [
+    ['/api/launch', {}],
+    ['/api/decisions/policy', {}],
+    ['/api/decisions/proposals', {}],
+    ['/api/decisions/choose', {}]
+  ];
+
+  for (const [path, payload] of founderOnly) {
+    const response = await fetch(f.url + path, {
+      method: 'POST',
+      headers: { origin: f.url, 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    assert.equal(response.status, 403, path);
+    assert.equal(response.headers.get('set-cookie'), null, path + ' must not allocate a denied Witness session');
+    await response.text();
+  }
+
+  const witness = f.client();
+  await witness.request('/api/state');
+  const originalCookie = witness.cookie;
+  assert.match(originalCookie, /^ngl_session=/);
+
+  for (const [path, payload] of founderOnly) {
+    const denied = await witness.request(path, payload);
+    assert.equal(denied.response.status, 403, path);
+    assert.equal(denied.response.headers.get('set-cookie'), null, path + ' must not replace the existing Witness cookie');
+    assert.equal(witness.cookie, originalCookie, path + ' must preserve the existing Witness session');
+  }
+
+  const stillWitness = await witness.request('/api/state');
+  assert.equal(stillWitness.response.status, 200);
+  assert.equal(stillWitness.body.viewer.role, 'witness');
+});
+
