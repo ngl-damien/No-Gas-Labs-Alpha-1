@@ -8,10 +8,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
+  MAX_RECOVERY_REFERENCES,
   MAX_RECOVERY_STATE_BYTES,
+  MAX_RECOVERY_TOTAL_BYTES,
   readRecoveryState,
   readStableRegularFile,
-  readVerifiedReference
+  readVerifiedReference,
+  validateContinuityRecord,
+  verifyRecoveryReferences
 } from '../src/institution/recovery-files.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -25,6 +29,23 @@ async function temp(t) {
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function continuityState(references) {
+  return {
+    schema: 'ngl.institution-continuity.v1',
+    principal: 'Damien Featherstone',
+    mission: 'test-recovery',
+    references,
+    assignments: [{ role: 'test' }],
+    authority: 'Test-only authority statement',
+    nextAction: 'No action',
+    rollback: 'No mutation',
+    machinery: { M0: {}, M1: {} },
+    openFailures: [],
+    taskB: {},
+    founderDecision: {}
+  };
 }
 
 async function runRecovery(statePath) {
@@ -147,19 +168,7 @@ test('recovery command rejects a non-UTF-8 continuity record', async t => {
 test('recovery command succeeds on a controlled record and emits exact byte receipts', async t => {
   const directory = await temp(t);
   const packageBytes = await readFile(join(repositoryRoot, 'package.json'));
-  const state = {
-    schema: 'ngl.institution-continuity.v1',
-    principal: 'Damien Featherstone',
-    references: [{ path: 'package.json', sha256: sha256(packageBytes) }],
-    assignments: [{ role: 'test' }],
-    authority: 'Test-only authority statement',
-    nextAction: 'No action',
-    rollback: 'No mutation',
-    machinery: { M0: {}, M1: {} },
-    openFailures: [],
-    taskB: {},
-    founderDecision: {}
-  };
+  const state = continuityState([{ path: 'package.json', sha256: sha256(packageBytes) }]);
   const statePath = join(directory, 'state.json');
   await writeFile(statePath, JSON.stringify(state), { mode: 0o600 });
 
@@ -190,4 +199,70 @@ test('default recovery command reports all references and fails closed on any dr
   assert.equal(report.failures.length, report.receipts.filter(receipt => receipt.status !== 'verified').length);
   if (!report.passed) assert.ok(report.failures.length > 0);
   assert.match(report.scope, /not a fresh cloud\/environment restoration/);
+});
+
+
+test('continuity schema rejects malformed control fields before reading references', () => {
+  const state = continuityState([{ path: 'missing.md', sha256: 'a'.repeat(64) }]);
+  state.authority = { claimed: 'founder' };
+  assert.throws(() => validateContinuityRecord(state), /Incomplete continuity record/);
+});
+
+test('continuity schema rejects duplicate paths before any reference reads', () => {
+  const reference = { path: 'missing.md', sha256: 'a'.repeat(64) };
+  assert.throws(
+    () => validateContinuityRecord(continuityState([reference, { ...reference }])),
+    /Duplicate recovery reference path/
+  );
+});
+
+test('continuity schema caps reference count before any reference reads', () => {
+  const references = Array.from({ length: MAX_RECOVERY_REFERENCES + 1 }, (_, index) => ({
+    path: `missing-${index}.md`,
+    sha256: 'a'.repeat(64)
+  }));
+  assert.throws(
+    () => validateContinuityRecord(continuityState(references)),
+    new RegExp(`${MAX_RECOVERY_REFERENCES}-reference limit`)
+  );
+  assert.equal(MAX_RECOVERY_REFERENCES, 128);
+  assert.equal(MAX_RECOVERY_TOTAL_BYTES, 128 * 1024 * 1024);
+});
+
+test('aggregate reference budget prevents oversized later reads but continues within remaining budget', async t => {
+  const directory = await temp(t);
+  const docs = join(directory, 'docs');
+  await mkdir(docs, { mode: 0o700 });
+  const first = Buffer.from('123456');
+  const second = Buffer.from('abcdef');
+  const third = Buffer.from('ok');
+  await writeFile(join(docs, 'first.md'), first, { mode: 0o600 });
+  await writeFile(join(docs, 'second.md'), second, { mode: 0o600 });
+  await writeFile(join(docs, 'third.md'), third, { mode: 0o600 });
+
+  const result = await verifyRecoveryReferences(directory, [
+    { path: 'docs/first.md', sha256: sha256(first) },
+    { path: 'docs/second.md', sha256: sha256(second) },
+    { path: 'docs/third.md', sha256: sha256(third) }
+  ], { maxTotalBytes: 10, maxReferenceBytes: 8 });
+
+  assert.deepEqual(result.recovered, ['docs/first.md', 'docs/third.md']);
+  assert.deepEqual(result.receipts.map(receipt => receipt.status), ['verified', 'error', 'verified']);
+  assert.match(result.receipts[1].error, /exceeds its 4-byte limit/);
+  assert.equal(result.bytesRead, 8);
+  assert.equal(result.failures.length, 1);
+});
+
+test('aggregate byte accounting includes bytes read before a detected replacement', async t => {
+  const directory = await temp(t);
+  const docs = join(directory, 'docs');
+  await mkdir(docs, { mode: 0o700 });
+  const bytes = Buffer.from('bounded');
+  await writeFile(join(docs, 'source.md'), bytes, { mode: 0o600 });
+  const result = await verifyRecoveryReferences(directory, [
+    { path: 'docs/source.md', sha256: '0'.repeat(64) }
+  ], { maxTotalBytes: 16, maxReferenceBytes: 16 });
+  assert.equal(result.bytesRead, bytes.length);
+  assert.equal(result.receipts[0].status, 'mismatch');
+  assert.equal(result.failures[0].reason, 'sha256-mismatch');
 });
