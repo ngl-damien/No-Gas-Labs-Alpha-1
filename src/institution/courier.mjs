@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, chmod, open, rename, unlink, link, lstat } from 'node:fs/promises';
-import { resolve, join, parse, sep } from 'node:path';
+import { resolve, join, dirname, parse, sep } from 'node:path';
 import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
 
 const MAX_JSON = 131072;
