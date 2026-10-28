@@ -24,7 +24,7 @@ function assertSafeReferenceDescriptor(reference) {
   const referencePath = reference?.path;
   if (!isPlainRecord(reference) ||
       typeof referencePath !== 'string' || !referencePath.trim() ||
-      referencePath.includes('\\\\') || isAbsolute(referencePath) ||
+      referencePath.includes('\\') || isAbsolute(referencePath) ||
       /(^|\\/)(\\.runtime|\\.git|secrets|credentials)(\\/|$)|\\.(key|pem)$/i.test(referencePath) ||
       referencePath.split('/').some(part => !part || part === '.' || part === '..') ||
       !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? '')) {
