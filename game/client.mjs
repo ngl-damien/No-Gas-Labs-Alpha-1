@@ -293,6 +293,10 @@ function openEvidenceArchive(){
     }
     card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
     card.append(node('code',{text:typeof entry.id==='string'&&entry.id?entry.id:'missing event ID'}));
+    if(projection?.eventIdUnique && ['unique','linked'].includes(projection.proposalStatus) &&
+        typeof entry.moonshotId==='string' && entry.moonshotId.trim()){
+      card.append(button('Open Moonshot Field →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
+    }
     content.append(card);
   }
 
