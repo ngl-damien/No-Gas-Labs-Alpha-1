@@ -58,6 +58,7 @@ test('duplicate proposal identity is preserved but never used to infer report co
     challenge()
   ]);
   const byId = new Map(projected.map(event => [event.id, event]));
+  assert.equal(byId.get('proposal-event-1')._projection.proposalStatus, 'ambiguous');
   assert.equal(byId.get('report-event-1')._projection.proposal, null);
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'ambiguous');
   assert.equal(byId.get('challenge-event-1')._projection.targetReport, null);
