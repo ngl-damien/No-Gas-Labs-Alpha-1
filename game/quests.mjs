@@ -244,8 +244,10 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       type: event.type,
       at: typeof event.at === 'string' ? event.at : null,
       actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
-      creationId: typeof event.creationId === 'string' ? event.creationId : null,
-      version: Number.isInteger(event.version) ? event.version : null,
+      creationId: typeof event.creationId === 'string' ? event.creationId
+        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId : null,
+      version: Number.isInteger(event.version) ? event.version
+        : Number.isInteger(event.sourceVersion) ? event.sourceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
     }));
   }
@@ -292,6 +294,16 @@ export function getQuestTrail(world, viewer) {
   }
   const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole);
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole);
+  const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const moonshotProposals = events.filter(event =>
+    event?.type === 'moonshot-proposed' && typeof event.id === 'string' &&
+    uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole &&
+    typeof event.moonshotId === 'string' && event.moonshotId.length > 0 &&
+    typeof event.title === 'string' && event.title.trim() &&
+    typeof event.hypothesis === 'string' && event.hypothesis.trim() &&
+    typeof event.falsifier === 'string' && event.falsifier.trim() &&
+    typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()
+  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     publishedObservatoryVersions.some(event =>
@@ -319,6 +331,7 @@ export function getQuestTrail(world, viewer) {
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;
   const hasResearchReport = researchReports.length >= 1;
+  const hasMoonshotProposal = moonshotProposals.length >= 1;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -376,6 +389,11 @@ export function getQuestTrail(world, viewer) {
         !hasObservatory ? 'Publish a source observatory first; an empty brief is not research evidence.' :
           !latestObservatoryPublication ? 'A retained observatory publication is required before reporting.' : null
       ),
+      trailMilestone(
+        'founder-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
+        moonshotProposals.map(event => event.id), moonshotProposals,
+        !hasMoonshotProposal ? { type: 'location', id: 'moonshot_field' } : null
+      ),
     ]);
   }
 
@@ -411,6 +429,11 @@ export function getQuestTrail(world, viewer) {
         !workAvailable ? 'Wait for a Founder to publish a real place.' :
         !hasNote ? 'Leave an attributed field note before submitting a report.' :
         !latestCreation ? 'No retained published place is available to open.' : null
+    ),
+    trailMilestone(
+      'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
+      moonshotProposals.map(event => event.id), moonshotProposals,
+      !hasMoonshotProposal ? { type: 'location', id: 'moonshot_field' } : null
     ),
   ]);
 }
