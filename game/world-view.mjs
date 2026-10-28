@@ -91,54 +91,175 @@ const boundedWorldText = (value, max) => typeof value === 'string' &&
  * This is presentation-only: proposals remain self-reported questions, not results,
  * rewards, evidence of execution, or authorization.
  */
+const RESEARCH_ROLES = new Set(['founder', 'witness']);
+const RESEARCH_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
+const RESEARCH_CHALLENGE_TYPES = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
+
+function validResearchEvidenceVersion(item, creationId, versionNumber, atMs) {
+  if (!item || typeof item !== 'object' ||
+      ownDataValue(item, 'id') !== creationId ||
+      ownDataValue(item, 'version') !== versionNumber) return false;
+  const publishedAt = ownDataValue(item, 'publishedAt');
+  return typeof publishedAt === 'string' &&
+    Number.isFinite(Date.parse(publishedAt)) && Date.parse(publishedAt) <= atMs;
+}
+
+function hasRetainedResearchEvidence(world, creationId, versionNumber, atMs) {
+  const creations = ownDataValue(world, 'creations');
+  if (!isArraySafely(creations)) return false;
+  const creationCount = ownDataValue(creations, 'length');
+  if (!Number.isSafeInteger(creationCount) || creationCount < 0 || creationCount > MAX_WORLD_EVENT_SCAN) return false;
+  let matches = 0;
+  for (let index = 0; index < creationCount; index += 1) {
+    const creation = ownDataValue(creations, String(index));
+    if (!creation || typeof creation !== 'object' || ownDataValue(creation, 'id') !== creationId) continue;
+    const versions = ownDataValue(creation, 'versions');
+    if (isArraySafely(versions)) {
+      const versionCount = ownDataValue(versions, 'length');
+      if (!Number.isSafeInteger(versionCount) || versionCount < 0 || versionCount > MAX_WORLD_EVENT_SCAN) return false;
+      for (let versionIndex = 0; versionIndex < versionCount; versionIndex += 1) {
+        if (validResearchEvidenceVersion(ownDataValue(versions, String(versionIndex)), creationId, versionNumber, atMs)) matches += 1;
+      }
+    }
+    if (validResearchEvidenceVersion(creation, creationId, versionNumber, atMs)) matches += 1;
+    if (matches > 1) return false;
+  }
+  return matches === 1;
+}
+
+function validOptionalResearchEvidence(world, event, atMs) {
+  const creationId = ownDataValue(event, 'evidenceCreationId');
+  const version = ownDataValue(event, 'evidenceVersion');
+  const hasId = typeof creationId === 'string' && creationId.length > 0;
+  const hasVersion = Number.isSafeInteger(version) && version > 0;
+  if (!hasId && !hasVersion) {
+    return (creationId === null || creationId === undefined) &&
+      (version === null || version === undefined);
+  }
+  return hasId && hasVersion && WORLD_OBJECT_ID.test(creationId) &&
+    hasRetainedResearchEvidence(world, creationId, version, atMs);
+}
+
+/**
+ * Project retained moonshot proposals into navigable objects whose small status
+ * is derived only from unambiguous, correctly ordered retained report/challenge
+ * events. Counts describe self-reports and dissent, never verified execution,
+ * truth, rewards, progress authority, or adjudication.
+ */
 export function projectMoonshotWorldObjects(world) {
   const events = ownDataValue(world, 'events');
   if (!isArraySafely(events)) return Object.freeze([]);
   const eventCount = ownDataValue(events, 'length');
   if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) return Object.freeze([]);
+  const eventList = [];
+  for (let index = 0; index < eventCount; index += 1) eventList.push(ownDataValue(events, String(index)));
 
   const eventIdCounts = new Map();
   const moonshotIdCounts = new Map();
-  const candidates = [];
-  for (let index = 0; index < eventCount; index += 1) {
-    const event = ownDataValue(events, String(index));
+  const reportIdCounts = new Map();
+  const challengeIdCounts = new Map();
+  for (const event of eventList) {
     if (!event || typeof event !== 'object') continue;
-    const eventId = ownDataValue(event, 'id');
-    if (typeof eventId === 'string' && eventId.length) {
-      eventIdCounts.set(eventId, (eventIdCounts.get(eventId) || 0) + 1);
+    const id = ownDataValue(event, 'id');
+    const type = ownDataValue(event, 'type');
+    if (typeof id === 'string' && id.length) eventIdCounts.set(id, (eventIdCounts.get(id) || 0) + 1);
+    if (type === 'moonshot-proposed') {
+      const moonshotId = ownDataValue(event, 'moonshotId');
+      if (typeof moonshotId === 'string' && moonshotId.length) moonshotIdCounts.set(moonshotId, (moonshotIdCounts.get(moonshotId) || 0) + 1);
+    } else if (type === 'experiment-reported') {
+      const reportId = ownDataValue(event, 'reportId');
+      if (typeof reportId === 'string' && reportId.length) reportIdCounts.set(reportId, (reportIdCounts.get(reportId) || 0) + 1);
+    } else if (type === 'experiment-challenged') {
+      const challengeId = ownDataValue(event, 'challengeId');
+      if (typeof challengeId === 'string' && challengeId.length) challengeIdCounts.set(challengeId, (challengeIdCounts.get(challengeId) || 0) + 1);
     }
-    if (ownDataValue(event, 'type') !== 'moonshot-proposed') continue;
-    const moonshotId = ownDataValue(event, 'moonshotId');
-    if (typeof moonshotId === 'string' && moonshotId.length) {
-      moonshotIdCounts.set(moonshotId, (moonshotIdCounts.get(moonshotId) || 0) + 1);
-    }
-    candidates.push({ event, eventId, moonshotId });
   }
 
   const retained = [];
-  for (const candidate of candidates) {
-    const { event, eventId, moonshotId } = candidate;
-    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) ||
-        eventIdCounts.get(eventId) !== 1 ||
-        typeof moonshotId !== 'string' || !WORLD_OBJECT_ID.test(moonshotId) ||
-        moonshotIdCounts.get(moonshotId) !== 1) continue;
-
+  const proposalById = new Map();
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'moonshot-proposed') continue;
+    const eventId = ownDataValue(event, 'id');
+    const moonshotId = ownDataValue(event, 'moonshotId');
     const actor = ownDataValue(event, 'actor');
     const actorId = ownDataValue(actor, 'id');
     const actorRole = ownDataValue(actor, 'role');
     const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
     const title = ownDataValue(event, 'title');
     const hypothesis = ownDataValue(event, 'hypothesis');
     const falsifier = ownDataValue(event, 'falsifier');
     const evidenceNeeded = ownDataValue(event, 'evidenceNeeded');
-    if (typeof actorId !== 'string' || !actorId.trim() ||
-        !['founder', 'witness'].includes(actorRole) ||
-        typeof at !== 'string' || !Number.isFinite(Date.parse(at)) ||
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) ||
+        eventIdCounts.get(eventId) !== 1 ||
+        typeof moonshotId !== 'string' || !WORLD_OBJECT_ID.test(moonshotId) ||
+        moonshotIdCounts.get(moonshotId) !== 1 ||
+        typeof actorId !== 'string' || !actorId.trim() ||
+        !RESEARCH_ROLES.has(actorRole) ||
+        typeof at !== 'string' || !Number.isFinite(atMs) ||
         !boundedWorldText(title, 80) ||
         !boundedWorldText(hypothesis, 1000) ||
         !boundedWorldText(falsifier, 1000) ||
         !boundedWorldText(evidenceNeeded, 1000)) continue;
-    retained.push({ eventId, moonshotId, title, actorId, actorRole, at });
+    const proposal = { eventId, moonshotId, title, actorId, actorRole, at, atMs, index };
+    retained.push(proposal);
+    proposalById.set(moonshotId, proposal);
+  }
+
+  const validReports = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-reported') continue;
+    const eventId = ownDataValue(event, 'id');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const proposal = proposalById.get(moonshotId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const procedure = ownDataValue(event, 'procedure');
+    const observation = ownDataValue(event, 'observation');
+    const outcome = ownDataValue(event, 'reportedOutcome');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof reportId !== 'string' || !WORLD_OBJECT_ID.test(reportId) || reportIdCounts.get(reportId) !== 1 ||
+        !proposal || index <= proposal.index || !Number.isFinite(atMs) || atMs < proposal.atMs ||
+        typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
+        !boundedWorldText(procedure, 1000) || !boundedWorldText(observation, 1000) ||
+        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(world, event, atMs)) continue;
+    validReports.push({ eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index });
+  }
+
+  const reportById = new Map(validReports.map(report => [report.reportId, report]));
+  const attemptCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  const challengeCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  for (const report of validReports) attemptCounts.set(report.moonshotId, attemptCounts.get(report.moonshotId) + 1);
+
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-challenged') continue;
+    const eventId = ownDataValue(event, 'id');
+    const challengeId = ownDataValue(event, 'challengeId');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const report = reportById.get(reportId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const challengeType = ownDataValue(event, 'challengeType');
+    const challengeText = ownDataValue(event, 'challengeText');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof challengeId !== 'string' || !WORLD_OBJECT_ID.test(challengeId) || challengeIdCounts.get(challengeId) !== 1 ||
+        !report || report.moonshotId !== moonshotId || report.actorId === actorId ||
+        index <= report.index || !Number.isFinite(atMs) || atMs < report.atMs ||
+        typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
+        !RESEARCH_CHALLENGE_TYPES.has(challengeType) || !boundedWorldText(challengeText, 1000) ||
+        !validOptionalResearchEvidence(world, event, atMs)) continue;
+    challengeCounts.set(moonshotId, challengeCounts.get(moonshotId) + 1);
   }
 
   return Object.freeze(retained.map((proposal, index) => Object.freeze({
@@ -150,6 +271,8 @@ export function projectMoonshotWorldObjects(world) {
     actorId: proposal.actorId,
     actorRole: proposal.actorRole,
     at: proposal.at,
+    attemptCount: attemptCounts.get(proposal.moonshotId) || 0,
+    challengeCount: challengeCounts.get(proposal.moonshotId) || 0,
     x: 1320 + (index % 4) * 54,
     y: 520 + Math.floor(index / 4) * 50,
   })));
