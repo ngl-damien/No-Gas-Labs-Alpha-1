@@ -228,6 +228,15 @@ test('a retained challenge may cite only an evidence version that existed at the
   assert.equal(event.evidenceVersion, 1);
   await validateWorld(accepted.world);
 
+  const legacyChallenge = structuredClone(accepted.world);
+  delete legacyChallenge.events.at(-1).evidenceCreationId;
+  delete legacyChallenge.events.at(-1).evidenceVersion;
+  await validateWorld(legacyChallenge);
+
+  const forgedReference = structuredClone(accepted.world);
+  forgedReference.events.at(-1).evidenceVersion = 99;
+  await assert.rejects(validateWorld(forgedReference), error => error.code === 'INVALID_WORLD');
+
   await assert.rejects(
     applyAction(reported.world, { ...challenge, evidenceVersion: undefined }, founder, {
       now: '2026-10-27T00:00:05.000Z'
