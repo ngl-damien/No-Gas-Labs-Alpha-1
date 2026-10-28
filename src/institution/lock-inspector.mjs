@@ -129,13 +129,34 @@ export async function inspectWriterLock(filePath) {
       if (value && typeof value === 'object' && !Array.isArray(value) &&
           Number.isSafeInteger(value.pid) && value.pid > 0 &&
           typeof value.openedAt === 'string' && Number.isFinite(Date.parse(value.openedAt))) {
-        const owner = {
-          pid: value.pid,
-          openedAt: value.openedAt,
-          processProbe: probePid(value.pid)
-        };
+        // The synchronous PID probe can give another process time to replace
+        // the lock path. Revalidate both the pathname and the opened inode
+        // after probing so the owner receipt describes one stable observation.
+        const processProbe = probePid(value.pid);
+        let afterProbe;
+        try {
+          afterProbe = await lstat(path);
+        } catch (error) {
+          if (error.code === 'ENOENT') {
+            return report('changed', path, { reason: 'lock-disappeared-during-owner-probe' });
+          }
+          throw error;
+        }
+        const afterProbeHandle = await handle.stat();
+        const afterProbeUnsafe = unsafeReason(afterProbe);
+        if (afterProbeUnsafe) {
+          return report('unsafe', path, { reason: afterProbeUnsafe, file: fileSummary(afterProbe) });
+        }
+        if (!sameSnapshot(opened, afterProbe) || !sameSnapshot(opened, afterProbeHandle)) {
+          return report('changed', path, {
+            reason: 'lock-changed-during-owner-probe',
+            file: fileSummary(afterProbe)
+          });
+        }
+
+        const owner = { pid: value.pid, openedAt: value.openedAt, processProbe };
         if (typeof value.schema === 'string') owner.schema = value.schema;
-        return report('present', path, { format: 'owner-metadata', owner, file: fileSummary(after) });
+        return report('present', path, { format: 'owner-metadata', owner, file: fileSummary(afterProbe) });
       }
       return report('present', path, {
         format: 'unrecognized-json',
