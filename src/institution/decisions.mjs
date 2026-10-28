@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
+import { link, mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -277,10 +277,33 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
   await mkdir(location, { recursive: true, mode: 0o700 });
   const directoryIdentity = await assertPrivateDecisionDirectory(location);
   const lockPath = join(location, '.decisions.lock');
+  const lockTemporaryPath = join(location, `.decisions-lock-${randomUUID()}.tmp`);
   let lease;
-  try { lease = await open(lockPath, 'wx', 0o600); }
-  catch (error) { if (error.code === 'EEXIST') fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery'); throw error; }
   let leaseIdentity;
+  let lockPublished = false;
+  try {
+    lease = await open(lockTemporaryPath, 'wx', 0o600);
+    const lockStat = await lease.stat();
+    leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+    await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
+    await lease.sync();
+    await assertPrivateDecisionDirectory(location, directoryIdentity);
+    try {
+      await link(lockTemporaryPath, lockPath);
+      lockPublished = true;
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery');
+      }
+      throw error;
+    }
+    await unlink(lockTemporaryPath);
+  } catch (error) {
+    await lease?.close().catch(() => {});
+    await unlink(lockTemporaryPath).catch(() => {});
+    if (lockPublished) await unlinkOwnedDecisionLock(lockPath, leaseIdentity).catch(() => {});
+    throw error;
+  }
   let released = false;
   async function release() {
     if (released) return;
@@ -289,9 +312,6 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
     await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
   }
   try {
-    const lockStat = await lease.stat();
-    leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
-    await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() })); await lease.sync();
     await assertPrivateDecisionDirectory(location, directoryIdentity);
     const file = join(location, 'decisions.json');
     let state = initial();
