@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 import { institutionActivityCount } from '../game/world-view.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 
 const founder = { id: 'damien', name: 'Damien', role: 'founder' };
 const witness = { id: 'witness-moonshot-1', name: 'Witness', role: 'witness' };
@@ -81,4 +82,42 @@ test('Moonshot Field rejects unretained source versions and malformed retained p
   const tampered = structuredClone(proposal.world);
   tampered.events.at(-1).falsifier = '';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+
+test('Moonshot quest completes only from the active character\'s unique retained proposal event', async () => {
+  const published = await publishedSource();
+  const initial = await validateWorld(published.world);
+  const founderBefore = getQuestTrail(initial, founder).find(item => item.id === 'founder-moonshot-proposal');
+  const witnessBefore = getQuestTrail(initial, witness).find(item => item.id === 'witness-moonshot-proposal');
+  assert.equal(founderBefore.complete, false);
+  assert.deepEqual(founderBefore.action, { type: 'location', id: 'moonshot_field' });
+  assert.equal(witnessBefore.complete, false);
+  assert.deepEqual(witnessBefore.action, { type: 'location', id: 'moonshot_field' });
+
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Can the source claim be falsified?',
+    hypothesis: 'The claim holds under stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'Independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+  const after = await validateWorld(proposal.world);
+  const founderAfter = getQuestTrail(after, founder).find(item => item.id === 'founder-moonshot-proposal');
+  const witnessAfter = getQuestTrail(after, witness).find(item => item.id === 'witness-moonshot-proposal');
+  assert.equal(founderAfter.complete, false, 'Witness work cannot complete the Founder objective');
+  assert.equal(witnessAfter.complete, true);
+  assert.deepEqual(witnessAfter.evidenceIds, [proposal.world.events.at(-1).id]);
+  assert.equal(witnessAfter.evidence[0].creationId, published.result.creationId);
+  assert.equal(witnessAfter.evidence[0].version, 1);
+
+  const duplicate = structuredClone(after);
+  duplicate.events.push({ ...duplicate.events.at(-1), at: '2026-10-27T00:00:04.000Z' });
+  assert.equal(
+    getQuestTrail(duplicate, witness).find(item => item.id === 'witness-moonshot-proposal').complete,
+    false,
+    'Duplicated event identity cannot manufacture quest completion'
+  );
 });
