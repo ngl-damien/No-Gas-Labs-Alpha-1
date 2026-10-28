@@ -135,3 +135,44 @@ test('experiment challenge evidence requires one matching publication event earl
     assert.deepEqual(result.evidenceIds, [], publicationPosition);
   }
 });
+
+test('Quest Journal does not unlock experiment progress from an incomplete or unattributed proposal', () => {
+  const invalidProposals = [
+    { title: '' },
+    { hypothesis: '' },
+    { falsifier: '' },
+    { evidenceNeeded: '' },
+    { actor: null },
+    { actor: { id: 'untrusted', role: 'system' } }
+  ];
+  for (const invalid of invalidProposals) {
+    const world = {
+      creations: [],
+      discoveries: [],
+      contributions: [],
+      reports: [],
+      events: [
+        {
+          id: 'proposal-1', type: 'moonshot-proposed', moonshotId: 'moon-1',
+          actor: founder, at: '2026-10-28T17:00:00.000Z',
+          title: 'A bounded proposal', hypothesis: 'A testable hypothesis',
+          falsifier: 'An observable counterexample', evidenceNeeded: 'A retained source',
+          ...invalid
+        },
+        {
+          id: 'report-event-1', type: 'experiment-reported', reportId: 'report-1',
+          moonshotId: 'moon-1', actor: founder, at: '2026-10-28T17:01:00.000Z',
+          procedure: 'Run the stated procedure', observation: 'Record the observed result',
+          reportedOutcome: 'failed'
+        }
+      ]
+    };
+    const trail = getQuestTrail(world, founder);
+    const proposalMilestone = trail.find(item => item.id === 'founder-moonshot-proposal');
+    const reportMilestone = trail.find(item => item.id === 'founder-experiment-report');
+    assert.equal(proposalMilestone.complete, false);
+    assert.equal(reportMilestone.complete, false);
+    assert.equal(reportMilestone.progress, 0);
+    assert.equal(reportMilestone.blockedReason, 'Propose a falsifiable moonshot first.');
+  }
+});
