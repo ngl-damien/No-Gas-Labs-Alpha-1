@@ -152,21 +152,72 @@ async function writeState(dir, state) {
     const directory=await open(dir,'r'); try { await directory.sync(); } finally { await directory.close(); }
   } finally { await file?.close(); await unlink(temporary).catch(cause=>{if(cause.code!=='ENOENT')throw cause;}); }
 }
+function sameLockSnapshot(a, b) {
+  return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid &&
+    a.mode === b.mode && a.size === b.size &&
+    a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
 async function acquireLock(path) {
   const deadline = Date.now() + 5000;
   while (true) {
     try {
-      const lock = await open(path,'wx',0o600); await lock.writeFile(JSON.stringify({pid:process.pid})); await lock.close(); return;
+      const lock = await open(path, 'wx', 0o600);
+      await lock.writeFile(JSON.stringify({pid:process.pid}));
+      await lock.close();
+      return;
     } catch (cause) {
-      if(cause.code !== 'EEXIST') throw cause;
-      let owner;
+      if (cause.code !== 'EEXIST') throw cause;
+      let owner, identity, file;
       try {
-        const file=await open(path,constants.O_RDONLY | constants.O_NOFOLLOW);
-        try { owner=JSON.parse(await file.readFile('utf8')); } finally { await file.close(); }
-      } catch (cause) { if(cause.code==='ENOENT')continue; }
-      if(Number.isInteger(owner?.pid) && owner.pid>0) {
-        try { process.kill(owner.pid,0); } catch (cause) {
-          if(cause.code==='ESRCH')throw error('STALE_LOCK','Courier lock belongs to a stopped process. Stop every courier process and explicitly remove .courier.lock before retrying.');
+        const before = await lstat(path);
+        if (before.isSymbolicLink() || !before.isFile()) continue;
+        file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+        try {
+          const opened = await file.stat();
+          if (!opened.isFile() || !sameLockSnapshot(before, opened)) continue;
+          const bytes = await file.readFile();
+          const afterHandle = await file.stat();
+          let afterPath;
+          try { afterPath = await lstat(path); }
+          catch (readError) { if (readError.code === 'ENOENT') continue; throw readError; }
+          if (afterPath.isSymbolicLink() || !afterPath.isFile() ||
+              !sameLockSnapshot(opened, afterHandle) ||
+              !sameLockSnapshot(opened, afterPath) || bytes.length !== opened.size) continue;
+          const decoded = bytes.toString('utf8');
+          if (!Buffer.from(decoded, 'utf8').equals(bytes)) continue;
+          try { owner = JSON.parse(decoded); } catch { continue; }
+          identity = { dev: opened.dev, ino: opened.ino };
+        } finally {
+          await file.close();
+          file = undefined;
+        }
+      } catch (readError) {
+        if (readError.code === 'ENOENT' || readError.code === 'ELOOP') continue;
+        throw readError;
+      } finally {
+        await file?.close().catch(() => {});
+      }
+
+      if (Number.isInteger(owner?.pid) && owner.pid > 0) {
+        try {
+          process.kill(owner.pid, 0);
+        } catch (probeError) {
+          if (probeError.code === 'ESRCH') {
+            // The owner may have unlinked this inode and another process may
+            // already own the same pathname. Only report stale if the exact
+            // observed inode still occupies the path after the failed probe.
+            let current;
+            try { current = await lstat(path); }
+            catch (pathError) { if (pathError.code === 'ENOENT') continue; throw pathError; }
+            if (current.isSymbolicLink() || !current.isFile() ||
+                current.dev !== identity?.dev || current.ino !== identity?.ino) continue;
+            try { process.kill(owner.pid, 0); continue; }
+            catch (recheckError) {
+              if (recheckError.code === 'ESRCH') {
+                throw error('STALE_LOCK','Courier lock belongs to a stopped process. Stop every courier process and explicitly remove .courier.lock before retrying.');
+              }
+            }
+          }
         }
       }
       requireValue(Date.now()<deadline,'BUSY','Courier is locked by another process');
