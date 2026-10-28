@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, writeFile, stat, readdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, writeFile, stat, readdir, rm, symlink } from 'node:fs/promises';
 import { renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -313,4 +313,37 @@ test('courier rejects symlinked storage ancestors before creating descendants', 
   );
   assert.deepEqual(await readdir(actual), [],
     'the rejected path must not create directories through the symlinked parent');
+});
+
+
+test('courier fences the current instance after post-rename directory-sync uncertainty', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-courier-durability-uncertain-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  let failNextSync = false;
+  const syncDirectory = async directory => {
+    if (failNextSync) {
+      failNextSync = false;
+      throw Object.assign(new Error('injected courier directory-sync failure after rename'), { code: 'EIO' });
+    }
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const options = { dataDir, providers: [], now: () => 1000, syncDirectory };
+  const courier = await module.createCourier(options);
+  failNextSync = true;
+
+  await assert.rejects(
+    courier.dispatch({ requestId: 'durability-uncertain', capability: 'review', input: { retained: true }, expiresAt: 5000 }),
+    { code: 'COMMIT_DURABILITY_UNCERTAIN' }
+  );
+  await assert.rejects(courier.snapshot(), { code: 'COMMIT_DURABILITY_UNCERTAIN' });
+
+  const retained = JSON.parse(await readFile(join(dataDir, 'courier.json'), 'utf8'));
+  assert.equal(retained.requests.some(request => request.requestId === 'durability-uncertain'), true,
+    'rename may expose the new state even though directory durability was not confirmed');
+
+  const reopened = await module.createCourier({ dataDir, providers: [], now: () => 1001 });
+  const snapshot = await reopened.snapshot();
+  assert.equal(snapshot.requests[0].requestId, 'durability-uncertain',
+    'a fresh instance validates the retained state before continuing');
 });
