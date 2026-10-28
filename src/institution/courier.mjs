@@ -157,14 +157,40 @@ function sameLockSnapshot(a, b) {
     a.mode === b.mode && a.size === b.size &&
     a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
+async function releaseOwnedLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (cause) { if (cause.code === 'ENOENT') return false; throw cause; }
+  if (current.isSymbolicLink() || !current.isFile() ||
+      current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  // This identity check is best-effort: filesystems do not expose an atomic
+  // compare-and-unlink primitive, so callers must not treat it as a full race-free lease.
+  await unlink(path).catch(cause => { if (cause.code !== 'ENOENT') throw cause; });
+  return true;
+}
 async function acquireLock(path) {
   const deadline = Date.now() + 5000;
   while (true) {
     try {
       const lock = await open(path, 'wx', 0o600);
-      await lock.writeFile(JSON.stringify({pid:process.pid}));
-      await lock.close();
-      return;
+      let identity;
+      try {
+        const opened = await lock.stat();
+        identity = { dev: opened.dev, ino: opened.ino };
+        await lock.writeFile(JSON.stringify({
+          schema: 'ngl.courier-lock.v1',
+          pid: process.pid,
+          openedAt: new Date().toISOString()
+        }));
+        await lock.sync();
+        await lock.close();
+        return identity;
+      } catch (cause) {
+        await lock.close().catch(() => {});
+        if (identity) await releaseOwnedLock(path, identity).catch(() => {});
+        throw cause;
+      }
     } catch (cause) {
       if (cause.code !== 'EEXIST') throw cause;
       let owner, identity, file;
@@ -228,8 +254,15 @@ async function acquireLock(path) {
 async function serialize(dir, fn) {
   const previous=queues.get(dir) || Promise.resolve();
   const current=previous.catch(()=>{}).then(async()=>{
-    const lock=join(dir,'.courier.lock'); await acquireLock(lock);
-    try { return await fn(); } finally { await unlink(lock); }
+    const lock=join(dir,'.courier.lock');
+    const identity=await acquireLock(lock);
+    try { return await fn(); }
+    finally {
+      if (!(await releaseOwnedLock(lock, identity))) {
+        throw error('LOCK_OWNERSHIP_LOST',
+          'Courier lock path changed before release; the operation may have committed. Inspect durable state before retrying.');
+      }
+    }
   });
   queues.set(dir,current);
   try { return await current; } finally { if(queues.get(dir)===current)queues.delete(dir); }
