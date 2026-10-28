@@ -63,10 +63,11 @@ test('the playable map exposes all eight institutional functions as real destina
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
 });
-test('institution activity labels are deterministic projections of retained event records',()=>{
+test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
-  {type:'proposal'},{type:'draft'},{type:'repair'},{type:'report'},{type:'decision'},
-  {type:'contribute'},{type:'learning'},{type:'experiment'},{type:'publish'}
+  {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
+  {id:'e-report',type:'report'},{id:'e-decision',type:'decision'},{id:'e-contribute',type:'contribute'},
+  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'}
  ]};
  assert.equal(institutionActivityCount('guild_hall',world),1);
  assert.equal(institutionActivityCount('forge',world),2);
@@ -78,10 +79,14 @@ test('institution activity labels are deterministic projections of retained even
  assert.equal(institutionActivityCount('publication_house',world),1);
  assert.equal(institutionActivityCount('unknown',world),0);
  assert.equal(institutionActivityCount('forge',{events:[]}),0);
- const donorHistory={history:[{event_type:'PROPOSAL'},{event_type:'MOONSHOT'},{admission:'REJECTED'},{outcome:'FAILED'}]};
+ const donorHistory={history:[
+  {event_id:'d-proposal',event_type:'PROPOSAL'},{event_id:'d-moonshot',event_type:'MOONSHOT'},
+  {event_id:'d-rejected',admission:'REJECTED'},{event_id:'d-failed',outcome:'FAILED'}
+ ]};
  assert.equal(institutionActivityCount('guild_hall',donorHistory),1,'recovered proposal events remain visible');
  assert.equal(institutionActivityCount('moonshot_field',donorHistory),1,'recovered moonshot events remain visible');
  assert.equal(institutionActivityCount('evidence_archive',donorHistory),2,'rejections and failures remain visible in the archive');
+ assert.equal(institutionActivityCount('town-square',{events:[{type:'contribute'}]}),0,'unidentified claims do not inflate visible activity');
 });
 test('institutional destinations dispatch their own location identity',t=>{
  const {view,interactions}=makeView(t);

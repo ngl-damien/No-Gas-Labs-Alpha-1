@@ -24,11 +24,34 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  moonshot_field:event=>event?.type==='experiment'||event?.type==='moonshot'||event?.type==='moonshot-proposed'||event?.type==='experiment-reported'||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
 });
+/**
+ * Count identifiable activity records at an institution without treating a label,
+ * duplicate event ID, or accessor-backed object as a canonical progress signal.
+ * Supports Alpha 1's `id` and recovered donor events' `event_id` schemas.
+ * Counts are navigational context only; they do not verify truth or grant rewards.
+ */
 export function institutionActivityCount(id,world){
  const matches=INSTITUTION_EVENT_MATCHERS[id];
  if(typeof matches!=='function')return 0;
  const events=Array.isArray(world?.events)?world.events:Array.isArray(world?.history)?world.history:[];
- return events.filter(matches).length;
+ const identified=[];
+ const counts=new Map();
+ for(const event of events){
+  if(!event||typeof event!=='object'||Array.isArray(event))continue;
+  let descriptors;
+  try{descriptors=Object.getOwnPropertyDescriptors(event)}catch{continue}
+  if(!descriptors)continue;
+  const current=descriptors.id,legacy=descriptors.event_id;
+  if((current&&(!Object.hasOwn(current,'value')||typeof current.value!=='string'))||
+     (legacy&&(!Object.hasOwn(legacy,'value')||typeof legacy.value!=='string')))continue;
+  if(current&&legacy&&current.value!==legacy.value)continue;
+  const identity=current?current.value:legacy?.value;
+  if(typeof identity!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(identity))continue;
+  counts.set(identity,(counts.get(identity)||0)+1);
+  const safe=Object.values(descriptors).every(descriptor=>Object.hasOwn(descriptor,'value'));
+  identified.push({identity,event,safe});
+ }
+ return identified.filter(({identity,event,safe})=>safe&&counts.get(identity)===1&&matches(event)).length;
 }
 const riverX=y=>856+Math.sin(y/155)*34;
 const bridge=y=>(y>=326&&y<=396)||(y>=682&&y<=754);
@@ -68,7 +91,7 @@ export class WorldView {
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
   setWorld(world){const next=world||{creations:[]};const signature=JSON.stringify((Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])));const changed=signature!==this.routeObstacleSignature;this.world=next;this.routeObstacleSignature=signature;if(changed&&this.target)this.goTo(this.target);}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
-  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(institutionActivityCount('town-square',this.world)+' retained notes',0,77,9,'#687756');c.restore();}
+  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(institutionActivityCount('town-square',this.world)+' unique records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(institutionActivityCount(place.id,this.world)+' records',0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
