@@ -14,12 +14,12 @@
 2. Continue rejecting group/other permissions.
 3. Require current-process ownership on platforms exposing `process.getuid()`.
 4. Include directory UID and permission bits in the startup snapshot and reject a change between the pre-key and post-key checks.
-5. Add regression coverage for owner mode 0500 and group/other-accessible mode 0755; existing server tests continue covering successful use of a valid private directory.
+5. Add regression coverage for owner mode 0500 and group/other-accessible mode 0755, asserting that rejection happens before any Founder key file is created; existing server tests continue covering successful use of a valid private directory.
 
 ## Verification boundary
 
 - Branch: `fix/founder-data-directory-boundary-20261028`.
-- Exact-head GitHub Actions verification is required after PR creation.
+- Final implementation head after the no-side-effect regression: `6aeaa857df119dd86d4f31fb8281ca31fe50f092` (test commit; a checkpoint refresh follows). Exact-head GitHub Actions verification is required.
 - No local test execution is claimed.
 - The mode/owner snapshot detects differences visible at the two checks; it is not an atomic directory-handle capability boundary and does not eliminate every filesystem race.
 - Local file permissions and a shared secret do not establish Damien's real-world identity or independent private-key custody.
