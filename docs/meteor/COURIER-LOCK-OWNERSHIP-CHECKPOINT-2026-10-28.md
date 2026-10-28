@@ -22,7 +22,11 @@
    - The read-only writer-lock inspector recognizes `ngl.courier-lock.v1`.
    - The inspector continues to return `safeToRemove: false`; no automatic stale-lock removal was introduced.
 
-3. **Regression coverage**
+3. **Reject symlinked storage ancestors before creating the courier directory**
+   - Added a path-component walk before and after recursive directory creation, matching the fail-closed boundary already used by the decisions store.
+   - A regression creates an alias to an existing directory and verifies courier initialization rejects the symlinked ancestor before creating descendants through it.
+
+4. **Regression coverage**
    - Replaces the lock inode from the transaction clock callback while dispatch is in flight, keeps the displaced inode alive to prevent inode-number reuse, and verifies that the replacement survives.
    - Verifies that a replacement during a committed dispatch returns `LOCK_OWNERSHIP_LOST` while the request is in fact present in durable state.
    - Verifies that a replacement is also preserved when the transaction itself rejects.
@@ -36,9 +40,13 @@
 - `d561b6ce080f0910ed5547d5b4cb1b5d38a2f1cc` — recognize the courier lock schema in the inspector.
 - `80ca5177af493009807ac5dd6b110c297e859460` — cover courier schema in inspector regression.
 - `06ef95179cab13b482d288c0435533e83c469e29` — treat disappearance during unlink as ownership loss.
+- `1d2185773eaafbe88225311c4f48e9341ab1e079` — reject symlinked courier storage ancestors before and after directory creation.
+- `1d51e1dc62956998397080a47c9e9684161b3991` — add symlinked-parent regression coverage.
 
 ## Verification boundary
 
+- On prior code/test head `53f82298aa97e27724c8d17a378850e11e2fc5ec`, PR Full Repository Verification run [40718961905](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40718961905) passed and Genesis Evidence Invariant run [40718962139](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40718962139) passed. Browser acceptance run [40718962149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40718962149) was still in progress at the last inspection; its result is not claimed.
+- The later symlink-ancestor source/test changes and this checkpoint refresh require exact-head workflows of their own.
 - GitHub Actions for the final PR head must be inspected before claiming tests passed.
 - No local test execution is claimed.
 - No lock was deleted by this change except a lock inode still matching the identity acquired by this operation.
