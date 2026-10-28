@@ -1,5 +1,5 @@
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getQuest,getQuestTrail,getLocationAction} from './quests.mjs';
+import {getQuest,getQuestTrail,getLocationAction,findStudyReview} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -256,10 +256,11 @@ function openAcademy(){
   const notes=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study').slice().reverse().slice(0,8);
   content.append(node('h3',{class:'section-title',text:'RETAINED STUDY NOTES'}));
   if(!notes.length)content.append(paragraph('No study notes retained yet. The first note should identify an exact source version and what remains to check.','empty-note'));
-  const reviews=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study-reviewed').slice().reverse().slice(0,8);
+  const allReviews=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study-reviewed');
+  const reviews=allReviews.slice().reverse().slice(0,8);
   for(const note of notes){
     const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===note.creationId);
-    const review=reviews.find(item=>item.studyId===note.studyId&&item.actor?.id===note.actor?.id&&item.actor?.role===note.actor?.role);
+    const review=findStudyReview(note,allReviews);
     const children=[
       node('h3',{text:(source?.title||'Source unavailable')+' · v'+note.version}),
       paragraph('Question: '+note.question),

@@ -3,6 +3,15 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
 
+/** Find a note's review across the full retained history, not just the UI's recent-review window. */
+export function findStudyReview(note, events) {
+  if (typeof note?.studyId !== 'string' || !note.studyId ||
+      typeof note.actor?.id !== 'string' || !['founder', 'witness'].includes(note.actor.role)) return null;
+  return rows(events).find(event => event?.type === 'study-reviewed' &&
+    event.studyId === note.studyId && event.actor?.id === note.actor.id &&
+    event.actor?.role === note.actor.role) || null;
+}
+
 export function getQuest(world, viewer) {
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return {
     id: 'quest-unavailable', title: 'Quest unavailable',

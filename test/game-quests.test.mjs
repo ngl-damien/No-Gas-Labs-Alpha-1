@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview } from '../game/quests.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -64,4 +64,22 @@ test('Long View only promises a version comparison when an earlier version is re
   const retained = { creations: [{ id: 'retained', kind: 'custom', version: 2, versions: [{ version: 1 }] }] };
   assert.equal(getLocationAction('overlook', retained, founder).label, 'Inspect retained versions →');
   assert.equal(getLocationAction('overlook', retained, witness).label, 'Compare a retained version →');
+});
+
+
+test('Academy review lookup searches the full history beyond the eight reviews shown', () => {
+  const actor = { id: 'witness-1', role: 'witness' };
+  const notes = Array.from({ length: 9 }, (_, index) => ({ studyId: 'study-' + index, actor }));
+  // The newest note is reviewed first; eight older notes are reviewed later.
+  // The UI's recent-eight display therefore omits the newest note's older review.
+  const allReviews = [
+    { type: 'study-reviewed', reviewId: 'review-8', studyId: 'study-8', actor },
+    ...Array.from({ length: 8 }, (_, index) => ({
+      type: 'study-reviewed', reviewId: 'review-' + index, studyId: 'study-' + index, actor
+    }))
+  ];
+  const visibleReviews = allReviews.slice().reverse().slice(0, 8);
+  assert.equal(visibleReviews.some(review => review.studyId === 'study-8'), false);
+  assert.equal(findStudyReview(notes[8], allReviews)?.reviewId, 'review-8');
+  assert.equal(findStudyReview(notes[8], visibleReviews), null);
 });
