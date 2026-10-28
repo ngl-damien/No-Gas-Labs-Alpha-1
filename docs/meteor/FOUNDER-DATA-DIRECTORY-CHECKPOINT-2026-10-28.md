@@ -42,3 +42,11 @@ No merge, deployment, release, spending, production key operation, or Founder de
 - `createGameServer()` now walks existing path components before recursive creation and rejects symlink or non-directory ancestors. The test asserts that a runtime directory is not created through a symlinked parent.
 - Limitation: this is a best-effort pathname walk, not an atomic `openat` capability boundary; same-user races are not eliminated.
 - Required next verification: full repository verification, Genesis Evidence Invariant, and browser acceptance on the exact checkpoint head. No local test execution is claimed.
+
+
+## Follow-up cycle — recheck path ancestry at credential boundaries
+
+- Source commit: `cbc2eb6aca44e1786434b8d1dee954d7c3085f36`.
+- The path walk now also runs inside `assertPrivateDataDirectory()`, so it is repeated after recursive directory creation and at the existing post-key check. This narrows the interval in which a visible symlinked-ancestor replacement could escape detection.
+- This remains best-effort pathname validation; it does not make the sequence atomic or eliminate same-user races. No production identity or key-custody claim follows from this check.
+- The exact final head must pass full repository verification, Genesis Evidence Invariant, and browser acceptance.
