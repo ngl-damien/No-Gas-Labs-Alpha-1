@@ -44,7 +44,7 @@ test('continuity record rejects symlinks', async t => {
   await assert.rejects(readRecoveryState(link), /regular, non-symlink/);
 });
 
-test('stable reader enforces the byte limit before and during reads', async t => {
+test('stable reader enforces the byte limit before reading', async t => {
   const directory = await temp(t);
   const path = join(directory, 'oversized.json');
   await writeFile(path, '12345', { mode: 0o600 });
@@ -71,18 +71,27 @@ test('hash-pinned reference returns only a contained regular file', async t => {
   assert.equal(result.size, bytes.length);
 });
 
-test('hash-pinned reference rejects a symlink component', async t => {
+test('hash-pinned reference rejects a symlinked file or parent directory', async t => {
   const directory = await temp(t);
   const docs = join(directory, 'docs');
   await mkdir(docs, { mode: 0o700 });
   const target = join(docs, 'source.md');
-  const link = join(docs, 'linked.md');
   const bytes = Buffer.from('trusted bytes');
   await writeFile(target, bytes, { mode: 0o600 });
-  await symlink(target, link);
+  await symlink(target, join(docs, 'linked.md'));
 
   await assert.rejects(
     readVerifiedReference(directory, { path: 'docs/linked.md', sha256: sha256(bytes) }),
+    /contains a symlink/
+  );
+
+  const realDirectory = join(directory, 'real', 'docs');
+  await mkdir(realDirectory, { recursive: true, mode: 0o700 });
+  await writeFile(join(realDirectory, 'source.md'), bytes, { mode: 0o600 });
+  await symlink(realDirectory, join(directory, 'redirected-docs'));
+
+  await assert.rejects(
+    readVerifiedReference(directory, { path: 'redirected-docs/source.md', sha256: sha256(bytes) }),
     /contains a symlink/
   );
 });
@@ -109,7 +118,20 @@ test('hash-pinned reference rejects content that differs from its receipt', asyn
   );
 });
 
-test('default recovery command validates every retained reference in a fresh Node process', async () => {
+test('recovery command rejects a non-UTF-8 continuity record', async t => {
+  const directory = await temp(t);
+  const path = join(directory, 'state.json');
+  await writeFile(path, Buffer.from([0xff, 0xfe, 0xfd]), { mode: 0o600 });
+  await assert.rejects(
+    execFileAsync(process.execPath, [join(repositoryRoot, 'scripts/recover-institution.mjs'), path], {
+      cwd: repositoryRoot,
+      maxBuffer: 1024 * 1024
+    }),
+    error => error.code === 1 && /not valid UTF-8/.test(error.stderr)
+  );
+});
+
+test('default recovery command verifies retained references and emits byte receipts in a fresh Node process', async () => {
   const { stdout } = await execFileAsync(
     process.execPath,
     [join(repositoryRoot, 'scripts/recover-institution.mjs')],
@@ -119,5 +141,11 @@ test('default recovery command validates every retained reference in a fresh Nod
   assert.equal(report.schema, 'ngl.fresh-process-recovery.v1');
   assert.equal(report.passed, true);
   assert.equal(report.recovered.length, 10);
+  assert.equal(report.receipts.length, report.recovered.length);
+  for (const receipt of report.receipts) {
+    assert.ok(report.recovered.includes(receipt.path));
+    assert.match(receipt.sha256, /^[a-f0-9]{64}$/);
+    assert.ok(Number.isSafeInteger(receipt.size) && receipt.size >= 0);
+  }
   assert.match(report.scope, /not a fresh cloud\/environment restoration/);
 });
