@@ -351,3 +351,59 @@ test('courier fences the current instance after post-rename directory-sync uncer
   assert.equal(snapshot.requests[0].requestId, 'durability-uncertain',
     'a fresh instance validates the retained state before continuing');
 });
+
+
+test('courier rejects oversized lock metadata without changing the lock or state', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const oversized = 'x'.repeat(4097);
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, oversized, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), oversized);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects an explicitly unsupported lock schema instead of treating it as owner metadata', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const unknown = JSON.stringify({
+    schema: 'ngl.future-lock.v99',
+    pid: 2147483647,
+    openedAt: '2026-10-28T12:00:00.000Z'
+  });
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, unknown, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), unknown);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects a FIFO lock path promptly instead of blocking startup', {
+  skip: process.platform === 'win32'
+}, async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const stateBefore = await readFile(statePath, 'utf8');
+  await exec('/usr/bin/mkfifo', [lockPath]);
+
+  const moduleUrl = new URL('../src/institution/courier.mjs', import.meta.url).href;
+  const source = `import { createCourier } from ${JSON.stringify(moduleUrl)};
+try {
+  await createCourier({ dataDir: ${JSON.stringify(f.dataDir)}, providers: [], now: () => 1000 });
+  console.error('unexpected success');
+  process.exitCode = 2;
+} catch (cause) {
+  if (cause.code === 'UNSAFE_LOCK') console.log('UNSAFE_LOCK: non-regular lock rejected');
+  else { console.error(cause); process.exitCode = 1; }
+}`;
+  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 5000 });
+  assert.match(result.stdout, /UNSAFE_LOCK: non-regular lock rejected/);
+  assert.equal((await stat(lockPath)).isFIFO(), true);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
