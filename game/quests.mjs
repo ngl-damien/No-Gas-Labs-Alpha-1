@@ -255,7 +255,7 @@ function distinctCreationEvents(events) {
   return [...byCreation.values()];
 }
 
-function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null) {
+function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
   const seen = new Set();
@@ -287,6 +287,7 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     evidence: Object.freeze(details),
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
+    ...(typeof interpretation === 'string' ? { interpretation } : {}),
   });
 }
 
@@ -565,7 +566,8 @@ export function getQuestTrail(world, viewer) {
         experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
         hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
         !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
-          !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null
+          !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
+        'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
       trailMilestone(
         'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
@@ -635,7 +637,8 @@ export function getQuestTrail(world, viewer) {
       experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
       hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
       !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
-        !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null
+        !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
+        'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
       'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
