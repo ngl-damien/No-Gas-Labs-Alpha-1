@@ -248,6 +248,7 @@ function openEvidenceArchive(){
     const type=entry.type.toUpperCase().replaceAll('-','_');
     const card=node('article',{class:'field-card','data-research-record-type':type,'data-event-id':typeof entry.id==='string'?entry.id:''},[]);
     if(!projection?.eventIdUnique)card.append(paragraph('AMBIGUOUS EVENT ID · CONTEXT LINKS DISABLED','evidence-warning'));
+    if(entry.type==='moonshot-proposed'&&projection?.proposalStatus!=='unique')card.append(paragraph('AMBIGUOUS OR INVALID MOONSHOT ID · NOT LINKED','evidence-warning'));
     if(entry.type!=='moonshot-proposed'&&projection?.proposalStatus!=='linked')card.append(paragraph('Proposal context is '+(projection?.proposalStatus||'unavailable')+'; no proposal is inferred.','evidence-warning'));
     if(entry.type==='moonshot-proposed'){
       card.append(
@@ -291,7 +292,7 @@ function openEvidenceArchive(){
       else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
     }
     card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
-    card.append(node('code',{text:entry.id}));
+    card.append(node('code',{text:typeof entry.id==='string'&&entry.id?entry.id:'missing event ID'}));
     content.append(card);
   }
 
