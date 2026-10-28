@@ -828,6 +828,8 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
     reportId: report.body.result.reportId,
     challengeType: 'missing-evidence',
     challengeText: 'The report lacks the measurement settings needed to reproduce the attempt.',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1,
     requestId: 'experiment-challenge-retry-001'
   };
   const first = await founder.request('/api/action', challengeAction);
@@ -851,6 +853,8 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(challenges.length, 1);
   assert.equal(reports.length, 1);
   assert.equal(challenges[0].reportId, reports[0].reportId);
+  assert.equal(challenges[0].evidenceCreationId, published.result.creationId);
+  assert.equal(challenges[0].evidenceVersion, 1);
   assert.equal(challenges[0].actor.role, 'founder');
   assert.equal(challenges[0].outcome, undefined);
   assert.equal(challenges[0].status, undefined);
