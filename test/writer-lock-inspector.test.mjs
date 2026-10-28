@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { renameSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
@@ -133,6 +133,7 @@ test('reports changed if the lock path is replaced during the PID probe', async 
         pid: process.pid,
         openedAt: '2026-10-28T11:00:00.000Z'
       }), { mode: 0o600 });
+      unlinkSync(path);
       renameSync(replacement, path);
       replaced = true;
       return true;
@@ -174,6 +175,43 @@ test('reports changed if the lock disappears during the PID probe', async t => {
     assert.equal(removed, true);
     assert.equal(result.status, 'changed');
     assert.equal(result.reason, 'lock-disappeared-during-owner-probe');
+    assert.equal(result.safeToRemove, false);
+  } finally {
+    process.kill = originalKill;
+  }
+});
+
+
+test('reports changed if owner metadata changes in place during the PID probe', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, JSON.stringify({
+    schema: 'ngl.service-lock.v1',
+    pid: process.pid,
+    openedAt: '2026-10-28T11:00:00.000Z'
+  }), { mode: 0o600 });
+  const oldTime = new Date('2020-01-01T00:00:00.000Z');
+  utimesSync(path, oldTime, oldTime);
+
+  const originalKill = process.kill;
+  let changed = false;
+  process.kill = function(pid, signal) {
+    if (!changed && signal === 0) {
+      writeFileSync(path, JSON.stringify({
+        schema: 'ngl.service-lock.v1',
+        pid: process.pid,
+        openedAt: '2026-10-28T11:00:00.001Z'
+      }), { mode: 0o600 });
+      changed = true;
+      return true;
+    }
+    return originalKill.call(process, pid, signal);
+  };
+  try {
+    const result = await inspectWriterLock(path);
+    assert.equal(changed, true);
+    assert.equal(result.status, 'changed');
+    assert.equal(result.reason, 'lock-changed-during-owner-probe');
     assert.equal(result.safeToRemove, false);
   } finally {
     process.kill = originalKill;
