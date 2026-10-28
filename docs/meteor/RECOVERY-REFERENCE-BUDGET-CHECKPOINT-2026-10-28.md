@@ -80,3 +80,42 @@ Code head: `01d5290e1b8c857ed2a8caafccb3f3a10284b89b`.
 Follow-up commits after the first checkpoint are `9fc81feccd3c29b54b7d2335dc92f929773f75d5` (legacy schema compatibility), `4ed9239ef2de3a3af0fac80756dc8ab537f92724` (exact continuity-record receipt), `f7985dd2e546ce48e6160e2718e700cca304eb1b` (receipt regressions), and `01d5290e1b8c857ed2a8caafccb3f3a10284b89b` (checkpoint refresh).
 
 The next checkpoint-only commit will change the branch head. All three workflows must be checked again on that final head before declaring it verified.
+
+## Follow-up cycle — enforce the global byte ceiling for caller overrides (2026-10-28)
+
+### Fresh-state reconciliation
+
+- Current `main` is `412022432a45b98ecf931ba5f89a49e701563284`, the source-bound Polymath Academy study-ledger commit. The Academy change is unrelated to recovery; this recovery branch does not edit Academy files.
+- PR #137 remains open/draft/unmerged at `aedc77d09a4b808d40b1554b4f93ea009aa7b1b9`, based on the older `main` commit `2352d1831a466969e669c4cac2196725601a5e2f`.
+- PR #138 remains open/draft/unmerged and stacked on PR #137. Its prior verified head was `ab32929355aa3cb2ab6f3b0ad17f4baa9af51784`; the two functional follow-up commits below supersede that verification. The final checkpoint commit also requires exact-head CI.
+- PR #16 remains closed/unmerged and superseded by merged PR #18. Issue #17 remains open for separately controlled Founder identity/key custody, adversarial concurrency, and safe crash/stale-lock recovery.
+
+### Source-backed defect and implementation
+
+The default budgets were bounded, but the exported helpers accepted caller overrides above the documented global limit:
+
+1. `readStableRegularFile()` accepted any positive safe integer for `maxBytes`, permitting a direct caller to bypass the 128 MiB ceiling.
+2. `verifyRecoveryReferences()` validated that `maxTotalBytes` was positive but did not reject values above `MAX_RECOVERY_TOTAL_BYTES`.
+
+Implemented and regression-tested:
+
+- `d924b7901ee45ffc2ace12a1de6dcfc50489f933` — enforce the global ceiling on stable-reader overrides; test rejection before filesystem access.
+- `5808768365affee476bc8596d259b7d819c4c864` — enforce the aggregate reference-byte ceiling on verifier overrides; test rejection before reference I/O.
+
+The default remains 128 MiB aggregate, 64 MiB per reference, 1 MiB for the continuity record, and 128 references. This closes an API-level budget-override bypass; it does not remove the documented best-effort pathname/TOCTOU limitation.
+
+### Verification boundary
+
+- The previous head `ab32929355aa3cb2ab6f3b0ad17f4baa9af51784` had successful GitHub-hosted `verify`, Genesis Evidence Invariant, and browser acceptance workflows (runs 40656284321, 40656284316, and 40656284222). Those results do **not** establish the new commits or final checkpoint head.
+- Exact-head CI must be inspected after this checkpoint commit. No local test execution is claimed.
+- The default continuity record's stale digest for `src/institution/decisions.mjs` remains unmodified. A digest mismatch is preserved as evidence pending a deliberate provenance decision.
+
+### Next prioritized steps
+
+1. Inspect all three workflows on the final PR #138 head; repair only observed failures and rerun after any code change.
+2. Reconcile PR #137 and the stacked PR #138 against current `main` before integration; do not merge the stack blindly.
+3. Investigate the stale continuity digest as a separate provenance decision; do not silently re-pin it.
+4. Continue Issue #17's concurrency and crash/stale-lock acceptance without deleting potentially live or replacement locks.
+5. Keep Founder trust fail-closed until a separately controlled signing operation and actual mutation-path integration are demonstrated.
+
+No merge, deployment, release, spending, or production key operation occurred. A configured fingerprint or hash match is not proof of Founder identity, private-key custody, or the truth of a claim.
