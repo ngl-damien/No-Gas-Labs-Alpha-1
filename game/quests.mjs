@@ -334,7 +334,6 @@ export function getQuestTrail(world, viewer) {
       publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
   });
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
-  const hasStudy = studies.length > 0;
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
   const moonshotProposals = events.filter(event =>
