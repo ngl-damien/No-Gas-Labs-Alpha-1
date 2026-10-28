@@ -56,7 +56,7 @@ try {
   }, null, 2));
 
   if (!passed) {
-    console.error(failures.map(failure => failure.message).join('\\n'));
+    console.error(failures.map(failure => failure.message).join('\n'));
     process.exitCode = 1;
   }
 } catch (error) {
