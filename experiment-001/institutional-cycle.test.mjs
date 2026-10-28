@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -504,4 +504,26 @@ test('ledger reader rejects malformed UTF-8 before parsing persisted approval re
   bytes[index + 1] = 0xff;
   await writeFile(ledgerPath, bytes, { mode: 0o600 });
   await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_UTF8_INVALID/);
+}));
+
+test('institution directory replacement after open fails closed before writing', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storePath = join(dir, 'store');
+  const originalPath = join(dir, 'store-original');
+  const store = await openStore(lib, storePath, founder);
+  const draft = proposal(lib, executor, { nonce: 'install-dir-replace-0001', maxUses: 2 });
+  await store.commit(draft, approve(lib, draft, founder.privateKey));
+  const originalLedger = await readFile(join(storePath, 'institution.json'));
+
+  await rename(storePath, originalPath);
+  await mkdir(storePath, { mode: 0o700 });
+  const decision = { kind: 'REUSE', id: draft.id, nonce: 'reuse-dir-replace-0001', input: 3, output: 9 };
+  await assert.rejects(
+    () => store.commit(decision, receipt(lib, decision, executor.privateKey)),
+    /INSTITUTION_DIRECTORY_CHANGED/
+  );
+
+  assert.deepEqual(await readFile(join(originalPath, 'institution.json')), originalLedger);
+  assert.deepEqual(await readdir(storePath), [], 'replacement directory must not receive a ledger or leftover lock');
+  assert.equal(store.snapshot().sequence, 1, 'rejected writes must not advance the in-memory snapshot');
 }));

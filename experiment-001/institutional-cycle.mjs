@@ -334,6 +334,16 @@ async function assertNoSymlinkPathComponents(path) {
   }
 }
 
+async function assertInstitutionDirectoryIdentity(directory, expected) {
+  await assertNoSymlinkPathComponents(directory);
+  const current = await lstat(directory);
+  if (current.isSymbolicLink() || !current.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
+  if ((current.mode & 0o077) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
+  if (current.dev !== expected.dev || current.ino !== expected.ino) {
+    throw new Error('INSTITUTION_DIRECTORY_CHANGED');
+  }
+}
+
 export async function openInstitution(directory, trustedPublicKeyPem) {
   if (typeof trustedPublicKeyPem !== 'string' || !trustedPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('TRUSTED_PUBLIC_KEY_REQUIRED');
   const expectedFingerprint = TRUSTED_FOUNDER_KEY_FINGERPRINT;
@@ -353,6 +363,7 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
   if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) throw new Error('INSTITUTION_DIRECTORY_UNSAFE');
   // The institution ledger is private state: group/world read or execute is too broad too.
   if ((dirStat.mode & 0o077) !== 0) throw new Error('INSTITUTION_DIRECTORY_PERMISSIONS_TOO_BROAD');
+  const directoryIdentity = { dev: dirStat.dev, ino: dirStat.ino };
   const ledgerPath = join(directory, 'institution.json');
   const lockPath = join(directory, 'institution.json.lock');
   let state = await readLedger(ledgerPath, publicKey);
@@ -389,6 +400,7 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
           try { await unlink(lockTempPath); lockTempPath = null; }
           catch (error) { if (error.code === 'ENOENT') lockTempPath = null; else throw error; }
         }
+        await assertInstitutionDirectoryIdentity(directory, directoryIdentity);
         const current = await readLedger(ledgerPath, publicKey);
         descendantOf(current, state);
         const next = structuredClone(current);
@@ -406,12 +418,18 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
         const temp = await open(tempPath, 'wx', 0o600);
         try { await temp.writeFile(canonical(next)); await temp.sync(); }
         finally { await temp.close(); }
+        await assertInstitutionDirectoryIdentity(directory, directoryIdentity);
         await rename(tempPath, ledgerPath);
         tempPath = null;
-        try { await syncDirectory(directory); }
-        catch {
-          // The rename is visible, but durability is unknown. Do not promote the
-          // in-memory snapshot or permit another commit until a fresh validated reopen.
+        try {
+          // The directory may have been moved or replaced between operations.
+          // These path/inode checks narrow the race but are not an openat boundary.
+          await assertInstitutionDirectoryIdentity(directory, directoryIdentity);
+          await syncDirectory(directory);
+          await assertInstitutionDirectoryIdentity(directory, directoryIdentity);
+        } catch {
+          // Rename may already be visible. Preserve the uncertain-commit state
+          // rather than guessing whether the intended directory was synchronized.
           durabilityUncertain = true;
           throw new Error('COMMIT_DURABILITY_UNCERTAIN');
         }
