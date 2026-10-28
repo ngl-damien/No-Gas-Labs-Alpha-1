@@ -170,13 +170,32 @@ function durabilityUncertain(cause) {
 }
 
 function revisionOf(value) {
-  const revision = Number.isSafeInteger(value?.world?.revision) ? value.world.revision : value?.revision;
-  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: null, revision: null };
+  if (Object.hasOwn(value, 'world')) {
+    const world = value.world;
+    const revision = world && typeof world === 'object' && !Array.isArray(world) ? world.revision : null;
+    return { kind: 'world', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+  }
+  if (Object.hasOwn(value, 'revision')) {
+    const revision = value.revision;
+    return { kind: 'top-level', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+  }
+  return { kind: null, revision: null };
+}
+
+function assertRevisionProgression(previous, candidate) {
+  const before = revisionOf(previous);
+  const after = revisionOf(candidate);
+  if (before.kind === null && after.kind === null) return;
+  if (before.kind !== after.kind || before.revision === null || after.revision === null ||
+      after.revision !== before.revision + 1) {
+    throw staleRevisionError();
+  }
 }
 
 function staleRevisionError() {
   return Object.assign(new Error(
-    'Service store candidate is stale or skips the current revision; rebuild it from the latest committed value.'
+    'Service store candidate must preserve the revision shape and advance exactly one revision; rebuild it from the latest committed value.'
   ), { code: 'SERVICE_STALE_REVISION', status: 409 });
 }
 
@@ -321,12 +340,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
         const valid = immutableSnapshot(await validate(snapshot));
-        const previousRevision = revisionOf(current);
-        const candidateRevision = revisionOf(valid);
-        if (previousRevision !== null && candidateRevision !== null &&
-            candidateRevision !== previousRevision + 1) {
-          throw staleRevisionError();
-        }
+        assertRevisionProgression(current, valid);
         await persist(valid);
         current = valid;
         return current;
