@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, mkdir, open, readFile, writeFile, stat, readdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, writeFile, stat, readdir, rm, symlink, chmod } from 'node:fs/promises';
 import { renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -352,6 +352,26 @@ test('courier fences the current instance after post-rename directory-sync uncer
     'a fresh instance validates the retained state before continuing');
 });
 
+
+test('courier rejects lock metadata with broad permissions without changing the lock or state', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const metadata = JSON.stringify({
+    schema: 'ngl.courier-lock.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  });
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, metadata, { mode: 0o600 });
+  await chmod(lockPath, 0o644);
+  assert.notEqual((await stat(lockPath)).mode & 0o077, 0,
+    'fixture must actually expose group/other permissions');
+
+  await assert.rejects(module.createCourier(f.options), { code: 'UNSAFE_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), metadata);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
 
 test('courier rejects oversized lock metadata without changing the lock or state', async t => {
   const f = await fixture(t, []);
