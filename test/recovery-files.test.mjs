@@ -169,7 +169,8 @@ test('recovery command succeeds on a controlled record and emits exact byte rece
   assert.deepEqual(report.recovered, ['package.json']);
   assert.equal(report.receipts.length, 1);
   assert.equal(report.receipts[0].status, 'verified');
-  assert.equal(report.receipts[0].sha256, state.references[0].sha256);
+  assert.equal(report.receipts[0].expectedSha256, state.references[0].sha256);
+  assert.equal(report.receipts[0].actualSha256, state.references[0].sha256);
   assert.equal(report.receipts[0].size, packageBytes.length);
 });
 
