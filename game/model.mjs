@@ -116,7 +116,7 @@ export async function validateWorld(raw) {
       if(typeof e.sourceCreationId!=='string'||!e.sourceCreationId.trim()||!Number.isSafeInteger(e.sourceVersion)||e.sourceVersion<1)invalid('Malformed moonshot source reference.');
       const source=raw.creations.find(c=>c.id===e.sourceCreationId);
       const version=source&&(source.version===e.sourceVersion?source:source.versions.find(v=>v.version===e.sourceVersion));
-      if(!version||!Number.isFinite(Date.parse(version.publishedAt))||version.publishedAt>e.at)invalid('Malformed moonshot source reference.');
+      if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Malformed moonshot source reference.');
     }
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}
