@@ -65,3 +65,59 @@ test('institution activity counts are order-independent and do not mutate world 
   assert.equal(institutionActivityCount('town-square', { events: [...events].reverse() }), 2);
   assert.deepEqual(world, before);
 });
+
+
+test('inherited accessors cannot influence activity counts or execute getters', () => {
+  let getterCalls = 0;
+  const prototype = {};
+  Object.defineProperty(prototype, 'type', {
+    get() {
+      getterCalls += 1;
+      return 'contribute';
+    },
+  });
+  const inherited = Object.assign(Object.create(prototype), { id: 'inherited-event' });
+  const valid = { id: 'valid-event', type: 'contribute' };
+
+  assert.equal(institutionActivityCount('town-square', { events: [inherited, valid] }), 1);
+  assert.equal(getterCalls, 0);
+});
+
+test('activity matching uses a data snapshot rather than invoking Proxy get traps', () => {
+  let getCalls = 0;
+  const record = new Proxy(
+    { id: 'proxy-event', type: 'contribute' },
+    {
+      get(target, property, receiver) {
+        getCalls += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    },
+  );
+
+  assert.equal(institutionActivityCount('town-square', { events: [record] }), 1);
+  assert.equal(getCalls, 0);
+});
+
+test('accessor-backed world event containers are ignored without invoking getters', () => {
+  let getterCalls = 0;
+  const world = { history: [{ id: 'history-event', type: 'contribute' }] };
+  Object.defineProperty(world, 'events', {
+    get() {
+      getterCalls += 1;
+      return [{ id: 'getter-event', type: 'contribute' }];
+    },
+  });
+
+  assert.equal(institutionActivityCount('town-square', world), 1);
+  assert.equal(getterCalls, 0);
+});
+
+test('revoked Proxy records are skipped instead of crashing the projection', () => {
+  const revocable = Proxy.revocable({}, {});
+  revocable.revoke();
+
+  assert.equal(institutionActivityCount('town-square', {
+    events: [revocable.proxy, { id: 'valid-event', type: 'contribute' }],
+  }), 1);
+});
