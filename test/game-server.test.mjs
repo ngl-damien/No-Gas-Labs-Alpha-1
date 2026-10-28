@@ -951,3 +951,45 @@ test('Witness request recovery survives service restart without restoring Founde
     await reopened.closeGame();
   }
 });
+
+
+test('Polymath Academy study notes bind to retained versions and replay idempotently', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Academy source version');
+  const creation = published.world.creations[0];
+  const beforeXp = published.world.xp;
+  const action = {
+    type: 'study', creationId: creation.id, version: 1,
+    question: 'What does this artifact actually establish?',
+    attempt: 'It establishes that these exact bytes were retained, not that the claims are true.',
+    nextCheck: 'Find an independent source or counterexample.',
+    requestId: 'academy-study-retry-001'
+  };
+  const first = await founder.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const event = first.body.world.events.at(-1);
+  assert.equal(event.type, 'study');
+  assert.equal(event.creationId, creation.id);
+  assert.equal(event.version, 1);
+  assert.equal(event.question, action.question);
+  assert.equal(event.status, undefined);
+  assert.equal(event.outcome, undefined);
+  assert.equal(first.body.world.xp, beforeXp);
+  const retry = await founder.request('/api/action', action);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.equal(retry.body.result.studyId, first.body.result.studyId);
+  assert.equal(retry.body.world.revision, first.body.world.revision);
+  assert.equal(retry.body.world.events.filter(item => item.type === 'study').length, 1);
+  const stale = await founder.request('/api/action', {
+    ...action, version: 99, requestId: 'academy-study-stale-version-001'
+  });
+  assert.equal(stale.response.status, 409);
+  assert.equal(stale.body.error.code, 'STALE_VERSION');
+  const finalState = await founder.request('/api/state');
+  assert.equal(finalState.body.world.events.filter(item => item.type === 'study').length, 1);
+  assert.equal(finalState.body.world.xp, beforeXp);
+});

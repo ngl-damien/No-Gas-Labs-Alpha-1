@@ -295,6 +295,22 @@ export function getQuestTrail(world, viewer) {
   const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole);
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole);
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const studyIdCounts = new Map();
+  for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
+  const allStudyEvents = events.filter(event => {
+    if (event?.type !== 'study' || typeof event.id !== 'string' || !uniqueMoonshotEventIds.has(event.id) ||
+        typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
+        typeof event.actor?.id !== 'string' || !['founder', 'witness'].includes(event.actor?.role) ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
+        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) ||
+        typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
+        typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
+        typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500) return false;
+    return publications.filter(publication => publication.creationId === event.creationId &&
+      publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
+  });
+  const studies = allStudyEvents.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
+  const hasStudyTarget = publications.length > 0;
   const moonshotProposals = events.filter(event =>
     event?.type === 'moonshot-proposed' && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole &&
@@ -405,6 +421,7 @@ export function getQuestTrail(world, viewer) {
   const hasExperimentReport = experimentReports.length >= 1;
   const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
   const hasExperimentChallenge = experimentChallenges.length >= 1;
+  const hasStudy = studies.length >= 1;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -479,6 +496,11 @@ export function getQuestTrail(world, viewer) {
         hasChallengeTarget && !hasExperimentChallenge ? { type: 'location', id: 'moonshot_field' } : null,
         !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
       ),
+      trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
+        studies.map(event => event.id), studies,
+        !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
+        !hasStudyTarget ? 'Publish a real artifact before the Academy can attach study practice to a retained version.' : null
+      ),
     ]);
   }
 
@@ -531,6 +553,11 @@ export function getQuestTrail(world, viewer) {
       experimentChallenges.map(event => event.id), experimentChallenges,
       hasChallengeTarget && !hasExperimentChallenge ? { type: 'location', id: 'moonshot_field' } : null,
       !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+    ),
+    trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
+      studies.map(event => event.id), studies,
+      !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
+      !hasStudyTarget ? 'Wait for a Founder to publish a real artifact before studying a retained version.' : null
     ),
   ]);
 }

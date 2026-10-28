@@ -281,6 +281,13 @@ function worldEntry(event, index, creations, notes) {
         entry.warning = "The event is retained, but its corresponding text record is absent from this snapshot.";
       }
     }
+  } else if (type === "study") {
+    entry.title = `Study note retained · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
+    entry.category = "POLYMATH ACADEMY";
+    entry.summary = "A source-bound study note records a question, a learner's own attempt, and a next check. It does not certify correctness or mastery.";
+    entry.detail = [`Question: ${text(event?.question) || "not recorded"}`, `Attempt: ${text(event?.attempt) || "not recorded"}`, `Next check: ${text(event?.nextCheck) || "not recorded"}`].join(" · ");
+    if (!target) entry.warning = "The referenced study version is unavailable in this snapshot; the note remains visible without an invented source.";
+    else entry.detail += ` · Source: ${text(target.title) || creationId} v${version}`;
   } else if (type === "moonshot-proposed") {
     entry.title = `Moonshot proposed · ${text(event?.title) || "untitled question"}`;
     entry.category = "MOONSHOT FIELD";
@@ -319,7 +326,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
