@@ -173,8 +173,21 @@ function revisionOf(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: null, revision: null };
   if (Object.hasOwn(value, 'world')) {
     const world = value.world;
-    const revision = world && typeof world === 'object' && !Array.isArray(world) ? world.revision : null;
-    return { kind: 'world', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+    if (!world || typeof world !== 'object' || Array.isArray(world)) {
+      return { kind: 'world', revision: null };
+    }
+    if (Object.hasOwn(world, 'revision')) {
+      const revision = world.revision;
+      return { kind: 'world', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+    }
+    // Older/custom store payloads may use a top-level revision while carrying
+    // an unrelated world object. Only an explicitly present nested revision
+    // selects canonical world-revision mode; malformed nested revisions fail closed.
+    if (Object.hasOwn(value, 'revision')) {
+      const revision = value.revision;
+      return { kind: 'top-level', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+    }
+    return { kind: null, revision: null };
   }
   if (Object.hasOwn(value, 'revision')) {
     const revision = value.revision;
