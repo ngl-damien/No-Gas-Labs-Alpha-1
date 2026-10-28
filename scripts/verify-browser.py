@@ -156,9 +156,9 @@ def institutional_locations(browser,url,out):
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
-        close_sheet(page)
-        page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
+        expect(moonshot_objective).to_contain_text('OPEN')
+        moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
         page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         expect(page.locator('#propose-moonshot')).to_be_visible()
         page.locator('#moonshot-title').fill('Can this claim be falsified?')
@@ -168,6 +168,7 @@ def institutional_locations(browser,url,out):
         page.locator('#propose-moonshot').click()
         expect(page.locator('#sheet')).to_contain_text('PROPOSED · NOT EXECUTED')
         expect(page.locator('#sheet')).to_contain_text('A reproducible counterexample appears')
+        expect(page.locator('[data-objective-id="founder-moonshot-proposal"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot proposal must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot proposal must not award XP'
         page.screenshot(path=str(out/'institutional-locations.png'))
