@@ -64,3 +64,12 @@ I did **not** rewrite the continuity record's pinned digest to make CI green. Th
 2. Review all ten continuity receipts; decide separately whether the record is historical or should be deliberately re-pinned with a provenance note.
 3. Continue Issue #17's concurrency and crash/stale-lock acceptance without automatic lock deletion.
 4. Reconcile stale security branches against fresh main; keep production trust fail-closed until independently controlled key custody and actual mutation-path wiring are demonstrated.
+
+
+## Fresh-base integration checkpoint — 2026-10-28 UTC
+
+- Current `main` observed at `c5b854d8742b0af9439766d487874ccb59021c8a`; this branch's prior tested base was `2352d1831a466969e669c4cac2196725601a5e2f`.
+- The branch is 15 commits ahead and 3 behind current `main`. The intervening main commits are Academy gameplay/retrieval-review changes; the recovery files in this branch do not overlap those changed paths.
+- Prior exact-head verification on `aedc77d09a4b808d40b1554b4f93ea009aa7b1b9` passed all three workflows, but those runs used the older base. A new checkpoint commit intentionally triggers verification against the current base before integration.
+- The default continuity record's stale digest remains visible and unchanged. Recovery remains read-only; no lock deletion, key operation, deployment, or identity claim is authorized by this checkpoint.
+- Merge only after the fresh-base full verification, Genesis Evidence Invariant, and browser acceptance all complete successfully; then retarget the stacked resource-budget PR to current `main` and rerun its exact merge candidate checks.
