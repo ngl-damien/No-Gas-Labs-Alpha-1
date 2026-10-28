@@ -343,6 +343,18 @@ def shared(browser,url,data,out):
             'requestId':'browser-experiment-report'
         })
         assert experiment_response.status==200, experiment_response.text()
+        # The new evidence-linkage quest must be visible to the actor who made the report,
+        # and its evidence control must open the exact retained version—not just show a count.
+        evidence_objective=b.locator('[data-objective-id="witness-experiment-evidence"]')
+        expect(evidence_objective).to_contain_text('RECORDED')
+        expect(evidence_objective).to_contain_text('1/1')
+        evidence_objective.get_by_text('Inspect retained evidence',exact=True).click()
+        expect(evidence_objective).to_contain_text('creation '+creation_id)
+        expect(evidence_objective).to_contain_text('version 2')
+        evidence_objective.get_by_role('button',name='Open retained version 2 →',exact=True).click()
+        expect(b.locator('#sheet-title')).to_have_text('The shared observatory')
+        expect(b.locator('#version-select')).to_have_value('2')
+        close_sheet(b)
         close_sheet(a);a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
