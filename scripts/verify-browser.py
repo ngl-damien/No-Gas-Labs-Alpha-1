@@ -46,7 +46,10 @@ def stop_server(process):
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
-        expect(page.locator('#sheet')).to_be_hidden()
+    # The sheet can be hidden before its backdrop stops intercepting pointer
+    # events. Wait for both layers before starting the next world interaction.
+    expect(page.locator('#sheet')).to_be_hidden()
+    expect(page.locator('#sheet-backdrop')).to_be_hidden()
 
 
 def draft(page,kind,title):
