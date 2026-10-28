@@ -91,54 +91,209 @@ const boundedWorldText = (value, max) => typeof value === 'string' &&
  * This is presentation-only: proposals remain self-reported questions, not results,
  * rewards, evidence of execution, or authorization.
  */
+const RESEARCH_ROLES = new Set(['founder', 'witness']);
+const RESEARCH_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
+const RESEARCH_CHALLENGE_TYPES = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
+
+function unsafeOwnAccessor(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return Boolean(descriptor && !Object.hasOwn(descriptor, 'value'));
+  } catch {
+    return true;
+  }
+}
+
+function indexRetainedResearchVersions(world) {
+  const index = new Map();
+  const creations = ownDataValue(world, 'creations');
+  if (!isArraySafely(creations)) return index;
+  const creationCount = ownDataValue(creations, 'length');
+  if (!Number.isSafeInteger(creationCount) || creationCount < 0 || creationCount > MAX_WORLD_EVENT_SCAN) return index;
+  let totalVersions = 0;
+  const add = (item, creationId) => {
+    if (!item || typeof item !== 'object') return;
+    const itemId = ownDataValue(item, 'id');
+    const version = ownDataValue(item, 'version');
+    if (itemId !== creationId || !Number.isSafeInteger(version) || version < 1) return;
+    const publishedAt = ownDataValue(item, 'publishedAt');
+    const publishedAtMs = typeof publishedAt === 'string' ? Date.parse(publishedAt) : NaN;
+    const key = creationId + '\0' + version;
+    const previous = index.get(key);
+    index.set(key, {
+      count: (previous?.count || 0) + 1,
+      publishedAtMs: previous ? previous.publishedAtMs : (Number.isFinite(publishedAtMs) ? publishedAtMs : NaN),
+    });
+  };
+
+  for (let indexPosition = 0; indexPosition < creationCount; indexPosition += 1) {
+    if (unsafeOwnAccessor(creations, String(indexPosition))) return new Map();
+    const creation = ownDataValue(creations, String(indexPosition));
+    if (!creation || typeof creation !== 'object') continue;
+    if (unsafeOwnAccessor(creation, 'id')) return new Map();
+    const creationId = ownDataValue(creation, 'id');
+    if (typeof creationId !== 'string' || !creationId) continue;
+    if (unsafeOwnAccessor(creation, 'version') || unsafeOwnAccessor(creation, 'publishedAt') ||
+        unsafeOwnAccessor(creation, 'versions')) return new Map();
+    const versions = ownDataValue(creation, 'versions');
+    if (versions !== undefined && versions !== null && !isArraySafely(versions)) return new Map();
+    const versionItems = [];
+    if (isArraySafely(versions)) {
+      const versionCount = ownDataValue(versions, 'length');
+      if (!Number.isSafeInteger(versionCount) || versionCount < 0 || versionCount > MAX_WORLD_EVENT_SCAN) return new Map();
+      totalVersions += versionCount;
+      if (totalVersions > MAX_WORLD_EVENT_SCAN) return new Map();
+      for (let versionIndex = 0; versionIndex < versionCount; versionIndex += 1) {
+        if (unsafeOwnAccessor(versions, String(versionIndex))) return new Map();
+        const versionItem = ownDataValue(versions, String(versionIndex));
+        if (versionItem && typeof versionItem === 'object' &&
+            (unsafeOwnAccessor(versionItem, 'id') || unsafeOwnAccessor(versionItem, 'version') ||
+             unsafeOwnAccessor(versionItem, 'publishedAt'))) return new Map();
+        versionItems.push(versionItem);
+      }
+    }
+    add(creation, creationId);
+    for (const versionItem of versionItems) add(versionItem, creationId);
+  }
+  return index;
+}
+
+function validOptionalResearchEvidence(evidenceIndex, event, atMs) {
+  const creationId = ownDataValue(event, 'evidenceCreationId');
+  const version = ownDataValue(event, 'evidenceVersion');
+  const hasId = typeof creationId === 'string' && creationId.length > 0;
+  const hasVersion = Number.isSafeInteger(version) && version > 0;
+  if (!hasId && !hasVersion) {
+    return (creationId === null || creationId === undefined) &&
+      (version === null || version === undefined);
+  }
+  if (!hasId || !hasVersion || !WORLD_OBJECT_ID.test(creationId)) return false;
+  const retained = evidenceIndex.get(creationId + '\0' + version);
+  return Boolean(retained && retained.count === 1 &&
+    Number.isFinite(retained.publishedAtMs) && retained.publishedAtMs <= atMs);
+}
+
+/**
+ * Project retained moonshot proposals into navigable objects whose small status
+ * is derived only from unambiguous, correctly ordered retained report/challenge
+ * events. Counts describe self-reports and dissent, never verified execution,
+ * truth, rewards, progress authority, or adjudication.
+ */
 export function projectMoonshotWorldObjects(world) {
   const events = ownDataValue(world, 'events');
   if (!isArraySafely(events)) return Object.freeze([]);
   const eventCount = ownDataValue(events, 'length');
   if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) return Object.freeze([]);
+  const eventList = [];
+  for (let index = 0; index < eventCount; index += 1) eventList.push(ownDataValue(events, String(index)));
+  const evidenceIndex = indexRetainedResearchVersions(world);
 
   const eventIdCounts = new Map();
   const moonshotIdCounts = new Map();
-  const candidates = [];
-  for (let index = 0; index < eventCount; index += 1) {
-    const event = ownDataValue(events, String(index));
+  const reportIdCounts = new Map();
+  const challengeIdCounts = new Map();
+  for (const event of eventList) {
     if (!event || typeof event !== 'object') continue;
-    const eventId = ownDataValue(event, 'id');
-    if (typeof eventId === 'string' && eventId.length) {
-      eventIdCounts.set(eventId, (eventIdCounts.get(eventId) || 0) + 1);
+    const id = ownDataValue(event, 'id');
+    const type = ownDataValue(event, 'type');
+    if (typeof id === 'string' && id.length) eventIdCounts.set(id, (eventIdCounts.get(id) || 0) + 1);
+    if (type === 'moonshot-proposed') {
+      const moonshotId = ownDataValue(event, 'moonshotId');
+      if (typeof moonshotId === 'string' && moonshotId.length) moonshotIdCounts.set(moonshotId, (moonshotIdCounts.get(moonshotId) || 0) + 1);
+    } else if (type === 'experiment-reported') {
+      const reportId = ownDataValue(event, 'reportId');
+      if (typeof reportId === 'string' && reportId.length) reportIdCounts.set(reportId, (reportIdCounts.get(reportId) || 0) + 1);
+    } else if (type === 'experiment-challenged') {
+      const challengeId = ownDataValue(event, 'challengeId');
+      if (typeof challengeId === 'string' && challengeId.length) challengeIdCounts.set(challengeId, (challengeIdCounts.get(challengeId) || 0) + 1);
     }
-    if (ownDataValue(event, 'type') !== 'moonshot-proposed') continue;
-    const moonshotId = ownDataValue(event, 'moonshotId');
-    if (typeof moonshotId === 'string' && moonshotId.length) {
-      moonshotIdCounts.set(moonshotId, (moonshotIdCounts.get(moonshotId) || 0) + 1);
-    }
-    candidates.push({ event, eventId, moonshotId });
   }
 
   const retained = [];
-  for (const candidate of candidates) {
-    const { event, eventId, moonshotId } = candidate;
-    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) ||
-        eventIdCounts.get(eventId) !== 1 ||
-        typeof moonshotId !== 'string' || !WORLD_OBJECT_ID.test(moonshotId) ||
-        moonshotIdCounts.get(moonshotId) !== 1) continue;
-
+  const proposalById = new Map();
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'moonshot-proposed') continue;
+    const eventId = ownDataValue(event, 'id');
+    const moonshotId = ownDataValue(event, 'moonshotId');
     const actor = ownDataValue(event, 'actor');
     const actorId = ownDataValue(actor, 'id');
     const actorRole = ownDataValue(actor, 'role');
     const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
     const title = ownDataValue(event, 'title');
     const hypothesis = ownDataValue(event, 'hypothesis');
     const falsifier = ownDataValue(event, 'falsifier');
     const evidenceNeeded = ownDataValue(event, 'evidenceNeeded');
-    if (typeof actorId !== 'string' || !actorId.trim() ||
-        !['founder', 'witness'].includes(actorRole) ||
-        typeof at !== 'string' || !Number.isFinite(Date.parse(at)) ||
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) ||
+        eventIdCounts.get(eventId) !== 1 ||
+        typeof moonshotId !== 'string' || !WORLD_OBJECT_ID.test(moonshotId) ||
+        moonshotIdCounts.get(moonshotId) !== 1 ||
+        typeof actorId !== 'string' || !actorId.trim() ||
+        !RESEARCH_ROLES.has(actorRole) ||
+        typeof at !== 'string' || !Number.isFinite(atMs) ||
         !boundedWorldText(title, 80) ||
         !boundedWorldText(hypothesis, 1000) ||
         !boundedWorldText(falsifier, 1000) ||
         !boundedWorldText(evidenceNeeded, 1000)) continue;
-    retained.push({ eventId, moonshotId, title, actorId, actorRole, at });
+    const proposal = { eventId, moonshotId, title, actorId, actorRole, at, atMs, index };
+    retained.push(proposal);
+    proposalById.set(moonshotId, proposal);
+  }
+
+  const validReports = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-reported') continue;
+    const eventId = ownDataValue(event, 'id');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const proposal = proposalById.get(moonshotId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const procedure = ownDataValue(event, 'procedure');
+    const observation = ownDataValue(event, 'observation');
+    const outcome = ownDataValue(event, 'reportedOutcome');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof reportId !== 'string' || !WORLD_OBJECT_ID.test(reportId) || reportIdCounts.get(reportId) !== 1 ||
+        !proposal || index <= proposal.index || !Number.isFinite(atMs) || atMs < proposal.atMs ||
+        typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
+        !boundedWorldText(procedure, 1000) || !boundedWorldText(observation, 1000) ||
+        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
+    validReports.push({ eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index });
+  }
+
+  const reportById = new Map(validReports.map(report => [report.reportId, report]));
+  const attemptCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  const challengeCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  for (const report of validReports) attemptCounts.set(report.moonshotId, attemptCounts.get(report.moonshotId) + 1);
+
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-challenged') continue;
+    const eventId = ownDataValue(event, 'id');
+    const challengeId = ownDataValue(event, 'challengeId');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const report = reportById.get(reportId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const challengeType = ownDataValue(event, 'challengeType');
+    const challengeText = ownDataValue(event, 'challengeText');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof challengeId !== 'string' || !WORLD_OBJECT_ID.test(challengeId) || challengeIdCounts.get(challengeId) !== 1 ||
+        !report || report.moonshotId !== moonshotId || report.actorId === actorId ||
+        index <= report.index || !Number.isFinite(atMs) || atMs < report.atMs ||
+        typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
+        !RESEARCH_CHALLENGE_TYPES.has(challengeType) || !boundedWorldText(challengeText, 1000) ||
+        !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
+    challengeCounts.set(moonshotId, challengeCounts.get(moonshotId) + 1);
   }
 
   return Object.freeze(retained.map((proposal, index) => Object.freeze({
@@ -150,6 +305,8 @@ export function projectMoonshotWorldObjects(world) {
     actorId: proposal.actorId,
     actorRole: proposal.actorRole,
     at: proposal.at,
+    attemptCount: attemptCounts.get(proposal.moonshotId) || 0,
+    challengeCount: challengeCounts.get(proposal.moonshotId) || 0,
     x: 1320 + (index % 4) * 54,
     y: 520 + Math.floor(index / 4) * 50,
   })));
@@ -225,7 +382,7 @@ export class WorldView {
     this.line([[30,28],[1570,28],[1570,972],[30,972],[30,28]],'#9c9b7066',1.5,[3,7]);this.text('THE COMMON GROUND',460,100,21,'#7c825c');this.text('an institution, made by walking and making',460,122,12,'#838468');this.drawTownSquare();this.text('FAR BANK',1240,100,17,'#96916a');this.text('R I V E R  O F  R E C E I P T S',919,520,10,'#346656','system-ui');
     c.save();c.translate(1490,110);this.line([[0,-28],[0,28]],'#65755b',1.3);this.line([[-20,0],[20,0]],'#65755b',1.3);c.fillStyle='#65755b';c.beginPath();c.moveTo(0,-27);c.lineTo(-6,0);c.lineTo(6,0);c.closePath();c.fill();this.text('N',0,-37,11,'#65755b');c.restore();
   }
-  drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('PROPOSAL',0,39,7,'#9a6a37','system-ui');c.restore()}
+  drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
   drawWorkbench(){const c=this.ctx;c.save();c.translate(325,645);this.ellipse(0,24,65,19,'#444b2620');for(const x of [-37,34])this.line([[x,5],[x-3,36]],'#67543b',7);c.fillStyle='#bc9e68';c.strokeStyle=palette.ink;c.lineWidth=2;c.beginPath();c.moveTo(-60,-17);c.lineTo(35,-30);c.lineTo(62,-3);c.lineTo(-36,12);c.closePath();c.fill();c.stroke();c.fillStyle='#f6efdb';c.fillRect(-20,-31,37,24);this.line([[-14,-25],[9,-25]],'#9a9876',1);this.line([[-14,-19],[3,-19]],'#9a9876',1);this.line([[26,-24],[39,-43]],'#aa532f',4);c.fillStyle='#d6803f';c.fillRect(-45,-30,10,16);this.text('THE MAKING BENCH',0,67,12);this.text('ideas become places',0,84,10,'#7b8162');c.restore()}
   drawPlaces(){const c=this.ctx;for(const place of PLACES.filter(p=>p.type==='discovery')){const{x,y,id}=place;c.save();c.translate(x,y);this.ellipse(0,25,43,12,'#44532b14');if(id==='relay'){this.line([[0,20],[0,-76]],'#646e4a',5);this.line([[-26,-55],[25,-55]],'#646e4a',4);c.fillStyle='#ce7443';c.beginPath();c.moveTo(3,-78);c.quadraticCurveTo(44,-88,42,-53);c.quadraticCurveTo(18,-68,3,-53);c.closePath();c.fill();this.line([[-12,20],[-7,4],[8,4],[16,20]],'#887951',2)}else if(id==='river'){for(let i=0;i<3;i++)this.rock(i*16-16,i*3,.7);this.line([[6,-10],[6,-58]],'#586a4c',3);c.fillStyle='#e9d39a';c.fillRect(7,-59,35,22);this.text('≡',24,-43,18,'#746f50')}else if(id==='overlook'){for(let n=0;n<4;n++)this.line([[-44+n*10,28-n*11],[44-n*10,28-n*11]],'#a5a27a',8);this.line([[-22,-10],[-22,-51],[21,-51],[21,-10]],'#797e5b',5);this.line([[-30,-51],[29,-51]],'#797e5b',8);this.line([[8,-48],[8,-72],[45,-70]],'#5b7566',4);this.ellipse(47,-69,9,8,'#c7be85','#5b7566')}else{for(const [bx,h] of [[-29,41],[-5,28],[28,53]]){c.fillStyle='#bfc1a0';c.strokeStyle='#8e9877';c.lineWidth=1.5;c.fillRect(bx-9,17-h,18,h);c.strokeRect(bx-9,17-h,18,h);this.line([[bx-10,17-h],[bx+4,10-h],[bx+10,17-h]],'#7d886a',2)}this.line([[-42,26],[42,26]],'#9ca17a',5)}this.text(place.name.toUpperCase(),0,57,11,'#687756');c.restore()}for(const place of PLACES.filter(p=>p.type==='institution'&&p.id!=='town-square'))this.drawInstitution(place);}
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
