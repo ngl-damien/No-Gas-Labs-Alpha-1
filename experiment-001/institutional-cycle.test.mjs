@@ -527,3 +527,61 @@ test('institution directory replacement after open fails closed before writing',
   assert.deepEqual(await readdir(storePath), [], 'replacement directory must not receive a ledger or leftover lock');
   assert.equal(store.snapshot().sequence, 1, 'rejected writes must not advance the in-memory snapshot');
 }));
+
+test('a writer killed after lock publication leaves inspectable evidence and fails closed', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storePath = join(dir, 'store');
+  const store = await openStore(lib, storePath, founder);
+  const lockPath = join(storePath, 'institution.json.lock');
+  const readyPath = join(dir, 'lock-ready');
+  const helperUrl = new URL('./atomic-lock.mjs', import.meta.url).href;
+  const worker = `
+    import { writeFile } from 'node:fs/promises';
+    const [helperUrl, lockPath, readyPath] = process.argv.slice(1);
+    const { publishAtomicLock } = await import(helperUrl);
+    await publishAtomicLock(lockPath, JSON.stringify({
+      schema: 'ngl.ledger-lock.v1',
+      pid: process.pid,
+      openedAt: new Date().toISOString()
+    }));
+    await writeFile(readyPath, 'ready', { mode: 0o600 });
+    setInterval(() => {}, 1000);
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', worker, helperUrl, lockPath, readyPath], {
+    stdio: 'ignore'
+  });
+  try {
+    const deadline = Date.now() + 5000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      try { await readFile(readyPath, 'utf8'); ready = true; break; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error('LOCK_WORKER_EXITED_BEFORE_READY');
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(ready, true, 'child must publish the lock before being killed');
+    child.kill('SIGKILL');
+    await new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve();
+      child.once('exit', resolve);
+    });
+
+    const lockBytes = await readFile(lockPath, 'utf8');
+    assert.equal(JSON.parse(lockBytes).pid, child.pid);
+    const inspection = await (await import('../src/institution/lock-inspector.mjs')).inspectWriterLock(lockPath);
+    assert.equal(inspection.safeToRemove, false, 'a stale-looking lock is not self-authorizing for deletion');
+
+    const draft = proposal(lib, executor, { nonce: 'install-crash-lock-0001' });
+    await assert.rejects(
+      () => store.commit(draft, approve(lib, draft, founder.privateKey)),
+      /LEDGER_LOCKED/
+    );
+    assert.equal(store.snapshot().sequence, 0);
+    assert.equal(await readFile(lockPath, 'utf8'), lockBytes, 'failed commit must preserve crash evidence');
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await new Promise(resolve => child.once('exit', resolve));
+    }
+  }
+}));
