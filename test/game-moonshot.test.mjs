@@ -162,6 +162,7 @@ test('world validation rejects backward event instants across timezone offsets',
   const previousAt = tampered.events.at(-2).at;
   tampered.events.at(-1).at = '2026-10-27T01:00:00.000+14:00';
   tampered.updatedAt = tampered.events.at(-1).at;
+  tampered.createdAt = '2026-10-26T10:59:59.000Z';
   assert.ok(tampered.events.at(-1).at > previousAt, 'fixture must sort forward as text');
   assert.ok(Date.parse(tampered.events.at(-1).at) < Date.parse(previousAt), 'fixture must move the instant backward');
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
