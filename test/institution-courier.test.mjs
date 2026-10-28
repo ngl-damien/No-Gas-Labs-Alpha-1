@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, mkdir, open, readFile, writeFile, stat, readdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, readFile, writeFile, stat, readdir, rm, symlink, chmod } from 'node:fs/promises';
 import { renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -350,4 +350,133 @@ test('courier fences the current instance after post-rename directory-sync uncer
   const snapshot = await reopened.snapshot();
   assert.equal(snapshot.requests[0].requestId, 'durability-uncertain',
     'a fresh instance validates the retained state before continuing');
+});
+
+
+test('courier rejects stable malformed lock JSON promptly and preserves state', {
+  timeout: 10000
+}, async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const malformed = '{"schema":';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, malformed, { mode: 0o600 });
+
+  const moduleUrl = new URL('../src/institution/courier.mjs', import.meta.url).href;
+  const source = `import { createCourier } from ${JSON.stringify(moduleUrl)};
+try {
+  await createCourier({ dataDir: ${JSON.stringify(f.dataDir)}, providers: [], now: () => 1000 });
+  console.error('unexpected success');
+  process.exitCode = 2;
+} catch (cause) {
+  if (cause.code === 'CORRUPT_LOCK') console.log('CORRUPT_LOCK: malformed JSON rejected');
+  else { console.error(cause); process.exitCode = 1; }
+}`;
+  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 7000 });
+  assert.match(result.stdout, /CORRUPT_LOCK: malformed JSON rejected/);
+  assert.equal(await readFile(lockPath, 'utf8'), malformed);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects lock metadata with broad permissions without changing the lock or state', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const metadata = JSON.stringify({
+    schema: 'ngl.courier-lock.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  });
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, metadata, { mode: 0o600 });
+  await chmod(lockPath, 0o644);
+  assert.notEqual((await stat(lockPath)).mode & 0o077, 0,
+    'fixture must actually expose group/other permissions');
+
+  await assert.rejects(module.createCourier(f.options), { code: 'UNSAFE_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), metadata);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects oversized lock metadata without changing the lock or state', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const oversized = 'x'.repeat(4097);
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, oversized, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), oversized);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects an explicitly unsupported lock schema instead of treating it as owner metadata', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const unknown = JSON.stringify({
+    schema: 'ngl.future-lock.v99',
+    pid: 2147483647,
+    openedAt: '2026-10-28T12:00:00.000Z'
+  });
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, unknown, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), unknown);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects a FIFO lock path promptly instead of blocking startup', {
+  skip: process.platform === 'win32'
+}, async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const stateBefore = await readFile(statePath, 'utf8');
+  await exec('/usr/bin/mkfifo', [lockPath]);
+
+  const moduleUrl = new URL('../src/institution/courier.mjs', import.meta.url).href;
+  const source = `import { createCourier } from ${JSON.stringify(moduleUrl)};
+try {
+  await createCourier({ dataDir: ${JSON.stringify(f.dataDir)}, providers: [], now: () => 1000 });
+  console.error('unexpected success');
+  process.exitCode = 2;
+} catch (cause) {
+  if (cause.code === 'UNSAFE_LOCK') console.log('UNSAFE_LOCK: non-regular lock rejected');
+  else { console.error(cause); process.exitCode = 1; }
+}`;
+  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 5000 });
+  assert.match(result.stdout, /UNSAFE_LOCK: non-regular lock rejected/);
+  assert.equal((await stat(lockPath)).isFIFO(), true);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+
+test('courier rejects duplicate PID keys instead of classifying the last value as stale owner metadata', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const duplicate = '{"schema":"ngl.courier-lock.v1","pid":2147483647,"pid":2147483648,"openedAt":"2026-10-28T12:00:00.000Z"}';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, duplicate, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), duplicate);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects escaped duplicate PID keys after JSON key decoding', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const duplicate = '{"schema":"ngl.courier-lock.v1","pid":2147483647,"p\\u0069d":2147483648,"openedAt":"2026-10-28T12:00:00.000Z"}';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, duplicate, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), duplicate);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
 });

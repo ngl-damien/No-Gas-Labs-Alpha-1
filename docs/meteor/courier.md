@@ -124,3 +124,10 @@ A detected dead owner produces `STALE_LOCK`; the courier never automatically rem
 If a courier process crashed while holding the lock, first stop every courier/API/CLI process using that store and prevent new clients from starting. Verify those processes have stopped. Only then explicitly remove that store's `.courier.lock` and restart clients. Do not delete a lock while any courier process may be running. Restart reads and validates the last atomic state before further work. This manual recovery is required for an abandoned lock; a normal clean restart needs no recovery.
 
 The focused regression starts six actual clients against a stale lock, verifies all fail with the lock and state unchanged, then explicitly recovers after all six stop and verifies six ordinary clients each persist their dispatch.
+
+
+## Lock metadata safety boundary
+
+The courier reads an existing `.courier.lock` only as bounded metadata: at most 4096 bytes, consumed in bounded chunks. It uses non-blocking open where supported and rejects symlink/non-regular objects, group/other-accessible lock files, and files owned by another UID (where UID checks are supported) as `UNSAFE_LOCK`. Oversized, duplicate-key, over-depth, or explicitly unsupported-schema metadata is rejected as `CORRUPT_LOCK`. Syntactically incomplete JSON is retried with bounded 20 ms sleeps while a newly created lock may still be writing; persistent invalid JSON becomes `CORRUPT_LOCK` at the five-second acquisition deadline instead of spinning in a tight loop. Rejected lock metadata and persisted state are preserved. The current `ngl.courier-lock.v1` schema requires exactly `schema`, `pid`, and `openedAt` with valid values. A schema-less legacy PID-only lock remains accepted for compatibility with older recovery fixtures.
+
+These checks prevent unbounded lock-metadata reads and avoid blocking if the path is raced to a FIFO, but they do not make the lock-release `lstat`-then-`unlink` sequence atomic. Never infer safe removal from a dead PID alone. Stale locks still require explicit offline recovery after every client using the store has been stopped.
