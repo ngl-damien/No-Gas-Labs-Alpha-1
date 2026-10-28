@@ -175,3 +175,23 @@ test('every institutional landmark is reachable and dispatches exactly once from
     interactions.length=0;
   }
 });
+
+
+test('world activity counts refresh when a new world projection is supplied', t => {
+  const { view } = makeView(t);
+
+  view.setWorld({
+    events: [
+      { id: 'contribution-1', type: 'contribute' },
+      { id: 'report-1', type: 'report' },
+    ],
+  });
+  assert.equal(view.institutionCounts['town-square'], 1);
+  assert.equal(view.institutionCounts.evidence_archive, 1);
+
+  view.setWorld({
+    history: [{ event_id: 'donor-comment-1', event_type: 'PUBLIC_COMMENT' }],
+  });
+  assert.equal(view.institutionCounts['town-square'], 1);
+  assert.equal(view.institutionCounts.evidence_archive, 0);
+});
