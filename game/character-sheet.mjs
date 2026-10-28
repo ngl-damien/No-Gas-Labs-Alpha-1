@@ -153,6 +153,29 @@ export function projectCharacter(world, viewer) {
     const key = versionKey(event.creationId, event.version), version = retainedVersions.get(key);
     return Boolean(version && publishedStudyVersions.has(key) && Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
+  const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
+  for (const event of allEvents) if (event?.type === 'study-reviewed') {
+    if (typeof event.reviewId === 'string') reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
+    if (typeof event.studyId === 'string') reviewedStudyCounts.set(event.studyId, (reviewedStudyCounts.get(event.studyId) || 0) + 1);
+  }
+  const studyById = new Map(studyEvents.map(event => [event.studyId, event]));
+  const studyReviews = events.filter(event => {
+    const source = studyById.get(event?.studyId);
+    const sourceIndex = source ? allEvents.indexOf(source) : -1;
+    const reviewIndex = allEvents.indexOf(event);
+    if (event.type !== 'study-reviewed' || typeof event.reviewId !== 'string' || reviewIdCounts.get(event.reviewId) !== 1 ||
+        typeof event.studyId !== 'string' || reviewedStudyCounts.get(event.studyId) !== 1 || !source ||
+        source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
+        source.creationId !== event.creationId || source.version !== event.version ||
+        sourceIndex < 0 || reviewIndex <= sourceIndex ||
+        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) || !Number.isFinite(Date.parse(source.at)) ||
+        Date.parse(source.at) >= Date.parse(event.at) ||
+        typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
+        typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
+    const version = retainedVersions.get(versionKey(event.creationId, event.version));
+    return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
+      Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+  });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -187,6 +210,13 @@ export function projectCharacter(world, viewer) {
       count: studyEvents.length,
       record: 'source-bound study notes',
       basis: 'Unique study notes matched to a retained published version, a question, an explanation and a next check; this counts recorded practice, not mastery.'
+    },
+    {
+      id: 'retriever',
+      label: 'Retriever',
+      count: studyReviews.length,
+      record: 'retained retrieval reviews of earlier study notes',
+      basis: 'Unique later reviews bound to the same actor and exact source version; this counts practice, not recall accuracy or mastery.'
     },
     {
       id: 'challenger',
