@@ -82,3 +82,11 @@ test('world import rejects event history that moves backward in real time despit
 
   await assert.rejects(validateWorld(forged), error => error.code === 'INVALID_WORLD');
 });
+
+test('world import binds each published version timestamp to exactly one publication event', async () => {
+  const published = await publishedSource();
+  const forged = structuredClone(published.world);
+  forged.creations[0].publishedAt = '2026-10-26T23:00:02.000Z';
+
+  await assert.rejects(validateWorld(forged), error => error.code === 'INVALID_WORLD');
+});
