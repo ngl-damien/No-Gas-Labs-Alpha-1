@@ -156,7 +156,7 @@ test('draft privacy, exact publication bytes, stale version rejection and real i
   const published = await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   const creation = published.body.world.creations[0];
-  assert.equal(published.body.world.xp, 100);
+  assert.equal(published.world.xp, 100);
   assert.equal((await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 })).response.status, 409);
   const artifact = await witness.request(`/api/artifacts/${creation.id}?version=1`);
   assert.equal(artifact.body, creation.html);
@@ -676,7 +676,7 @@ test('Moonshot Field retains a bounded proposal and exact retry without duplicat
     hypothesis: 'The claim holds under its stated conditions.',
     falsifier: 'A reproducible counterexample appears.',
     evidenceNeeded: 'Independent observation and the retained source bytes.',
-    sourceCreationId: published.body.result.creationId,
+    sourceCreationId: published.result.creationId,
     sourceVersion: 1,
     requestId: 'moonshot-proposal-retry-001'
   };
@@ -693,9 +693,9 @@ test('Moonshot Field retains a bounded proposal and exact retry without duplicat
   const proposals = state.body.world.events.filter(event => event.type === 'moonshot-proposed');
   assert.equal(proposals.length, 1);
   assert.equal(proposals[0].actor.role, 'witness');
-  assert.equal(proposals[0].sourceCreationId, published.body.result.creationId);
+  assert.equal(proposals[0].sourceCreationId, published.result.creationId);
   assert.equal(proposals[0].sourceVersion, 1);
-  assert.equal(state.body.world.xp, published.body.world.xp);
+  assert.equal(state.body.world.xp, published.world.xp);
   assert.equal(proposals[0].outcome, undefined);
   assert.equal(proposals[0].status, undefined);
 
