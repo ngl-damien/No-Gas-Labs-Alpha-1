@@ -73,7 +73,7 @@ A second source inspection found that bounded, schema-checked lock metadata stil
 Fresh reinspection on 2026-10-28 found that PR #154's bounded, schema-checked reader still had two gaps in `acquireLock()`:
 
 1. Existing lock metadata was checked for file type and schema but not for group/other permissions or current-process UID ownership. This was inconsistent with the read-only lock inspector's fail-closed checks.
-2. Stable malformed/deep JSON in the duplicate-key preflight and the subsequent `JSON.parse` catch used `continue`, retrying the same unchanged lock in a tight loop rather than reporting corruption. A malformed lock could therefore consume CPU indefinitely rather than fail closed.
+2. Malformed/deep JSON in the duplicate-key preflight and the subsequent `JSON.parse` catch initially used `continue`, retrying without delay. The first repair removed the spin but exposed a real concurrent-acquisition race: another process can observe the newly-created lock inode before its metadata write finishes. The final repair retries only syntactically incomplete snapshots with a 20 ms delay, bounded by the existing five-second acquisition deadline; persistent malformed JSON becomes `CORRUPT_LOCK`, while duplicate-key and over-depth records fail closed.
 
 Implemented on the same safe branch:
 
@@ -90,3 +90,23 @@ Fresh repository comparison: `main` is `904067afe9182163b5232516064ffaf740059945
 Remaining limits are unchanged: `lstat` then `unlink` is not atomic compare-and-unlink; PID probes are advisory; stale locks require explicit offline recovery; Issue #17 still requires adversarial concurrency/crash-recovery acceptance and independently controlled Founder identity/key custody. PR #16 is closed/unmerged and superseded by merged PR #18. A configured fingerprint is not real-world identity proof.
 
 No merge, deployment, release, spending, production key operation, automatic lock deletion, or Founder decision occurred.
+
+
+## Run continuation addendum — concurrent lock creation and bounded retry
+
+The first exact-head verify run after the fail-fast parser change failed one of 594 Node tests: `concurrent clients preserve stale lock and state until explicit recovery; normal clients serialize`. The hosted log showed 593 passing tests and one failure. A normal client received `CORRUPT_LOCK` while another process was creating a lock; the lock pathname becomes visible before the writer necessarily finishes writing the JSON metadata.
+
+This was a real regression in the first repair, not an infrastructure failure. The initial tight retry loop was unsafe for malformed persistent locks, but immediately rejecting every syntactically incomplete snapshot was also too strict for legitimate concurrent lock creation.
+
+Repair and test changes:
+
+- `27174e93bb0a2dc2e40ff7b2bfc67a59f38041d9`: retry only `COURIER_LOCK_JSON_INVALID` / JSON parse failures with a 20 ms delay, bounded by the existing five-second acquisition deadline. Persistent invalid JSON now returns `CORRUPT_LOCK`; duplicate keys and over-depth input remain fail-closed.
+- `90a3cf1854e18352b4e15c55ff586b47362bed2a`: extend the malformed-lock child-process test timeout to seven seconds so it can verify the bounded five-second corruption result without hanging the test runner.
+- `45a9b56f8c9383884846482c247c7170836015df`: clarify documentation for transient partial writes versus persistent malformed metadata.
+- This checkpoint update follows those repairs. The new exact head must be verified again; the earlier failure is retained here as audit evidence, not hidden.
+
+The observed failed run was `40748993220` (verify; failing job `123030284541`). Its log is available at [the verify run](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40748993220). Genesis passed on that prior head; browser acceptance was still in progress at inspection. Do not treat any of those results as verification of the later repair head.
+
+The permission regression also requires an existing `.courier.lock` to have group/other permission bits set; it expects `UNSAFE_LOCK` and verifies both the lock bytes and persisted state remain unchanged. The malformed-JSON regression launches a child with a bounded timeout and expects `CORRUPT_LOCK` after the acquisition deadline, preserving lock/state.
+
+No automatic lock deletion was added. The check-to-unlink race, advisory PID semantics, and Issue #17 Founder custody/concurrency/crash-recovery blockers remain.
