@@ -117,9 +117,21 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(report.actor.id===who.id)fail('SELF_CHALLENGE','A different actor ID must challenge this report.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
       const challengeText=text(action.challengeText,1000,'Challenge text');
+      const hasEvidenceId=action.evidenceCreationId!==undefined&&action.evidenceCreationId!==null;
+      const hasEvidenceVersion=action.evidenceVersion!==undefined&&action.evidenceVersion!==null;
+      if(hasEvidenceId!==hasEvidenceVersion)fail('INVALID_EVIDENCE','Choose both a retained challenge-evidence artifact and version, or neither.');
+      let evidenceCreationId=null,evidenceVersion=null;
+      if(hasEvidenceId){
+        if(typeof action.evidenceCreationId!=='string'||!action.evidenceCreationId.trim()||!Number.isSafeInteger(action.evidenceVersion)||action.evidenceVersion<1)fail('INVALID_EVIDENCE','Challenge evidence artifact and version must be valid.');
+        const source=world.creations.find(c=>c.id===action.evidenceCreationId);
+        if(!source)fail('NOT_FOUND','Challenge evidence artifact not found.',404);
+        const version=source.version===action.evidenceVersion?source:source.versions.find(v=>v.version===action.evidenceVersion);
+        if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That challenge evidence version is not retained at the challenge time.',409);
+        evidenceCreationId=source.id;evidenceVersion=action.evidenceVersion;
+      }
       const challengeId=uid('experiment-challenge');
       result={challengeId};
-      recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText});
+      recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
       break;
     }
     case 'discover':{
@@ -189,7 +201,7 @@ export async function validateWorld(raw) {
       if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
     }
   }
-  const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','requestId','actionFingerprint','actionResult']);
+  const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='experiment-challenged')continue;
     if(Object.keys(e).some(key=>!allowedChallengeKeys.has(key)))invalid('Experiment challenge contains unsupported canonical fields.');
@@ -198,6 +210,17 @@ export async function validateWorld(raw) {
     challengeIds.add(e.challengeId);
     const report=experimentReports.get(e.reportId),reportIndex=raw.events.findIndex(item=>item.type==='experiment-reported'&&item.reportId===e.reportId);
     if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||report.actor.id===e.actor.id||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
+    const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
+    const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
+    if(hasEvidenceId!==hasEvidenceVersion)invalid('Experiment challenge evidence reference is incomplete.');
+    if(!hasEvidenceId){
+      if(e.evidenceCreationId!==undefined&&e.evidenceCreationId!==null)invalid('Unlinked challenge evidence must be explicitly null.');
+      if(e.evidenceVersion!==undefined&&e.evidenceVersion!==null)invalid('Unlinked challenge evidence version must be explicitly null.');
+    }else{
+      const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
+      const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
+      if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
+    }
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
