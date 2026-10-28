@@ -195,3 +195,136 @@ test('service-store fails closed when its directory path is replaced after open'
   await assert.rejects(lstat(join(replacement, 'service.json')), error => error.code === 'ENOENT');
   await store.close();
 });
+
+test('service-store serializes concurrent commits and rejects a stale revision', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-concurrent-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+
+  // Both callers prepared revision 1 from the same revision-0 snapshot.
+  // Exactly one may commit; the other must not overwrite the winner.
+  const results = await Promise.allSettled([
+    store.commit({ revision: 1, winner: 'first' }),
+    store.commit({ revision: 1, winner: 'second' })
+  ]);
+  const fulfilled = results.filter(result => result.status === 'fulfilled');
+  const rejected = results.filter(result => result.status === 'rejected');
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, 'SERVICE_STALE_REVISION');
+  assert.equal(rejected[0].reason.status, 409);
+  assert.equal(store.value.revision, 1);
+  assert.ok(['first', 'second'].includes(store.value.winner));
+
+  await store.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, store.value, 'reopen must retain the sole committed winner');
+  await reopened.close();
+});
+
+test('service-store close drains accepted commits and rejects new commits', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-close-drain-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  let pauseNextSync = false;
+  let signalEntered;
+  let releaseSync;
+  const entered = new Promise(resolve => { signalEntered = resolve; });
+  const gate = new Promise(resolve => { releaseSync = resolve; });
+  const syncDirectory = async directory => {
+    if (pauseNextSync) {
+      pauseNextSync = false;
+      signalEntered();
+      await gate;
+    }
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate, syncDirectory });
+
+  pauseNextSync = true;
+  const accepted = store.commit({ revision: 1 });
+  await entered;
+  const closing = store.close();
+  await assert.rejects(
+    store.commit({ revision: 2 }),
+    error => error.code === 'SERVICE_STORE_CLOSED'
+  );
+  releaseSync();
+  await accepted;
+  await closing;
+
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.equal(reopened.value.revision, 1, 'close must wait for the accepted durable commit');
+  await reopened.close();
+});
+
+test('service-store snapshots a candidate before queued validation', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-snapshot-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  let pauseNextValidation = false;
+  let signalEntered;
+  let releaseValidation;
+  const entered = new Promise(resolve => { signalEntered = resolve; });
+  const gate = new Promise(resolve => { releaseValidation = resolve; });
+  const delayedValidate = async value => {
+    if (pauseNextValidation) {
+      pauseNextValidation = false;
+      signalEntered();
+      await gate;
+    }
+    if (!value || !Number.isInteger(value.revision)) throw new Error('invalid test store state');
+    return structuredClone(value);
+  };
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate: delayedValidate });
+  pauseNextValidation = true;
+  const candidate = { revision: 1, note: 'original at call time' };
+  const pending = store.commit(candidate);
+  await entered;
+  candidate.note = 'mutated after call';
+  releaseValidation();
+  await pending;
+  assert.equal(store.value.note, 'original at call time');
+  await store.close();
+});
+
+test('service-store rejects accessor-backed commit candidates without invoking getters', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-accessor-candidate-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  let getterCalls = 0;
+  const candidate = { revision: 1 };
+  Object.defineProperty(candidate, 'note', {
+    enumerable: true,
+    get() { getterCalls += 1; return 'must not execute'; }
+  });
+  await assert.rejects(store.commit(candidate), error => error.code === 'INVALID_JSON');
+  assert.equal(getterCalls, 0);
+  assert.equal(store.value.revision, 0);
+  await store.close();
+});
+
+test('service-store applies the revision guard to the canonical world payload', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-world-revision-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const validateWorldPayload = async value => {
+    if (!value?.world || !Number.isInteger(value.world.revision)) throw new Error('invalid test world payload');
+    return structuredClone(value);
+  };
+  const initial = { world: { revision: 0 }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate: validateWorldPayload });
+  const results = await Promise.allSettled([
+    store.commit({ world: { revision: 1 }, events: ['first'] }),
+    store.commit({ world: { revision: 1 }, events: ['second'] })
+  ]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const rejected = results.find(result => result.status === 'rejected');
+  assert.equal(rejected.reason.code, 'SERVICE_STALE_REVISION');
+  assert.equal(store.value.world.revision, 1);
+  assert.equal(store.value.events.length, 1);
+  await store.close();
+
+  const reopened = await createServiceStore({ dataDir, initial, validate: validateWorldPayload });
+  assert.equal(reopened.value.world.revision, 1);
+  assert.equal(reopened.value.events.length, 1, 'replay must retain exactly one winning world event');
+  await reopened.close();
+});
