@@ -355,3 +355,26 @@ test('service-store value and commit results cannot mutate the retained projecti
   assert.deepEqual(reopened.value, { revision: 1, nested: { label: 'committed' }, items: [{ value: 2 }] });
   await reopened.close();
 });
+
+
+test('service-store revision guard rejects missing or malformed canonical world revisions', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-revision-shape-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, world: { revision: 0 }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate });
+
+  await assert.rejects(
+    store.commit({ revision: 1, events: ['world field removed'] }),
+    error => error.code === 'SERVICE_STALE_REVISION' && error.status === 409
+  );
+  await assert.rejects(
+    store.commit({ revision: 1, world: { revision: 'invalid' }, events: ['nested revision malformed'] }),
+    error => error.code === 'SERVICE_STALE_REVISION' && error.status === 409
+  );
+  assert.deepEqual(store.value, initial, 'rejected revision-shape changes must not alter retained state');
+
+  await store.commit({ revision: 1, world: { revision: 1 }, events: ['valid progression'] });
+  assert.equal(store.value.world.revision, 1);
+  assert.deepEqual(store.value.events, ['valid progression']);
+  await store.close();
+});
