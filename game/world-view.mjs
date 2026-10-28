@@ -30,6 +30,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  * Supports Alpha 1's `id` and recovered donor events' `event_id` schemas.
  * Counts are navigational context only; they do not verify truth or grant rewards.
  */
+const MAX_WORLD_EVENT_SCAN=100_000;
 function ownDataValue(object,key){
  if(!object||(typeof object!=='object'&&typeof object!=='function'))return undefined;
  try{
@@ -44,9 +45,12 @@ function computeInstitutionActivityCounts(world){
  const worldEvents=ownDataValue(world,'events');
  const worldHistory=ownDataValue(world,'history');
  const events=isArraySafely(worldEvents)?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
+ const eventCount=ownDataValue(events,'length');
+ if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN)return activity;
  const identified=[];
  const identityCounts=new Map();
- for(const event of events){
+ for(let index=0;index<eventCount;index++){
+  const event=ownDataValue(events,String(index));
   if(!event||typeof event!=='object')continue;
   let isEventArray;
   try{isEventArray=Array.isArray(event)}catch{continue}
@@ -90,11 +94,14 @@ const boundedWorldText = (value, max) => typeof value === 'string' &&
 export function projectMoonshotWorldObjects(world) {
   const events = ownDataValue(world, 'events');
   if (!isArraySafely(events)) return Object.freeze([]);
+  const eventCount = ownDataValue(events, 'length');
+  if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) return Object.freeze([]);
 
   const eventIdCounts = new Map();
   const moonshotIdCounts = new Map();
   const candidates = [];
-  for (const event of events) {
+  for (let index = 0; index < eventCount; index += 1) {
+    const event = ownDataValue(events, String(index));
     if (!event || typeof event !== 'object') continue;
     const eventId = ownDataValue(event, 'id');
     if (typeof eventId === 'string' && eventId.length) {
