@@ -50,6 +50,7 @@ export function projectResearchRecords(input) {
   const eventIdCounts = countBy(events, 'id', value => hasText(value));
   const proposalCounts = countBy(events.filter(event => event?.type === 'moonshot-proposed'), 'moonshotId', value => hasText(value));
   const reportCounts = countBy(events.filter(event => event?.type === 'experiment-reported'), 'reportId', value => hasText(value));
+  const challengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenged'), 'challengeId', value => hasText(value));
 
   const proposalByMoonshot = new Map();
   events.forEach((event, index) => {
@@ -78,6 +79,8 @@ export function projectResearchRecords(input) {
         proposalStatus = eventIdUnique && validProposal(event) && proposalCounts.get(event.moonshotId) === 1
           ? 'unique'
           : 'ambiguous';
+      } else if (!eventIdUnique) {
+        proposalStatus = 'ambiguous';
       } else if (!hasText(event.moonshotId)) {
         proposalStatus = 'missing';
       } else if (proposalCounts.get(event.moonshotId) > 1) {
@@ -96,7 +99,11 @@ export function projectResearchRecords(input) {
       let targetReport = null;
       let targetReportStatus = 'not-applicable';
       if (event.type === 'experiment-challenged') {
-        if (!hasText(event.reportId)) targetReportStatus = 'missing';
+        if (!eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
+        else if (!hasText(event.actor?.id) || !['founder', 'witness'].includes(event.actor.role) ||
+            !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
+            !hasText(event.challengeText) || Array.from(event.challengeText).length > 1000) targetReportStatus = 'invalid-challenge';
+        else if (!hasText(event.reportId)) targetReportStatus = 'missing';
         else if (reportCounts.get(event.reportId) > 1) targetReportStatus = 'ambiguous';
         else {
           const candidate = reportById.get(event.reportId);
