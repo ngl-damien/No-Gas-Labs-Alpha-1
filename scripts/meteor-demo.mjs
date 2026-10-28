@@ -13,7 +13,25 @@ export async function runMeteor({outDir}={}){
  if(!outDir){await mkdir(join(ROOT,'.runtime'),{recursive:true});outDir=await mkdtemp(join(ROOT,'.runtime/meteor-'));}
  outDir=resolve(outDir);await mkdir(outDir,{recursive:true,mode:0o700});
  const start=performance.now(),stages=[];
- async function stage(name,args){const at=performance.now();const {stdout,stderr}=await exec(process.execPath,args,{cwd:ROOT,timeout:60000,maxBuffer:4*1024*1024});await writeFile(join(outDir,`${name}.stdout.log`),stdout,{mode:0o600});await writeFile(join(outDir,`${name}.stderr.log`),stderr,{mode:0o600});const parsed=JSON.parse(stdout);stages.push({name,wallMs:performance.now()-at,exitCode:0});return parsed;}
+ async function stage(name,args){
+  const at=performance.now();
+  let stdout='',stderr='',exitCode=0;
+  try {
+   ({stdout,stderr}=await exec(process.execPath,args,{cwd:ROOT,timeout:60000,maxBuffer:4*1024*1024}));
+  } catch(cause) {
+   stdout=String(cause.stdout??'');
+   stderr=String(cause.stderr??cause.message??'');
+   exitCode=typeof cause.code==='number'?cause.code:1;
+  }
+  await writeFile(join(outDir,`${name}`.stdout.log),stdout,{mode:0o600});
+  await writeFile(join(outDir,`${name}`.stderr.log),stderr,{mode:0o600});
+  stages.push({name,wallMs:performance.now()-at,exitCode});
+  if(exitCode!==0){
+   const tail=(stdout+'\\n'+stderr).split(/\\r?\\n/).slice(-80).join('\\n');
+   throw new Error(`${name} stage failed (exit code ${exitCode}); stdout/stderr were preserved in ${join(outDir,`${name}`)}.*.log\\n${tail}`);
+  }
+  return JSON.parse(stdout);
+ }
  const courier=await stage('courier',['scripts/courier.mjs','demo','--data-dir',join(outDir,'courier'),'--out',join(outDir,'courier-receipts.json')]);
  if(courier.externalProviderExecuted!==false||courier.request.seats[0].status!=='RESPONDED')throw Error('Courier fixture did not complete its signed transport exercise');
  const forge=await stage('forge',['scripts/forge.mjs','demo','--out',join(outDir,'forge')]);
