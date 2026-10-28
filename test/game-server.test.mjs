@@ -792,3 +792,69 @@ test('server startup rejects a persisted event history that moves backward in re
     error => error.code === 'INVALID_WORLD' || /World history authority \/ time mismatch/.test(error.message)
   );
 });
+
+
+test('Moonshot report challenges are attributed, replay-safe dissent rather than adjudication', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Challenge evidence artifact');
+  const witness = f.client();
+  const proposal = await witness.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Can the observation be reproduced?',
+    hypothesis: 'The observation repeats under the stated conditions.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'The procedure, retained artifact and a repeatable measurement.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1,
+    requestId: 'challenge-proposal-001'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const report = await witness.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat the documented comparison.',
+    observation: 'The required measurement settings were not available.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'challenge-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+
+  const challengeAction = {
+    type: 'challenge-experiment-report',
+    reportId: report.body.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report lacks the measurement settings needed to reproduce the attempt.',
+    requestId: 'experiment-challenge-retry-001'
+  };
+  const first = await founder.request('/api/action', challengeAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const retry = await founder.request('/api/action', challengeAction);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.equal(retry.body.result.challengeId, first.body.result.challengeId);
+
+  const selfChallenge = await witness.request('/api/action', {
+    ...challengeAction,
+    requestId: 'experiment-self-challenge-001'
+  });
+  assert.equal(selfChallenge.response.status, 409, JSON.stringify(selfChallenge.body));
+  assert.equal(selfChallenge.body.error.code, 'SELF_CHALLENGE');
+
+  const state = await founder.request('/api/state');
+  const challenges = state.body.world.events.filter(event => event.type === 'experiment-challenged');
+  const reports = state.body.world.events.filter(event => event.type === 'experiment-reported');
+  assert.equal(challenges.length, 1);
+  assert.equal(reports.length, 1);
+  assert.equal(challenges[0].reportId, reports[0].reportId);
+  assert.equal(challenges[0].actor.role, 'founder');
+  assert.equal(challenges[0].outcome, undefined);
+  assert.equal(challenges[0].status, undefined);
+  assert.equal(reports[0].outcome, undefined);
+  assert.equal(reports[0].status, undefined);
+  assert.equal(state.body.world.xp, published.world.xp);
+});
