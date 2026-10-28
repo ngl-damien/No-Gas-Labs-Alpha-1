@@ -215,12 +215,16 @@ test('Founder data directory requires owner access and excludes group/other acce
     createGameServer({ dataDir, founderKey: KEY }),
     /owner permissions must include read, write and execute/
   );
+  await assert.rejects(readFile(join(dataDir, 'founder.key')), { code: 'ENOENT' },
+    'unsafe owner mode must be rejected before any Founder key is created');
 
   await chmod(dataDir, 0o755);
   await assert.rejects(
     createGameServer({ dataDir, founderKey: KEY }),
     /permissions must exclude group and other access/
   );
+  await assert.rejects(readFile(join(dataDir, 'founder.key')), { code: 'ENOENT' },
+    'group/other access must be rejected before any Founder key is created');
 });
 
 test('published world and accepted kernel history survive restart; generated key stays private', async t => {
