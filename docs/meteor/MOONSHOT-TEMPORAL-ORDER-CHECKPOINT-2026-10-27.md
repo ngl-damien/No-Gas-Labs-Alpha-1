@@ -34,7 +34,13 @@ The timestamp fixture arithmetic was independently checked in the automation run
 
 ## Verification status
 
-**GitHub Actions exact-head verification is pending PR creation.** No local test execution is claimed. Inspect full repository verification, Genesis Evidence Invariant, and browser acceptance on the PR's final head. If any workflow fails, inspect its logs, repair the demonstrated defect, and rerun on the new exact head.
+No local test execution is claimed.
+
+- Intermediate head `8dbe45ff1d16e5cb074cadb5f0c0bffe4f2204e9`: full verification failed with 493 passing tests and one failure. The failure was the new server integration test expecting the old error wording after model-level chronology validation began rejecting the same corrupt envelope earlier. Commit `580095d6166995daac01c8a7d16bc27417933a01` expanded the assertion to accept the correct fail-closed model error; the exact log was inspected.
+- Code/test head `14f11df31d20ea5e733ebf5dbcb69a51b10b735c`: full verification run [40610986037](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40610986037) succeeded; Genesis Evidence Invariant run [40610986057](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40610986057) succeeded. Browser acceptance [40610986113](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40610986113) was still in progress at last inspection.
+- Checkpoint head `0ac368fa6508aeca719b22a72bc2146999e53dc9`: Genesis run [40611020764](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40611020764) succeeded; full verification [40611020774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40611020774) and browser acceptance [40611020782](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40611020782) were still in progress at last inspection.
+
+This checkpoint update is documentation-only and will trigger a fresh push run; inspect exact final-head verification again. No PR was opened in this run; the committed checkpoint is the durable handoff. If any final-head workflow fails, inspect its logs, repair the demonstrated defect, and rerun on the new exact head.
 
 ## Founder authority and remaining blockers
 
