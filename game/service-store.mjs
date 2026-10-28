@@ -257,6 +257,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       throw error;
     }
     await unlink(lockTemporaryPath);
+    await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
     await lease?.close().catch(() => {});
     await unlink(lockTemporaryPath).catch(() => {});
