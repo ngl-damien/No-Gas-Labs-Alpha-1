@@ -119,7 +119,7 @@ function preflightPresence(input) {
 }
 
 function validateHistory(world) {
-  if (world.revision !== world.events.length || world.createdAt > world.updatedAt || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
+  if (world.revision !== world.events.length || Date.parse(world.createdAt) > Date.parse(world.updatedAt) || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
@@ -130,7 +130,7 @@ function validateHistory(world) {
     const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : [])];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
-    if (event.at < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    if (Date.parse(event.at) < Date.parse(previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = event.at;
     if (event.type === 'moonshot-proposed') {
       if (typeof event.moonshotId !== 'string' || !event.moonshotId ||
@@ -143,7 +143,7 @@ function validateHistory(world) {
       if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
         if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
             !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
-            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && p.publishedAt <= event.at)) {
+            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && Date.parse(p.publishedAt) <= Date.parse(event.at))) {
           throw new Error('Stored moonshot source reference is invalid');
         }
       }
@@ -171,7 +171,7 @@ function validateHistory(world) {
     }
     if (event.type === 'draft' || event.type === 'repair') {
       if (typeof event.draftId !== 'string' || drafts.has(event.draftId)) throw new Error('Stored draft history mismatch');
-      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && p.publishedAt <= event.at))) throw new Error('Stored repair version history mismatch');
+      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && Date.parse(p.publishedAt) <= Date.parse(event.at)))) throw new Error('Stored repair version history mismatch');
       drafts.set(event.draftId, event);
     }
     if (event.type === 'publish' && !published.some(p => p.id === event.creationId && p.version === event.version && p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
