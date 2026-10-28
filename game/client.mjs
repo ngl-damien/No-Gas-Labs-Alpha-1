@@ -319,6 +319,43 @@ function openExperimentReport(proposal){
     }finally{submit.disabled=false;}
   });
 }
+function openExperimentChallenge(report){
+  const content=showSheet('Challenge experiment report','RETAINED DISSENT · NOT ADJUDICATION');
+  content.append(paragraph('Challenge the report’s evidence, method, scope or reproducibility. This appends an attributed counterargument without deleting or rewriting the report. It does not establish truth, independently verify the challenge, authorize work, or award XP.'));
+  const form=node('form',{class:'field-card'},[]);
+  const challengeType=node('select',{id:'experiment-challenge-type',required:'required'},[
+    node('option',{value:'',text:'Choose a challenge category'}),
+    node('option',{value:'missing-evidence',text:'Missing or insufficient evidence'}),
+    node('option',{value:'methodology',text:'Methodology concern'}),
+    node('option',{value:'contradiction',text:'Contradiction or counterexample'}),
+    node('option',{value:'reproducibility',text:'Reproducibility concern'}),
+    node('option',{value:'scope',text:'Scope or applicability concern'}),
+    node('option',{value:'other',text:'Other challenge'})
+  ]);
+  const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.'});
+  const submit=node('button',{id:'challenge-experiment-report',class:'primary-button',type:'submit',text:'Preserve challenge'});
+  form.append(
+    field('Challenge category','experiment-challenge-type',challengeType),
+    field('Challenge / counterargument','experiment-challenge-text',challengeText),
+    paragraph('A different actor ID is required. That is service attribution, not proof of a different real-world person or independent witness.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      await act({
+        type:'challenge-experiment-report',
+        reportId:report.reportId,
+        challengeType:challengeType.value,
+        challengeText:challengeText.value.trim()
+      });
+      toast('Challenge retained · dissent preserved · not adjudicated · no XP awarded.');
+      openMoonshotField();
+    }finally{submit.disabled=false;}
+  });
+}
 function openMoonshotField(){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
@@ -415,6 +452,15 @@ function openMoonshotField(){
       if(evidenceExists)reportCard.append(button('Inspect retained evidence v'+report.evidenceVersion+' →',()=>openCreation(report.evidenceCreationId,report.evidenceVersion),{class:'list-button'}));
       else if(report.evidenceCreationId)reportCard.append(paragraph('The linked evidence version is unavailable in this snapshot.','evidence-warning'));
       else reportCard.append(paragraph('No retained artifact is linked; this report has not been independently supported.','evidence-warning'));
+      const challenges=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-challenged'&&event.reportId===report.reportId);
+      for(const challenge of challenges)reportCard.append(node('div',{class:'field-card'},[
+        node('h4',{text:'Retained challenge'}),
+        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+        paragraph('Challenge category: '+String(challenge.challengeType||'other').replaceAll('-',' ')),
+        paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
+        paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
+      ]));
+      if(report.actor?.id!==viewer.id)reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);
     }
     content.append(card);
