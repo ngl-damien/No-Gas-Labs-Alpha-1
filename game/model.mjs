@@ -85,8 +85,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     }
     case 'report-experiment':{
       const moonshotId=text(action.moonshotId,128,'Moonshot ID');
-      const proposal=world.events.find(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId&&e.at<=at);
-      if(!proposal)fail('NOT_FOUND','A retained moonshot proposal is required before reporting an attempt.',404);
+      const proposals=world.events.filter(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId);
+      if(proposals.length!==1||!Number.isFinite(Date.parse(proposals[0].at))||Date.parse(proposals[0].at)>Date.parse(at))fail('NOT_FOUND','A unique earlier retained moonshot proposal is required before reporting an attempt.',404);
       const procedure=text(action.procedure,1000,'Procedure');
       const observation=text(action.observation,1000,'Observation');
       const reportedOutcome=action.reportedOutcome;
