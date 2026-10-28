@@ -1,8 +1,14 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
 
 const MAX_LOCK_BYTES = 4096;
+const KNOWN_LOCK_SCHEMAS = new Set([
+  'ngl.service-lock.v1',
+  'ngl.ledger-lock.v1',
+  'ngl.decisions-lock.v1'
+]);
 const WARNING = 'Read-only diagnostic. A PID probe is advisory only: PID reuse, namespaces, permissions, and races can mislead. This report never authorizes lock deletion; stop the owner and use an explicitly offline recovery procedure.';
 
 function report(status, path, details = {}) {
@@ -122,13 +128,25 @@ export async function inspectWriterLock(filePath) {
     if (trimmed.startsWith('{')) {
       let value;
       try {
+        assertNoDuplicateJsonObjectKeys(text, { label: 'LOCK' });
         value = JSON.parse(text);
-      } catch {
-        return report('malformed', path, { reason: 'invalid-json-lock-metadata', file: fileSummary(after) });
+      } catch (error) {
+        const reason = error?.message === 'LOCK_DUPLICATE_JSON_KEY'
+          ? 'duplicate-json-key'
+          : 'invalid-json-lock-metadata';
+        return report('malformed', path, { reason, file: fileSummary(after) });
       }
       if (value && typeof value === 'object' && !Array.isArray(value) &&
           Number.isSafeInteger(value.pid) && value.pid > 0 &&
           typeof value.openedAt === 'string' && Number.isFinite(Date.parse(value.openedAt))) {
+        if (Object.hasOwn(value, 'schema') &&
+            (typeof value.schema !== 'string' || !KNOWN_LOCK_SCHEMAS.has(value.schema))) {
+          return report('present', path, {
+            format: 'unrecognized-json',
+            reason: 'unsupported-lock-schema',
+            file: fileSummary(after)
+          });
+        }
         // The synchronous PID probe can give another process time to replace
         // the lock path. Revalidate both the pathname and the opened inode
         // after probing so the owner receipt describes one stable observation.
