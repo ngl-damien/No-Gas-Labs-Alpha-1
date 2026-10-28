@@ -80,3 +80,11 @@ test('shared request receipts survive validation and repeated discoveries remain
   const duplicate=structuredClone(repeated.world);duplicate.events[1].requestId=duplicate.events[0].requestId;
   await assert.rejects(validateWorld(duplicate),e=>e.code==='INVALID_WORLD');
 });
+
+
+test('world validation rejects an update instant before world creation', async () => {
+  const world = createWorld({ id: 'reversed-world-time', now });
+  const tampered = structuredClone(world);
+  tampered.updatedAt = '2026-10-17T11:59:59.000Z';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
