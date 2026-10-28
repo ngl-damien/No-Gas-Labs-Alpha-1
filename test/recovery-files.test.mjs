@@ -171,11 +171,17 @@ test('recovery command succeeds on a controlled record and emits exact byte rece
   const packageBytes = await readFile(join(repositoryRoot, 'package.json'));
   const state = continuityState([{ path: 'package.json', sha256: sha256(packageBytes) }]);
   const statePath = join(directory, 'state.json');
-  await writeFile(statePath, JSON.stringify(state), { mode: 0o600 });
+  const stateBytes = Buffer.from(JSON.stringify(state));
+  await writeFile(statePath, stateBytes, { mode: 0o600 });
 
   const { stdout } = await runRecovery(statePath);
   const report = JSON.parse(stdout);
   assert.equal(report.passed, true);
+  assert.deepEqual(report.continuityRecord, {
+    path: statePath,
+    size: stateBytes.length,
+    sha256: sha256(stateBytes)
+  });
   assert.deepEqual(report.recovered, ['package.json']);
   assert.equal(report.receipts.length, 1);
   assert.equal(report.receipts[0].status, 'verified');
@@ -195,6 +201,9 @@ test('default recovery command reports all references and fails closed on any dr
   }
   const report = JSON.parse(stdout);
   assert.equal(report.schema, 'ngl.fresh-process-recovery.v1');
+  const stateBytes = await readFile(join(repositoryRoot, 'docs/institution/compounding/STATE.json'));
+  assert.equal(report.continuityRecord.sha256, sha256(stateBytes));
+  assert.equal(report.continuityRecord.size, stateBytes.length);
   assert.equal(report.receipts.length, 10);
   assert.equal(report.passed, exitCode === 0);
   assert.equal(report.failures.length, report.receipts.filter(receipt => receipt.status !== 'verified').length);
