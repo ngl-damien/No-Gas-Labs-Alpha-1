@@ -4,6 +4,7 @@ import { join, parse, resolve, sep } from 'node:path';
 import { createHash, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
+import { publishAtomicLock } from './atomic-lock.mjs';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT = 1_000_000;
@@ -367,21 +368,27 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
       // Validate the caller's original value before structuredClone can discard
       // hidden properties or normalize an accessor-backed decision.
       canonical(decision);
-      let lockHandle;
       let lockIdentity;
+      let lockTempPath;
       let tempPath;
       try {
-        lockHandle = await open(lockPath, 'wx', 0o600);
-        const lockStat = await lockHandle.stat();
-        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
-        await lockHandle.close();
-        lockHandle = null;
+        const lock = await publishAtomicLock(lockPath, canonical({
+          schema: 'ngl.ledger-lock.v1',
+          pid: process.pid,
+          openedAt: new Date().toISOString()
+        }));
+        lockIdentity = lock.identity;
+        lockTempPath = lock.temporaryPath;
       } catch (error) {
-        if (error.code === 'EEXIST') throw new Error('LEDGER_LOCKED');
+        if (error.code === 'LEDGER_LOCKED') throw new Error('LEDGER_LOCKED');
         throw error;
       }
 
       try {
+        if (lockTempPath) {
+          try { await unlink(lockTempPath); lockTempPath = null; }
+          catch (error) { if (error.code === 'ENOENT') lockTempPath = null; else throw error; }
+        }
         const current = await readLedger(ledgerPath, publicKey);
         descendantOf(current, state);
         const next = structuredClone(current);
@@ -411,13 +418,24 @@ export async function openInstitution(directory, trustedPublicKeyPem) {
         state = next;
         return structuredClone(record);
       } finally {
-        if (tempPath) { try { await unlink(tempPath); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
-        if (lockHandle) await lockHandle.close();
-        if (lockIdentity) {
+        try {
+          if (tempPath) { try { await unlink(tempPath); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+        } finally {
           try {
-            const currentLock = await lstat(lockPath);
-            if (currentLock.isFile() && currentLock.dev === lockIdentity.dev && currentLock.ino === lockIdentity.ino) await unlink(lockPath);
-          } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            if (lockIdentity) {
+              try {
+                const currentLock = await lstat(lockPath);
+                if (!currentLock.isSymbolicLink() && currentLock.isFile() &&
+                    currentLock.dev === lockIdentity.dev && currentLock.ino === lockIdentity.ino) {
+                  await unlink(lockPath);
+                }
+              } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            }
+          } finally {
+            if (lockTempPath) {
+              try { await unlink(lockTempPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            }
+          }
         }
       }
     }
