@@ -194,3 +194,51 @@ test('retained experiment dissent challenges another actor without rewriting the
   forged.events.at(-1).moonshotId = 'unrelated-moonshot';
   await assert.rejects(validateWorld(forged), error => error.code === 'INVALID_WORLD');
 });
+
+
+test('a retained challenge may cite only an evidence version that existed at the challenge instant', async () => {
+  const published = await publishedSource();
+  const proposed = await applyAction(published.world, proposal(), witness, {
+    now: '2026-10-27T00:00:03.000Z'
+  });
+  const reported = await applyAction(proposed.world, {
+    type: 'report-experiment',
+    moonshotId: proposed.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The measurement settings were not supplied.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-27T00:00:04.000Z' });
+
+  const challenge = {
+    type: 'challenge-experiment-report',
+    reportId: reported.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The cited method omits measurement settings.',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1
+  };
+  const accepted = await applyAction(reported.world, challenge, founder, {
+    now: '2026-10-27T00:00:05.000Z'
+  });
+  const event = accepted.world.events.at(-1);
+  assert.equal(event.type, 'experiment-challenged');
+  assert.equal(event.evidenceCreationId, published.result.creationId);
+  assert.equal(event.evidenceVersion, 1);
+  await validateWorld(accepted.world);
+
+  await assert.rejects(
+    applyAction(reported.world, { ...challenge, evidenceVersion: undefined }, founder, {
+      now: '2026-10-27T00:00:05.000Z'
+    }),
+    error => error.code === 'INVALID_EVIDENCE'
+  );
+
+  const futureSource = structuredClone(reported.world);
+  futureSource.creations[0].publishedAt = '2026-10-27T00:00:06.000Z';
+  await assert.rejects(
+    applyAction(futureSource, challenge, founder, { now: '2026-10-27T00:00:05.000Z' }),
+    error => error.code === 'STALE_VERSION' && error.status === 409
+  );
+});
