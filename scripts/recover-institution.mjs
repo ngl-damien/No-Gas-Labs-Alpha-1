@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -21,6 +22,11 @@ try {
     throw new Error('Continuity record is not valid UTF-8');
   }
   const state = validateContinuityRecord(JSON.parse(stateText));
+  const continuityRecord = {
+    path: process.argv[2] ? path : 'docs/institution/compounding/STATE.json',
+    size: stateBytes.length,
+    sha256: createHash('sha256').update(stateBytes).digest('hex')
+  };
   const {
     recovered,
     receipts,
@@ -32,6 +38,7 @@ try {
   console.log(JSON.stringify({
     schema: 'ngl.fresh-process-recovery.v1',
     passed,
+    continuityRecord,
     principal: state.principal,
     authority: state.authority,
     assignments: state.assignments,
