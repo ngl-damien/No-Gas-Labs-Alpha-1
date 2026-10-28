@@ -217,3 +217,24 @@ test('reports changed if owner metadata changes in place during the PID probe', 
     process.kill = originalKill;
   }
 });
+
+
+test('duplicate JSON keys are malformed and never removable', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, '{"schema":"ngl.service-lock.v1","pid":1,"pid":2,"openedAt":"2026-10-28T11:00:00.000Z"}', { mode: 0o600 });
+  const result = await inspectWriterLock(path);
+  assert.equal(result.status, 'malformed');
+  assert.equal(result.reason, 'duplicate-json-key');
+  assert.equal(result.safeToRemove, false);
+});
+
+test('escaped spellings of duplicate JSON keys are rejected', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, '{"schema":"ngl.service-lock.v1","pid":1,"p\\u0069d":2,"openedAt":"2026-10-28T11:00:00.000Z"}', { mode: 0o600 });
+  const result = await inspectWriterLock(path);
+  assert.equal(result.status, 'malformed');
+  assert.equal(result.reason, 'duplicate-json-key');
+  assert.equal(result.safeToRemove, false);
+});
