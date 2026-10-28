@@ -23,9 +23,14 @@ function eventIdentityIsUnique(event, eventIdCounts) {
   return hasText(event?.id) && eventIdCounts.get(event.id) === 1;
 }
 
-function validProposal(event) {
+export function isValidMoonshotProposal(event) {
   return event?.type === 'moonshot-proposed' &&
-    hasText(event.moonshotId) && validTime(event.at);
+    hasText(event.moonshotId) && validTime(event.at) &&
+    hasText(event.title) && Array.from(event.title).length <= 80 &&
+    hasText(event.hypothesis) && Array.from(event.hypothesis).length <= 1000 &&
+    hasText(event.falsifier) && Array.from(event.falsifier).length <= 1000 &&
+    hasText(event.evidenceNeeded) && Array.from(event.evidenceNeeded).length <= 1000 &&
+    hasText(event.actor?.id) && ['founder', 'witness'].includes(event.actor.role);
 }
 
 function validReport(event) {
@@ -54,7 +59,7 @@ export function projectResearchRecords(input) {
 
   const proposalByMoonshot = new Map();
   events.forEach((event, index) => {
-    if (!validProposal(event) || !eventIdentityIsUnique(event, eventIdCounts) ||
+    if (!isValidMoonshotProposal(event) || !eventIdentityIsUnique(event, eventIdCounts) ||
         proposalCounts.get(event.moonshotId) !== 1) return;
     proposalByMoonshot.set(event.moonshotId, { event, index });
   });
@@ -76,7 +81,7 @@ export function projectResearchRecords(input) {
       let proposalStatus = 'not-applicable';
 
       if (event.type === 'moonshot-proposed') {
-        proposalStatus = eventIdUnique && validProposal(event) && proposalCounts.get(event.moonshotId) === 1
+        proposalStatus = eventIdUnique && isValidMoonshotProposal(event) && proposalCounts.get(event.moonshotId) === 1
           ? 'unique'
           : 'ambiguous';
       } else if (!eventIdUnique) {
