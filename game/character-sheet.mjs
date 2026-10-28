@@ -88,7 +88,7 @@ export function projectCharacter(world, viewer) {
         Number.isFinite(Date.parse(event.at))) proposalPositions.set(event.moonshotId, index);
   });
   const proposalIds = new Set(proposalPositions.keys());
-  const experimentReports = events.filter(event => {
+  const validExperimentReports = allEvents.filter(event => {
     const proposalIndex = proposalPositions.get(event?.moonshotId);
     const proposal = Number.isInteger(proposalIndex) ? allEvents[proposalIndex] : null;
     return event.type === 'experiment-reported' &&
@@ -99,6 +99,46 @@ export function projectCharacter(world, viewer) {
       typeof event.procedure === 'string' && event.procedure.trim() &&
       typeof event.observation === 'string' && event.observation.trim() &&
       ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
+  });
+  const experimentReports = mine(validExperimentReports, viewer);
+  const challengeCounts = new Map();
+  for (const event of allEvents) {
+    if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
+      challengeCounts.set(event.challengeId, (challengeCounts.get(event.challengeId) || 0) + 1);
+    }
+  }
+  const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
+  const retainedVersions = retainedVersionIndex(world);
+  const experimentChallenges = events.filter(event => {
+    const report = reportById.get(event?.reportId);
+    const reportPosition = report ? allEvents.indexOf(report) : -1;
+    const challengePosition = allEvents.indexOf(event);
+    if (event.type !== 'experiment-challenged' ||
+        typeof event.challengeId !== 'string' || challengeCounts.get(event.challengeId) !== 1 ||
+        typeof event.reportId !== 'string' || !report ||
+        typeof event.moonshotId !== 'string' || report.moonshotId !== event.moonshotId ||
+        report.actor?.id === event.actor?.id ||
+        !['founder', 'witness'].includes(report.actor?.role) ||
+        !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
+        typeof event.challengeText !== 'string' || !event.challengeText.trim() ||
+        Array.from(event.challengeText).length > 1000 ||
+        reportPosition < 0 || challengePosition <= reportPosition ||
+        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) ||
+        !Number.isFinite(Date.parse(report.at)) || Date.parse(report.at) > Date.parse(event.at)) return false;
+
+    const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
+    const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
+    if (hasEvidenceId !== hasEvidenceVersion) return false;
+    if (!hasEvidenceId && (
+      (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) ||
+      (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
+    )) return false;
+    if (hasEvidenceId) {
+      const version = retainedVersions.get(versionKey(event.evidenceCreationId, event.evidenceVersion));
+      if (!version || !Number.isFinite(Date.parse(version.publishedAt)) ||
+          Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
+    }
+    return true;
   });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
@@ -151,6 +191,13 @@ export function projectCharacter(world, viewer) {
       count: experimentReports.length,
       record: 'retained experiment reports',
       basis: 'Attributed attempt notes and reported outcomes; not proof of execution, independent observation, or a validated result.'
+    },
+    {
+      id: 'adversary',
+      label: 'Adversary',
+      count: experimentChallenges.length,
+      record: 'retained challenges to another actor’s experiment reports',
+      basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
     },
     {
       id: 'restorer',
