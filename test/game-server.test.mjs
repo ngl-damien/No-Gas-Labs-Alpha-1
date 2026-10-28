@@ -710,3 +710,48 @@ test('Moonshot Field retains a bounded proposal and exact retry without duplicat
   const afterStale = await founder.request('/api/state');
   assert.equal(afterStale.body.world.events.filter(event => event.type === 'moonshot-proposed').length, 1);
 });
+
+
+test('server rejects backward offset timestamps even when their strings sort forward', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  await publish(founder, 'Chronology source');
+  const proposal = await founder.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Standalone chronology case',
+    hypothesis: 'The event sequence is ordered.',
+    falsifier: 'A later event timestamp represents an earlier instant.',
+    evidenceNeeded: 'Compare parsed timestamps.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  await f.closeGame();
+
+  const file = join(f.dataDir, 'service.json');
+  const stored = JSON.parse(await readFile(file, 'utf8'));
+  const world = stored.payload.world;
+  const previousAt = world.events.at(-2).at;
+  const previousMs = Date.parse(previousAt);
+  const earlierMs = previousMs - 1;
+  assert.ok(Number.isFinite(previousMs));
+  assert.ok(earlierMs < previousMs);
+
+  // Preserve all other event records. This offset timestamp is lexically later
+  // than the preceding UTC timestamp, but represents an earlier instant.
+  const backwardOffset = new Date(earlierMs + 14 * 60 * 60 * 1000)
+    .toISOString().replace(/Z$/, '+14:00');
+  assert.ok(backwardOffset > previousAt, 'fixture must fool string ordering');
+  assert.ok(Date.parse(backwardOffset) < previousMs, 'fixture must move time backwards');
+  world.events.at(-1).at = backwardOffset;
+  world.updatedAt = backwardOffset;
+  world.createdAt = new Date(Math.min(Date.parse(world.createdAt), earlierMs - 1)).toISOString();
+  stored.digest = artifactReceipt(canonicalStringify(stored.payload)).digest;
+  await writeFile(file, canonicalStringify(stored));
+
+  await assert.rejects(
+    createGameServer({ dataDir: f.dataDir, founderKey: KEY }),
+    /World history integrity mismatch|authority \/ time mismatch/
+  );
+});
