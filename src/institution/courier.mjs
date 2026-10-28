@@ -227,6 +227,13 @@ function sameLockSnapshot(a, b) {
     a.mode === b.mode && a.size === b.size &&
     a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
+function courierLockUnsafeReason(stat) {
+  if (!stat.isFile()) return 'not-a-regular-file';
+  if ((stat.mode & 0o077) !== 0) return 'permissions-too-broad';
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) return 'owner-mismatch';
+  return null;
+}
+
 async function releaseOwnedLock(path, identity) {
   if (!identity) return false;
   let current;
@@ -270,6 +277,10 @@ async function acquireLock(path) {
         if (before.isSymbolicLink() || !before.isFile()) {
           throw error('UNSAFE_LOCK', 'Courier lock path must be a regular non-symlink file; preserve it and inspect offline.');
         }
+        const beforeUnsafe = courierLockUnsafeReason(before);
+        if (beforeUnsafe) {
+          throw error('UNSAFE_LOCK', `Courier lock metadata file is unsafe (${beforeUnsafe}); preserve it and inspect offline.`);
+        }
         requireValue(before.size <= MAX_LOCK_METADATA, 'CORRUPT_LOCK',
           `Courier lock metadata exceeds ${MAX_LOCK_METADATA} bytes; preserve the lock and inspect offline.`);
         file = await open(path, constants.O_RDONLY |
@@ -278,6 +289,10 @@ async function acquireLock(path) {
           const opened = await file.stat();
           if (!opened.isFile()) {
             throw error('UNSAFE_LOCK', 'Courier lock changed to a non-regular file; preserve it and inspect offline.');
+          }
+          const openedUnsafe = courierLockUnsafeReason(opened);
+          if (openedUnsafe) {
+            throw error('UNSAFE_LOCK', `Courier lock metadata file is unsafe (${openedUnsafe}); preserve it and inspect offline.`);
           }
           if (!sameLockSnapshot(before, opened)) continue;
           requireValue(opened.size <= MAX_LOCK_METADATA, 'CORRUPT_LOCK',
