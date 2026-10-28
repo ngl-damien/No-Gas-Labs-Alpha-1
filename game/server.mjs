@@ -134,19 +134,21 @@ function preflightPresence(input) {
 }
 
 function validateHistory(world) {
-  if (world.revision !== world.events.length || world.createdAt > world.updatedAt || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
+  const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
+  if (world.revision !== world.events.length || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set();
-  let previousAt = world.createdAt;
+  let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
     const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : [])];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
-    if (event.at < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
-    previousAt = event.at;
+    const eventAt = Date.parse(event.at);
+    if (!Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    previousAt = eventAt;
     if (event.type === 'moonshot-proposed') {
       if (typeof event.moonshotId !== 'string' || !event.moonshotId ||
           typeof event.title !== 'string' || !event.title.trim() || Array.from(event.title).length > 80 ||
@@ -158,7 +160,7 @@ function validateHistory(world) {
       if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
         if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
             !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
-            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && p.publishedAt <= event.at)) {
+            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && Date.parse(p.publishedAt) <= Date.parse(event.at))) {
           throw new Error('Stored moonshot source reference is invalid');
         }
       }
@@ -172,14 +174,14 @@ function validateHistory(world) {
         throw new Error('Stored experiment report is malformed or repeated');
       }
       reportIds.add(event.reportId);
-      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && proposal.at <= event.at).length !== 1) {
+      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && Date.parse(proposal.at) <= Date.parse(event.at)).length !== 1) {
         throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
       const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
       if (hasEvidenceId !== hasEvidenceVersion ||
           (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null)) ||
-          (hasEvidenceId && !published.some(p => p.id === event.evidenceCreationId && p.version === event.evidenceVersion && p.publishedAt <= event.at))) {
+          (hasEvidenceId && !published.some(p => p.id === event.evidenceCreationId && p.version === event.evidenceVersion && Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
         throw new Error('Stored experiment evidence reference is invalid');
       }
     }
@@ -203,11 +205,11 @@ function validateHistory(world) {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
       }
-      if (event.type === 'discover' && (typeof result.discovered !== 'boolean' || (event.repeat === true && result.discovered) || (event.repeat === true && !world.discoveries.some(item => item.locationId === event.locationId && item.actor.id === event.actor.id && item.at <= event.at)) || (event.repeat !== true && !result.discovered))) throw new Error('Stored idempotency discovery result mismatch');
+      if (event.type === 'discover' && (typeof result.discovered !== 'boolean' || (event.repeat === true && result.discovered) || (event.repeat === true && !world.discoveries.some(item => item.locationId === event.locationId && item.actor.id === event.actor.id && Date.parse(item.at) <= Date.parse(event.at))) || (event.repeat !== true && !result.discovered))) throw new Error('Stored idempotency discovery result mismatch');
     }
     if (event.type === 'draft' || event.type === 'repair') {
       if (typeof event.draftId !== 'string' || drafts.has(event.draftId)) throw new Error('Stored draft history mismatch');
-      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && p.publishedAt <= event.at))) throw new Error('Stored repair version history mismatch');
+      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && Date.parse(p.publishedAt) <= Date.parse(event.at)))) throw new Error('Stored repair version history mismatch');
       drafts.set(event.draftId, event);
     }
     if (event.type === 'publish' && !published.some(p => p.id === event.creationId && p.version === event.version && p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');

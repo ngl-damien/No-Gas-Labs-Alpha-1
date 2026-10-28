@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
+import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
@@ -763,4 +764,31 @@ test('Moonshot experiment reports are replay-safe and remain self-reported claim
   assert.equal(invalid.body.error.code, 'INVALID_OUTCOME');
   const afterInvalid = await founder.request('/api/state');
   assert.equal(afterInvalid.body.world.events.filter(event => event.type === 'experiment-reported').length, 1);
+});
+
+
+test('server startup rejects a persisted event history that moves backward in real time across offset timestamps', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-offset-chronology-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const start = createWorld({ id: 'offset-history-world', now: '2026-10-27T00:00:00.000Z' });
+  const first = await applyAction(start, { type: 'discover', locationId: 'river' }, witness, { now: '2026-10-27T00:00:01.000Z' });
+  const second = await applyAction(first.world, { type: 'discover', locationId: 'river' }, witness, { now: '2026-10-27T00:00:02.000Z' });
+  const world = structuredClone(second.world);
+  world.events[0].at = '2026-10-27T00:30:00-02:00';
+  world.discoveries[0].at = world.events[0].at;
+  world.events[1].at = '2026-10-27T01:00:00.000Z';
+  world.updatedAt = world.events[1].at;
+  const payload = { world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY }),
+    error => error.code === 'INVALID_WORLD' || /World history authority \/ time mismatch/.test(error.message)
+  );
 });
