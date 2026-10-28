@@ -333,16 +333,28 @@ async function acquireLock(path) {
               throw error('CORRUPT_LOCK',
                 'Courier lock metadata contains duplicate JSON keys; preserve the lock and inspect offline.');
             }
-            // The bytes and file identity were already checked before parsing.
-            // A stable but malformed/deep document is corruption, not a reason
-            // to spin in the lock-acquisition loop until the owner timeout.
+            if (parseError.message === 'COURIER_LOCK_JSON_INVALID') {
+              // A newly-created lock is visible before its small metadata write
+              // necessarily finishes. Retry malformed snapshots with a bounded
+              // delay, then classify a persistent malformed lock as corruption.
+              await new Promise(resolve => setTimeout(resolve, 20));
+              if (Date.now() >= deadline) {
+                throw error('CORRUPT_LOCK',
+                  'Courier lock metadata remained malformed through the acquisition timeout; preserve it and inspect offline.');
+              }
+              continue;
+            }
             throw error('CORRUPT_LOCK',
-              'Courier lock metadata is malformed or exceeds parser limits; preserve the lock and inspect offline.');
+              'Courier lock metadata exceeds parser limits or is malformed; preserve the lock and inspect offline.');
           }
           try { owner = JSON.parse(decoded); }
           catch {
-            throw error('CORRUPT_LOCK',
-              'Courier lock metadata is invalid JSON; preserve the lock and inspect offline.');
+            await new Promise(resolve => setTimeout(resolve, 20));
+            if (Date.now() >= deadline) {
+              throw error('CORRUPT_LOCK',
+                'Courier lock metadata remained invalid JSON through the acquisition timeout; preserve it and inspect offline.');
+            }
+            continue;
           }
           identity = { dev: opened.dev, ino: opened.ino };
         } finally {
