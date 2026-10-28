@@ -288,6 +288,13 @@ function worldEntry(event, index, creations, notes) {
     entry.detail = [`Question: ${text(event?.question) || "not recorded"}`, `Attempt: ${text(event?.attempt) || "not recorded"}`, `Next check: ${text(event?.nextCheck) || "not recorded"}`].join(" · ");
     if (!target) entry.warning = "The referenced study version is unavailable in this snapshot; the note remains visible without an invented source.";
     else entry.detail += ` · Source: ${text(target.title) || creationId} v${version}`;
+  } else if (type === "study-reviewed") {
+    entry.title = `Retrieval review retained · ${target ? text(target.title) || creationId : creationId || "source unavailable"}`;
+    entry.category = "POLYMATH ACADEMY";
+    entry.summary = "A learner returned to a prior study note and recorded a response to its next check. This is self-reported practice, not proof of recall accuracy or mastery.";
+    entry.detail = [`Response: ${text(event?.response) || "not recorded"}`, `Reflection: ${text(event?.reflection) || "not recorded"}`].join(" · ");
+    if (!target) entry.warning = "The reviewed source version is unavailable in this snapshot; the review remains visible without an invented source.";
+    else entry.detail += ` · Source: ${text(target.title) || creationId} v${version}`;
   } else if (type === "moonshot-proposed") {
     entry.title = `Moonshot proposed · ${text(event?.title) || "untitled question"}`;
     entry.category = "MOONSHOT FIELD";
@@ -326,7 +333,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
