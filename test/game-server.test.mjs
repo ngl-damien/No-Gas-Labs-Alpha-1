@@ -662,3 +662,51 @@ test('HTTP JSON rejects malformed UTF-8, duplicate keys, and excessive nesting b
   }
 });
 
+
+
+test('Moonshot Field retains a bounded proposal and exact retry without duplicate world effects', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Moonshot source artifact');
+  const witness = f.client();
+  const action = {
+    type: 'propose-moonshot',
+    title: 'Does the source claim survive?',
+    hypothesis: 'The claim holds under its stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'Independent observation and the retained source bytes.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1,
+    requestId: 'moonshot-proposal-retry-001'
+  };
+
+  const first = await witness.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const retry = await witness.request('/api/action', action);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.equal(retry.body.result.moonshotId, first.body.result.moonshotId);
+
+  const state = await founder.request('/api/state');
+  const proposals = state.body.world.events.filter(event => event.type === 'moonshot-proposed');
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].actor.role, 'witness');
+  assert.equal(proposals[0].sourceCreationId, published.result.creationId);
+  assert.equal(proposals[0].sourceVersion, 1);
+  assert.equal(state.body.world.xp, published.world.xp);
+  assert.equal(proposals[0].outcome, undefined);
+  assert.equal(proposals[0].status, undefined);
+
+  const stale = await witness.request('/api/action', {
+    ...action,
+    title: 'A stale-source proposal',
+    sourceVersion: 99,
+    requestId: 'moonshot-proposal-stale-001'
+  });
+  assert.equal(stale.response.status, 409, JSON.stringify(stale.body));
+  assert.equal(stale.body.error.code, 'STALE_VERSION');
+  const afterStale = await founder.request('/api/state');
+  assert.equal(afterStale.body.world.events.filter(event => event.type === 'moonshot-proposed').length, 1);
+});

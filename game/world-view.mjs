@@ -21,7 +21,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  decision_chamber:event=>event?.type==='decision'||event?.type==='revocation'||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  'town-square':event=>event?.type==='contribute'||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>event?.type==='learning'||event?.type==='skill-evidence'||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
- moonshot_field:event=>event?.type==='experiment'||event?.type==='moonshot'||event?.event_type==='MOONSHOT',
+ moonshot_field:event=>event?.type==='experiment'||event?.type==='moonshot'||event?.type==='moonshot-proposed'||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
 });
 export function institutionActivityCount(id,world){

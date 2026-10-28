@@ -156,9 +156,25 @@ def institutional_locations(browser,url,out):
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
+        close_sheet(page)
+        moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
+        expect(moonshot_objective).to_contain_text('OPEN')
+        moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
+        expect(page.locator('#propose-moonshot')).to_be_visible()
+        page.locator('#moonshot-title').fill('Can this claim be falsified?')
+        page.locator('#moonshot-hypothesis').fill('The retained claim holds under its stated conditions.')
+        page.locator('#moonshot-falsifier').fill('A reproducible counterexample appears under those conditions.')
+        page.locator('#moonshot-evidence').fill('Independent observation and the exact source bytes.')
+        page.locator('#propose-moonshot').click()
+        expect(page.locator('#sheet')).to_contain_text('PROPOSED · NOT EXECUTED')
+        expect(page.locator('#sheet')).to_contain_text('A reproducible counterexample appears')
+        expect(page.locator('[data-objective-id="founder-moonshot-proposal"]')).to_contain_text('RECORDED')
+        assert page.locator('#creation-count').text_content()=='0', 'A moonshot proposal must not create a published artifact'
+        assert page.locator('#xp-count').text_content()=='0', 'A moonshot proposal must not award XP'
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases),'creations':0,'xp':0,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'creations':0,'xp':0,'errors':errors}
     finally:
         context.close()
 

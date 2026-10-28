@@ -87,7 +87,7 @@ async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.
 const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y})})});
 view.setWorld(world);
 function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
-function followQuestAction(action){if(!action||typeof action.type!=='string')return;if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}if(action.type==='location'&&['relay','river','overlook','ruins'].includes(action.id)){closeSheet();view.goTo(action.id);return}if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}}
+function followQuestAction(action){if(!action||typeof action.type!=='string')return;if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field'].includes(action.id)){closeSheet();view.goTo(action.id);return}if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}}
 function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
 function render(){view.setWorld(world);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const quest=getQuest(world,viewer);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(getQuestTrail(world,viewer));if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
@@ -254,14 +254,89 @@ function openAcademy(){
   ]));
 }
 function openMoonshotField(){
-  const content=showSheet('Moonshot Field','BOUNDED EXPERIMENTS · NO FREE SUCCESS');
-  content.append(paragraph('A moonshot begins as a bounded question, not a claimed breakthrough. A useful brief names what could disconfirm it and which evidence would be needed. Drafting a proposal does not count as a successful experiment.'));
-  const studies=world.creations.filter(creation=>creation.kind==='observatory');
-  if(studies.length){
-    for(const creation of studies)content.append(button(creation.title+' · source observatory v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
-  }else content.append(paragraph('No published source observatory is present yet.','empty-note'));
-  if(viewer.role==='founder')content.append(button('Draft a source observatory →',()=>openWorkshop('observatory'),{class:'primary-button'}));
-  else content.append(paragraph('Witnesses cannot draft or publish. Inspect existing work and leave a specific report instead.'));
+  const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
+  content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
+  const form=node('form',{class:'field-card'},[]);
+  const title=node('input',{id:'moonshot-title',maxlength:'80',placeholder:'A concise question to investigate',autocomplete:'off'});
+  const hypothesis=node('textarea',{id:'moonshot-hypothesis',maxlength:'1000',rows:'3',placeholder:'What do you predict, and under which conditions?'});
+  const falsifier=node('textarea',{id:'moonshot-falsifier',maxlength:'1000',rows:'3',placeholder:'What observable result would count against the hypothesis?'});
+  const evidence=node('textarea',{id:'moonshot-evidence',maxlength:'1000',rows:'3',placeholder:'What source, artifact, measurement, or independent observation is needed?'});
+  const source=node('select',{id:'moonshot-source'});
+  source.append(node('option',{value:'',text:'Standalone question — no artifact linked'}));
+  for(const creation of (Array.isArray(world.creations)?world.creations:[])){
+    source.append(node('option',{value:creation.id,text:creation.title+' · current v'+creation.version}));
+  }
+  const sourceVersion=node('select',{id:'moonshot-source-version'});
+  const syncSourceVersions=()=>{
+    sourceVersion.replaceChildren();
+    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===source.value);
+    if(!creation){
+      sourceVersion.append(node('option',{value:'',text:'No source version'}));
+      sourceVersion.disabled=true;
+      return;
+    }
+    const versions=[...(Array.isArray(creation.versions)?creation.versions:[]),creation]
+      .filter(version=>Number.isInteger(version.version))
+      .sort((left,right)=>left.version-right.version);
+    for(const version of versions){
+      sourceVersion.append(node('option',{value:String(version.version),text:(version.version===creation.version?'Current':'Retained')+' version '+version.version}));
+    }
+    sourceVersion.value=String(creation.version);
+    sourceVersion.disabled=false;
+  };
+  source.onchange=syncSourceVersions;
+  syncSourceVersions();
+  const submit=node('button',{id:'propose-moonshot',class:'primary-button',type:'submit',text:'Retain moonshot proposal'});
+  form.append(
+    field('Proposal title','moonshot-title',title),
+    field('Hypothesis','moonshot-hypothesis',hypothesis),
+    field('Falsification condition','moonshot-falsifier',falsifier),
+    field('Evidence required','moonshot-evidence',evidence),
+    field('Optional source artifact','moonshot-source',source),
+    field('Source version','moonshot-source-version',sourceVersion),
+    paragraph('A proposal is not an experiment result. Failed, refuted, or contradictory evidence must be recorded separately; no outcome is inferred here.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      const selected=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===source.value);
+      await act({
+        type:'propose-moonshot',
+        title:title.value.trim(),
+        hypothesis:hypothesis.value.trim(),
+        falsifier:falsifier.value.trim(),
+        evidenceNeeded:evidence.value.trim(),
+        sourceCreationId:selected?.id??null,
+        sourceVersion:selected?Number(sourceVersion.value):null
+      });
+      toast('Moonshot proposal retained · not executed · no XP awarded.');
+      openMoonshotField();
+    }finally{submit.disabled=false;}
+  });
+  const proposals=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='moonshot-proposed');
+  if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
+  for(const proposal of [...proposals].reverse()){
+    const card=node('article',{class:'field-card'},[
+      node('h3',{text:proposal.title||'Untitled moonshot proposal'}),
+      node('span',{class:'pill',text:'PROPOSED · NOT EXECUTED'}),
+      paragraph('Hypothesis: '+proposal.hypothesis),
+      paragraph('Falsification condition: '+proposal.falsifier),
+      paragraph('Evidence required: '+proposal.evidenceNeeded),
+      paragraph('Submitted by '+(proposal.actor?.name||proposal.actor?.id||'unknown actor')+' · '+(proposal.at||'time unavailable'),'form-help')
+    ]);
+    const sourceExists=proposal.sourceCreationId&&Number.isInteger(proposal.sourceVersion)&&
+      (Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===proposal.sourceCreationId&&
+        (creation.version===proposal.sourceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===proposal.sourceVersion))));
+    if(sourceExists)card.append(button('Inspect linked source v'+proposal.sourceVersion+' →',()=>openCreation(proposal.sourceCreationId,proposal.sourceVersion),{class:'list-button'}));
+    else if(proposal.sourceCreationId)card.append(paragraph('Linked source version is unavailable in this snapshot; the proposal remains visible without an invented target.','evidence-warning'));
+    content.append(card);
+  }
+  if(viewer.role==='founder'&&!(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.kind==='observatory')){
+    content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
+  }
 }
 function openPublicationHouse(kindFilter=null){
   const content=showSheet('Publication House','PUBLISHED ARTIFACTS · PRESERVED VERSIONS');
