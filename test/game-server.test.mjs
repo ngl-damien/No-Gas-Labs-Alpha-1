@@ -1,7 +1,7 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, writeFile, rm, rename, mkdir } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -225,6 +225,26 @@ test('Founder data directory requires owner access and excludes group/other acce
   );
   await assert.rejects(readFile(join(dataDir, 'founder.key')), { code: 'ENOENT' },
     'group/other access must be rejected before any Founder key is created');
+});
+
+test('Founder data directory rejects symlinked ancestors before creating runtime state', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-symlink-parent-'));
+  const realParent = join(root, 'real-parent');
+  const alias = join(root, 'alias');
+  await mkdir(realParent, { mode: 0o700 });
+  await symlink(realParent, alias, 'dir');
+  const dataDir = join(alias, 'runtime');
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY }),
+    /symbolic link components/
+  );
+  await assert.rejects(
+    lstat(join(realParent, 'runtime')),
+    { code: 'ENOENT' },
+    'the runtime directory must not be created through a symlinked ancestor'
+  );
 });
 
 test('published world and accepted kernel history survive restart; generated key stays private', async t => {
