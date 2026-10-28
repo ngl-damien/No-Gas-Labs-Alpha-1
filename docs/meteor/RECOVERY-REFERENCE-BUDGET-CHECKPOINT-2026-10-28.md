@@ -51,3 +51,18 @@ The checkpoint commit and final PR head must be inspected after CI starts.
 5. Keep production Founder trust fail-closed until independently controlled identity/key custody and actual mutation-path integration are demonstrated.
 
 No merge, deployment, release, spending, or production key operation occurred. A digest match proves byte equality to the recorded value, not the truth of the record or its author's identity.
+
+
+## Follow-up cycles after initial CI inspection
+
+### Compatibility repair
+
+- Exact-head full verification run `40655653662` initially failed two pre-existing `test/institution-continuity.test.mjs` cases. The new schema preflight had incorrectly required `mission` and object-shaped `machinery.M0/M1`, while the existing accepted fixture omits `mission` and uses string values for `M0/M1`.
+- Inspected the actual job log, then repaired the validator in commit `9fc81feccd3c29b54b7d2335dc92f929773f75d5`: `mission` remains optional for legacy records (but must be a non-empty string if present), and `M0/M1` accept either strings or plain records. This preserves existing v1 recovery compatibility without removing the new reference/count checks.
+- Follow-up run `40655827469` reported the full test/build/institutional exercise step successful, and Genesis Evidence Invariant run `40655827546` passed. Browser acceptance run `40655827448` was still installing dependencies at last inspection. These results are for the pre-receipt head `9fc81feccd3c29b54b7d2335dc92f929773f75d5`, not the final head.
+
+### Exact continuity-record receipt
+
+- Added `continuityRecord.path`, `continuityRecord.size`, and SHA-256 over the exact bounded bytes parsed by the recovery command. This makes the input record used for a run auditable without asserting its author or truth.
+- Commit `4ed9239ef2de3a3af0fac80756dc8ab537f92724` adds the receipt; `f7985dd2e546ce48e6160e2718e700cca304eb1b` tests it against the exact serialized test fixture and the repository's default continuity record.
+- The final checkpoint commit and final PR head must each be inspected, and all three workflows must be checked again after the last commit. No earlier green result is transferable to a later head.
