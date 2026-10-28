@@ -140,3 +140,23 @@ test('a challenge with no attributable actor or a duplicate event ID gets no tar
   assert.equal(duplicateIdProjection._projection.targetReport, null);
   assert.equal(duplicateIdProjection._projection.targetReportStatus, 'ambiguous');
 });
+
+test('incomplete or unattributed proposals remain visible but cannot anchor research context', () => {
+  const invalidProposals = [
+    { title: '' },
+    { title: 'x'.repeat(81) },
+    { hypothesis: 'x'.repeat(1001) },
+    { falsifier: '' },
+    { evidenceNeeded: '' },
+    { actor: null },
+    { actor: { id: 'untrusted', role: 'system' } }
+  ];
+  for (const invalid of invalidProposals) {
+    const projected = projectResearchRecords([proposal(invalid), report()]);
+    const proposalRecord = projected.find(event => event.type === 'moonshot-proposed');
+    const reportRecord = projected.find(event => event.type === 'experiment-reported');
+    assert.equal(proposalRecord._projection.proposalStatus, 'ambiguous');
+    assert.equal(reportRecord._projection.proposal, null);
+    assert.equal(reportRecord._projection.proposalStatus, 'missing');
+  }
+});
