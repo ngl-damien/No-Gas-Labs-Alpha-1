@@ -23,12 +23,12 @@ export async function runMeteor({outDir}={}){
    stderr=String(cause.stderr??cause.message??'');
    exitCode=typeof cause.code==='number'?cause.code:1;
   }
-  await writeFile(join(outDir,`${name}`.stdout.log),stdout,{mode:0o600});
-  await writeFile(join(outDir,`${name}`.stderr.log),stderr,{mode:0o600});
+  await writeFile(join(outDir, `${name}.stdout.log`), stdout, {mode:0o600});
+  await writeFile(join(outDir, `${name}.stderr.log`), stderr, {mode:0o600});
   stages.push({name,wallMs:performance.now()-at,exitCode});
   if(exitCode!==0){
-   const tail=(stdout+'\\n'+stderr).split(/\\r?\\n/).slice(-80).join('\\n');
-   throw new Error(`${name} stage failed (exit code ${exitCode}); stdout/stderr were preserved in ${join(outDir,`${name}`)}.*.log\\n${tail}`);
+   const tail=(stdout+'\n'+stderr).split(/\r?\n/).slice(-80).join('\n');
+   throw new Error(`${name} stage failed (exit code ${exitCode}); stdout/stderr were preserved in ${join(outDir, `${name}.stdout.log`)} and ${join(outDir, `${name}.stderr.log`)}\n${tail}`);
   }
   return JSON.parse(stdout);
  }
