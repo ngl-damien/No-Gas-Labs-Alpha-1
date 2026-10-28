@@ -266,7 +266,6 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
   let lease;
   try { lease = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery'); throw error; }
-  const ownership = randomUUID();
   let leaseIdentity;
   let released = false;
   async function release() {
@@ -278,7 +277,7 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
   try {
     const lockStat = await lease.stat();
     leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
-    await lease.writeFile(ownership); await lease.sync();
+    await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() })); await lease.sync();
     await assertPrivateDecisionDirectory(location, directoryIdentity);
     const file = join(location, 'decisions.json');
     let state = initial();
