@@ -199,20 +199,98 @@ function openForge(){
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
 function openEvidenceArchive(){
-  const kicker='REPORTS · CONTRIBUTIONS · DISAGREEMENT';
+  const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed reports and contributions against actual published versions. Receipts identify bytes; they do not establish truth. Reports remain dissent, not automatic verdicts.'));
-  const entries=[...world.reports.map(entry=>({...entry,kind:'Report'})),...world.contributions.map(entry=>({...entry,kind:'Contribution'}))].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
-  if(!entries.length)content.append(paragraph('No reports or contributions have been retained yet. The empty archive is an honest state, not a failed claim.','empty-note'));
+  content.append(paragraph('This archive preserves attributed notes against published versions and includes Moonshot proposals, self-reported experiment attempts, and challenges. Receipts identify bytes; they do not establish truth. Research records remain proposals, reports, or dissent—not independent verification or verdicts.','form-help'));
+  const entries=[
+    ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
+    ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
+  ].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  if(!entries.length)content.append(paragraph('No artifact-bound reports or contributions have been retained yet. The empty section is an honest state, not a failed claim.','empty-note'));
   for(const entry of entries){
-    const creation=world.creations.find(item=>item.id===entry.creationId);
+    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===entry.creationId);
     content.append(node('article',{class:'field-card'},[
       node('h3',{text:entry.kind+' · '+(creation?.title||entry.creationId)+' · v'+entry.version}),
       paragraph(entry.text),
-      paragraph('By '+(entry.actor?.name||'Unknown')+' · '+entry.at+' · retained record, not a verdict.','attribution'),
+      paragraph('By '+(entry.actor?.name||entry.actor?.id||'Unknown actor')+' · '+entry.at+' · retained record, not a verdict.','attribution'),
       button('Inspect referenced version →',()=>openCreation(entry.creationId,entry.version),{class:'list-button'})
     ]));
   }
+
+  const events=Array.isArray(world.events)?world.events:[];
+  const creations=Array.isArray(world.creations)?world.creations:[];
+  const proposalById=new Map(events.filter(event=>event?.type==='moonshot-proposed'&&typeof event.moonshotId==='string').map(event=>[event.moonshotId,event]));
+  const researchEvents=events.filter(event=>
+    ['moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)&&
+    typeof event.id==='string'&&event.id.length>0
+  ).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
+  if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
+
+  const appendVersionLink=(card,creationId,version,label)=>{
+    if(typeof creationId!=='string'||!creationId||!Number.isSafeInteger(version)||version<1){
+      card.append(paragraph('The '+label+' reference is incomplete; no artifact target is inferred.','evidence-warning'));
+      return;
+    }
+    const creation=creations.find(item=>item?.id===creationId);
+    const retained=creation&&[creation,...(Array.isArray(creation.versions)?creation.versions:[])].some(item=>item?.version===version);
+    if(retained)card.append(button('Inspect '+label+' v'+version+' →',()=>openCreation(creationId,version),{class:'list-button'}));
+    else card.append(paragraph('The linked '+label+' version is unavailable in this snapshot; no substitute is inferred.','evidence-warning'));
+  };
+
+  for(const entry of researchEvents){
+    const proposal=entry.type==='moonshot-proposed'?entry:proposalById.get(entry.moonshotId);
+    const proposalTitle=proposal?.title||entry.moonshotId||'Unknown moonshot';
+    const actor=entry.actor?.name||entry.actor?.id||'Unknown actor';
+    const at=typeof entry.at==='string'?entry.at:'time unavailable';
+    const type=entry.type.toUpperCase().replaceAll('-','_');
+    const card=node('article',{class:'field-card','data-research-record-type':type,'data-event-id':entry.id},[]);
+    if(entry.type==='moonshot-proposed'){
+      card.append(
+        node('h3',{text:'Moonshot proposal · '+(entry.title||'Untitled proposal')}),
+        node('span',{class:'pill',text:'PROPOSED · NOT EXECUTED'}),
+        paragraph('Hypothesis: '+(entry.hypothesis||'not recorded')),
+        paragraph('Falsification condition: '+(entry.falsifier||'not recorded')),
+        paragraph('Evidence required: '+(entry.evidenceNeeded||'not recorded'))
+      );
+      if(entry.sourceCreationId)appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source');
+      else card.append(paragraph('No source artifact is linked to this proposal.','form-help'));
+    }else if(entry.type==='experiment-reported'){
+      card.append(
+        node('h3',{text:'Experiment report · '+proposalTitle}),
+        node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED'}),
+        paragraph('Procedure: '+(entry.procedure||'not recorded')),
+        paragraph('Observation: '+(entry.observation||'not recorded')),
+        paragraph('Reported outcome: '+(entry.reportedOutcome||'not supplied'))
+      );
+      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence');
+      else card.append(paragraph('No retained artifact is linked to this attempt; the report remains self-reported.','evidence-warning'));
+    }else{
+      const targetReport=events.find(candidate=>candidate?.type==='experiment-reported'&&candidate.reportId===entry.reportId);
+      card.append(
+        node('h3',{text:'Experiment challenge · '+proposalTitle}),
+        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+        paragraph('Target report: '+(entry.reportId||'unavailable'))
+      );
+      if(targetReport){
+        card.append(
+          paragraph('Target procedure: '+(targetReport.procedure||'not recorded')),
+          paragraph('Target observation: '+(targetReport.observation||'not recorded')),
+          paragraph('Target outcome (self-reported): '+(targetReport.reportedOutcome||'not supplied'))
+        );
+      }else card.append(paragraph('The challenged report is not present in this snapshot.','evidence-warning'));
+      card.append(
+        paragraph('Challenge category: '+String(entry.challengeType||'other').replaceAll('-',' ')),
+        paragraph('Counterargument: '+(entry.challengeText||'not recorded'))
+      );
+      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence');
+      else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
+    }
+    card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
+    card.append(node('code',{text:entry.id}));
+    content.append(card);
+  }
+
   const history=node('section',{class:'evidence-history'});
   content.append(history);
   const generation=++evidenceArchiveGeneration;
