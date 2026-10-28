@@ -362,6 +362,26 @@ def shared(browser,url,data,out):
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        # The Evidence Archive must expose the proposal, report, and challenge as attributed records.
+        # These are useful to inspect, but none is promoted to independent verification or a verdict.
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Evidence Archive')
+        proposal_card=a.locator('[data-research-record-type="MOONSHOT_PROPOSED"]')
+        report_card=a.locator('[data-research-record-type="EXPERIMENT_REPORTED"]')
+        challenge_card=a.locator('[data-research-record-type="EXPERIMENT_CHALLENGED"]')
+        expect(proposal_card).to_have_count(1)
+        expect(proposal_card).to_contain_text('Can the shared observation be reproduced?')
+        expect(proposal_card).to_contain_text('PROPOSED · NOT EXECUTED')
+        expect(report_card).to_have_count(1)
+        expect(report_card).to_contain_text('SELF-REPORTED · NOT ADJUDICATED')
+        expect(report_card).to_contain_text('The measurement settings are missing from the record.')
+        expect(report_card.get_by_role('button',name='Inspect evidence v2 →')).to_be_visible()
+        expect(challenge_card).to_have_count(1)
+        expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
+        expect(challenge_card).to_contain_text('The procedure is not reproducible from the record.')
+        expect(challenge_card).to_contain_text('The measurement settings are missing from the record.')
+        expect(challenge_card.get_by_role('button',name='Inspect challenge evidence v2 →')).to_be_visible()
         close_sheet(a)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
