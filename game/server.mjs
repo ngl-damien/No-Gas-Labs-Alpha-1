@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, readFile, mkdir, open } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
@@ -479,25 +479,62 @@ async function getFounderKey(dataDir, provided) {
   }
 }
 
+// Reject redirected ancestors before recursive creation can write a Founder key
+// through a symlink. This is a best-effort path walk, not an atomic openat boundary.
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw new Error('Founder data directory path may not contain symbolic link components');
+    }
+    if (!stat.isDirectory()) {
+      throw new Error('Founder data directory path components must be directories');
+    }
+  }
+}
+
 async function assertPrivateDataDirectory(dataDir) {
+  // Recheck after mkdir and again after key loading so a visible ancestor swap
+  // fails before credential access and cannot be mistaken for a private path.
+  await assertNoSymlinkPathComponents(dataDir);
   const directory = await lstat(dataDir);
   if (directory.isSymbolicLink() || !directory.isDirectory()) {
     throw new Error('Founder data directory must be a regular, non-symlink directory');
   }
-  if ((directory.mode & 0o077) !== 0) {
+  const mode = directory.mode & 0o777;
+  if ((mode & 0o700) !== 0o700) {
+    throw new Error('Founder data directory owner permissions must include read, write and execute (0700)');
+  }
+  if ((mode & 0o077) !== 0) {
     throw new Error('Founder data directory permissions must exclude group and other access (0700)');
   }
-  return { dev: directory.dev, ino: directory.ino };
+  if (typeof process.getuid === 'function' && directory.uid !== process.getuid()) {
+    throw new Error('Founder data directory must be owned by the current process user');
+  }
+  return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
 export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined } = {}) {
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
+  await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
   const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
-  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev || dataDirectory.ino !== dataDirectoryAfterKeyRead.ino) {
+  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
+      dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
+      dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
+      dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
     throw new Error('Founder data directory changed during startup');
   }
   const forge = forgeCapabilities();

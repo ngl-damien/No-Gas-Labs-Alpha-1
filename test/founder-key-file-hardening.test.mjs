@@ -66,7 +66,7 @@ test('rejects a symlinked or non-private Founder data directory', async t => {
   const target = await directory(t, 'ngl-founder-target-');
   const alias = join(parent, 'runtime-link');
   await symlink(target, alias, 'dir');
-  await assert.rejects(createGameServer({ dataDir: alias }), /regular, non-symlink directory/);
+  await assert.rejects(createGameServer({ dataDir: alias }), /regular, non-symlink directory|symbolic link components/);
 
   const publicDir = join(parent, 'public-runtime');
   await import('node:fs/promises').then(fs => fs.mkdir(publicDir, { mode: 0o700 }));
