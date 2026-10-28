@@ -53,3 +53,35 @@ test('ledger state, events, and head fail closed after uncertain directory sync 
     await reopened.close();
   }
 });
+
+test('ledger serializes concurrent append attempts and rejects stale revisions without corrupting history', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-ledger-concurrent-append-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const ledger = await openLedger({ directory, ...config });
+  const event = (suffix) => ({
+    id: `claim-concurrent-${suffix}`,
+    type: 'claim',
+    actor: 'founder',
+    at: '2026-10-27T11:37:00.000Z',
+    expectedRevision: 0,
+    workId: `work-concurrent-${suffix}`,
+    subject: { id: `subject-concurrent-${suffix}`, version: 1 },
+    action: `concurrent claim ${suffix}`
+  });
+
+  const results = await Promise.allSettled([
+    ledger.append(event('a')),
+    ledger.append(event('b'))
+  ]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const rejected = results.find(result => result.status === 'rejected');
+  assert.equal(rejected.reason.code, 'STALE_REVISION');
+  assert.equal(ledger.state.revision, 1);
+  assert.equal(ledger.events.length, 1);
+  await ledger.close();
+
+  const reopened = await openLedger({ directory, ...config });
+  assert.equal(reopened.state.revision, 1);
+  assert.equal(reopened.events.length, 1, 'replay must retain only the committed concurrent winner');
+  await reopened.close();
+});
