@@ -379,7 +379,7 @@ def shared(browser,url,data,out):
         expect(report_card.get_by_role('button',name='Inspect evidence v2 →')).to_be_visible()
         expect(challenge_card).to_have_count(1)
         expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
-        expect(challenge_card).to_contain_text('The procedure is not reproducible from the record.')
+        expect(challenge_card).to_contain_text('The report omits the measurement settings needed to reproduce the attempt.')
         expect(challenge_card).to_contain_text('The measurement settings are missing from the record.')
         expect(challenge_card.get_by_role('button',name='Inspect challenge evidence v2 →')).to_be_visible()
         close_sheet(a)
