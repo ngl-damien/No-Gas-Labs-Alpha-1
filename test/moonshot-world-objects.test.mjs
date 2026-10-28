@@ -89,3 +89,114 @@ test('appending a retained proposal does not move existing research objects', ()
   assert.deepEqual(after.slice(0, 2), before);
   assert.notDeepEqual(after[2], before[1]);
 });
+
+
+function experimentReport(eventId, reportId, moonshotId, actorId, at, overrides = {}) {
+  return {
+    id: eventId,
+    type: 'experiment-reported',
+    reportId,
+    moonshotId,
+    actor: { id: actorId, role: actorId === 'damien' ? 'founder' : 'witness' },
+    at,
+    procedure: 'Run the bounded procedure',
+    observation: 'Record what happened',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    ...overrides,
+  };
+}
+
+function experimentChallenge(eventId, challengeId, reportId, moonshotId, actorId, at, overrides = {}) {
+  return {
+    id: eventId,
+    type: 'experiment-challenged',
+    challengeId,
+    reportId,
+    moonshotId,
+    actor: { id: actorId, role: actorId === 'damien' ? 'founder' : 'witness' },
+    at,
+    challengeType: 'reproducibility',
+    challengeText: 'The procedure is not independently reproducible yet.',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    ...overrides,
+  };
+}
+
+test('moonshot objects project retained attempt reports and dissent without claiming adjudication', () => {
+  const events = [
+    proposal('proposal-1', 'moon-1'),
+    experimentReport('report-event-1', 'report-1', 'moon-1', 'witness-1', '2026-10-28T17:01:00.000Z'),
+    experimentChallenge('challenge-event-1', 'challenge-1', 'report-1', 'moon-1', 'witness-2', '2026-10-28T17:02:00.000Z'),
+  ];
+  const [object] = projectMoonshotWorldObjects({ events });
+  assert.equal(object.attemptCount, 1);
+  assert.equal(object.challengeCount, 1);
+  assert.equal(object.type, 'research-object');
+  assert.equal(object.title, 'A testable question');
+  assert.ok(!Object.hasOwn(object, 'verifiedOutcome'));
+  assert.ok(Object.isFrozen(object));
+});
+
+test('ambiguous, unlinked, out-of-order and same-actor records cannot inflate moonshot activity', () => {
+  const events = [
+    experimentReport('before-event', 'before-report', 'moon-1', 'witness-1', '2026-10-28T16:59:00.000Z'),
+    proposal('proposal-1', 'moon-1'),
+    proposal('proposal-2', 'moon-2'),
+    experimentReport('good-event', 'good-report', 'moon-1', 'witness-1', '2026-10-28T17:01:00.000Z'),
+    experimentReport('duplicate-event', 'duplicate-report-a', 'moon-1', 'witness-1', '2026-10-28T17:02:00.000Z'),
+    experimentReport('duplicate-event', 'duplicate-report-b', 'moon-1', 'witness-1', '2026-10-28T17:03:00.000Z'),
+    experimentReport('report-event-a', 'reused-report', 'moon-1', 'witness-1', '2026-10-28T17:04:00.000Z'),
+    experimentReport('report-event-b', 'reused-report', 'moon-1', 'witness-1', '2026-10-28T17:05:00.000Z'),
+    experimentReport('invalid-outcome', 'invalid-outcome-report', 'moon-1', 'witness-1', '2026-10-28T17:06:00.000Z', { reportedOutcome: 'proved' }),
+    experimentReport('wrong-moonshot', 'wrong-moonshot-report', 'missing-moonshot', 'witness-1', '2026-10-28T17:07:00.000Z'),
+    experimentChallenge('same-actor-challenge', 'same-actor-id', 'good-report', 'moon-1', 'witness-1', '2026-10-28T17:08:00.000Z'),
+    experimentChallenge('valid-challenge', 'valid-challenge-id', 'good-report', 'moon-1', 'witness-2', '2026-10-28T17:09:00.000Z'),
+    experimentChallenge('challenge-duplicate-a', 'reused-challenge', 'good-report', 'moon-1', 'witness-3', '2026-10-28T17:10:00.000Z'),
+    experimentChallenge('challenge-duplicate-b', 'reused-challenge', 'good-report', 'moon-1', 'witness-4', '2026-10-28T17:11:00.000Z'),
+  ];
+  const objects = projectMoonshotWorldObjects({ events });
+  assert.deepEqual(objects.map(object => [object.moonshotId, object.attemptCount, object.challengeCount]), [
+    ['moon-1', 1, 1],
+    ['moon-2', 0, 0],
+  ]);
+});
+
+test('linked attempt evidence must match one retained published version at report time', () => {
+  const events = [
+    proposal('proposal-evidence', 'moon-evidence'),
+    experimentReport('valid-linked-event', 'valid-linked-report', 'moon-evidence', 'witness-1', '2026-10-28T17:02:00.000Z', {
+      evidenceCreationId: 'artifact-1', evidenceVersion: 1,
+    }),
+    experimentReport('missing-linked-event', 'missing-linked-report', 'moon-evidence', 'witness-2', '2026-10-28T17:03:00.000Z', {
+      evidenceCreationId: 'artifact-1', evidenceVersion: 9,
+    }),
+  ];
+  const world = {
+    events,
+    creations: [{
+      id: 'artifact-1',
+      version: 2,
+      publishedAt: '2026-10-28T17:00:30.000Z',
+      versions: [{ id: 'artifact-1', version: 1, publishedAt: '2026-10-28T17:00:00.000Z' }],
+    }],
+  };
+  const [object] = projectMoonshotWorldObjects(world);
+  assert.equal(object.attemptCount, 1);
+  assert.equal(object.challengeCount, 0);
+});
+
+test('adding retained research activity changes only the matching object counts, not its identity or position', () => {
+  const first = proposal('stable-proposal', 'stable-moon');
+  const before = projectMoonshotWorldObjects({ events: [first] })[0];
+  const after = projectMoonshotWorldObjects({
+    events: [first, experimentReport('stable-report-event', 'stable-report', 'stable-moon', 'witness-1', '2026-10-28T17:01:00.000Z')],
+  })[0];
+  assert.equal(after.id, before.id);
+  assert.equal(after.x, before.x);
+  assert.equal(after.y, before.y);
+  assert.equal(before.attemptCount, 0);
+  assert.equal(after.attemptCount, 1);
+});
