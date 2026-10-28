@@ -5,6 +5,7 @@ import { resolve, join, parse, sep } from 'node:path';
 
 const MAX_JSON = 131072;
 const MAX_STATE = 16 * 1024 * 1024;
+const MAX_LOCK_METADATA = 4096;
 const pending = new Set(['DISPATCHED', 'ACKNOWLEDGED']);
 const statuses = new Set([...pending, 'RESPONDED', 'FAILED', 'EXPIRED', 'UNAVAILABLE']);
 const queues = new Map();
@@ -265,32 +266,84 @@ async function acquireLock(path) {
       let owner, identity, file;
       try {
         const before = await lstat(path);
-        if (before.isSymbolicLink() || !before.isFile()) continue;
-        file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+        if (before.isSymbolicLink() || !before.isFile()) {
+          throw error('UNSAFE_LOCK', 'Courier lock path must be a regular non-symlink file; preserve it and inspect offline.');
+        }
+        requireValue(before.size <= MAX_LOCK_METADATA, 'CORRUPT_LOCK',
+          `Courier lock metadata exceeds ${MAX_LOCK_METADATA} bytes; preserve the lock and inspect offline.`);
+        file = await open(path, constants.O_RDONLY |
+          (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
         try {
           const opened = await file.stat();
-          if (!opened.isFile() || !sameLockSnapshot(before, opened)) continue;
-          const bytes = await file.readFile();
+          if (!opened.isFile()) {
+            throw error('UNSAFE_LOCK', 'Courier lock changed to a non-regular file; preserve it and inspect offline.');
+          }
+          if (!sameLockSnapshot(before, opened)) continue;
+          requireValue(opened.size <= MAX_LOCK_METADATA, 'CORRUPT_LOCK',
+            `Courier lock metadata exceeds ${MAX_LOCK_METADATA} bytes; preserve the lock and inspect offline.`);
+
+          // Bound bytes consumed even if the lock grows after the initial stat.
+          // O_NONBLOCK also prevents a path swapped to a FIFO from hanging open().
+          const chunks = [];
+          const buffer = Buffer.alloc(1024);
+          let total = 0;
+          while (true) {
+            const length = Math.min(buffer.length, MAX_LOCK_METADATA + 1 - total);
+            const { bytesRead } = await file.read(buffer, 0, length, null);
+            if (bytesRead === 0) break;
+            total += bytesRead;
+            requireValue(total <= MAX_LOCK_METADATA, 'CORRUPT_LOCK',
+              `Courier lock metadata exceeds ${MAX_LOCK_METADATA} bytes; preserve the lock and inspect offline.`);
+            chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+          }
+          const bytes = Buffer.concat(chunks, total);
           const afterHandle = await file.stat();
           let afterPath;
           try { afterPath = await lstat(path); }
           catch (readError) { if (readError.code === 'ENOENT') continue; throw readError; }
-          if (afterPath.isSymbolicLink() || !afterPath.isFile() ||
-              !sameLockSnapshot(opened, afterHandle) ||
-              !sameLockSnapshot(opened, afterPath) || bytes.length !== opened.size) continue;
+          if (afterPath.isSymbolicLink() || !afterPath.isFile()) {
+            throw error('UNSAFE_LOCK', 'Courier lock path changed to a non-regular file; preserve it and inspect offline.');
+          }
+          if (!sameLockSnapshot(opened, afterHandle) ||
+              !sameLockSnapshot(opened, afterPath) || total !== opened.size || bytes.length !== opened.size) continue;
           const decoded = bytes.toString('utf8');
-          if (!Buffer.from(decoded, 'utf8').equals(bytes)) continue;
-          try { owner = JSON.parse(decoded); } catch { continue; }
+          if (!Buffer.from(decoded, 'utf8').equals(bytes)) {
+            throw error('CORRUPT_LOCK', 'Courier lock metadata is not valid UTF-8; preserve the lock and inspect offline.');
+          }
+          try { owner = JSON.parse(decoded); }
+          catch { continue; }
           identity = { dev: opened.dev, ino: opened.ino };
         } finally {
           await file.close();
           file = undefined;
         }
       } catch (readError) {
-        if (readError.code === 'ENOENT' || readError.code === 'ELOOP') continue;
+        if (readError.code === 'ENOENT') continue;
+        if (readError.code === 'ELOOP') {
+          throw error('UNSAFE_LOCK', 'Courier lock path became a symlink while opening; preserve it and inspect offline.');
+        }
         throw readError;
       } finally {
         await file?.close().catch(() => {});
+      }
+
+      if (!owner || typeof owner !== 'object' || Array.isArray(owner)) {
+        throw error('CORRUPT_LOCK', 'Courier lock metadata must be a JSON object; preserve the lock and inspect offline.');
+      }
+      const ownerKeys = Object.keys(owner).sort().join('\0');
+      if (Object.hasOwn(owner, 'schema')) {
+        requireValue(owner.schema === 'ngl.courier-lock.v1' &&
+          ownerKeys === ['openedAt', 'pid', 'schema'].sort().join('\0') &&
+          Number.isSafeInteger(owner.pid) && owner.pid > 0 &&
+          typeof owner.openedAt === 'string' && Number.isFinite(Date.parse(owner.openedAt)),
+          'CORRUPT_LOCK', 'Courier lock metadata schema or fields are invalid; preserve the lock and inspect offline.');
+      } else {
+        // Accept the historical pid-only lock used by pre-schema releases, but
+        // never interpret arbitrary fields as owner metadata.
+        requireValue(Number.isSafeInteger(owner.pid) && owner.pid > 0 &&
+          Object.keys(owner).every(key => ['pid', 'openedAt'].includes(key)) &&
+          (owner.openedAt === undefined || typeof owner.openedAt === 'string'),
+          'CORRUPT_LOCK', 'Legacy courier lock metadata is invalid; preserve the lock and inspect offline.');
       }
 
       if (Number.isInteger(owner?.pid) && owner.pid > 0) {
