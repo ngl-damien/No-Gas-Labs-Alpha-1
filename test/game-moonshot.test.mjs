@@ -123,6 +123,7 @@ test('Moonshot quest completes only from the active character\'s unique retained
 });
 
 
+
 test('Moonshot source chronology compares instants rather than timestamp spelling', async () => {
   const published = await publishedSource();
   const proposal = await applyAction(published.world, {
@@ -136,9 +137,32 @@ test('Moonshot source chronology compares instants rather than timestamp spellin
   }, witness, { now: '2026-10-27T00:00:03.000Z' });
 
   const tampered = structuredClone(proposal.world);
-  // Lexically this sorts after the source's UTC timestamp, but +14:00 makes
-  // the actual instant the previous day. The source must not appear available.
+  // This timestamp string sorts before the proposal, but -10:00 places the
+  // source publication after it in real time. Lexical comparison is unsafe.
+  tampered.creations[0].publishedAt = '2026-10-26T23:00:00.000-10:00';
+  const eventAt = tampered.events.at(-1).at;
+  assert.ok(tampered.creations[0].publishedAt < eventAt, 'fixture must fool string ordering');
+  assert.ok(Date.parse(tampered.creations[0].publishedAt) > Date.parse(eventAt), 'fixture must put the source in the future');
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('world validation rejects backward event instants across timezone offsets', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Standalone chronology case',
+    hypothesis: 'The event sequence is ordered.',
+    falsifier: 'A later string represents an earlier instant.',
+    evidenceNeeded: 'Compare parsed timestamps.',
+    sourceCreationId: null,
+    sourceVersion: null
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+
+  const tampered = structuredClone(proposal.world);
+  const previousAt = tampered.events.at(-2).at;
   tampered.events.at(-1).at = '2026-10-27T01:00:00.000+14:00';
   tampered.updatedAt = tampered.events.at(-1).at;
+  assert.ok(tampered.events.at(-1).at > previousAt, 'fixture must sort forward as text');
+  assert.ok(Date.parse(tampered.events.at(-1).at) < Date.parse(previousAt), 'fixture must move the instant backward');
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
 });
