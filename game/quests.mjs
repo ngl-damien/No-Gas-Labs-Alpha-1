@@ -1,3 +1,4 @@
+import { isValidMoonshotProposal } from './research-records.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -366,13 +367,8 @@ export function getQuestTrail(world, viewer) {
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
   const moonshotProposals = events.filter(event =>
-    event?.type === 'moonshot-proposed' && typeof event.id === 'string' &&
-    uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole &&
-    typeof event.moonshotId === 'string' && event.moonshotId.length > 0 &&
-    typeof event.title === 'string' && event.title.trim() &&
-    typeof event.hypothesis === 'string' && event.hypothesis.trim() &&
-    typeof event.falsifier === 'string' && event.falsifier.trim() &&
-    typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()
+    isValidMoonshotProposal(event) && typeof event.id === 'string' &&
+    uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
   );
   const moonshotIdCounts = new Map();
   const reportIdCounts = new Map();
@@ -382,9 +378,8 @@ export function getQuestTrail(world, viewer) {
   }
   const proposalPositionById = new Map();
   trailRows(events).forEach((event, index) => {
-    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
-        moonshotIdCounts.get(event.moonshotId) === 1 && uniqueMoonshotEventIds.has(event.id) &&
-        typeof event.at === 'string' && Number.isFinite(Date.parse(event.at))) {
+    if (isValidMoonshotProposal(event) && moonshotIdCounts.get(event.moonshotId) === 1 &&
+        uniqueMoonshotEventIds.has(event.id)) {
       proposalPositionById.set(event.moonshotId, index);
     }
   });
