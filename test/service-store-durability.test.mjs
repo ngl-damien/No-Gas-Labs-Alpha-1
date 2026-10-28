@@ -328,3 +328,68 @@ test('service-store applies the revision guard to the canonical world payload', 
   assert.equal(reopened.value.events.length, 1, 'replay must retain exactly one winning world event');
   await reopened.close();
 });
+
+
+test('service-store value and commit results cannot mutate the retained projection', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-immutable-view-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, nested: { label: 'initial' }, items: [{ value: 1 }] };
+  const store = await createServiceStore({ dataDir, initial, validate: async value => value });
+
+  const view = store.value;
+  initial.nested.label = 'mutated through the caller-owned initial object';
+  assert.equal(view.nested.label, 'initial', 'initial caller references must be detached at open');
+  assert.equal(Object.isFrozen(view), true);
+  assert.equal(Object.isFrozen(view.nested), true);
+  assert.equal(Object.isFrozen(view.items), true);
+  assert.equal(Reflect.set(view.nested, 'label', 'tampered'), false);
+  assert.equal(Reflect.set(view.items[0], 'value', 99), false);
+  assert.equal(store.value.nested.label, 'initial');
+  assert.equal(store.value.items[0].value, 1);
+
+  const committed = await store.commit({ revision: 1, nested: { label: 'committed' }, items: [{ value: 2 }] });
+  assert.equal(Object.isFrozen(committed), true);
+  assert.equal(Reflect.set(committed.nested, 'label', 'tampered-result'), false);
+  assert.equal(store.value.nested.label, 'committed');
+
+  await store.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate: async value => value });
+  assert.deepEqual(reopened.value, { revision: 1, nested: { label: 'committed' }, items: [{ value: 2 }] });
+  await reopened.close();
+});
+
+
+test('service-store revision guard rejects missing or malformed canonical world revisions', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-revision-shape-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, world: { revision: 0 }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate });
+
+  await assert.rejects(
+    store.commit({ revision: 1, events: ['world field removed'] }),
+    error => error.code === 'SERVICE_STALE_REVISION' && error.status === 409
+  );
+  await assert.rejects(
+    store.commit({ revision: 1, world: { revision: 'invalid' }, events: ['nested revision malformed'] }),
+    error => error.code === 'SERVICE_STALE_REVISION' && error.status === 409
+  );
+  assert.deepEqual(store.value, initial, 'rejected revision-shape changes must not alter retained state');
+
+  await store.commit({ revision: 1, world: { revision: 1 }, events: ['valid progression'] });
+  assert.equal(store.value.world.revision, 1);
+  assert.deepEqual(store.value.events, ['valid progression']);
+  await store.close();
+});
+
+
+test('service-store preserves explicit top-level revision mode when world has no revision field', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-top-level-revision-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, world: { label: 'legacy payload' }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate });
+
+  await store.commit({ revision: 1, world: { label: 'updated legacy payload' }, events: ['one'] });
+  assert.equal(store.value.revision, 1);
+  assert.equal(store.value.world.label, 'updated legacy payload');
+  await store.close();
+});

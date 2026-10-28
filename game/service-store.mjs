@@ -6,6 +6,21 @@ import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.m
 
 const MAX_SERVICE_STORE_BYTES = 64 * 1024 * 1024;
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
+
+// The public value getter and commit result must not expose the mutable object
+// retained as the in-memory projection. Normalize through the same strict JSON
+// representation used on disk, then freeze the detached JSON graph once.
+function immutableSnapshot(value) {
+  const snapshot = JSON.parse(canonicalStringify(value));
+  const freeze = item => {
+    if (item && typeof item === 'object' && !Object.isFrozen(item)) {
+      for (const child of Object.values(item)) freeze(child);
+      Object.freeze(item);
+    }
+    return item;
+  };
+  return freeze(snapshot);
+}
 const storeReadError = (code, message) => Object.assign(new Error(message), { code });
 
 // Best-effort path walk: reject symlinked ancestors before recursive creation,
@@ -155,13 +170,45 @@ function durabilityUncertain(cause) {
 }
 
 function revisionOf(value) {
-  const revision = Number.isSafeInteger(value?.world?.revision) ? value.world.revision : value?.revision;
-  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: null, revision: null };
+  if (Object.hasOwn(value, 'world')) {
+    const world = value.world;
+    if (!world || typeof world !== 'object' || Array.isArray(world)) {
+      return { kind: 'world', revision: null };
+    }
+    if (Object.hasOwn(world, 'revision')) {
+      const revision = world.revision;
+      return { kind: 'world', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+    }
+    // Older/custom store payloads may use a top-level revision while carrying
+    // an unrelated world object. Only an explicitly present nested revision
+    // selects canonical world-revision mode; malformed nested revisions fail closed.
+    if (Object.hasOwn(value, 'revision')) {
+      const revision = value.revision;
+      return { kind: 'top-level', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+    }
+    return { kind: null, revision: null };
+  }
+  if (Object.hasOwn(value, 'revision')) {
+    const revision = value.revision;
+    return { kind: 'top-level', revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null };
+  }
+  return { kind: null, revision: null };
+}
+
+function assertRevisionProgression(previous, candidate) {
+  const before = revisionOf(previous);
+  const after = revisionOf(candidate);
+  if (before.kind === null && after.kind === null) return;
+  if (before.kind !== after.kind || before.revision === null || after.revision === null ||
+      after.revision !== before.revision + 1) {
+    throw staleRevisionError();
+  }
 }
 
 function staleRevisionError() {
   return Object.assign(new Error(
-    'Service store candidate is stale or skips the current revision; rebuild it from the latest committed value.'
+    'Service store candidate must preserve the revision shape and advance exactly one revision; rebuild it from the latest committed value.'
   ), { code: 'SERVICE_STALE_REVISION', status: 409 });
 }
 
@@ -239,10 +286,10 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
         throw storeReadError('SERVICE_STORE_NONCANONICAL', 'Service store envelope must use canonical JSON encoding');
       }
       if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
-      current = await validate(envelope.payload);
+      current = immutableSnapshot(await validate(envelope.payload));
     } catch (error) { await close(); throw error; }
   } else {
-    try { current = await validate(initial); await persist(current); }
+    try { current = immutableSnapshot(await validate(initial)); await persist(current); }
     catch (error) { await close(); throw error; }
   }
   async function assertStableDirectory() {
@@ -305,13 +352,8 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
         if (released) throw closedStoreError();
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
-        const valid = await validate(snapshot);
-        const previousRevision = revisionOf(current);
-        const candidateRevision = revisionOf(valid);
-        if (previousRevision !== null && candidateRevision !== null &&
-            candidateRevision !== previousRevision + 1) {
-          throw staleRevisionError();
-        }
+        const valid = immutableSnapshot(await validate(snapshot));
+        assertRevisionProgression(current, valid);
         await persist(valid);
         current = valid;
         return current;
