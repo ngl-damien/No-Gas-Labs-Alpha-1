@@ -216,3 +216,20 @@ test('experiment reports reject unbound proposals, invalid outcomes, incomplete 
   assert.equal(projectCharacter(reordered, witness).skills.find(skill => skill.id === 'experimenter').count, 0);
   await assert.rejects(validateWorld(reordered), error => error.code === 'INVALID_WORLD');
 });
+
+test('experiment-report quest can act on another actor\'s retained proposal without claiming proposal ownership', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Shared research question',
+    hypothesis: 'A bounded claim holds.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'An independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, founder, { now: '2026-10-27T00:00:03.000Z' });
+  const witnessQuest = getQuestTrail(proposal.world, witness).find(item => item.id === 'witness-experiment-report');
+  assert.equal(witnessQuest.complete, false);
+  assert.deepEqual(witnessQuest.action, { type: 'location', id: 'moonshot_field' });
+  assert.equal(witnessQuest.blockedReason, null);
+});
