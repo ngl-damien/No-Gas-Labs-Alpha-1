@@ -132,7 +132,8 @@ test('hash-pinned reference rejects a symlinked file or parent directory', async
 test('hash-pinned reference rejects traversal and sensitive path classes', async t => {
   const directory = await temp(t);
   const validHash = 'a'.repeat(64);
-  for (const path of ['../outside.md', '.runtime/founder.key', '.git/config', 'docs/secret.pem', '/etc/passwd']) {
+  const windowsPath = ['docs', '..', 'outside.md'].join(String.fromCharCode(92));
+  for (const path of ['../outside.md', windowsPath, '.runtime/founder.key', '.git/config', 'docs/secret.pem', '/etc/passwd']) {
     await assert.rejects(
       readVerifiedReference(directory, { path, sha256: validHash }),
       /Unsafe recovery reference/
@@ -253,7 +254,7 @@ test('aggregate reference budget prevents oversized later reads but continues wi
   assert.equal(result.failures.length, 1);
 });
 
-test('aggregate byte accounting includes bytes read before a detected replacement', async t => {
+test('aggregate byte accounting includes bytes consumed by a failed digest check', async t => {
   const directory = await temp(t);
   const docs = join(directory, 'docs');
   await mkdir(docs, { mode: 0o700 });
