@@ -43,3 +43,11 @@ Regression file: `test/game-temporal-order.test.mjs`. Server startup regression 
 5. Reconcile stale storage/key-loading PRs against current `main` rather than importing old branch history wholesale.
 
 No merge, deployment, release, spending, production key operation, or Founder-identity claim occurred.
+
+
+## Verification follow-up — failure inspected and repaired
+
+- Exact-head full verification run [40617012518](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40617012518) failed: 500 tests passed, 1 new regression failed because `applyAction`'s source-bound proposal path checked version existence but did not check whether the selected version had been published by the proposal instant.
+- Inspected the failing log and the current source around the proposal action. Added `063d2f153bfaf23b2333ca29829517d8a67d9093` to resolve the retained source version and reject non-finite or future publication instants before recording a proposal.
+- Genesis Evidence Invariant run [40617012460](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40617012460) passed on the earlier head. Browser acceptance run [40617012491](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40617012491) was still in progress when inspected. Neither result verifies the repaired head.
+- The repair pushed new commits and requires a fresh exact-head full verification, Genesis Evidence Invariant, and browser acceptance result. Do not infer that the failed test passed after the fix.
