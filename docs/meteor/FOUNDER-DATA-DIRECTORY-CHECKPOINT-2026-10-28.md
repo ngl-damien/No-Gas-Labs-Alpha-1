@@ -32,3 +32,13 @@
 4. Keep production trust fail-closed until an independently controlled signing operation and actual mutation-path integration are demonstrated.
 
 No merge, deployment, release, spending, production key operation, or Founder decision occurred.
+
+
+## Follow-up cycle — reject symlinked ancestors before creating runtime state
+
+- Source fix commit: `f476656682a22a0e2373da92c21c2f9e7c3cf036`.
+- Regression test commit: `3c518b58c67a3286c751fa44101deb9395fe2793`.
+- Fresh source review found that the original directory guard used `lstat(dataDir)` only after `mkdir(dataDir, { recursive: true })`. A real final directory reached through a symlinked parent could therefore be created before the later service-store path walk rejected it.
+- `createGameServer()` now walks existing path components before recursive creation and rejects symlink or non-directory ancestors. The test asserts that a runtime directory is not created through a symlinked parent.
+- Limitation: this is a best-effort pathname walk, not an atomic `openat` capability boundary; same-user races are not eliminated.
+- Required next verification: full repository verification, Genesis Evidence Invariant, and browser acceptance on the exact checkpoint head. No local test execution is claimed.
