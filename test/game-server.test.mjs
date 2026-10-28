@@ -710,3 +710,57 @@ test('Moonshot Field retains a bounded proposal and exact retry without duplicat
   const afterStale = await founder.request('/api/state');
   assert.equal(afterStale.body.world.events.filter(event => event.type === 'moonshot-proposed').length, 1);
 });
+
+test('Moonshot experiment reports are replay-safe and remain self-reported claims', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Experiment evidence artifact');
+  const witness = f.client();
+  const proposalResponse = await witness.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Does the claim survive?',
+    hypothesis: 'The claim holds under the stated condition.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'The exact retained artifact and an independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1,
+    requestId: 'experiment-proposal-001'
+  });
+  assert.equal(proposalResponse.response.status, 200, JSON.stringify(proposalResponse.body));
+  const action = {
+    type: 'report-experiment',
+    moonshotId: proposalResponse.body.result.moonshotId,
+    procedure: 'Repeat the stated comparison under the documented condition.',
+    observation: 'The attempt failed before a usable measurement was produced.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1,
+    requestId: 'experiment-report-retry-001'
+  };
+  const first = await witness.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const retry = await witness.request('/api/action', action);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.equal(retry.body.result.reportId, first.body.result.reportId);
+
+  const state = await founder.request('/api/state');
+  const reports = state.body.world.events.filter(event => event.type === 'experiment-reported');
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].actor.role, 'witness');
+  assert.equal(reports[0].reportedOutcome, 'failed');
+  assert.equal(reports[0].outcome, undefined);
+  assert.equal(reports[0].status, undefined);
+  assert.equal(reports[0].evidenceCreationId, published.result.creationId);
+  assert.equal(state.body.world.xp, published.world.xp);
+
+  const invalid = await witness.request('/api/action', {
+    ...action, reportedOutcome: 'verified', requestId: 'experiment-report-invalid-outcome'
+  });
+  assert.equal(invalid.response.status, 400, JSON.stringify(invalid.body));
+  assert.equal(invalid.body.error.code, 'INVALID_OUTCOME');
+  const afterInvalid = await founder.request('/api/state');
+  assert.equal(afterInvalid.body.world.events.filter(event => event.type === 'experiment-reported').length, 1);
+});
