@@ -380,3 +380,16 @@ test('service-store revision guard rejects missing or malformed canonical world 
   assert.deepEqual(store.value.events, ['valid progression']);
   await store.close();
 });
+
+
+test('service-store preserves explicit top-level revision mode when world has no revision field', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-top-level-revision-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, world: { label: 'legacy payload' }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate });
+
+  await store.commit({ revision: 1, world: { label: 'updated legacy payload' }, events: ['one'] });
+  assert.equal(store.value.revision, 1);
+  assert.equal(store.value.world.label, 'updated legacy payload');
+  await store.close();
+});
