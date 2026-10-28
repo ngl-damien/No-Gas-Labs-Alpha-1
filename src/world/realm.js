@@ -1,3 +1,5 @@
+import { isSafeEventPayload, validatedEventList } from "./project.js";
+
 export const locations = Object.freeze({
   guild_hall: "Guild Hall",
   forge: "Forge",
@@ -21,7 +23,15 @@ export const routes = Object.freeze({
 });
 
 export function canTravel(from, to) {
-  return Boolean(locations[from] && locations[to] && routes[from]?.includes(to));
+  return typeof from === "string" && typeof to === "string" &&
+    Object.hasOwn(locations, from) && Object.hasOwn(locations, to) &&
+    Object.hasOwn(routes, from) && routes[from].includes(to);
+}
+
+function isPlainRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function classifyEvent(event) {
@@ -40,23 +50,66 @@ function classifyEvent(event) {
   return "evidence_archive";
 }
 
+function validatedRealmState(state) {
+  // Validate descriptors and the entire data graph before any ordinary property
+  // reads, spreads, mapping, or cloning can invoke an attacker-supplied getter.
+  if (!isPlainRecord(state) || !isSafeEventPayload(state)) {
+    throw new Error("invalid realm projection state");
+  }
+
+  const history = validatedEventList(state.history ?? [], "realm event");
+  const xp = state.xp ?? 0;
+  if (!Number.isSafeInteger(xp) || xp < 0) throw new Error("invalid realm XP");
+
+  const inventory = state.inventory ?? {};
+  if (!isPlainRecord(inventory)) throw new Error("invalid realm inventory");
+  for (const amount of Object.values(inventory)) {
+    if (!Number.isSafeInteger(amount) || amount < 0) throw new Error("invalid realm inventory amount");
+  }
+
+  const quests = state.quests ?? {};
+  if (!isPlainRecord(quests)) throw new Error("invalid realm quests");
+  for (const quest of Object.values(quests)) {
+    if (!isPlainRecord(quest) || typeof quest.status !== "string" || !quest.status ||
+        typeof quest.source_event !== "string" || !quest.source_event) {
+      throw new Error("invalid realm quest record");
+    }
+  }
+
+  const audit = validatedEventList(state.revocation_audit ?? [], "realm revocation audit");
+  for (const entry of audit) {
+    if (!isPlainRecord(entry) ||
+        typeof entry.event_id !== "string" || !entry.event_id ||
+        typeof entry.grant_id !== "string" || !entry.grant_id ||
+        !["global", "quest"].includes(entry.scope) ||
+        (entry.scope === "global" && entry.quest_id !== null) ||
+        (entry.scope === "quest" && (typeof entry.quest_id !== "string" || !entry.quest_id))) {
+      throw new Error("invalid realm revocation audit entry");
+    }
+  }
+
+  return { history, xp, inventory, quests, audit };
+}
+
 export function projectRealm(state) {
+  const { history, xp, inventory, quests, audit } = validatedRealmState(state);
   const institutions = Object.fromEntries(
     Object.keys(locations).map(id => [id, { event_ids: [], exits: [...routes[id]] }])
   );
 
-  for (const event of state.history || []) {
+  for (const event of history) {
     institutions[classifyEvent(event)].event_ids.push(event.event_id);
   }
 
   return {
     locations,
     institutions,
-    avatar: { xp: state.xp || 0, inventory: { ...(state.inventory || {}) } },
-    quests: { ...(state.quests || {}) },
-    history: (state.history || []).map(event => event.event_id),
+    avatar: { xp, inventory: structuredClone(inventory) },
+    // A realm is a read model: nested records must not alias canonical state.
+    quests: structuredClone(quests),
+    history: history.map(event => event.event_id),
     // Preserve scope and event identity for the realm's evidence/audit view.
-    revocation_audit: (state.revocation_audit || []).map(entry => ({
+    revocation_audit: audit.map(entry => ({
       event_id: entry.event_id,
       grant_id: entry.grant_id,
       scope: entry.scope,

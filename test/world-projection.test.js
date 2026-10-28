@@ -203,6 +203,47 @@ test("MMORPG realm derives avatar and quests from verified canonical projection"
   assert.equal(realm.locations.guild_hall, "Guild Hall");
 });
 
+
+test("realm quest records are detached from canonical projection state", () => {
+  const state = projectWorld([claim, observed], undefined, trusted);
+  const realm = projectRealm(state);
+
+  realm.quests["forge-gate"].status = "FORGED";
+  realm.quests["forge-gate"].source_event = "attacker-edited-view";
+
+  assert.equal(state.quests["forge-gate"].status, "COMPLETED");
+  assert.equal(state.quests["forge-gate"].source_event, "e2");
+});
+
+
+test("realm rejects accessor-backed state without invoking getters", () => {
+  const state = projectWorld([claim]);
+  let getterCalls = 0;
+  Object.defineProperty(state, "xp", {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return 0; }
+  });
+
+  assert.throws(() => projectRealm(state), /invalid realm projection state/);
+  assert.equal(getterCalls, 0);
+});
+
+test("realm rejects malformed inventory quantities and revocation audit scope", () => {
+  const badInventory = projectWorld([claim]);
+  badInventory.inventory.verified_shard = -1;
+  assert.throws(() => projectRealm(badInventory), /invalid realm inventory amount/);
+
+  const badAudit = projectWorld([claim]);
+  badAudit.revocation_audit = [{
+    event_id: "bad-global-audit",
+    grant_id: "grant-x",
+    scope: "global",
+    quest_id: "quest-a"
+  }];
+  assert.throws(() => projectRealm(badAudit), /invalid realm revocation audit entry/);
+});
+
 test("an unverified observation cannot mint canonical progress", () => {
   const unverified = { ...observed, event_id: "e11" };
   delete unverified.observation_verification;
@@ -217,6 +258,11 @@ test("institutional traversal is constrained by the realm graph", async () => {
   assert.equal(canTravel("guild_hall", "decision_chamber"), true);
   assert.equal(canTravel("guild_hall", "forge"), false);
   assert.equal(canTravel("nowhere", "forge"), false);
+  for (const prototypeKey of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    assert.equal(canTravel(prototypeKey, "forge"), false);
+    assert.equal(canTravel("guild_hall", prototypeKey), false);
+  }
+  assert.equal(canTravel({}, "forge"), false);
   const realm = projectRealm(projectWorld([claim]));
   assert.deepEqual(realm.institutions.guild_hall.exits, ["decision_chamber", "town_square", "academy"]);
 });
