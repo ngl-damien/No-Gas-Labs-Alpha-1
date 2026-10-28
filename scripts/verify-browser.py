@@ -348,6 +348,8 @@ def shared(browser,url,data,out):
         evidence_objective=b.locator('[data-objective-id="witness-experiment-evidence"]')
         expect(evidence_objective).to_contain_text('RECORDED')
         expect(evidence_objective).to_contain_text('1/1')
+        expect(evidence_objective).to_contain_text('Linkage only: this records a report-to-version reference.')
+        expect(evidence_objective).to_contain_text('It does not verify the procedure, observation, outcome, or hypothesis.')
         evidence_objective.get_by_text('Inspect retained evidence',exact=True).click()
         expect(evidence_objective).to_contain_text('creation '+creation_id)
         expect(evidence_objective).to_contain_text('version 2')
