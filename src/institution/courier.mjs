@@ -2,6 +2,7 @@ import { createHash, createPublicKey, randomUUID, sign, verify } from 'node:cryp
 import { constants } from 'node:fs';
 import { mkdir, chmod, open, rename, unlink, lstat } from 'node:fs/promises';
 import { resolve, join, parse, sep } from 'node:path';
+import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
 
 const MAX_JSON = 131072;
 const MAX_STATE = 16 * 1024 * 1024;
@@ -309,6 +310,15 @@ async function acquireLock(path) {
           const decoded = bytes.toString('utf8');
           if (!Buffer.from(decoded, 'utf8').equals(bytes)) {
             throw error('CORRUPT_LOCK', 'Courier lock metadata is not valid UTF-8; preserve the lock and inspect offline.');
+          }
+          try {
+            assertNoDuplicateJsonObjectKeys(decoded, { label: 'COURIER_LOCK', maxDepth: 8 });
+          } catch (parseError) {
+            if (parseError.message === 'COURIER_LOCK_DUPLICATE_JSON_KEY') {
+              throw error('CORRUPT_LOCK',
+                'Courier lock metadata contains duplicate JSON keys; preserve the lock and inspect offline.');
+            }
+            continue;
           }
           try { owner = JSON.parse(decoded); }
           catch { continue; }
