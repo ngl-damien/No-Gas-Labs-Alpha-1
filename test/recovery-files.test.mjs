@@ -86,6 +86,13 @@ test('stable reader enforces the byte limit before reading', async t => {
   assert.equal(MAX_RECOVERY_STATE_BYTES, 1024 * 1024);
 });
 
+test('stable reader rejects caller-supplied limits above the global recovery ceiling before filesystem access', async () => {
+  await assert.rejects(
+    readStableRegularFile('unused-path', { maxBytes: MAX_RECOVERY_TOTAL_BYTES + 1, label: 'Fixture' }),
+    error => error instanceof TypeError && error.message.includes(String(MAX_RECOVERY_TOTAL_BYTES))
+  );
+});
+
 test('hash-pinned reference returns only a contained regular file', async t => {
   const directory = await temp(t);
   const docs = join(directory, 'docs');

@@ -91,8 +91,8 @@ export async function readStableRegularFile(filePath, {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new TypeError(`${label} path is required`);
   }
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
-    throw new TypeError('A positive safe byte limit is required');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_RECOVERY_TOTAL_BYTES) {
+    throw new TypeError(`A positive safe byte limit no greater than ${MAX_RECOVERY_TOTAL_BYTES} bytes is required`);
   }
 
   const before = await lstat(filePath);
