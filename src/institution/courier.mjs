@@ -171,6 +171,9 @@ async function unlinkOwnedCourierLock(path, identity) {
 async function acquireLock(path) {
   const deadline = Date.now() + 5000;
   while (true) {
+    // Every retry path, including a changing or malformed lock's continue,
+    // must remain inside the same bounded wait budget.
+    requireValue(Date.now() < deadline, 'BUSY', 'Courier is locked by another process');
     try {
       const lock = await open(path, 'wx', 0o600);
       let identity;
