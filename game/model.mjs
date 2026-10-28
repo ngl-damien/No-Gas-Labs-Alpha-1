@@ -1,6 +1,7 @@
 import {createArtifact} from './artifacts.mjs';
 const encoder=new TextEncoder();
 const kinds=new Set(['comic','loom','observatory','custom']);
+const challengeTypes=new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
 const knownPlaces=new Set(['relay','river','overlook','ruins']);
 const slots=[{x:540,y:610},{x:480,y:395},{x:1120,y:560},{x:1190,y:390},{x:1050,y:830},{x:380,y:800},{x:650,y:825},{x:1450,y:590},{x:270,y:310},{x:1400,y:180},{x:1100,y:190},{x:530,y:180}];
 const clone=value=>structuredClone(value);
@@ -108,6 +109,31 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       recordEvent('experiment-reported',{reportId,moonshotId,procedure,observation,reportedOutcome,evidenceCreationId,evidenceVersion});
       break;
     }
+    case 'challenge-experiment-report':{
+      const reportId=text(action.reportId,128,'Experiment report ID');
+      const matches=world.events.filter(e=>e.type==='experiment-reported'&&e.reportId===reportId);
+      if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
+      const report=matches[0];
+      if(report.actor.id===who.id)fail('SELF_CHALLENGE','A different actor ID must challenge this report.',409);
+      if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
+      const challengeText=text(action.challengeText,1000,'Challenge text');
+      const hasEvidenceId=action.evidenceCreationId!==undefined&&action.evidenceCreationId!==null;
+      const hasEvidenceVersion=action.evidenceVersion!==undefined&&action.evidenceVersion!==null;
+      if(hasEvidenceId!==hasEvidenceVersion)fail('INVALID_EVIDENCE','Choose both a retained challenge-evidence artifact and version, or neither.');
+      let evidenceCreationId=null,evidenceVersion=null;
+      if(hasEvidenceId){
+        if(typeof action.evidenceCreationId!=='string'||!action.evidenceCreationId.trim()||!Number.isSafeInteger(action.evidenceVersion)||action.evidenceVersion<1)fail('INVALID_EVIDENCE','Challenge evidence artifact and version must be valid.');
+        const source=world.creations.find(c=>c.id===action.evidenceCreationId);
+        if(!source)fail('NOT_FOUND','Challenge evidence artifact not found.',404);
+        const version=source.version===action.evidenceVersion?source:source.versions.find(v=>v.version===action.evidenceVersion);
+        if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That challenge evidence version is not retained at the challenge time.',409);
+        evidenceCreationId=source.id;evidenceVersion=action.evidenceVersion;
+      }
+      const challengeId=uid('experiment-challenge');
+      result={challengeId};
+      recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
+      break;
+    }
     case 'discover':{
       if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
       if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId)){result={discovered:false};recordEvent('discover',{locationId:action.locationId,repeat:true});break;}
@@ -132,7 +158,7 @@ export async function validateWorld(raw) {
   for(const c of raw.creations){unique(c.id);await checkArtifact(c);if(!Array.isArray(c.versions)||c.versions.length!==c.version-1)invalid('Incomplete version history.');for(let i=0;i<c.versions.length;i++){const v=c.versions[i];if(v.id!==c.id||v.version!==i+1||v.versions!==undefined)invalid('Invalid flat version history.');await checkArtifact(v)}}
   for(const d of raw.drafts){unique(d.id);await checkArtifact(d);if(!Number.isInteger(d.baseVersion)||d.baseVersion<0||d.version!==d.baseVersion+1)invalid('Invalid draft base.');if(d.creationId&&!raw.creations.some(c=>c.id===d.creationId))invalid('Orphan draft.');}
   if(raw.xp!==raw.creations.reduce((sum,c)=>sum+c.version*100,0))invalid('Game rewards do not match published versions.');
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=raw.events.filter(e=>e.type==='publish'&&e.creationId===version.id&&e.version===version.version);if(!Number.isFinite(publishedAt)||publications.length!==1||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
   for(const e of raw.events)if(e.type==='moonshot-proposed'){
@@ -148,7 +174,7 @@ export async function validateWorld(raw) {
       if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Malformed moonshot source reference.');
     }
   }
-  const reportIds=new Set();
+  const reportIds=new Set(),experimentReports=new Map(),challengeIds=new Set();
   const allowedReportedOutcomes=new Set(['supports','contradicts','inconclusive','failed']);
   const allowedExperimentKeys=new Set(['id','type','actor','at','semantics','reportId','moonshotId','procedure','observation','reportedOutcome','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='experiment-reported'){
@@ -156,6 +182,7 @@ export async function validateWorld(raw) {
     unique(e.reportId);
     if(reportIds.has(e.reportId))invalid('Duplicate experiment report identity.');
     reportIds.add(e.reportId);
+    experimentReports.set(e.reportId,e);
     if(typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||
        typeof e.procedure!=='string'||!e.procedure.trim()||Array.from(e.procedure).length>1000||
        typeof e.observation!=='string'||!e.observation.trim()||Array.from(e.observation).length>1000||
@@ -172,6 +199,27 @@ export async function validateWorld(raw) {
       const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
       if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
+    }
+  }
+  const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];if(e.type!=='experiment-challenged')continue;
+    if(Object.keys(e).some(key=>!allowedChallengeKeys.has(key)))invalid('Experiment challenge contains unsupported canonical fields.');
+    unique(e.challengeId);
+    if(challengeIds.has(e.challengeId)||typeof e.challengeId!=='string'||!e.challengeId||typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||!challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000)invalid('Malformed or repeated experiment challenge.');
+    challengeIds.add(e.challengeId);
+    const report=experimentReports.get(e.reportId),reportIndex=raw.events.findIndex(item=>item.type==='experiment-reported'&&item.reportId===e.reportId);
+    if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||report.actor.id===e.actor.id||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
+    const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
+    const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
+    if(hasEvidenceId!==hasEvidenceVersion)invalid('Experiment challenge evidence reference is incomplete.');
+    if(!hasEvidenceId){
+      if(e.evidenceCreationId!==undefined&&e.evidenceCreationId!==null)invalid('Unlinked challenge evidence must be explicitly null.');
+      if(e.evidenceVersion!==undefined&&e.evidenceVersion!==null)invalid('Unlinked challenge evidence version must be explicitly null.');
+    }else{
+      const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
+      const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
+      if(!version||!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
     }
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}

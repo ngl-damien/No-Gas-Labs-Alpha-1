@@ -792,3 +792,105 @@ test('server startup rejects a persisted event history that moves backward in re
     error => error.code === 'INVALID_WORLD' || /World history authority \/ time mismatch/.test(error.message)
   );
 });
+
+
+test('Moonshot report challenges are attributed, replay-safe dissent rather than adjudication', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Challenge evidence artifact');
+  const witness = f.client();
+  const proposal = await witness.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Can the observation be reproduced?',
+    hypothesis: 'The observation repeats under the stated conditions.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'The procedure, retained artifact and a repeatable measurement.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1,
+    requestId: 'challenge-proposal-001'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const report = await witness.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat the documented comparison.',
+    observation: 'The required measurement settings were not available.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'challenge-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+
+  const challengeAction = {
+    type: 'challenge-experiment-report',
+    reportId: report.body.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report lacks the measurement settings needed to reproduce the attempt.',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1,
+    requestId: 'experiment-challenge-retry-001'
+  };
+  const first = await founder.request('/api/action', challengeAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const retry = await founder.request('/api/action', challengeAction);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.idempotentReplay, true);
+  assert.equal(retry.body.result.challengeId, first.body.result.challengeId);
+
+  const selfChallenge = await witness.request('/api/action', {
+    ...challengeAction,
+    requestId: 'experiment-self-challenge-001'
+  });
+  assert.equal(selfChallenge.response.status, 409, JSON.stringify(selfChallenge.body));
+  assert.equal(selfChallenge.body.error.code, 'SELF_CHALLENGE');
+
+  const state = await founder.request('/api/state');
+  const challenges = state.body.world.events.filter(event => event.type === 'experiment-challenged');
+  const reports = state.body.world.events.filter(event => event.type === 'experiment-reported');
+  assert.equal(challenges.length, 1);
+  assert.equal(reports.length, 1);
+  assert.equal(challenges[0].reportId, reports[0].reportId);
+  assert.equal(challenges[0].evidenceCreationId, published.result.creationId);
+  assert.equal(challenges[0].evidenceVersion, 1);
+  assert.equal(challenges[0].actor.role, 'founder');
+  assert.equal(challenges[0].outcome, undefined);
+  assert.equal(challenges[0].status, undefined);
+  assert.equal(reports[0].outcome, undefined);
+  assert.equal(reports[0].status, undefined);
+  assert.equal(state.body.world.xp, published.world.xp);
+
+  // An uncertain client response can be retried after a process restart without
+  // creating a second challenge or losing its evidence reference.
+  await f.closeGame();
+  let restarted;
+  t.after(async () => { if (restarted) await restarted.closeGame().catch(() => {}); });
+  restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const replay = await fetch(origin + '/api/action', {
+    method: 'POST',
+    headers: { cookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify(challengeAction)
+  });
+  assert.equal(replay.status, 200);
+  const replayBody = await replay.json();
+  assert.equal(replayBody.idempotentReplay, true);
+  assert.equal(replayBody.result.challengeId, first.body.result.challengeId);
+  const restartedState = await (await fetch(origin + '/api/state', { headers: { cookie } })).json();
+  const afterRestart = restartedState.world.events.filter(event => event.type === 'experiment-challenged');
+  assert.equal(afterRestart.length, 1);
+  assert.equal(afterRestart[0].evidenceCreationId, published.result.creationId);
+  assert.equal(afterRestart[0].evidenceVersion, 1);
+  await restarted.closeGame();
+  restarted = null;
+});

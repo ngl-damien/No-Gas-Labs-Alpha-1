@@ -319,6 +319,44 @@ def shared(browser,url,data,out):
         assert snapshot['world']['creations'][0]['version']==2 and len(snapshot['world']['methods'])==1
         assert len(snapshot['institution']['kernel']['accepted'])==2
         assert visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()==original
+        # A different attributed actor can preserve dissent against a self-reported experiment; this is not adjudication.
+        moonshot_response=visitor.request.post(url+'api/action',data={
+            'type':'propose-moonshot','title':'Can the shared observation be reproduced?',
+            'hypothesis':'The observation repeats under the stated conditions.',
+            'falsifier':'A controlled repeat fails to reproduce it.',
+            'evidenceNeeded':'The procedure, retained artifact and a repeatable measurement.',
+            'sourceCreationId':creation_id,'sourceVersion':2,'requestId':'browser-moonshot-proposal'
+        })
+        assert moonshot_response.status==200, moonshot_response.text()
+        moonshot_id=moonshot_response.json()['result']['moonshotId']
+        experiment_response=visitor.request.post(url+'api/action',data={
+            'type':'report-experiment','moonshotId':moonshot_id,
+            'procedure':'Repeat the documented comparison.',
+            'observation':'The measurement settings are missing from the record.',
+            'reportedOutcome':'inconclusive','evidenceCreationId':creation_id,'evidenceVersion':2,
+            'requestId':'browser-experiment-report'
+        })
+        assert experiment_response.status==200, experiment_response.text()
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
+        a.get_by_role('button',name='Challenge this report →',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Challenge experiment report')
+        a.locator('#experiment-challenge-type').select_option('missing-evidence')
+        a.locator('#experiment-challenge-evidence-source').select_option(creation_id)
+        assert a.locator('#experiment-challenge-evidence-version').input_value()=='2'
+        a.locator('#experiment-challenge-text').fill('The report omits the measurement settings needed to reproduce the attempt.')
+        a.locator('#challenge-experiment-report').click()
+        expect(a.locator('#sheet')).to_contain_text('DISSENT · NOT ADJUDICATED')
+        expect(a.locator('#sheet')).to_contain_text('measurement settings needed to reproduce')
+        expect(a.locator('#sheet')).to_contain_text('Inspect challenge evidence v2')
+        challenge_state=visitor.request.get(url+'api/state').json()
+        retained_challenges=[event for event in challenge_state['world']['events'] if event['type']=='experiment-challenged']
+        assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
+        assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
+        assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
+        assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        close_sheet(a)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
