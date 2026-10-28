@@ -47,13 +47,14 @@ try {
           path: referencePath,
           reason: 'sha256-mismatch',
           expectedSha256: verified.expectedSha256,
-          actualSha256: verified.actualSha256
+          actualSha256: verified.actualSha256,
+          message: `Recovery reference changed: ${referencePath} (expected SHA-256 ${verified.expectedSha256}, observed ${verified.actualSha256})`
         });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       receipts.push({ path: referencePath, status: 'error', error: message });
-      failures.push({ path: referencePath, reason: message });
+      failures.push({ path: referencePath, reason: message, message: `Recovery reference error: ${referencePath}: ${message}` });
     }
   }
 
@@ -72,10 +73,15 @@ try {
     rollback: state.rollback,
     recovered,
     receipts,
-    failures,
+    failures: failures.map(({ path, reason, expectedSha256, actualSha256 }) => ({
+      path, reason, expectedSha256, actualSha256
+    })),
     scope: 'New Node process using durable files only; not a fresh cloud/environment restoration.'
   }, null, 2));
-  if (!passed) process.exitCode = 1;
+  if (!passed) {
+    console.error(failures.map(failure => failure.message).join('\n'));
+    process.exitCode = 1;
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
