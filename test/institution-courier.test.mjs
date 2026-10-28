@@ -254,6 +254,26 @@ test('courier release preserves a replacement lock and emits inspectable owner m
   assert.equal(report.safeToRemove, false);
 });
 
+test('courier lock acquisition deadline also bounds unstable-lock retry paths', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  await writeFile(lockPath, '{', { mode: 0o600 });
+
+  const realNow = Date.now;
+  let calls = 0;
+  Date.now = () => [1000, 1000, 10000][Math.min(calls++, 2)];
+  const cleanup = setTimeout(() => { rm(lockPath, { force: true }).catch(() => {}); }, 100);
+  try {
+    await assert.rejects(
+      f.courier.dispatch({ requestId: 'bounded-lock-retry', capability: 'review', input: {}, expiresAt: 5000 }),
+      { code: 'BUSY' }
+    );
+  } finally {
+    clearTimeout(cleanup);
+    Date.now = realNow;
+  }
+});
+
 test('concurrent clients preserve stale lock and state until explicit recovery; normal clients serialize', async t => {
   const f=await fixture(t,[]),lock=join(f.dataDir,'.courier.lock');
   const before=await readFile(join(f.dataDir,'courier.json'),'utf8');
