@@ -99,6 +99,8 @@ export async function readRecoveryState(filePath) {
 /**
  * Read a hash-pinned repository reference without following symlinks. The
  * content hash is checked only after a bounded read from a stable file handle.
+ * A hash mismatch is returned as data so the caller can report every stale
+ * reference in one run; callers must still fail closed when verified is false.
  */
 export async function readVerifiedReference(rootPath, reference) {
   const referencePath = reference?.path;
@@ -137,9 +139,12 @@ export async function readVerifiedReference(rootPath, reference) {
     maxBytes: MAX_RECOVERY_REFERENCE_BYTES,
     label: `Recovery reference ${referencePath}`
   });
-  const actual = createHash('sha256').update(bytes).digest('hex');
-  if (actual !== reference.sha256) {
-    throw new Error(`Recovery reference changed: ${referencePath}`);
-  }
-  return { target, size: bytes.length };
+  const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+  return {
+    target,
+    size: bytes.length,
+    expectedSha256: reference.sha256,
+    actualSha256,
+    verified: actualSha256 === reference.sha256
+  };
 }
