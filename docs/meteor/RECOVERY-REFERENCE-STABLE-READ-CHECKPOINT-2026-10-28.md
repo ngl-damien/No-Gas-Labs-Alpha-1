@@ -19,7 +19,7 @@ Branch: `fix/recovery-reference-stable-read-20261028`.
 3. Each hash-pinned reference is checked for safe relative path shape, restricted path classes (`.runtime`, `.git`, secrets/credentials, `.key`, `.pem`), symlinked path components, repository containment, and regular-file status.
 4. Reference bytes are read through a stable file handle with a 64 MiB bound. SHA-256 is computed from those bytes.
 5. Recovery output preserves the existing `recovered` path list and adds per-reference receipts with expected/observed SHA-256, byte size and status. It reports all reference failures in one run, emits a compatibility stderr diagnostic for changed receipts, and exits nonzero if any reference is unsafe, missing, changed or mismatched.
-6. Nine tests cover stable reads, symlink rejection, byte limits, traversal/sensitive paths, checksum mismatch, invalid UTF-8, controlled successful child-process recovery, and fail-closed reporting for the actual default continuity record.
+6. Ten tests cover stable reads, symlink rejection, byte limits, traversal/sensitive paths, checksum mismatch, invalid UTF-8, controlled successful child-process recovery, and fail-closed reporting for the actual default continuity record.
 
 ## CI findings and repairs
 
