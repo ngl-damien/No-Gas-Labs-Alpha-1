@@ -310,6 +310,32 @@ export function getQuestTrail(world, viewer) {
       publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
   });
   const studies = allStudyEvents.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
+  const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
+  for (const event of events) if (event?.type === 'study-reviewed') {
+    if (typeof event.reviewId === 'string') reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
+    if (typeof event.studyId === 'string') reviewedStudyCounts.set(event.studyId, (reviewedStudyCounts.get(event.studyId) || 0) + 1);
+  }
+  const studyById = new Map(allStudyEvents.map(event => [event.studyId, event]));
+  const allStudyReviews = events.filter(event => {
+    const source = studyById.get(event?.studyId);
+    const sourceIndex = source ? events.indexOf(source) : -1;
+    const reviewIndex = events.indexOf(event);
+    if (event?.type !== 'study-reviewed' || typeof event.id !== 'string' || !uniqueMoonshotEventIds.has(event.id) ||
+        typeof event.reviewId !== 'string' || reviewIdCounts.get(event.reviewId) !== 1 ||
+        typeof event.studyId !== 'string' || reviewedStudyCounts.get(event.studyId) !== 1 || !source ||
+        event.actor?.id !== source.actor.id || event.actor?.role !== source.actor.role ||
+        event.creationId !== source.creationId || event.version !== source.version ||
+        sourceIndex < 0 || reviewIndex <= sourceIndex ||
+        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) ||
+        Date.parse(source.at) >= Date.parse(event.at) ||
+        typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
+        typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
+    return publications.filter(publication => publication.creationId === event.creationId &&
+      publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
+  });
+  const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
+  const hasStudy = studies.length > 0;
+  const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
   const moonshotProposals = events.filter(event =>
     event?.type === 'moonshot-proposed' && typeof event.id === 'string' &&
@@ -501,6 +527,11 @@ export function getQuestTrail(world, viewer) {
         !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
         !hasStudyTarget ? 'Publish a real artifact before the Academy can attach study practice to a retained version.' : null
       ),
+      trailMilestone('founder-academy-study-review', 'Review a prior study note’s next check', 1,
+        studyReviews.map(event => event.id), studyReviews,
+        !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
+        !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
+      ),
     ]);
   }
 
@@ -558,6 +589,11 @@ export function getQuestTrail(world, viewer) {
       studies.map(event => event.id), studies,
       !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
       !hasStudyTarget ? 'Wait for a Founder to publish a real artifact before studying a retained version.' : null
+    ),
+    trailMilestone('witness-academy-study-review', 'Review a prior study note’s next check', 1,
+      studyReviews.map(event => event.id), studyReviews,
+      !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
+      !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
     ),
   ]);
 }
