@@ -139,6 +139,14 @@ export async function inspectWriterLock(filePath) {
       if (value && typeof value === 'object' && !Array.isArray(value) &&
           Number.isSafeInteger(value.pid) && value.pid > 0 &&
           typeof value.openedAt === 'string' && Number.isFinite(Date.parse(value.openedAt))) {
+        if (Object.hasOwn(value, 'schema') &&
+            (typeof value.schema !== 'string' || !KNOWN_LOCK_SCHEMAS.has(value.schema))) {
+          return report('present', path, {
+            format: 'unrecognized-json',
+            reason: 'unsupported-lock-schema',
+            file: fileSummary(after)
+          });
+        }
         // The synchronous PID probe can give another process time to replace
         // the lock path. Revalidate both the pathname and the opened inode
         // after probing so the owner receipt describes one stable observation.
