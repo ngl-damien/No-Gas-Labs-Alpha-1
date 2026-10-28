@@ -382,6 +382,12 @@ def shared(browser,url,data,out):
         expect(challenge_card).to_contain_text('The report omits the measurement settings needed to reproduce the attempt.')
         expect(challenge_card).to_contain_text('The measurement settings are missing from the record.')
         expect(challenge_card.get_by_role('button',name='Inspect challenge evidence v2 →')).to_be_visible()
+        # Each uniquely linked research record returns to its exact proposal context.
+        for card in [proposal_card,report_card,challenge_card]:
+            expect(card.get_by_role('button',name='Open Moonshot Field →',exact=True)).to_be_visible()
+        report_card.get_by_role('button',name='Open Moonshot Field →',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can the shared observation be reproduced?')",arg='Moonshot Field')
+        expect(a.locator('.moonshot-card.is-selected')).to_contain_text('Can the shared observation be reproduced?')
         close_sheet(a)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
