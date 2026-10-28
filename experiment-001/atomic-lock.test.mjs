@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lstat, mkdtemp, readFile, readdir, rm, unlink } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { publishAtomicLock } from './atomic-lock.mjs';
 import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 
@@ -67,4 +67,29 @@ test('a competing publisher fails closed and preserves the first lock inode and 
     await cleanup(first?.temporaryPath);
     await cleanup(lockPath);
   }
+});
+
+test('a symlink at the canonical lock path is preserved and never followed or replaced', async t => {
+  const directory = await temp(t);
+  const lockPath = join(directory, 'institution.json.lock');
+  const targetPath = join(directory, 'target.json');
+  await writeFile(targetPath, 'do-not-change', { mode: 0o600 });
+  await symlink(targetPath, lockPath);
+  const before = await lstat(lockPath);
+
+  await assert.rejects(
+    publishAtomicLock(lockPath, JSON.stringify({
+      schema: 'ngl.ledger-lock.v1',
+      pid: process.pid,
+      openedAt: new Date().toISOString()
+    })),
+    error => error.code === 'LEDGER_LOCKED'
+  );
+
+  const after = await lstat(lockPath);
+  assert.equal(after.isSymbolicLink(), true);
+  assert.equal(after.dev, before.dev);
+  assert.equal(after.ino, before.ino);
+  assert.equal(await readFile(targetPath, 'utf8'), 'do-not-change');
+  assert.deepEqual((await readdir(directory)).sort(), ['institution.json.lock', 'target.json']);
 });
