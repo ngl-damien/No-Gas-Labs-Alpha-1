@@ -40,16 +40,18 @@ export function institutionActivityCount(id,world){
   if(!event||typeof event!=='object'||Array.isArray(event))continue;
   let descriptors;
   try{descriptors=Object.getOwnPropertyDescriptors(event)}catch{continue}
-  if(!descriptors||Object.values(descriptors).some(descriptor=>!Object.hasOwn(descriptor,'value')))continue;
+  if(!descriptors)continue;
   const current=descriptors.id,legacy=descriptors.event_id;
-  if((current&&typeof current.value!=='string')||(legacy&&typeof legacy.value!=='string'))continue;
+  if((current&&(!Object.hasOwn(current,'value')||typeof current.value!=='string'))||
+     (legacy&&(!Object.hasOwn(legacy,'value')||typeof legacy.value!=='string')))continue;
   if(current&&legacy&&current.value!==legacy.value)continue;
   const identity=current?current.value:legacy?.value;
   if(typeof identity!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(identity))continue;
-  identified.push({identity,event});
   counts.set(identity,(counts.get(identity)||0)+1);
+  const safe=Object.values(descriptors).every(descriptor=>Object.hasOwn(descriptor,'value'));
+  identified.push({identity,event,safe});
  }
- return identified.filter(({identity,event})=>counts.get(identity)===1&&matches(event)).length;
+ return identified.filter(({identity,event,safe})=>safe&&counts.get(identity)===1&&matches(event)).length;
 }
 const riverX=y=>856+Math.sin(y/155)*34;
 const bridge=y=>(y>=326&&y<=396)||(y>=682&&y<=754);
