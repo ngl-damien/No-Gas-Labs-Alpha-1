@@ -220,10 +220,11 @@ function matchingNote(records, event, consumed, collectionValid = true) {
 function worldEntry(event, index, creations, notes) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
-  const creationId = text(event?.creationId) || text(event?.sourceCreationId);
+  const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
   const version = Number.isInteger(event?.version) ? event.version
     : Number.isInteger(event?.baseVersion) ? event.baseVersion
-    : Number.isInteger(event?.sourceVersion) ? event.sourceVersion : null;
+    : Number.isInteger(event?.sourceVersion) ? event.sourceVersion
+    : Number.isInteger(event?.evidenceVersion) ? event.evidenceVersion : null;
   const target = findVersion(creations, creationId, version);
   const location = PLACE_NAMES[event?.locationId];
   const entry = {
@@ -294,6 +295,23 @@ function worldEntry(event, index, creations, notes) {
     } else if (target) {
       entry.detail += ` · Source: ${text(target.title) || creationId} v${version}`;
     }
+  } else if (type === "experiment-reported") {
+    const reported = text(event?.reportedOutcome) || "not supplied";
+    entry.title = `Experiment report · ${reported.toUpperCase()}`;
+    entry.category = "MOONSHOT FIELD";
+    entry.summary = `An actor-reported attempt was retained (${reported}). This is not independently observed, adjudicated, or accepted as a result.`;
+    entry.detail = [
+      `Procedure: ${text(event?.procedure) || "not recorded"}`,
+      `Observation: ${text(event?.observation) || "not recorded"}`,
+      `Reported outcome: ${reported}`,
+    ].join(" · ");
+    if (!event?.evidenceCreationId) {
+      entry.warning = "No retained artifact version is linked; this attributed report is not independently supported evidence.";
+    } else if (!target) {
+      entry.warning = "The referenced evidence version is unavailable in this snapshot; no evidence target is inferred.";
+    } else {
+      entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
+    }
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
@@ -301,7 +319,9 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  if (["publish", "contribute", "report", "repair"].includes(type) && (!target || !creationId || !version)) {
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair"].includes(type) ||
+    (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
+  if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
     const targetWarning = "The referenced artifact version is unavailable in this snapshot; the event remains visible without an invented target.";
     entry.warning = entry.warning ? entry.warning + " " + targetWarning : targetWarning;
