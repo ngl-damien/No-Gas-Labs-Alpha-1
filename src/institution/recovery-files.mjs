@@ -229,8 +229,8 @@ export async function verifyRecoveryReferences(rootPath, references, {
   maxReferenceBytes = MAX_RECOVERY_REFERENCE_BYTES
 } = {}) {
   assertReferenceList(references, { maxReferences });
-  if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1) {
-    throw new TypeError('Total recovery byte limit is invalid');
+  if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1 || maxTotalBytes > MAX_RECOVERY_TOTAL_BYTES) {
+    throw new TypeError(`Total recovery byte limit must not exceed ${MAX_RECOVERY_TOTAL_BYTES} bytes`);
   }
   if (!Number.isSafeInteger(maxReferenceBytes) || maxReferenceBytes < 1 ||
       maxReferenceBytes > MAX_RECOVERY_REFERENCE_BYTES) {

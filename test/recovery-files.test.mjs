@@ -246,6 +246,16 @@ test('continuity schema caps reference count before any reference reads', () => 
   assert.equal(MAX_RECOVERY_TOTAL_BYTES, 128 * 1024 * 1024);
 });
 
+test('reference verifier rejects aggregate overrides above the global recovery ceiling before reference I/O', async t => {
+  const directory = await temp(t);
+  await assert.rejects(
+    verifyRecoveryReferences(directory, [
+      { path: 'missing.md', sha256: 'a'.repeat(64) }
+    ], { maxTotalBytes: MAX_RECOVERY_TOTAL_BYTES + 1 }),
+    error => error instanceof TypeError && error.message.includes(String(MAX_RECOVERY_TOTAL_BYTES))
+  );
+});
+
 test('aggregate reference budget prevents oversized later reads but continues within remaining budget', async t => {
   const directory = await temp(t);
   const docs = join(directory, 'docs');
