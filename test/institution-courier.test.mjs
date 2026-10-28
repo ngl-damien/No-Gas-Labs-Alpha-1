@@ -353,6 +353,32 @@ test('courier fences the current instance after post-rename directory-sync uncer
 });
 
 
+test('courier rejects stable malformed lock JSON promptly and preserves state', {
+  timeout: 10000
+}, async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const malformed = '{"schema":';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, malformed, { mode: 0o600 });
+
+  const moduleUrl = new URL('../src/institution/courier.mjs', import.meta.url).href;
+  const source = `import { createCourier } from ${JSON.stringify(moduleUrl)};
+try {
+  await createCourier({ dataDir: ${JSON.stringify(f.dataDir)}, providers: [], now: () => 1000 });
+  console.error('unexpected success');
+  process.exitCode = 2;
+} catch (cause) {
+  if (cause.code === 'CORRUPT_LOCK') console.log('CORRUPT_LOCK: malformed JSON rejected');
+  else { console.error(cause); process.exitCode = 1; }
+}`;
+  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 3000 });
+  assert.match(result.stdout, /CORRUPT_LOCK: malformed JSON rejected/);
+  assert.equal(await readFile(lockPath, 'utf8'), malformed);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
 test('courier rejects lock metadata with broad permissions without changing the lock or state', async t => {
   const f = await fixture(t, []);
   const lockPath = join(f.dataDir, '.courier.lock');
