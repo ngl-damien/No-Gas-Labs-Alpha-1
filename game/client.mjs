@@ -333,11 +333,36 @@ function openExperimentChallenge(report){
     node('option',{value:'other',text:'Other challenge'})
   ]);
   const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.'});
+  const evidenceSource=node('select',{id:'experiment-challenge-evidence-source'},[]);
+  evidenceSource.append(node('option',{value:'',text:'No retained artifact linked'}));
+  for(const creation of (Array.isArray(world.creations)?world.creations:[])){
+    evidenceSource.append(node('option',{value:creation.id,text:creation.title+' · current v'+creation.version}));
+  }
+  const evidenceVersion=node('select',{id:'experiment-challenge-evidence-version'});
+  const syncEvidenceVersions=()=>{
+    evidenceVersion.replaceChildren();
+    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===evidenceSource.value);
+    if(!creation){
+      evidenceVersion.append(node('option',{value:'',text:'No evidence version'}));
+      evidenceVersion.disabled=true;
+      return;
+    }
+    const versions=[...(Array.isArray(creation.versions)?creation.versions:[]),creation]
+      .filter(version=>Number.isInteger(version.version))
+      .sort((left,right)=>left.version-right.version);
+    for(const version of versions)evidenceVersion.append(node('option',{value:String(version.version),text:(version.version===creation.version?'Current':'Retained')+' version '+version.version}));
+    evidenceVersion.value=String(creation.version);
+    evidenceVersion.disabled=false;
+  };
+  evidenceSource.onchange=syncEvidenceVersions;
+  syncEvidenceVersions();
   const submit=node('button',{id:'challenge-experiment-report',class:'primary-button',type:'submit',text:'Preserve challenge'});
   form.append(
     field('Challenge category','experiment-challenge-type',challengeType),
     field('Challenge / counterargument','experiment-challenge-text',challengeText),
-    paragraph('A different actor ID is required. That is service attribution, not proof of a different real-world person or independent witness.','form-help'),
+    field('Optional retained evidence artifact','experiment-challenge-evidence-source',evidenceSource),
+    field('Evidence version','experiment-challenge-evidence-version',evidenceVersion),
+    paragraph('A linked artifact identifies retained bytes only. A different actor ID is service attribution, not proof of a different real-world person or independent witness.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
   content.append(form);
@@ -349,7 +374,9 @@ function openExperimentChallenge(report){
         type:'challenge-experiment-report',
         reportId:report.reportId,
         challengeType:challengeType.value,
-        challengeText:challengeText.value.trim()
+        challengeText:challengeText.value.trim(),
+        evidenceCreationId:((Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===evidenceSource.value))?.id??null,
+        evidenceVersion:evidenceSource.value?Number(evidenceVersion.value):null
       });
       toast('Challenge retained · dissent preserved · not adjudicated · no XP awarded.');
       openMoonshotField();
@@ -453,13 +480,21 @@ function openMoonshotField(){
       else if(report.evidenceCreationId)reportCard.append(paragraph('The linked evidence version is unavailable in this snapshot.','evidence-warning'));
       else reportCard.append(paragraph('No retained artifact is linked; this report has not been independently supported.','evidence-warning'));
       const challenges=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-challenged'&&event.reportId===report.reportId);
-      for(const challenge of challenges)reportCard.append(node('div',{class:'field-card'},[
-        node('h4',{text:'Retained challenge'}),
-        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
-        paragraph('Challenge category: '+String(challenge.challengeType||'other').replaceAll('-',' ')),
-        paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
-        paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
-      ]));
+      for(const challenge of challenges){
+        const challengeCard=node('div',{class:'field-card'},[
+          node('h4',{text:'Retained challenge'}),
+          node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+          paragraph('Challenge category: '+String(challenge.challengeType||'other').replaceAll('-',' ')),
+          paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
+          paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
+        ]);
+        if(challenge.evidenceCreationId){
+          const evidenceExists=(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===challenge.evidenceCreationId&&(creation.version===challenge.evidenceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===challenge.evidenceVersion))));
+          if(evidenceExists)challengeCard.append(button('Inspect challenge evidence v'+challenge.evidenceVersion+' →',()=>openCreation(challenge.evidenceCreationId,challenge.evidenceVersion),{class:'list-button'}));
+          else challengeCard.append(paragraph('The linked challenge-evidence version is unavailable in this snapshot.','evidence-warning'));
+        }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
+        reportCard.append(challengeCard);
+      }
       if(report.actor?.id!==viewer.id)reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);
     }
