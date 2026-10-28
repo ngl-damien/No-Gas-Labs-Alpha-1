@@ -66,3 +66,17 @@ No merge, deployment, release, spending, or production key operation occurred. A
 - Added `continuityRecord.path`, `continuityRecord.size`, and SHA-256 over the exact bounded bytes parsed by the recovery command. This makes the input record used for a run auditable without asserting its author or truth.
 - Commit `4ed9239ef2de3a3af0fac80756dc8ab537f92724` adds the receipt; `f7985dd2e546ce48e6160e2718e700cca304eb1b` tests it against the exact serialized test fixture and the repository's default continuity record.
 - The final checkpoint commit and final PR head must each be inspected, and all three workflows must be checked again after the last commit. No earlier green result is transferable to a later head.
+
+
+## Verification observed on code head before this checkpoint refresh
+
+Code head: `01d5290e1b8c857ed2a8caafccb3f3a10284b89b`.
+
+- Full repository verification run [40655995630](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40655995630): **success**. The Node test runner exited 0; Python inspector exited 0; package build exited 0; bounded institutional exercise exited 0 and reported `passed: true`.
+- Genesis Evidence Invariant run [40655995607](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40655995607): **success**, including the attack-evidence-boundary step.
+- Browser acceptance run [40655995573](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40655995573): **success**. Dependency installation, standalone build, browser journeys, and receipt/screenshot preservation completed.
+- These are GitHub-hosted results. No local test execution is claimed.
+
+Follow-up commits after the first checkpoint are `9fc81feccd3c29b54b7d2335dc92f929773f75d5` (legacy schema compatibility), `4ed9239ef2de3a3af0fac80756dc8ab537f92724` (exact continuity-record receipt), `f7985dd2e546ce48e6160e2718e700cca304eb1b` (receipt regressions), and `01d5290e1b8c857ed2a8caafccb3f3a10284b89b` (checkpoint refresh).
+
+The next checkpoint-only commit will change the branch head. All three workflows must be checked again on that final head before declaring it verified.
