@@ -38,7 +38,8 @@ const exact = (value, fields) => {
 const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
-  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId']
+  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId'],
+  'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -89,6 +90,20 @@ function preflightAction(input) {
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
+    case 'propose-moonshot': {
+      preflightText(input.title, 80, 'Moonshot title', { required: true });
+      preflightText(input.hypothesis, 1000, 'Hypothesis', { required: true });
+      preflightText(input.falsifier, 1000, 'Falsification condition', { required: true });
+      preflightText(input.evidenceNeeded, 1000, 'Evidence needed', { required: true });
+      const hasSourceId = input.sourceCreationId !== undefined && input.sourceCreationId !== null;
+      const hasSourceVersion = input.sourceVersion !== undefined && input.sourceVersion !== null;
+      if (hasSourceId !== hasSourceVersion) fail('INVALID_SOURCE', 'Choose both a source artifact and version, or neither.');
+      if (hasSourceId) {
+        requiredId(input.sourceCreationId, 'Source artifact ID');
+        if (!Number.isSafeInteger(input.sourceVersion) || input.sourceVersion < 1) fail('INVALID_SOURCE', 'Source version must be a positive integer.');
+      }
+      break;
+    }
   }
 }
 const snapshots = world => world.creations.flatMap(creation => [...creation.versions, creation]);
@@ -105,7 +120,7 @@ function preflightPresence(input) {
 
 function validateHistory(world) {
   if (world.revision !== world.events.length || world.createdAt > world.updatedAt || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set();
@@ -117,6 +132,22 @@ function validateHistory(world) {
     exact(event.actor, ['id', 'name', 'role']);
     if (event.at < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = event.at;
+    if (event.type === 'moonshot-proposed') {
+      if (typeof event.moonshotId !== 'string' || !event.moonshotId ||
+          typeof event.title !== 'string' || !event.title.trim() || Array.from(event.title).length > 80 ||
+          typeof event.hypothesis !== 'string' || !event.hypothesis.trim() || Array.from(event.hypothesis).length > 1000 ||
+          typeof event.falsifier !== 'string' || !event.falsifier.trim() || Array.from(event.falsifier).length > 1000 ||
+          typeof event.evidenceNeeded !== 'string' || !event.evidenceNeeded.trim() || Array.from(event.evidenceNeeded).length > 1000) {
+        throw new Error('Stored moonshot proposal is malformed');
+      }
+      if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
+        if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
+            !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
+            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && p.publishedAt <= event.at)) {
+          throw new Error('Stored moonshot source reference is invalid');
+        }
+      }
+    }
     if (event.repeat !== undefined && (event.type !== 'discover' || typeof event.repeat !== 'boolean')) throw new Error('Stored repeat-discovery marker is invalid');
     const receiptFields = ['requestId', 'actionFingerprint', 'actionResult'];
     const present = receiptFields.filter(key => Object.hasOwn(event, key));
@@ -127,10 +158,11 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', discover: 'discovered' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', discover: 'discovered', 'moonshot-proposed': 'moonshotId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
+      if (event.type === 'moonshot-proposed' && result.moonshotId !== event.moonshotId) throw new Error('Stored idempotency moonshot result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
