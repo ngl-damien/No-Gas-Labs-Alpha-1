@@ -41,7 +41,7 @@ const actionFields = {
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'requestId']
+  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -104,11 +104,19 @@ function preflightAction(input) {
       }
       break;
     }
-    case 'challenge-experiment-report':
+    case 'challenge-experiment-report': {
       requiredId(input.reportId, 'Experiment report ID');
       if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
       preflightText(input.challengeText, 1000, 'Challenge text', { required: true });
+      const hasEvidenceId = input.evidenceCreationId !== undefined && input.evidenceCreationId !== null;
+      const hasEvidenceVersion = input.evidenceVersion !== undefined && input.evidenceVersion !== null;
+      if (hasEvidenceId !== hasEvidenceVersion) fail('INVALID_EVIDENCE', 'Choose both a retained challenge-evidence artifact and version, or neither.');
+      if (hasEvidenceId) {
+        requiredId(input.evidenceCreationId, 'Challenge evidence artifact ID');
+        if (!Number.isSafeInteger(input.evidenceVersion) || input.evidenceVersion < 1) fail('INVALID_EVIDENCE', 'Challenge evidence version must be a positive integer.');
+      }
       break;
+    }
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
@@ -150,7 +158,7 @@ function validateHistory(world) {
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
-    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : [])];
+    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const eventAt = Date.parse(event.at);
@@ -200,6 +208,19 @@ function validateHistory(world) {
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' || !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
           !report || report.moonshotId !== event.moonshotId || report.actor.id === event.actor.id || Date.parse(report.at) > Date.parse(event.at)) {
         throw new Error('Stored experiment challenge is malformed or does not target an earlier report from a different actor');
+      }
+      const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
+      const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
+      if (hasEvidenceId !== hasEvidenceVersion) throw new Error('Stored experiment challenge evidence reference is incomplete');
+      if (!hasEvidenceId) {
+        if (event.evidenceCreationId !== undefined && event.evidenceCreationId !== null) throw new Error('Stored unlinked challenge evidence must be null');
+        if (event.evidenceVersion !== undefined && event.evidenceVersion !== null) throw new Error('Stored unlinked challenge evidence version must be null');
+      } else {
+        const source = world.creations.find(creation => creation.id === event.evidenceCreationId);
+        const version = source && (source.version === event.evidenceVersion ? source : source.versions.find(item => item.version === event.evidenceVersion));
+        if (!version || !Number.isFinite(Date.parse(version.publishedAt)) || Date.parse(version.publishedAt) > Date.parse(event.at)) {
+          throw new Error('Stored experiment challenge evidence version is not retained at the challenge time');
+        }
       }
       challengeIds.add(event.challengeId);
     }
