@@ -195,3 +195,29 @@ test('service-store fails closed when its directory path is replaced after open'
   await assert.rejects(lstat(join(replacement, 'service.json')), error => error.code === 'ENOENT');
   await store.close();
 });
+
+test('service-store serializes concurrent commits and rejects a stale revision', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-concurrent-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+
+  // Both callers prepared revision 1 from the same revision-0 snapshot.
+  // Exactly one may commit; the other must not overwrite the winner.
+  const results = await Promise.allSettled([
+    store.commit({ revision: 1, winner: 'first' }),
+    store.commit({ revision: 1, winner: 'second' })
+  ]);
+  const fulfilled = results.filter(result => result.status === 'fulfilled');
+  const rejected = results.filter(result => result.status === 'rejected');
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, 'SERVICE_STALE_REVISION');
+  assert.equal(rejected[0].reason.status, 409);
+  assert.equal(store.value.revision, 1);
+  assert.ok(['first', 'second'].includes(store.value.winner));
+
+  await store.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, store.value, 'reopen must retain the sole committed winner');
+  await reopened.close();
+});
