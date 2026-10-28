@@ -60,6 +60,27 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const c=creation();if(!Number.isInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a published version.');
       const isReport=action.type==='report';const entry={id:uid(isReport?'report':'note'),creationId:c.id,version:action.version,text:text(action.text,isReport?1000:500,isReport?'Report':'Contribution'),actor:who,at};world[isReport?'reports':'contributions'].push(entry);result={id:entry.id};recordEvent(action.type,{creationId:c.id,version:action.version});break;
     }
+    case 'propose-moonshot':{
+      const title=text(action.title,80,'Moonshot title');
+      const hypothesis=text(action.hypothesis,1000,'Hypothesis');
+      const falsifier=text(action.falsifier,1000,'Falsification condition');
+      const evidenceNeeded=text(action.evidenceNeeded,1000,'Evidence needed');
+      const hasSourceId=action.sourceCreationId!==undefined&&action.sourceCreationId!==null;
+      const hasSourceVersion=action.sourceVersion!==undefined&&action.sourceVersion!==null;
+      if(hasSourceId!==hasSourceVersion)fail('INVALID_SOURCE','Choose both a source artifact and version, or neither.');
+      let sourceCreationId=null,sourceVersion=null;
+      if(hasSourceId){
+        if(typeof action.sourceCreationId!=='string'||!action.sourceCreationId.trim()||!Number.isSafeInteger(action.sourceVersion)||action.sourceVersion<1)fail('INVALID_SOURCE','Source artifact and version must be valid.');
+        const source=world.creations.find(c=>c.id===action.sourceCreationId);
+        if(!source)fail('NOT_FOUND','Source artifact not found.',404);
+        if(source.version!==action.sourceVersion&&!source.versions.some(v=>v.version===action.sourceVersion))fail('STALE_VERSION','That source version is not retained.',409);
+        sourceCreationId=source.id;sourceVersion=action.sourceVersion;
+      }
+      const moonshotId=uid('moonshot');
+      result={moonshotId};
+      recordEvent('moonshot-proposed',{moonshotId,title,hypothesis,falsifier,evidenceNeeded,sourceCreationId,sourceVersion});
+      break;
+    }
     case 'discover':{
       if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
       if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId)){result={discovered:false};recordEvent('discover',{locationId:action.locationId,repeat:true});break;}
@@ -84,7 +105,20 @@ export async function validateWorld(raw) {
   for(const c of raw.creations){unique(c.id);await checkArtifact(c);if(!Array.isArray(c.versions)||c.versions.length!==c.version-1)invalid('Incomplete version history.');for(let i=0;i<c.versions.length;i++){const v=c.versions[i];if(v.id!==c.id||v.version!==i+1||v.versions!==undefined)invalid('Invalid flat version history.');await checkArtifact(v)}}
   for(const d of raw.drafts){unique(d.id);await checkArtifact(d);if(!Number.isInteger(d.baseVersion)||d.baseVersion<0||d.version!==d.baseVersion+1)invalid('Invalid draft base.');if(d.creationId&&!raw.creations.some(c=>c.id===d.creationId))invalid('Orphan draft.');}
   if(raw.xp!==raw.creations.reduce((sum,c)=>sum+c.version*100,0))invalid('Game rewards do not match published versions.');
-  for(const e of raw.events){unique(e.id);actorFor(e.actor);if(typeof e.type!=='string'||!Number.isFinite(Date.parse(e.at))||typeof e.semantics!=='string')invalid('Malformed event.');if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',discover:'discovered'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&d.at<=e.at))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  for(const e of raw.events){unique(e.id);actorFor(e.actor);if(typeof e.type!=='string'||!Number.isFinite(Date.parse(e.at))||typeof e.semantics!=='string')invalid('Malformed event.');if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',discover:'discovered','moonshot-proposed':'moonshotId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&d.at<=e.at))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  for(const e of raw.events)if(e.type==='moonshot-proposed'){
+    unique(e.moonshotId);
+    if(typeof e.title!=='string'||!e.title.trim()||Array.from(e.title).length>80||
+       typeof e.hypothesis!=='string'||!e.hypothesis.trim()||Array.from(e.hypothesis).length>1000||
+       typeof e.falsifier!=='string'||!e.falsifier.trim()||Array.from(e.falsifier).length>1000||
+       typeof e.evidenceNeeded!=='string'||!e.evidenceNeeded.trim()||Array.from(e.evidenceNeeded).length>1000)invalid('Malformed moonshot proposal.');
+    if(!(e.sourceCreationId===null&&e.sourceVersion===null)){
+      if(typeof e.sourceCreationId!=='string'||!e.sourceCreationId.trim()||!Number.isSafeInteger(e.sourceVersion)||e.sourceVersion<1)invalid('Malformed moonshot source reference.');
+      const source=raw.creations.find(c=>c.id===e.sourceCreationId);
+      const version=source&&(source.version===e.sourceVersion?source:source.versions.find(v=>v.version===e.sourceVersion));
+      if(!version||!Number.isFinite(Date.parse(version.publishedAt))||version.publishedAt>e.at)invalid('Malformed moonshot source reference.');
+    }
+  }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!Number.isFinite(Date.parse(n.at)))invalid('Malformed attributed note.');}
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!Number.isFinite(Date.parse(method.at)))invalid('Invalid earned game method.');}
