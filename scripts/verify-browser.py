@@ -343,13 +343,17 @@ def shared(browser,url,data,out):
         a.get_by_role('button',name='Challenge this report →',exact=True).click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Challenge experiment report')
         a.locator('#experiment-challenge-type').select_option('missing-evidence')
+        a.locator('#experiment-challenge-evidence-source').select_option(creation_id)
+        assert a.locator('#experiment-challenge-evidence-version').input_value()=='2'
         a.locator('#experiment-challenge-text').fill('The report omits the measurement settings needed to reproduce the attempt.')
         a.locator('#challenge-experiment-report').click()
         expect(a.locator('#sheet')).to_contain_text('DISSENT · NOT ADJUDICATED')
         expect(a.locator('#sheet')).to_contain_text('measurement settings needed to reproduce')
+        expect(a.locator('#sheet')).to_contain_text('Inspect challenge evidence v2')
         challenge_state=visitor.request.get(url+'api/state').json()
         retained_challenges=[event for event in challenge_state['world']['events'] if event['type']=='experiment-challenged']
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
+        assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
         close_sheet(a)
