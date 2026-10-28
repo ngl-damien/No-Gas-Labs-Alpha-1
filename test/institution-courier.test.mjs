@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, stat, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, stat, readdir, rm, symlink } from 'node:fs/promises';
 import { renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -295,4 +295,22 @@ test('courier preserves a replacement lock when the transaction itself fails', a
   assert.equal(await readFile(join(f.dataDir, '.courier.lock'), 'utf8'), f.replacement);
   const persisted = JSON.parse(await readFile(join(f.dataDir, 'courier.json'), 'utf8'));
   assert.equal(persisted.requests.length, 0);
+});
+
+
+test('courier rejects symlinked storage ancestors before creating descendants', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-courier-symlink-parent-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const actual = join(root, 'actual');
+  await mkdir(actual);
+  const alias = join(root, 'alias');
+  await symlink(actual, alias, 'dir');
+  const dataDir = join(alias, 'nested', 'courier');
+
+  await assert.rejects(
+    module.createCourier({ dataDir, providers: [] }),
+    { code: 'INVALID_INPUT' }
+  );
+  assert.deepEqual(await readdir(actual), [],
+    'the rejected path must not create directories through the symlinked parent');
 });
