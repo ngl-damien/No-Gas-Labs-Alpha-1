@@ -148,20 +148,34 @@ function reduce(previous, event) {
   return { state, result };
 }
 
-async function atomicWrite(file, bytes, directory) {
+async function syncDirectory(directory) {
+  const parent = await open(directory, 'r');
+  try { await parent.sync(); } finally { await parent.close(); }
+}
+
+async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory) {
   const pending = join(directory, `.decisions-${randomUUID()}.tmp`);
   let handle;
+  let renamed = false;
   try {
     handle = await open(pending, 'wx', 0o600);
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close(); handle = undefined;
     await rename(pending, file);
-    const parent = await open(directory, 'r');
-    try { await parent.sync(); } finally { await parent.close(); }
+    renamed = true;
+    try {
+      await syncDirectoryFn(directory);
+    } catch (cause) {
+      throw Object.assign(new Error(
+        'Decision replacement succeeded but directory durability could not be confirmed; close and reopen to validate the retained envelope before reading or writing again.'
+      ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503, cause });
+    }
   } finally {
     await handle?.close().catch(() => {});
-    await unlink(pending).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    // The temporary name no longer exists after rename. Never roll back a target
+    // whose replacement may already be visible after a failed directory sync.
+    if (!renamed) await unlink(pending).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
 }
 
@@ -255,8 +269,8 @@ async function unlinkOwnedDecisionLock(path, identity) {
  * this API does not authenticate an object copied from a network payload.
  * APPROVE records a decision only and never invokes an effect or promotes code.
  */
-export async function openDecisions({ directory, now = Date.now } = {}) {
-  if (typeof directory !== 'string' || !directory || typeof now !== 'function') fail('INVALID_CONFIG', 'A private decision directory and server clock function are required');
+export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
+  if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, and directory-sync function are required');
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
   await assertNoSymlinkPathComponents(location);
@@ -305,7 +319,7 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
       } catch (error) { fail('DECISIONS_TAMPERED', `Cannot validate saved decision history: ${error.code ?? 'INVALID_JSON'}`); }
     } else {
       const payload = { records, projection: state };
-      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location);
+      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location, syncDirectoryFn);
     }
 
     let queue = Promise.resolve();
@@ -313,6 +327,16 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
     let closed = false;
     let closePromise;
     let uncertain = false;
+    let uncertaintyCode = null;
+    function assertCertain() {
+      if (!uncertain) return;
+      if (uncertaintyCode === 'COMMIT_DURABILITY_UNCERTAIN') {
+        throw Object.assign(new Error(
+          'Decision replacement succeeded but directory durability could not be confirmed; close and reopen to validate the retained envelope before reading or writing again.'
+        ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503 });
+      }
+      fail('DECISIONS_UNCERTAIN', 'A persistence failure fenced this writer; close and inspect durable storage before recovery');
+    }
     function clock() {
       const atMs = now();
       if (!validTime(atMs)) fail('INVALID_CLOCK', 'The server clock must return valid integer epoch milliseconds');
@@ -322,7 +346,7 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
     function enqueue(operation) {
       if (closing || closed) return Promise.reject(Object.assign(new Error('Decision writer is closed'), { code: 'DECISIONS_CLOSED' }));
       const running = queue.then(async () => {
-        if (uncertain) fail('DECISIONS_UNCERTAIN', 'A persistence failure fenced this writer; close and inspect durable storage before recovery');
+        assertCertain();
         return operation();
       });
       queue = running.catch(() => {});
@@ -337,8 +361,16 @@ export async function openDecisions({ directory, now = Date.now } = {}) {
       const payload = { records: nextRecords, projection: candidate.state };
       const serialized = canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) });
       if (Buffer.byteLength(serialized, 'utf8') > MAX_STORE_BYTES) fail('DECISIONS_CAPACITY', 'Decision envelope exceeds 64 MiB; archive through an explicit continuity procedure');
-      try { await atomicWrite(file, serialized, location); }
-      catch { uncertain = true; fail('DECISION_PERSISTENCE_FAILED', 'No successful disposition is returned after a persistence failure; writer is fenced until recovery'); }
+      try { await atomicWrite(file, serialized, location, syncDirectoryFn); }
+      catch (error) {
+        uncertain = true;
+        if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') {
+          uncertaintyCode = 'COMMIT_DURABILITY_UNCERTAIN';
+          throw error;
+        }
+        uncertaintyCode = 'DECISIONS_UNCERTAIN';
+        fail('DECISION_PERSISTENCE_FAILED', 'No successful disposition is returned after a persistence failure; writer is fenced until recovery');
+      }
       state = candidate.state;
       records = nextRecords;
       return clone(candidate.result);

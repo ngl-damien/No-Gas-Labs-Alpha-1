@@ -524,7 +524,7 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined } = {}) {
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
   await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -540,7 +540,12 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
   let decisions,projects;
-  try{projects=projectProjection(institutionReport);decisions=await openDecisions({directory:join(dataDir,'decisions')});}catch(error){await store.close();throw error;}
+  try {
+    projects = projectProjection(institutionReport);
+    const decisionOptions = { directory: join(dataDir, 'decisions') };
+    if (decisionSyncDirectory !== undefined) decisionOptions.syncDirectory = decisionSyncDirectory;
+    decisions = await openDecisions(decisionOptions);
+  } catch (error) { await store.close(); throw error; }
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -796,7 +801,18 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
-        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try{const method=path.endsWith('/policy')?'setPolicy':path.endsWith('/proposals')?'create':'decide';return json(response,200,await decisions[method]({id:session.actor.id,role:session.actor.role},input));}catch(error){if(error.code)error.status=/FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code)?403:/EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code)?409:400;throw error;}});
+        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
+            const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
+            return json(response, 200, await decisions[method]({ id: session.actor.id, role: session.actor.role }, input));
+          } catch (error) {
+            if (error.code) {
+              error.status = /FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code) ? 403
+                : /EXPIRED|REPLAY|REVISION|CONFLICT/.test(error.code) ? 409
+                : /PERSISTENCE|UNCERTAIN/.test(error.code) ? 503
+                : 400;
+            }
+            throw error;
+          }});
       }
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
