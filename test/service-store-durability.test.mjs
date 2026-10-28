@@ -328,3 +328,30 @@ test('service-store applies the revision guard to the canonical world payload', 
   assert.equal(reopened.value.events.length, 1, 'replay must retain exactly one winning world event');
   await reopened.close();
 });
+
+
+test('service-store value and commit results cannot mutate the retained projection', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-immutable-view-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const initial = { revision: 0, nested: { label: 'initial' }, items: [{ value: 1 }] };
+  const store = await createServiceStore({ dataDir, initial, validate: async value => value });
+
+  const view = store.value;
+  assert.equal(Object.isFrozen(view), true);
+  assert.equal(Object.isFrozen(view.nested), true);
+  assert.equal(Object.isFrozen(view.items), true);
+  assert.equal(Reflect.set(view.nested, 'label', 'tampered'), false);
+  assert.equal(Reflect.set(view.items[0], 'value', 99), false);
+  assert.equal(store.value.nested.label, 'initial');
+  assert.equal(store.value.items[0].value, 1);
+
+  const committed = await store.commit({ revision: 1, nested: { label: 'committed' }, items: [{ value: 2 }] });
+  assert.equal(Object.isFrozen(committed), true);
+  assert.equal(Reflect.set(committed.nested, 'label', 'tampered-result'), false);
+  assert.equal(store.value.nested.label, 'committed');
+
+  await store.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate: async value => value });
+  assert.deepEqual(reopened.value, { revision: 1, nested: { label: 'committed' }, items: [{ value: 2 }] });
+  await reopened.close();
+});
