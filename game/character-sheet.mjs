@@ -81,15 +81,25 @@ export function projectCharacter(world, viewer) {
       reportCounts.set(event.reportId, (reportCounts.get(event.reportId) || 0) + 1);
     }
   }
-  const proposalIds = new Set([...proposalCounts].filter(([, count]) => count === 1).map(([id]) => id));
-  const experimentReports = events.filter(event =>
-    event.type === 'experiment-reported' &&
-    typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
-    proposalIds.has(event.moonshotId) &&
-    typeof event.procedure === 'string' && event.procedure.trim() &&
-    typeof event.observation === 'string' && event.observation.trim() &&
-    ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
-  );
+  const proposalPositions = new Map();
+  allEvents.forEach((event, index) => {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
+        proposalCounts.get(event.moonshotId) === 1 && typeof event.at === 'string' &&
+        Number.isFinite(Date.parse(event.at))) proposalPositions.set(event.moonshotId, index);
+  });
+  const proposalIds = new Set(proposalPositions.keys());
+  const experimentReports = events.filter(event => {
+    const proposalIndex = proposalPositions.get(event?.moonshotId);
+    const proposal = Number.isInteger(proposalIndex) ? allEvents[proposalIndex] : null;
+    return event.type === 'experiment-reported' &&
+      typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
+      proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
+      allEvents.indexOf(event) > proposalIndex && typeof event.at === 'string' &&
+      Number.isFinite(Date.parse(event.at)) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      typeof event.procedure === 'string' && event.procedure.trim() &&
+      typeof event.observation === 'string' && event.observation.trim() &&
+      ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
+  });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
