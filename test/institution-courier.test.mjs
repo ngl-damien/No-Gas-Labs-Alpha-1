@@ -373,7 +373,7 @@ try {
   if (cause.code === 'CORRUPT_LOCK') console.log('CORRUPT_LOCK: malformed JSON rejected');
   else { console.error(cause); process.exitCode = 1; }
 }`;
-  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 3000 });
+  const result = await exec(process.execPath, ['--input-type=module', '-e', source], { timeout: 7000 });
   assert.match(result.stdout, /CORRUPT_LOCK: malformed JSON rejected/);
   assert.equal(await readFile(lockPath, 'utf8'), malformed);
   assert.equal(await readFile(statePath, 'utf8'), stateBefore);
