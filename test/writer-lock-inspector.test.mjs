@@ -101,3 +101,13 @@ test('oversized lock files fail closed before content parsing', async t => {
   assert.equal(result.reason, 'size-limit');
   assert.equal(result.safeToRemove, false);
 });
+
+test('partially written JSON lock metadata is malformed and never removable', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, '{"schema":"ngl.service-lock.v1","pid":', { mode: 0o600 });
+  const result = await inspectWriterLock(path);
+  assert.equal(result.status, 'malformed');
+  assert.equal(result.reason, 'invalid-json-lock-metadata');
+  assert.equal(result.safeToRemove, false);
+});

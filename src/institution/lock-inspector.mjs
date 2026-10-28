@@ -20,7 +20,7 @@ function fileSummary(stat) {
 }
 
 function sameSnapshot(a, b) {
-  return a.dev === b.dev && a.ino === b.ino &&
+  return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid && a.mode === b.mode &&
     a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
 
@@ -105,8 +105,9 @@ export async function inspectWriterLock(filePath) {
       throw error;
     }
     const afterHandle = await handle.stat();
-    if (after.isSymbolicLink() || !after.isFile() ||
-        !sameSnapshot(opened, after) || !sameSnapshot(opened, afterHandle)) {
+    const afterUnsafe = unsafeReason(after);
+    if (afterUnsafe) return report('unsafe', path, { reason: afterUnsafe, file: fileSummary(after) });
+    if (!sameSnapshot(opened, after) || !sameSnapshot(opened, afterHandle)) {
       return report('changed', path, { reason: 'lock-changed-during-read', file: fileSummary(after) });
     }
 
