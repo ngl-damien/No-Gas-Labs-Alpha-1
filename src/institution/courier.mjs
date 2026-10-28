@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, chmod, open, rename, unlink, lstat } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, parse, sep } from 'node:path';
 
 const MAX_JSON = 131072;
 const MAX_STATE = 16 * 1024 * 1024;
@@ -140,31 +140,89 @@ async function readState(path) {
     throw error('CORRUPT_STATE', `Cannot read courier state: ${cause.message}`);
   } finally { await file?.close(); }
 }
-async function writeState(dir, state) {
+async function syncCourierDirectory(dir) {
+  const directory = await open(dir, 'r');
+  try { await directory.sync(); } finally { await directory.close(); }
+}
+async function writeState(dir, state, syncDirectoryFn = syncCourierDirectory) {
   const {checksum:ignored,...body} = state;
   const encoded = canonicalJSON({...body,checksum:payloadDigest(body)});
   requireValue(Buffer.byteLength(encoded) <= MAX_STATE, 'STORAGE_LIMIT', 'Courier state exceeds its storage limit');
   const temporary = join(dir, `.courier-${randomUUID()}.tmp`);
   let file;
+  let renamed = false;
   try {
     file = await open(temporary,'wx',0o600); await file.writeFile(encoded); await file.sync(); await file.close(); file=null;
     await rename(temporary,join(dir,'courier.json'));
-    const directory=await open(dir,'r'); try { await directory.sync(); } finally { await directory.close(); }
-  } finally { await file?.close(); await unlink(temporary).catch(cause=>{if(cause.code!=='ENOENT')throw cause;}); }
+    renamed = true;
+    try { await syncDirectoryFn(dir); }
+    catch (cause) {
+      throw Object.assign(error('COMMIT_DURABILITY_UNCERTAIN',
+        'Courier state replacement succeeded but directory durability could not be confirmed; discard this instance and reopen to validate retained state before further operations.'), { cause });
+    }
+  } finally {
+    await file?.close().catch(() => {});
+    // Once renamed, the target may already expose the new state. Never roll it back.
+    if (!renamed) await unlink(temporary).catch(cause=>{if(cause.code!=='ENOENT')throw cause;});
+  }
+}
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (cause) { if (cause.code === 'ENOENT') continue; throw cause; }
+    if (stat.isSymbolicLink()) {
+      throw error('INVALID_INPUT', 'Courier storage paths may not contain symlink components');
+    }
+    if (!stat.isDirectory()) {
+      throw error('INVALID_INPUT', 'Every courier storage path component must be a directory');
+    }
+  }
 }
 function sameLockSnapshot(a, b) {
   return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid &&
     a.mode === b.mode && a.size === b.size &&
     a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
+async function releaseOwnedLock(path, identity) {
+  if (!identity) return false;
+  let current;
+  try { current = await lstat(path); }
+  catch (cause) { if (cause.code === 'ENOENT') return false; throw cause; }
+  if (current.isSymbolicLink() || !current.isFile() ||
+      current.dev !== identity.dev || current.ino !== identity.ino) return false;
+  // This identity check is best-effort: filesystems do not expose an atomic
+  // compare-and-unlink primitive, so callers must not treat it as a full race-free lease.
+  try { await unlink(path); }
+  catch (cause) { if (cause.code === 'ENOENT') return false; throw cause; }
+  return true;
+}
 async function acquireLock(path) {
   const deadline = Date.now() + 5000;
   while (true) {
     try {
       const lock = await open(path, 'wx', 0o600);
-      await lock.writeFile(JSON.stringify({pid:process.pid}));
-      await lock.close();
-      return;
+      let identity;
+      try {
+        const opened = await lock.stat();
+        identity = { dev: opened.dev, ino: opened.ino };
+        await lock.writeFile(JSON.stringify({
+          schema: 'ngl.courier-lock.v1',
+          pid: process.pid,
+          openedAt: new Date().toISOString()
+        }));
+        await lock.sync();
+        await lock.close();
+        return identity;
+      } catch (cause) {
+        await lock.close().catch(() => {});
+        if (identity) await releaseOwnedLock(path, identity).catch(() => {});
+        throw cause;
+      }
     } catch (cause) {
       if (cause.code !== 'EEXIST') throw cause;
       let owner, identity, file;
@@ -228,8 +286,15 @@ async function acquireLock(path) {
 async function serialize(dir, fn) {
   const previous=queues.get(dir) || Promise.resolve();
   const current=previous.catch(()=>{}).then(async()=>{
-    const lock=join(dir,'.courier.lock'); await acquireLock(lock);
-    try { return await fn(); } finally { await unlink(lock); }
+    const lock=join(dir,'.courier.lock');
+    const identity=await acquireLock(lock);
+    try { return await fn(); }
+    finally {
+      if (!(await releaseOwnedLock(lock, identity))) {
+        throw error('LOCK_OWNERSHIP_LOST',
+          'Courier lock path changed before release; the operation may have committed. Inspect durable state before retrying.');
+      }
+    }
   });
   queues.set(dir,current);
   try { return await current; } finally { if(queues.get(dir)===current)queues.delete(dir); }
@@ -242,31 +307,56 @@ function expire(state, time) {
 }
 
 /** Durable file courier. It never calls a model provider or grants Founder authority. */
-export async function createCourier({dataDir,providers,now=Date.now}={}) {
-  requireValue(typeof dataDir === 'string' && dataDir.length>0,'INVALID_INPUT','A private courier dataDir is required');
+export async function createCourier({dataDir,providers,now=Date.now,syncDirectory:syncDirectoryFn=syncCourierDirectory}={}) {
+  requireValue(typeof dataDir === 'string' && dataDir.length>0 && typeof now === 'function' && typeof syncDirectoryFn === 'function','INVALID_INPUT','A private courier dataDir, clock, and directory-sync function are required');
   const dir=resolve(dataDir), path=join(dir,'courier.json');
+  await assertNoSymlinkPathComponents(dir);
   await mkdir(dir,{recursive:true,mode:0o700});
-  requireValue((await lstat(dir)).isDirectory() && !(await lstat(dir)).isSymbolicLink(),'INVALID_INPUT','Courier dataDir must be a directory');
+  await assertNoSymlinkPathComponents(dir);
+  const directoryStat = await lstat(dir);
+  requireValue(directoryStat.isDirectory() && !directoryStat.isSymbolicLink(),'INVALID_INPUT','Courier dataDir must be a directory');
   await chmod(dir,0o700);
   const enrolled=providers === undefined ? undefined : normalizeProviders(providers);
+  let uncertain = false;
+  let leaseLost = false;
   await serialize(dir,async()=>{
     const stored=await readState(path);
     if(stored) {
       if(enrolled)requireValue(canonicalJSON(stored.providers)===canonicalJSON(enrolled),'IDENTITY_CONFLICT','Persisted provider enrollment differs; use a separate store for a new key registry');
-    } else await writeState(dir,{schema:'ngl.courier.state.v1',revision:0,providers:enrolled || [],requests:[]});
+    } else await writeState(dir,{schema:'ngl.courier.state.v1',revision:0,providers:enrolled || [],requests:[]},syncDirectoryFn);
   });
   function timeNow() { const time=now(); requireValue(Number.isSafeInteger(time),'INVALID_INPUT','Clock must return integer milliseconds');return time; }
   async function transaction(operation) {
-    return serialize(dir,async()=>{
-      const state=await readState(path); requireValue(state,'CORRUPT_STATE','Courier state disappeared');
-      const before=canonicalJSON(state); expire(state,timeNow());
-      let result, failure;
-      try { result=operation(state,timeNow()); } catch(cause) { failure=cause; }
-      if(canonicalJSON(state)!==before) { state.revision++; await writeState(dir,state); }
-      if(failure)throw failure;
-      if(result?.schema === 'ngl.courier.snapshot.v1') result.revision=state.revision;
-      return clone(result);
-    });
+    if (leaseLost) throw error('LOCK_OWNERSHIP_LOST',
+      'A prior operation lost the courier lock; inspect durable state and reopen a fresh courier instance before retrying.');
+    if (uncertain) throw error('COMMIT_DURABILITY_UNCERTAIN',
+      'Courier state replacement may have committed without confirmed directory durability; reopen a fresh courier instance before further operations.');
+    try {
+      return await serialize(dir,async()=>{
+        if (leaseLost) throw error('LOCK_OWNERSHIP_LOST',
+          'A prior operation lost the courier lock; inspect durable state and reopen a fresh courier instance before retrying.');
+        if (uncertain) throw error('COMMIT_DURABILITY_UNCERTAIN',
+          'Courier state replacement may have committed without confirmed directory durability; reopen a fresh courier instance before further operations.');
+        const state=await readState(path); requireValue(state,'CORRUPT_STATE','Courier state disappeared');
+        const before=canonicalJSON(state); expire(state,timeNow());
+        let result, failure;
+        try { result=operation(state,timeNow()); } catch(cause) { failure=cause; }
+        if(canonicalJSON(state)!==before) {
+          state.revision++;
+          try { await writeState(dir,state,syncDirectoryFn); }
+          catch (cause) {
+            if (cause.code === 'COMMIT_DURABILITY_UNCERTAIN') uncertain = true;
+            throw cause;
+          }
+        }
+        if(failure)throw failure;
+        if(result?.schema === 'ngl.courier.snapshot.v1') result.revision=state.revision;
+        return clone(result);
+      });
+    } catch (cause) {
+      if (cause.code === 'LOCK_OWNERSHIP_LOST') leaseLost = true;
+      throw cause;
+    }
   }
   return {
     async dispatch(args={}) {
