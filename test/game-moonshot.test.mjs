@@ -233,3 +233,53 @@ test('experiment-report quest can act on another actor\'s retained proposal with
   assert.deepEqual(witnessQuest.action, { type: 'location', id: 'moonshot_field' });
   assert.equal(witnessQuest.blockedReason, null);
 });
+
+
+test('Moonshot Field challenge is an actor-scoped quest backed by a different actor’s earlier report', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Can the claim survive a counterexample?',
+    hypothesis: 'The source claim holds under the stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'A retained source and an independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Compare the source claim with the stated condition.',
+    observation: 'The observed comparison contradicted the prediction.',
+    reportedOutcome: 'contradicts',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:04.000Z' });
+
+  const founderBefore = getQuestTrail(report.world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(founderBefore.complete, false);
+  assert.deepEqual(founderBefore.action, { type: 'location', id: 'moonshot_field' });
+  const witnessBefore = getQuestTrail(report.world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(witnessBefore.complete, false);
+  assert.match(witnessBefore.blockedReason, /another actor must retain/i);
+
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not control the stated condition.',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1
+  }, founder, { now: '2026-10-27T00:00:05.000Z' });
+
+  const founderAfter = getQuestTrail(challenge.world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(founderAfter.complete, true);
+  assert.deepEqual(founderAfter.evidenceIds, [challenge.world.events.at(-1).id]);
+  assert.equal(challenge.world.xp, report.world.xp, 'dissent activity must not award XP or adjudicate the report');
+  const witnessAfter = getQuestTrail(challenge.world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(witnessAfter.complete, false, 'another actor’s challenge cannot complete the Witness objective');
+});

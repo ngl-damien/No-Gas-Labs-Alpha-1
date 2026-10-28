@@ -103,7 +103,7 @@ test('skills count activity attributed to the active character',()=>{
   };
   const record=projectCharacter(world,founder);
   assert.deepEqual(record.skills.map(skill=>[skill.id,skill.count]),[
-    ['maker',1],['explorer',1],['observer',1],['challenger',1],['researcher',0],['experimenter',0],['restorer',0]
+    ['maker',1],['explorer',1],['observer',1],['challenger',1],['researcher',0],['experimenter',0],['adversary',0],['restorer',0]
   ]);
   assert.equal(record.xp,100);
 });
@@ -214,4 +214,56 @@ test('Researcher skill counts attributed falsifiable proposals without awarding 
        founderRecord.recentActivity.find(activity => activity.type === 'moonshot-proposed').version],
     ['source-1', 2]
   );
+});
+
+
+test('Adversary skill counts unique challenges to another actor’s earlier valid report without awarding XP', () => {
+  const proposal = event('moonshot-1', 'moonshot-proposed', witness, t1, {
+    moonshotId: 'moonshot-1',
+    title: 'A falsifiable question',
+    hypothesis: 'The claim holds under the stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'An independent observation.'
+  });
+  const report = event('report-event-1', 'experiment-reported', witness, t2, {
+    reportId: 'report-1',
+    moonshotId: 'moonshot-1',
+    procedure: 'Compare the claim with the stated condition.',
+    observation: 'The comparison contradicted the prediction.',
+    reportedOutcome: 'contradicts',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const challenge = event('challenge-event-1', 'experiment-challenged', founder, t3, {
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moonshot-1',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not control the stated condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = { xp: 0, creations: [], events: [proposal, report, challenge] };
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+
+  const duplicateChallenge = { ...challenge, id: 'challenge-event-2', at: '2026-10-25T12:03:00.000Z' };
+  const ambiguous = projectCharacter({ ...world, events: [...world.events, duplicateChallenge] }, founder);
+  assert.equal(ambiguous.skills.find(skill => skill.id === 'adversary').count, 0,
+    'duplicate challenge identities are ambiguous and must not count as skill activity');
+
+  const selfChallenge = event('self-challenge-event', 'experiment-challenged', witness, t3, {
+    challengeId: 'self-challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moonshot-1',
+    challengeType: 'contradiction',
+    challengeText: 'This is a self-challenge and cannot count.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const selfRecord = projectCharacter({ ...world, events: [...world.events, selfChallenge] }, witness);
+  assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
 });
