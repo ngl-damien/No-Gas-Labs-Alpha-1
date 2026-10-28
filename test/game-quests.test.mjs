@@ -136,6 +136,8 @@ test('moonshot quest requires a report linked to one earlier retained publicatio
     assert.equal(milestone.progress, 1, actor.role);
     assert.deepEqual(milestone.evidence.map(item => [item.creationId, item.version]), [['evidence-1', 1]]);
     assert.equal(milestone.evidence[0].type, 'experiment-reported');
+    assert.match(milestone.interpretation, /^Linkage only:/);
+    assert.match(milestone.interpretation, /does not verify the procedure, observation, outcome, or hypothesis/i);
     // A failed self-report can satisfy the artifact-linkage objective; it does not
     // become a verified outcome or imply the hypothesis was true.
     assert.equal(world.events.find(event => event.type === 'experiment-reported').reportedOutcome, 'failed');
