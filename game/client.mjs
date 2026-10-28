@@ -5,6 +5,7 @@ import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
+import {projectResearchRecords} from './research-records.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0;
 async function openInstitution(locationId = null) {
@@ -219,15 +220,15 @@ function openEvidenceArchive(){
 
   const events=Array.isArray(world.events)?world.events:[];
   const creations=Array.isArray(world.creations)?world.creations:[];
-  const proposalById=new Map(events.filter(event=>event?.type==='moonshot-proposed'&&typeof event.moonshotId==='string').map(event=>[event.moonshotId,event]));
-  const researchEvents=events.filter(event=>
-    ['moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)&&
-    typeof event.id==='string'&&event.id.length>0
-  ).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  const researchEvents=projectResearchRecords(events);
   content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
   if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
 
-  const appendVersionLink=(card,creationId,version,label)=>{
+  const appendVersionLink=(card,creationId,version,label,projection)=>{
+    if(!projection?.eventIdUnique){
+      card.append(paragraph('This event ID is missing or duplicated; no artifact link is activated from this record.','evidence-warning'));
+      return;
+    }
     if(typeof creationId!=='string'||!creationId||!Number.isSafeInteger(version)||version<1){
       card.append(paragraph('The '+label+' reference is incomplete; no artifact target is inferred.','evidence-warning'));
       return;
@@ -239,12 +240,15 @@ function openEvidenceArchive(){
   };
 
   for(const entry of researchEvents){
-    const proposal=entry.type==='moonshot-proposed'?entry:proposalById.get(entry.moonshotId);
+    const projection=entry._projection;
+    const proposal=entry.type==='moonshot-proposed'?entry:projection?.proposal;
     const proposalTitle=proposal?.title||entry.moonshotId||'Unknown moonshot';
     const actor=entry.actor?.name||entry.actor?.id||'Unknown actor';
     const at=typeof entry.at==='string'?entry.at:'time unavailable';
     const type=entry.type.toUpperCase().replaceAll('-','_');
-    const card=node('article',{class:'field-card','data-research-record-type':type,'data-event-id':entry.id},[]);
+    const card=node('article',{class:'field-card','data-research-record-type':type,'data-event-id':typeof entry.id==='string'?entry.id:''},[]);
+    if(!projection?.eventIdUnique)card.append(paragraph('AMBIGUOUS EVENT ID · CONTEXT LINKS DISABLED','evidence-warning'));
+    if(entry.type!=='moonshot-proposed'&&projection?.proposalStatus!=='linked')card.append(paragraph('Proposal context is '+(projection?.proposalStatus||'unavailable')+'; no proposal is inferred.','evidence-warning'));
     if(entry.type==='moonshot-proposed'){
       card.append(
         node('h3',{text:'Moonshot proposal · '+(entry.title||'Untitled proposal')}),
@@ -253,7 +257,7 @@ function openEvidenceArchive(){
         paragraph('Falsification condition: '+(entry.falsifier||'not recorded')),
         paragraph('Evidence required: '+(entry.evidenceNeeded||'not recorded'))
       );
-      if(entry.sourceCreationId)appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source');
+      if(entry.sourceCreationId)appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source',projection);
       else card.append(paragraph('No source artifact is linked to this proposal.','form-help'));
     }else if(entry.type==='experiment-reported'){
       card.append(
@@ -263,10 +267,10 @@ function openEvidenceArchive(){
         paragraph('Observation: '+(entry.observation||'not recorded')),
         paragraph('Reported outcome: '+(entry.reportedOutcome||'not supplied'))
       );
-      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence');
+      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence',projection);
       else card.append(paragraph('No retained artifact is linked to this attempt; the report remains self-reported.','evidence-warning'));
     }else{
-      const targetReport=events.find(candidate=>candidate?.type==='experiment-reported'&&candidate.reportId===entry.reportId);
+      const targetReport=projection?.targetReport||null;
       card.append(
         node('h3',{text:'Experiment challenge · '+proposalTitle}),
         node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
@@ -278,12 +282,12 @@ function openEvidenceArchive(){
           paragraph('Target observation: '+(targetReport.observation||'not recorded')),
           paragraph('Target outcome (self-reported): '+(targetReport.reportedOutcome||'not supplied'))
         );
-      }else card.append(paragraph('The challenged report is not present in this snapshot.','evidence-warning'));
+      }else card.append(paragraph('The challenged report is unavailable or ambiguous ('+(projection?.targetReportStatus||'unknown')+'); no target is inferred.','evidence-warning'));
       card.append(
         paragraph('Challenge category: '+String(entry.challengeType||'other').replaceAll('-',' ')),
         paragraph('Counterargument: '+(entry.challengeText||'not recorded'))
       );
-      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence');
+      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence',projection);
       else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
     }
     card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
