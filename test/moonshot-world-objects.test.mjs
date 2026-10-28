@@ -200,3 +200,31 @@ test('adding retained research activity changes only the matching object counts,
   assert.equal(before.attemptCount, 0);
   assert.equal(after.attemptCount, 1);
 });
+
+
+test('accessor-backed attempt and challenge fields are ignored without invoking getters', () => {
+  let reads = 0;
+  const accessorReport = experimentReport(
+    'accessor-report-event', 'accessor-report', 'moon-accessor', 'witness-1', '2026-10-28T17:01:00.000Z'
+  );
+  Object.defineProperty(accessorReport, 'reportedOutcome', {
+    enumerable: true,
+    get() { reads += 1; throw new Error('report getter must not run'); },
+  });
+  const validReport = experimentReport(
+    'valid-report-event', 'valid-report', 'moon-accessor', 'witness-2', '2026-10-28T17:02:00.000Z'
+  );
+  const accessorChallenge = experimentChallenge(
+    'accessor-challenge-event', 'accessor-challenge', 'valid-report', 'moon-accessor', 'witness-3', '2026-10-28T17:03:00.000Z'
+  );
+  Object.defineProperty(accessorChallenge, 'challengeText', {
+    enumerable: true,
+    get() { reads += 1; throw new Error('challenge getter must not run'); },
+  });
+  const [object] = projectMoonshotWorldObjects({
+    events: [proposal('proposal-accessor', 'moon-accessor'), accessorReport, validReport, accessorChallenge],
+  });
+  assert.equal(object.attemptCount, 1);
+  assert.equal(object.challengeCount, 0);
+  assert.equal(reads, 0);
+});
