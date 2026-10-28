@@ -221,11 +221,26 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
   return events.filter(event => {
     if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
         typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
-        typeof event.at !== 'string' || typeof event.actor?.id !== 'string' ||
+        typeof event.at !== 'string' || typeof event.actor?.id !== 'string' || event.actor?.role !== 'founder' ||
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     const matches = versions.filter(version => version?.id === event.creationId &&
       version?.version === event.version && version?.publishedAt === event.at);
     return matches.length === 1;
+  });
+}
+
+function referencesEarlierRetainedPublication(match, publications, events) {
+  const event = match?.event;
+  if (!event || typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
+      event.version < 1 || typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at))) return false;
+  const eventPosition = events.indexOf(event);
+  if (eventPosition < 0) return false;
+  const at = Date.parse(event.at);
+  return publications.some(publication => {
+    const publicationPosition = events.indexOf(publication);
+    return publicationPosition >= 0 && publicationPosition < eventPosition &&
+      publication.creationId === event.creationId && publication.version === event.version &&
+      Number.isFinite(Date.parse(publication.at)) && Date.parse(publication.at) <= at;
   });
 }
 
@@ -301,8 +316,10 @@ export function getQuestTrail(world, viewer) {
       locations.set(match.record.locationId, match.event);
     }
   }
-  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole);
-  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole);
+  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
+    .filter(match => referencesEarlierRetainedPublication(match, publications, events));
+  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
+    .filter(match => referencesEarlierRetainedPublication(match, publications, events));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);

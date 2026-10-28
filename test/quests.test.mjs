@@ -367,3 +367,53 @@ test('Founder research objectives require a retained observatory publication and
   assert.equal(researchReport.evidence[0].creationId, 'observatory-1');
   assert.equal(researchReport.evidence[0].version, 1);
 });
+
+
+test('field notes and reports do not advance objectives without a prior retained publication of the referenced version', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'discover-relay', type: 'discover', actor: founder, at: at1, locationId: 'relay' },
+    { id: 'orphan-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 99 },
+    { id: 'orphan-report', type: 'report', actor: founder, at: at2, creationId: 'c-1', version: 99 },
+  ];
+  world.discoveries = [{ id: 'd-relay', locationId: 'relay', actor: founder, at: at1 }];
+  world.contributions = [{
+    id: 'orphan-note-record', creationId: 'c-1', version: 99, actor: founder, at: at2, text: 'Orphaned note'
+  }];
+  world.reports = [{
+    id: 'orphan-report-record', creationId: 'c-1', version: 99, actor: founder, at: at2, text: 'Orphaned report'
+  }];
+
+  const trail = getQuestTrail(world, founder);
+  assert.equal(trail.find(item => item.id === 'founder-field-note').progress, 0);
+  assert.equal(trail.find(item => item.id === 'founder-research-report').progress, 0);
+});
+
+test('activity cannot cite a publication event that appears later in retained history', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'discover-relay', type: 'discover', actor: founder, at: at1, locationId: 'relay' },
+    { id: 'note-before-publish', type: 'contribute', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+  ];
+  world.discoveries = [{ id: 'd-relay', locationId: 'relay', actor: founder, at: at1 }];
+  world.contributions = [{
+    id: 'note-before-publish-record', creationId: 'c-1', version: 1, actor: founder, at: at1, text: 'Out of order'
+  }];
+
+  assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-field-note').progress, 0);
+});
+
+test('a Witness-labelled publish event cannot manufacture canonical published-work progress', () => {
+  const world = trailFixture();
+  world.creations = [{ ...publishedV1, versions: [] }];
+  world.events = [
+    { id: 'witness-publish', type: 'publish', actor: witness, at: at1, creationId: 'c-1', version: 1 },
+  ];
+
+  assert.equal(getQuestTrail(world, witness).find(item => item.id === 'witness-work-available').progress, 0);
+  assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').progress, 0);
+});
