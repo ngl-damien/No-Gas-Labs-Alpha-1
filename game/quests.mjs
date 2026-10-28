@@ -319,6 +319,7 @@ export function getQuestTrail(world, viewer) {
     }
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
+  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
   const experimentReports = events.filter(event =>
     event?.type === 'experiment-reported' && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
@@ -425,8 +426,8 @@ export function getQuestTrail(world, viewer) {
       trailMilestone(
         'founder-experiment-report', 'Record an experiment attempt', 1,
         experimentReports.map(event => event.id), experimentReports,
-        hasMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
-        !hasMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
+        hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
       ),
     ]);
   }
@@ -472,8 +473,8 @@ export function getQuestTrail(world, viewer) {
     trailMilestone(
       'witness-experiment-report', 'Record an experiment attempt', 1,
       experimentReports.map(event => event.id), experimentReports,
-      hasMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
-      !hasMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
+      hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+      !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
     ),
   ]);
 }
