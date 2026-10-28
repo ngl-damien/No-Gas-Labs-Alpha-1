@@ -156,7 +156,7 @@ test('draft privacy, exact publication bytes, stale version rejection and real i
   const published = await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   const creation = published.body.world.creations[0];
-  assert.equal(published.world.xp, 100);
+  assert.equal(published.body.world.xp, 100);
   assert.equal((await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 })).response.status, 409);
   const artifact = await witness.request(`/api/artifacts/${creation.id}?version=1`);
   assert.equal(artifact.body, creation.html);
