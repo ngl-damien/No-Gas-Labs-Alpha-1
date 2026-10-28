@@ -151,7 +151,7 @@ test('ledger publishes a complete private writer-lock record and leaves no publi
   const ledger = await openLedger({ directory, ...config });
   const lockPath = join(directory, '.writer.lock');
   const names = await readdir(directory);
-  assert.equal(names.some(name => /^\.writer-lock-[a-f0-9-]+\\.tmp$/.test(name)), false,
+  assert.equal(names.some(name => /^\.writer-lock-[a-f0-9-]+\.tmp$/.test(name)), false,
     'successful acquisition must not leave its private publication file behind');
   const stat = await lstat(lockPath);
   assert.equal(stat.isSymbolicLink(), false);
@@ -164,7 +164,7 @@ test('ledger publishes a complete private writer-lock record and leaves no publi
   assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
   await ledger.close();
   const after = await readdir(directory);
-  assert.equal(after.some(name => /^\.writer-lock-[a-f0-9-]+\\.tmp$/.test(name)), false);
+  assert.equal(after.some(name => /^\.writer-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
   await assert.rejects(lstat(lockPath), { code: 'ENOENT' });
 });
 
@@ -174,7 +174,7 @@ test('service store publishes a complete private lock record without a publicati
   const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   const lockPath = join(dataDir, '.service.lock');
   const names = await readdir(dataDir);
-  assert.equal(names.some(name => /^\.service-lock-[a-f0-9-]+\\.tmp$/.test(name)), false);
+  assert.equal(names.some(name => /^\.service-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
   const stat = await lstat(lockPath);
   assert.equal(stat.isFile(), true);
   assert.equal(stat.isSymbolicLink(), false);
@@ -185,7 +185,7 @@ test('service store publishes a complete private lock record without a publicati
   assert.equal(Number.isSafeInteger(metadata.pid) && metadata.pid > 0, true);
   assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
   await store.close();
-  assert.equal((await readdir(dataDir)).some(name => /^\.service-lock-[a-f0-9-]+\\.tmp$/.test(name)), false);
+  assert.equal((await readdir(dataDir)).some(name => /^\.service-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
 });
 
 test('decision store publishes a complete private lock record without a publication temp file', async t => {
@@ -193,7 +193,7 @@ test('decision store publishes a complete private lock record without a publicat
   const store = await openDecisions({ directory, now: () => Date.parse('2026-10-27T00:00:00.000Z') });
   const lockPath = join(directory, '.decisions.lock');
   const names = await readdir(directory);
-  assert.equal(names.some(name => /^\.decisions-lock-[a-f0-9-]+\\.tmp$/.test(name)), false);
+  assert.equal(names.some(name => /^\.decisions-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
   const stat = await lstat(lockPath);
   assert.equal(stat.isFile(), true);
   assert.equal(stat.isSymbolicLink(), false);
@@ -204,7 +204,7 @@ test('decision store publishes a complete private lock record without a publicat
   assert.equal(Number.isSafeInteger(metadata.pid) && metadata.pid > 0, true);
   assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
   await store.close();
-  assert.equal((await readdir(directory)).some(name => /^\.decisions-lock-[a-f0-9-]+\\.tmp$/.test(name)), false);
+  assert.equal((await readdir(directory)).some(name => /^\.decisions-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
 });
 
 test('decision-store close preserves a replacement lock even when bytes are identical', async t => {
