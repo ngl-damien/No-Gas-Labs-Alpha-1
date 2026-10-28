@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, readFile, mkdir, open } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
@@ -479,6 +479,29 @@ async function getFounderKey(dataDir, provided) {
   }
 }
 
+// Reject redirected ancestors before recursive creation can write a Founder key
+// through a symlink. This is a best-effort path walk, not an atomic openat boundary.
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw new Error('Founder data directory path may not contain symbolic link components');
+    }
+    if (!stat.isDirectory()) {
+      throw new Error('Founder data directory path components must be directories');
+    }
+  }
+}
+
 async function assertPrivateDataDirectory(dataDir) {
   const directory = await lstat(dataDir);
   if (directory.isSymbolicLink() || !directory.isDirectory()) {
@@ -500,6 +523,7 @@ async function assertPrivateDataDirectory(dataDir) {
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
 export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined } = {}) {
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
+  await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
