@@ -154,6 +154,17 @@ function durabilityUncertain(cause) {
   ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503, ...(cause ? { cause } : {}) });
 }
 
+function revisionOf(value) {
+  const revision = Number.isSafeInteger(value?.world?.revision) ? value.world.revision : value?.revision;
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+function staleRevisionError() {
+  return Object.assign(new Error(
+    'Service store candidate is stale or skips the current revision; rebuild it from the latest committed value.'
+  ), { code: 'SERVICE_STALE_REVISION', status: 409 });
+}
+
 // Lock contents are not ownership proof: an external recovery action can
 // replace the pathname with a new inode carrying the same token.
 async function unlinkOwnedLock(path, identity) {
@@ -192,6 +203,9 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let released = false;
   let durabilityUncertainState = false;
   let directoryUncertainState = false;
+  // Serialize all commits made through this lease. The HTTP server has its own
+  // action queue, but the store primitive must also be safe for direct callers.
+  let commitQueue = Promise.resolve();
   async function close() {
     if (released) return; released = true;
     await lease.close();
@@ -268,10 +282,23 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       if (released) throw new Error('Service writer lease has closed');
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
-      const valid = await validate(candidate);
-      await persist(valid);
-      current = valid;
-      return current;
+      const operation = commitQueue.then(async () => {
+        if (released) throw new Error('Service writer lease has closed');
+        if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
+        if (durabilityUncertainState) throw durabilityUncertain();
+        const valid = await validate(candidate);
+        const previousRevision = revisionOf(current);
+        const candidateRevision = revisionOf(valid);
+        if (previousRevision !== null && candidateRevision !== null &&
+            candidateRevision !== previousRevision + 1) {
+          throw staleRevisionError();
+        }
+        await persist(valid);
+        current = valid;
+        return current;
+      });
+      commitQueue = operation.catch(() => {});
+      return operation;
     }
   };
 }
