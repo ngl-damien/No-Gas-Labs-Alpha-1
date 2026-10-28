@@ -206,4 +206,13 @@ test('experiment reports reject unbound proposals, invalid outcomes, incomplete 
   duplicateReportId.revision++;
   duplicateReportId.updatedAt = '2026-10-27T00:00:05.000Z';
   await assert.rejects(validateWorld(duplicateReportId), error => error.code === 'INVALID_WORLD');
+
+  const reordered = structuredClone(validReport.world);
+  const reportIndex = reordered.events.findIndex(event => event.type === 'experiment-reported');
+  const [reportEvent] = reordered.events.splice(reportIndex, 1);
+  const proposalIndex = reordered.events.findIndex(event => event.type === 'moonshot-proposed');
+  reordered.events.splice(proposalIndex, 0, reportEvent);
+  assert.equal(getQuestTrail(reordered, witness).find(item => item.id === 'witness-experiment-report').complete, false);
+  assert.equal(projectCharacter(reordered, witness).skills.find(skill => skill.id === 'experimenter').count, 0);
+  await assert.rejects(validateWorld(reordered), error => error.code === 'INVALID_WORLD');
 });
