@@ -121,3 +121,24 @@ test('Moonshot quest completes only from the active character\'s unique retained
     'Duplicated event identity cannot manufacture quest completion'
   );
 });
+
+
+test('Moonshot source chronology compares instants rather than timestamp spelling', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Chronology boundary',
+    hypothesis: 'A source claim is temporally available.',
+    falsifier: 'The proposal predates its source.',
+    evidenceNeeded: 'Compare parsed timestamps.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+
+  const tampered = structuredClone(proposal.world);
+  // Lexically this sorts after the source's UTC timestamp, but +14:00 makes
+  // the actual instant the previous day. The source must not appear available.
+  tampered.events.at(-1).at = '2026-10-27T01:00:00.000+14:00';
+  tampered.updatedAt = tampered.events.at(-1).at;
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
