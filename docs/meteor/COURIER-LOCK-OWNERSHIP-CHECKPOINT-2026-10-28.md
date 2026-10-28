@@ -16,6 +16,7 @@
    - Lock owner metadata now records `ngl.courier-lock.v1`, PID, and opening time; the metadata is synced before the lock is considered acquired.
    - Release checks that the current path is still a regular file with the acquired device/inode before unlinking it.
    - If the path disappeared or changed, the operation raises `LOCK_OWNERSHIP_LOST`. The message explicitly warns that a transaction may already have committed and durable state must be inspected before retrying.
+   - The affected courier instance is fenced after ownership loss; it cannot continue accepting operations as if its lease remained valid.
    - Acquisition cleanup also attempts to remove only the inode created by that acquisition.
 
 2. **Diagnostics integration**
@@ -35,6 +36,7 @@
    - Replaces the lock inode from the transaction clock callback while dispatch is in flight, keeps the displaced inode alive to prevent inode-number reuse, and verifies that the replacement survives.
    - Verifies that a replacement during a committed dispatch returns `LOCK_OWNERSHIP_LOST` while the request is in fact present in durable state.
    - Verifies that a replacement is also preserved when the transaction itself rejects.
+   - Verifies that the same courier instance remains fenced after either replacement scenario.
    - Verifies that the replacement's courier schema is recognized by the diagnostic inspector.
    - Extends the inspector schema regression to include the courier lock.
 
@@ -49,11 +51,13 @@
 - `1d51e1dc62956998397080a47c9e9684161b3991` — add symlinked-parent regression coverage.
 - `4192a80de2bd1ff98a2f5b644ba2bc79e9ce84a7` — distinguish post-rename directory-sync uncertainty and fence the current instance.
 - `fd007fd4aabed1d3a186189c965af9d96731e071` — test uncertain commit visibility and fresh-instance validation.
+- `bd06442248de7a623dfc194844b915e3a059aa89` — fence the current courier instance after lock ownership loss.
+- `6e4ed84954ba266785b30a064c578d76d61aa24b` — test continued fencing after lock loss.
 
 ## Verification boundary
 
 - On prior head `52d0a2983b33bc72e07820eb96e7b838a2e539da`, Full Repository Verification [40719472942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40719472942), Genesis Evidence Invariant [40719473744](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40719473744), and Browser Acceptance [40719472951](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40719472951) all passed. That head included the lock-release and symlink-ancestor changes but predates the new post-rename durability fence.
-- The later durability source/test changes and this checkpoint refresh require exact-head workflows of their own.
+- The later durability source/test changes, lock-loss instance fencing, and this checkpoint refresh require exact-head workflows of their own.
 - GitHub Actions for the final PR head must be inspected before claiming tests passed.
 - No local test execution is claimed.
 - No lock was deleted by this change except a lock inode still matching the identity acquired by this operation.
