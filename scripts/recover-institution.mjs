@@ -27,19 +27,40 @@ try {
 
   const recovered = [];
   const receipts = [];
+  const failures = [];
   for (const reference of state.references) {
-    const verified = await readVerifiedReference(root, reference);
-    recovered.push(reference.path);
-    receipts.push({
-      path: reference.path,
-      sha256: reference.sha256,
-      size: verified.size
-    });
+    const referencePath = typeof reference?.path === 'string' ? reference.path : '<invalid-reference>';
+    try {
+      const verified = await readVerifiedReference(root, reference);
+      const status = verified.verified ? 'verified' : 'mismatch';
+      receipts.push({
+        path: referencePath,
+        status,
+        expectedSha256: verified.expectedSha256,
+        actualSha256: verified.actualSha256,
+        size: verified.size
+      });
+      if (verified.verified) {
+        recovered.push(referencePath);
+      } else {
+        failures.push({
+          path: referencePath,
+          reason: 'sha256-mismatch',
+          expectedSha256: verified.expectedSha256,
+          actualSha256: verified.actualSha256
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      receipts.push({ path: referencePath, status: 'error', error: message });
+      failures.push({ path: referencePath, reason: message });
+    }
   }
 
+  const passed = failures.length === 0 && recovered.length === state.references.length;
   console.log(JSON.stringify({
     schema: 'ngl.fresh-process-recovery.v1',
-    passed: true,
+    passed,
     principal: state.principal,
     authority: state.authority,
     assignments: state.assignments,
@@ -51,8 +72,10 @@ try {
     rollback: state.rollback,
     recovered,
     receipts,
+    failures,
     scope: 'New Node process using durable files only; not a fresh cloud/environment restoration.'
   }, null, 2));
+  if (!passed) process.exitCode = 1;
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
