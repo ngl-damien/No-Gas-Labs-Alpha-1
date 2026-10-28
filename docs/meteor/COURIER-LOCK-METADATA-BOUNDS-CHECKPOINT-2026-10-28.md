@@ -52,3 +52,17 @@ No merge, deployment, release, spending, production key operation, or Founder de
 - At 2026-10-28 17:43 UTC, exact checkpoint-head CI on `e1313e4d4e46aa987d2937ea9c99a97d96b7a201` showed Genesis Evidence Invariant passed; verify and browser acceptance were still running. Earlier implementation/test heads also had passing verify and Genesis runs, but the latest head must be checked again after each commit.
 - This checkpoint refresh itself changes the branch head. Inspect all three workflows on the resulting exact head and update the PR handoff with their final outcomes before treating verification as complete.
 - The latest `main` observed before this addendum remained `fc1d313152aa17ea90ff5cbd76a3e0cda8d76dbf`. Re-read `main`, open PRs, and Issue #17 before any future integration; do not merge this draft automatically.
+
+
+## Run continuation addendum — duplicate-key ambiguity
+
+A second source inspection found that bounded, schema-checked lock metadata still passed through `JSON.parse` without duplicate-key preflight. Last-key-wins parsing could make a duplicated `pid` ambiguous before stale-lock classification.
+
+- Imported the existing `assertNoDuplicateJsonObjectKeys` from `src/strict-json.mjs`.
+- Duplicate object keys, including escaped spellings that decode to the same key, now fail as `CORRUPT_LOCK` rather than being interpreted as owner metadata.
+- Added two regressions for duplicate `pid` and escaped duplicate `p\\u0069d`; both assert the lock and persisted state remain unchanged.
+- Source commit: `58b1e963702f0cb58baeaeee34539458cfccd080`.
+- Duplicate-key test commit: `2924363fbc6a4e6a2e7940b99d26374df4b9ecf7`.
+- At the last workflow inspection on test head `2924363fbc6a4e6a2e7940b99d26374df4b9ecf7`, Genesis had a successful run, while verify and browser acceptance were still in progress. Earlier verify and Genesis runs passed on source head `58b1e963702f0cb58baeaeee34539458cfccd080`; browser acceptance remained in progress there too.
+- `main` was re-read at `fc1d313152aa17ea90ff5cbd76a3e0cda8d76dbf`; the open PR list contained this new PR #154 plus 11 pre-existing PRs. No base movement or competing courier-lock PR was observed.
+- This checkpoint refresh changes HEAD again; inspect all three workflows on the exact resulting head before claiming final verification.
