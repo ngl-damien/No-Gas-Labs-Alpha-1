@@ -165,6 +165,10 @@ function staleRevisionError() {
   ), { code: 'SERVICE_STALE_REVISION', status: 409 });
 }
 
+function closedStoreError() {
+  return Object.assign(new Error('Service writer lease has closed'), { code: 'SERVICE_STORE_CLOSED', status: 503 });
+}
+
 // Lock contents are not ownership proof: an external recovery action can
 // replace the pathname with a new inode carrying the same token.
 async function unlinkOwnedLock(path, identity) {
@@ -201,15 +205,26 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     throw error;
   }
   let released = false;
+  let closing = false;
+  let closePromise;
   let durabilityUncertainState = false;
   let directoryUncertainState = false;
   // Serialize all commits made through this lease. The HTTP server has its own
   // action queue, but the store primitive must also be safe for direct callers.
   let commitQueue = Promise.resolve();
   async function close() {
-    if (released) return; released = true;
-    await lease.close();
-    await unlinkOwnedLock(lockPath, leaseIdentity);
+    if (closePromise) return closePromise;
+    closing = true;
+    closePromise = (async () => {
+      // A commit accepted before close must finish before the writer lease is
+      // released. New commits are rejected as soon as closing begins.
+      await commitQueue;
+      if (released) return;
+      released = true;
+      await lease.close();
+      await unlinkOwnedLock(lockPath, leaseIdentity);
+    })();
+    return closePromise;
   }
   let current;
   let raw;
@@ -279,14 +294,18 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     },
     close,
     async commit(candidate) {
-      if (released) throw new Error('Service writer lease has closed');
+      if (released || closing) throw closedStoreError();
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
+      // Snapshot as strict canonical JSON at call time. This rejects accessors,
+      // exotic objects and sparse arrays without invoking getters, and prevents
+      // caller mutation while the write waits behind another commit.
+      const snapshot = JSON.parse(canonicalStringify(candidate));
       const operation = commitQueue.then(async () => {
-        if (released) throw new Error('Service writer lease has closed');
+        if (released) throw closedStoreError();
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
-        const valid = await validate(candidate);
+        const valid = await validate(snapshot);
         const previousRevision = revisionOf(current);
         const candidateRevision = revisionOf(valid);
         if (previousRevision !== null && candidateRevision !== null &&
