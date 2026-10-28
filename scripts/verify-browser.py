@@ -170,6 +170,12 @@ def institutional_locations(browser,url,out):
         expect(page.locator('#sheet')).to_contain_text('PROPOSED · NOT EXECUTED')
         expect(page.locator('#sheet')).to_contain_text('A reproducible counterexample appears')
         expect(page.locator('[data-objective-id="founder-moonshot-proposal"]')).to_contain_text('RECORDED')
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to moonshot proposal: Can this claim be falsified?',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can this claim be falsified?')")
+        expect(page.locator('.moonshot-card.is-selected')).to_contain_text('Can this claim be falsified?')
+        assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Walking to a moonshot object should focus its retained proposal card'
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         expect(experiment_objective).to_contain_text('OPEN')
         page.get_by_role('button',name='Record an experiment attempt →',exact=True).click()
@@ -185,7 +191,7 @@ def institutional_locations(browser,url,out):
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'experimentReports':1,'creations':0,'xp':0,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':1,'creations':0,'xp':0,'errors':errors}
     finally:
         context.close()
 
