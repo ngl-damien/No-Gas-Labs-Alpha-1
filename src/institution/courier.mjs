@@ -131,9 +131,46 @@ function validateState(state) {
 async function readState(path) {
   let file;
   try {
-    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    requireValue((await file.stat()).size <= MAX_STATE, 'CORRUPT_STATE', 'Courier state exceeds size limit');
-    return validateState(JSON.parse(await file.readFile('utf8')));
+    // O_NONBLOCK prevents a hostile FIFO at courier.json from blocking startup
+    // before fstat can establish that the opened object is a regular file.
+    file = await open(path, constants.O_RDONLY |
+      (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    const before = await file.stat();
+    requireValue(before.isFile(), 'CORRUPT_STATE', 'Courier state must be a regular file');
+    requireValue(before.size <= MAX_STATE, 'CORRUPT_STATE', 'Courier state exceeds size limit');
+
+    // Do not trust a pre-read size check as a bound: a concurrently modified file
+    // could grow after fstat. Read at most MAX_STATE + 1 bytes, then fail closed.
+    const chunks = [];
+    const buffer = Buffer.alloc(64 * 1024);
+    let total = 0;
+    while (true) {
+      const length = Math.min(buffer.length, MAX_STATE + 1 - total);
+      const { bytesRead } = await file.read(buffer, 0, length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      requireValue(total <= MAX_STATE, 'CORRUPT_STATE', 'Courier state exceeds size limit');
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+
+    const after = await file.stat();
+    let currentPath;
+    try { currentPath = await lstat(path); }
+    catch (pathError) {
+      if (pathError.code === 'ENOENT') throw error('CORRUPT_STATE', 'Courier state path changed during read');
+      throw pathError;
+    }
+    requireValue(currentPath.isFile() &&
+      sameLockSnapshot(before, after) &&
+      sameLockSnapshot(after, currentPath) &&
+      total === after.size,
+      'CORRUPT_STATE', 'Courier state changed during read');
+
+    const bytes = Buffer.concat(chunks, total);
+    const decoded = bytes.toString('utf8');
+    requireValue(Buffer.from(decoded, 'utf8').equals(bytes),
+      'CORRUPT_STATE', 'Courier state is not valid UTF-8');
+    return validateState(JSON.parse(decoded));
   } catch (cause) {
     if (cause.code === 'ENOENT') return null;
     if (cause.code === 'CORRUPT_STATE') throw cause;
