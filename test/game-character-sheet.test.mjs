@@ -181,3 +181,37 @@ test('character activity fails closed when actor role is missing or unsupported'
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 });
 
+
+
+test('Researcher skill counts attributed falsifiable proposals without awarding XP', () => {
+  const founderProposal = event('moonshot-f', 'moonshot-proposed', founder, t1, {
+    moonshotId: 'moonshot-1',
+    title: 'A bounded question',
+    hypothesis: 'The claim holds under stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'Independent observation.',
+    sourceCreationId: 'source-1',
+    sourceVersion: 2
+  });
+  const witnessProposal = event('moonshot-w', 'moonshot-proposed', witness, t2, {
+    moonshotId: 'moonshot-2',
+    title: 'A competing question',
+    hypothesis: 'The alternative may explain the record.',
+    falsifier: 'The alternative fails to predict the observation.',
+    evidenceNeeded: 'A retained source and independent check.'
+  });
+  const world = { xp: 0, creations: [], events: [founderProposal, witnessProposal] };
+
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.deepEqual(
+    founderRecord.recentActivity.find(activity => activity.type === 'moonshot-proposed') &&
+      [founderRecord.recentActivity.find(activity => activity.type === 'moonshot-proposed').creationId,
+       founderRecord.recentActivity.find(activity => activity.type === 'moonshot-proposed').version],
+    ['source-1', 2]
+  );
+});
