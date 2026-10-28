@@ -304,6 +304,34 @@ export function getQuestTrail(world, viewer) {
     typeof event.falsifier === 'string' && event.falsifier.trim() &&
     typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()
   );
+  const moonshotIdCounts = new Map();
+  const reportIdCounts = new Map();
+  for (const event of events) {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string') moonshotIdCounts.set(event.moonshotId, (moonshotIdCounts.get(event.moonshotId) || 0) + 1);
+    if (event?.type === 'experiment-reported' && typeof event.reportId === 'string') reportIdCounts.set(event.reportId, (reportIdCounts.get(event.reportId) || 0) + 1);
+  }
+  const proposalPositionById = new Map();
+  trailRows(events).forEach((event, index) => {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
+        moonshotIdCounts.get(event.moonshotId) === 1 && uniqueMoonshotEventIds.has(event.id) &&
+        typeof event.at === 'string' && Number.isFinite(Date.parse(event.at))) {
+      proposalPositionById.set(event.moonshotId, index);
+    }
+  });
+  const validMoonshotIds = new Set(proposalPositionById.keys());
+  const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
+  const experimentReports = events.filter(event =>
+    event?.type === 'experiment-reported' && typeof event.id === 'string' &&
+    uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
+    reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
+    proposalPositionById.get(event.moonshotId) < events.indexOf(event) &&
+    Date.parse(events[proposalPositionById.get(event.moonshotId)]?.at) <= Date.parse(event.at) &&
+    typeof event.at === 'string' && Number.isFinite(Date.parse(event.at)) &&
+    event.actor?.id === actorId && event.actor?.role === actorRole &&
+    typeof event.procedure === 'string' && event.procedure.trim() &&
+    typeof event.observation === 'string' && event.observation.trim() &&
+    ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
+  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     publishedObservatoryVersions.some(event =>
@@ -332,6 +360,7 @@ export function getQuestTrail(world, viewer) {
   const hasObservatory = observatoryPublications.length >= 1;
   const hasResearchReport = researchReports.length >= 1;
   const hasMoonshotProposal = moonshotProposals.length >= 1;
+  const hasExperimentReport = experimentReports.length >= 1;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -394,6 +423,12 @@ export function getQuestTrail(world, viewer) {
         moonshotProposals.map(event => event.id), moonshotProposals,
         !hasMoonshotProposal ? { type: 'location', id: 'moonshot_field' } : null
       ),
+      trailMilestone(
+        'founder-experiment-report', 'Record an experiment attempt', 1,
+        experimentReports.map(event => event.id), experimentReports,
+        hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
+      ),
     ]);
   }
 
@@ -434,6 +469,12 @@ export function getQuestTrail(world, viewer) {
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
       moonshotProposals.map(event => event.id), moonshotProposals,
       !hasMoonshotProposal ? { type: 'location', id: 'moonshot_field' } : null
+    ),
+    trailMilestone(
+      'witness-experiment-report', 'Record an experiment attempt', 1,
+      experimentReports.map(event => event.id), experimentReports,
+      hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+      !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
     ),
   ]);
 }

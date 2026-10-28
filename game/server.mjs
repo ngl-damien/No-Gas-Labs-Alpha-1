@@ -39,7 +39,8 @@ const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], discover: ['type', 'locationId', 'requestId'],
-  'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId']
+  'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
+  'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -87,6 +88,20 @@ function preflightAction(input) {
       if (!Number.isInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a published version.');
       preflightText(input.text, input.type === 'report' ? 1000 : 500, input.type === 'report' ? 'Report' : 'Contribution', { required: true });
       break;
+    case 'report-experiment': {
+      requiredId(input.moonshotId, 'Moonshot ID');
+      preflightText(input.procedure, 1000, 'Procedure', { required: true });
+      preflightText(input.observation, 1000, 'Observation', { required: true });
+      if (!['supports', 'contradicts', 'inconclusive', 'failed'].includes(input.reportedOutcome)) fail('INVALID_OUTCOME', 'Choose a bounded self-reported outcome.');
+      const hasEvidenceId = input.evidenceCreationId !== undefined && input.evidenceCreationId !== null;
+      const hasEvidenceVersion = input.evidenceVersion !== undefined && input.evidenceVersion !== null;
+      if (hasEvidenceId !== hasEvidenceVersion) fail('INVALID_EVIDENCE', 'Choose both a retained evidence artifact and version, or neither.');
+      if (hasEvidenceId) {
+        requiredId(input.evidenceCreationId, 'Evidence artifact ID');
+        if (!Number.isSafeInteger(input.evidenceVersion) || input.evidenceVersion < 1) fail('INVALID_EVIDENCE', 'Evidence version must be a positive integer.');
+      }
+      break;
+    }
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
@@ -120,10 +135,10 @@ function preflightPresence(input) {
 
 function validateHistory(world) {
   if (world.revision !== world.events.length || world.createdAt > world.updatedAt || (world.events.length && world.updatedAt !== world.events.at(-1).at) || (!world.events.length && world.updatedAt !== world.createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map(), requestIds = new Set();
+  const drafts = new Map(), requestIds = new Set(), reportIds = new Set();
   let previousAt = world.createdAt;
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
@@ -148,6 +163,26 @@ function validateHistory(world) {
         }
       }
     }
+    if (event.type === 'experiment-reported') {
+      if (typeof event.reportId !== 'string' || !event.reportId || reportIds.has(event.reportId) ||
+          typeof event.moonshotId !== 'string' || !event.moonshotId ||
+          typeof event.procedure !== 'string' || !event.procedure.trim() || Array.from(event.procedure).length > 1000 ||
+          typeof event.observation !== 'string' || !event.observation.trim() || Array.from(event.observation).length > 1000 ||
+          !['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)) {
+        throw new Error('Stored experiment report is malformed or repeated');
+      }
+      reportIds.add(event.reportId);
+      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && proposal.at <= event.at).length !== 1) {
+        throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
+      }
+      const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
+      const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
+      if (hasEvidenceId !== hasEvidenceVersion ||
+          (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null)) ||
+          (hasEvidenceId && !published.some(p => p.id === event.evidenceCreationId && p.version === event.evidenceVersion && p.publishedAt <= event.at))) {
+        throw new Error('Stored experiment evidence reference is invalid');
+      }
+    }
     if (event.repeat !== undefined && (event.type !== 'discover' || typeof event.repeat !== 'boolean')) throw new Error('Stored repeat-discovery marker is invalid');
     const receiptFields = ['requestId', 'actionFingerprint', 'actionResult'];
     const present = receiptFields.filter(key => Object.hasOwn(event, key));
@@ -158,11 +193,12 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', discover: 'discovered', 'moonshot-proposed': 'moonshotId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
       if (event.type === 'moonshot-proposed' && result.moonshotId !== event.moonshotId) throw new Error('Stored idempotency moonshot result mismatch');
+      if (event.type === 'experiment-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency experiment report result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');

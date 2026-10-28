@@ -71,6 +71,35 @@ function matchedPublications(world) {
 export function projectCharacter(world, viewer) {
   const allEvents = uniqueEvents(world?.events);
   const events = mine(allEvents, viewer);
+  const proposalCounts = new Map();
+  const reportCounts = new Map();
+  for (const event of allEvents) {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string') {
+      proposalCounts.set(event.moonshotId, (proposalCounts.get(event.moonshotId) || 0) + 1);
+    }
+    if (event?.type === 'experiment-reported' && typeof event.reportId === 'string') {
+      reportCounts.set(event.reportId, (reportCounts.get(event.reportId) || 0) + 1);
+    }
+  }
+  const proposalPositions = new Map();
+  allEvents.forEach((event, index) => {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
+        proposalCounts.get(event.moonshotId) === 1 && typeof event.at === 'string' &&
+        Number.isFinite(Date.parse(event.at))) proposalPositions.set(event.moonshotId, index);
+  });
+  const proposalIds = new Set(proposalPositions.keys());
+  const experimentReports = events.filter(event => {
+    const proposalIndex = proposalPositions.get(event?.moonshotId);
+    const proposal = Number.isInteger(proposalIndex) ? allEvents[proposalIndex] : null;
+    return event.type === 'experiment-reported' &&
+      typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
+      proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
+      allEvents.indexOf(event) > proposalIndex && typeof event.at === 'string' &&
+      Number.isFinite(Date.parse(event.at)) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      typeof event.procedure === 'string' && event.procedure.trim() &&
+      typeof event.observation === 'string' && event.observation.trim() &&
+      ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
+  });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -115,6 +144,13 @@ export function projectCharacter(world, viewer) {
         typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()).length,
       record: 'retained falsifiable proposals',
       basis: 'Attributed proposals with a hypothesis, falsifier and evidence requirement; this counts research activity, not a validated discovery or experiment result.'
+    },
+    {
+      id: 'experimenter',
+      label: 'Experimenter',
+      count: experimentReports.length,
+      record: 'retained experiment reports',
+      basis: 'Attributed attempt notes and reported outcomes; not proof of execution, independent observation, or a validated result.'
     },
     {
       id: 'restorer',

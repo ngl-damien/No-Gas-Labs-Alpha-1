@@ -4,6 +4,7 @@ import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 import { institutionActivityCount } from '../game/world-view.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 
 const founder = { id: 'damien', name: 'Damien', role: 'founder' };
 const witness = { id: 'witness-moonshot-1', name: 'Witness', role: 'witness' };
@@ -120,4 +121,115 @@ test('Moonshot quest completes only from the active character\'s unique retained
     false,
     'Duplicated event identity cannot manufacture quest completion'
   );
+});
+
+test('experiment reports preserve failed and contradictory attempts without adjudicating them', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Can the source claim be falsified?',
+    hypothesis: 'The source claim holds under its stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'A retained artifact and an independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Compare the source claim against the stated condition.',
+    observation: 'The observed comparison contradicted the prediction.',
+    reportedOutcome: 'contradicts',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1
+  }, witness, { now: '2026-10-27T00:00:04.000Z' });
+
+  const event = report.world.events.at(-1);
+  assert.equal(event.type, 'experiment-reported');
+  assert.equal(event.reportedOutcome, 'contradicts');
+  assert.equal(event.outcome, undefined, 'the report must not manufacture a canonical outcome');
+  assert.equal(event.status, undefined, 'the report must not manufacture an adjudication status');
+  assert.equal(report.world.xp, proposal.world.xp);
+  assert.equal(report.world.revision, proposal.world.revision + 1);
+  assert.equal(event.evidenceCreationId, published.result.creationId);
+  assert.equal(event.evidenceVersion, 1);
+
+  const valid = await validateWorld(report.world);
+  const chronicle = projectChronicle({ world: valid });
+  const entry = chronicle.entries.find(item => item.eventType === 'experiment-reported');
+  assert.ok(entry);
+  assert.equal(entry.category, 'MOONSHOT FIELD');
+  assert.match(entry.title, /CONTRADICTS/);
+  assert.match(entry.summary, /not independently observed, adjudicated, or accepted/i);
+  assert.match(entry.detail, /Observation: The observed comparison contradicted the prediction/);
+  assert.match(entry.detail, /Linked artifact: Source artifact v1/);
+  assert.equal(entry.warning, '');
+
+  const witnessQuest = getQuestTrail(valid, witness).find(item => item.id === 'witness-experiment-report');
+  const founderQuest = getQuestTrail(valid, founder).find(item => item.id === 'founder-experiment-report');
+  assert.equal(witnessQuest.complete, true, 'a unique retained report completes only the reporting actor\'s objective');
+  assert.equal(founderQuest.complete, false);
+  assert.equal(projectCharacter(valid, witness).skills.find(skill => skill.id === 'experimenter').count, 1);
+});
+
+test('experiment reports reject unbound proposals, invalid outcomes, incomplete evidence references, and tampering', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Standalone test',
+    hypothesis: 'A bounded hypothesis.',
+    falsifier: 'A counterexample.',
+    evidenceNeeded: 'An observation.',
+    sourceCreationId: null,
+    sourceVersion: null
+  }, witness, { now: '2026-10-27T00:00:03.000Z' });
+  const base = {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Run the stated procedure.',
+    observation: 'The attempt did not complete.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  };
+  await assert.rejects(applyAction(proposal.world, { ...base, moonshotId: 'missing-moonshot' }, witness, { now: '2026-10-27T00:00:04.000Z' }), error => error.code === 'NOT_FOUND');
+  await assert.rejects(applyAction(proposal.world, { ...base, reportedOutcome: 'accepted' }, witness, { now: '2026-10-27T00:00:04.000Z' }), error => error.code === 'INVALID_OUTCOME');
+  await assert.rejects(applyAction(proposal.world, { ...base, evidenceCreationId: published.result.creationId }, witness, { now: '2026-10-27T00:00:04.000Z' }), error => error.code === 'INVALID_EVIDENCE');
+  await assert.rejects(applyAction(proposal.world, { ...base, evidenceCreationId: published.result.creationId, evidenceVersion: 99 }, witness, { now: '2026-10-27T00:00:04.000Z' }), error => error.code === 'STALE_VERSION');
+
+  const validReport = await applyAction(proposal.world, base, witness, { now: '2026-10-27T00:00:04.000Z' });
+  const tampered = structuredClone(validReport.world);
+  tampered.events.at(-1).reportedOutcome = 'verified';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  const duplicateReportId = structuredClone(validReport.world);
+  duplicateReportId.events.push({ ...duplicateReportId.events.at(-1), id: 'different-event-id', at: '2026-10-27T00:00:05.000Z' });
+  duplicateReportId.revision++;
+  duplicateReportId.updatedAt = '2026-10-27T00:00:05.000Z';
+  await assert.rejects(validateWorld(duplicateReportId), error => error.code === 'INVALID_WORLD');
+
+  const reordered = structuredClone(validReport.world);
+  const reportIndex = reordered.events.findIndex(event => event.type === 'experiment-reported');
+  const [reportEvent] = reordered.events.splice(reportIndex, 1);
+  const proposalIndex = reordered.events.findIndex(event => event.type === 'moonshot-proposed');
+  reordered.events.splice(proposalIndex, 0, reportEvent);
+  assert.equal(getQuestTrail(reordered, witness).find(item => item.id === 'witness-experiment-report').complete, false);
+  assert.equal(projectCharacter(reordered, witness).skills.find(skill => skill.id === 'experimenter').count, 0);
+  await assert.rejects(validateWorld(reordered), error => error.code === 'INVALID_WORLD');
+});
+
+test('experiment-report quest can act on another actor\'s retained proposal without claiming proposal ownership', async () => {
+  const published = await publishedSource();
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Shared research question',
+    hypothesis: 'A bounded claim holds.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'An independent observation.',
+    sourceCreationId: published.result.creationId,
+    sourceVersion: 1
+  }, founder, { now: '2026-10-27T00:00:03.000Z' });
+  const witnessQuest = getQuestTrail(proposal.world, witness).find(item => item.id === 'witness-experiment-report');
+  assert.equal(witnessQuest.complete, false);
+  assert.deepEqual(witnessQuest.action, { type: 'location', id: 'moonshot_field' });
+  assert.equal(witnessQuest.blockedReason, null);
 });
