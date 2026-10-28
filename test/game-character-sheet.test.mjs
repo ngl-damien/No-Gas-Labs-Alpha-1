@@ -103,7 +103,7 @@ test('skills count activity attributed to the active character',()=>{
   };
   const record=projectCharacter(world,founder);
   assert.deepEqual(record.skills.map(skill=>[skill.id,skill.count]),[
-    ['maker',1],['explorer',1],['observer',1],['challenger',1],['researcher',0],['experimenter',0],['restorer',0]
+    ['maker',1],['explorer',1],['observer',1],['challenger',1],['researcher',0],['experimenter',0],['adversary',0],['restorer',0]
   ]);
   assert.equal(record.xp,100);
 });
