@@ -417,11 +417,19 @@ export function getQuestTrail(world, viewer) {
       (event.evidenceCreationId === undefined || event.evidenceCreationId === null) &&
       (event.evidenceVersion === undefined || event.evidenceVersion === null)
     );
-    const creation = creationById.get(event.evidenceCreationId);
-    const version = creation && [creation, ...trailRows(creation.versions)]
-      .find(item => item?.version === event.evidenceVersion);
-    return Boolean(version && typeof version.publishedAt === 'string' &&
-      Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+    // A retained version object is not enough: the matching publication must
+    // appear earlier in append-only history, with a timestamp no later than the challenge.
+    const challengePosition = events.indexOf(event);
+    if (challengePosition < 0 || typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at))) return false;
+    const matchingPublications = publications.filter(publication =>
+      publication.creationId === event.evidenceCreationId &&
+      publication.version === event.evidenceVersion &&
+      events.indexOf(publication) >= 0 &&
+      events.indexOf(publication) < challengePosition &&
+      Number.isFinite(Date.parse(publication.at)) &&
+      Date.parse(publication.at) <= Date.parse(event.at)
+    );
+    return matchingPublications.length === 1;
   };
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
