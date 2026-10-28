@@ -138,3 +138,59 @@ test('mutation rejects a clock rollback before creating a backward event', async
   assert.equal(sameInstant.world.events.length, 2);
   await validateWorld(sameInstant.world);
 });
+
+
+test('retained experiment dissent challenges another actor without rewriting the report or awarding XP', async () => {
+  const published = await publishedSource();
+  const proposed = await applyAction(published.world, proposal(), witness, {
+    now: '2026-10-27T00:00:03.000Z'
+  });
+  const reported = await applyAction(proposed.world, {
+    type: 'report-experiment',
+    moonshotId: proposed.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result could not be reproduced from the available record.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-27T00:00:04.000Z' });
+  const beforeCount = reported.world.events.length;
+  const beforeXp = reported.world.xp;
+
+  await assert.rejects(
+    applyAction(reported.world, {
+      type: 'challenge-experiment-report',
+      reportId: reported.result.reportId,
+      challengeType: 'reproducibility',
+      challengeText: 'The stated procedure omits the measurement settings.'
+    }, witness, { now: '2026-10-27T00:00:05.000Z' }),
+    error => error.code === 'SELF_CHALLENGE' && error.status === 409
+  );
+  assert.equal(reported.world.events.length, beforeCount, 'a rejected self-challenge leaves the source world unchanged');
+
+  const challenged = await applyAction(reported.world, {
+    type: 'challenge-experiment-report',
+    reportId: reported.result.reportId,
+    challengeType: 'reproducibility',
+    challengeText: 'The stated procedure omits the measurement settings.'
+  }, founder, {
+    now: '2026-10-27T00:00:05.000Z',
+    requestId: 'experiment-challenge-1',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  const challenge = challenged.world.events.at(-1);
+  assert.equal(challenge.type, 'experiment-challenged');
+  assert.equal(challenge.reportId, reported.result.reportId);
+  assert.equal(challenge.moonshotId, proposed.result.moonshotId);
+  assert.equal(challenge.actor.id, founder.id);
+  assert.equal(challenge.challengeType, 'reproducibility');
+  assert.equal(challenge.outcome, undefined);
+  assert.equal(challenge.status, undefined);
+  assert.equal(challenged.world.xp, beforeXp);
+  assert.equal(challenged.world.events.length, beforeCount + 1);
+  assert.equal(await validateWorld(challenged.world).then(() => true), true);
+
+  const forged = structuredClone(challenged.world);
+  forged.events.at(-1).moonshotId = 'unrelated-moonshot';
+  await assert.rejects(validateWorld(forged), error => error.code === 'INVALID_WORLD');
+});
