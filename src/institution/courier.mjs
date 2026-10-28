@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, chmod, open, rename, unlink, lstat } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, parse, sep } from 'node:path';
 
 const MAX_JSON = 131072;
 const MAX_STATE = 16 * 1024 * 1024;
@@ -152,6 +152,23 @@ async function writeState(dir, state) {
     const directory=await open(dir,'r'); try { await directory.sync(); } finally { await directory.close(); }
   } finally { await file?.close(); await unlink(temporary).catch(cause=>{if(cause.code!=='ENOENT')throw cause;}); }
 }
+async function assertNoSymlinkPathComponents(path) {
+  const absolute = resolve(path);
+  const root = parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    let stat;
+    try { stat = await lstat(current); }
+    catch (cause) { if (cause.code === 'ENOENT') continue; throw cause; }
+    if (stat.isSymbolicLink()) {
+      throw error('INVALID_INPUT', 'Courier storage paths may not contain symlink components');
+    }
+    if (!stat.isDirectory()) {
+      throw error('INVALID_INPUT', 'Every courier storage path component must be a directory');
+    }
+  }
+}
 function sameLockSnapshot(a, b) {
   return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid &&
     a.mode === b.mode && a.size === b.size &&
@@ -279,8 +296,11 @@ function expire(state, time) {
 export async function createCourier({dataDir,providers,now=Date.now}={}) {
   requireValue(typeof dataDir === 'string' && dataDir.length>0,'INVALID_INPUT','A private courier dataDir is required');
   const dir=resolve(dataDir), path=join(dir,'courier.json');
+  await assertNoSymlinkPathComponents(dir);
   await mkdir(dir,{recursive:true,mode:0o700});
-  requireValue((await lstat(dir)).isDirectory() && !(await lstat(dir)).isSymbolicLink(),'INVALID_INPUT','Courier dataDir must be a directory');
+  await assertNoSymlinkPathComponents(dir);
+  const directoryStat = await lstat(dir);
+  requireValue(directoryStat.isDirectory() && !directoryStat.isSymbolicLink(),'INVALID_INPUT','Courier dataDir must be a directory');
   await chmod(dir,0o700);
   const enrolled=providers === undefined ? undefined : normalizeProviders(providers);
   await serialize(dir,async()=>{
