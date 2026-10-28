@@ -337,6 +337,8 @@ test('service-store value and commit results cannot mutate the retained projecti
   const store = await createServiceStore({ dataDir, initial, validate: async value => value });
 
   const view = store.value;
+  initial.nested.label = 'mutated through the caller-owned initial object';
+  assert.equal(view.nested.label, 'initial', 'initial caller references must be detached at open');
   assert.equal(Object.isFrozen(view), true);
   assert.equal(Object.isFrozen(view.nested), true);
   assert.equal(Object.isFrozen(view.items), true);
