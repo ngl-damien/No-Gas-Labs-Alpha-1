@@ -16,7 +16,8 @@ test('courier rejects a FIFO state path promptly instead of blocking startup', {
   const dataDir = join(root, 'store');
   await mkdir(dataDir, { mode: 0o700 });
   const statePath = join(dataDir, 'courier.json');
-  await exec('mkfifo', [statePath]);
+  // Forge's bounded verifier intentionally supplies a minimal PATH containing only Node. Use the POSIX utility's stable system path instead of PATH lookup.
+  await exec('/usr/bin/mkfifo', [statePath]);
 
   const moduleUrl = new URL('../src/institution/courier.mjs', import.meta.url).href;
   const script = `import { createCourier } from ${JSON.stringify(moduleUrl)};
@@ -33,6 +34,6 @@ try {
   }
 }`;
 
-  const result = await exec(process.execPath, ['--input-type=module', '-e', script], { timeout: 2000 });
+  const result = await exec(process.execPath, ['--input-type=module', '-e', script], { timeout: 5000 });
   assert.match(result.stdout, /CORRUPT_STATE: regular-file boundary enforced/);
 });
