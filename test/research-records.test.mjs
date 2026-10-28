@@ -112,3 +112,30 @@ test('records with missing or invalid timestamps stay visible without invented l
   assert.ok(projected.every(event => event._projection.eventIdUnique));
   assert.equal(projected.find(event => event.type === 'experiment-challenged')._projection.targetReport, null);
 });
+
+test('duplicate challenge identity cannot establish a target report', () => {
+  const projected = projectResearchRecords([
+    proposal(),
+    report(),
+    challenge(),
+    challenge({ id: 'challenge-event-2', challengeText: 'A second conflicting challenge' })
+  ]);
+  const target = projected.find(event => event.id === 'challenge-event-1');
+  assert.equal(target._projection.targetReport, null);
+  assert.equal(target._projection.targetReportStatus, 'ambiguous');
+});
+
+test('a challenge with no attributable actor or a duplicate event ID gets no target link', () => {
+  const missingActor = challenge({ actor: null });
+  const missingActorProjection = projectResearchRecords([proposal(), report(), missingActor])
+    .find(event => event.type === 'experiment-challenged');
+  assert.equal(missingActorProjection._projection.targetReport, null);
+  assert.equal(missingActorProjection._projection.targetReportStatus, 'invalid-challenge');
+
+  const duplicateIdProjection = projectResearchRecords([
+    proposal(), report(), challenge(),
+    { id: 'challenge-event-1', type: 'unrelated-event' }
+  ]).find(event => event.type === 'experiment-challenged');
+  assert.equal(duplicateIdProjection._projection.targetReport, null);
+  assert.equal(duplicateIdProjection._projection.targetReportStatus, 'ambiguous');
+});
