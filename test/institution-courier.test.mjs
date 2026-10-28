@@ -480,3 +480,42 @@ test('courier rejects escaped duplicate PID keys after JSON key decoding', async
   assert.equal(await readFile(lockPath, 'utf8'), duplicate);
   assert.equal(await readFile(statePath, 'utf8'), stateBefore);
 });
+
+
+test('concurrent lock publication serializes clients and leaves no temporary lock artifacts', async t => {
+  const f = await fixture(t, []);
+  const count = 10;
+  const source = `import { createCourier } from ${JSON.stringify(new URL('../src/institution/courier.mjs', import.meta.url).href)};
+await new Promise(resolve => setTimeout(resolve, 40));
+const courier = await createCourier({ dataDir: process.argv[1] });
+await courier.dispatch({
+  requestId: process.argv[2],
+  capability: 'review',
+  input: { writer: process.argv[2] }
+});
+`;
+  const results = await Promise.allSettled(Array.from({ length: count }, (_, index) =>
+    exec(process.execPath, [
+      '--input-type=module', '-e', source, f.dataDir, `atomic-${index}`
+    ], { timeout: 8000 })
+  ));
+  const failures = results.filter(result => result.status === 'rejected');
+  assert.equal(failures.length, 0,
+    failures.map(result => result.reason?.stderr || result.reason?.message).join('\n'));
+
+  const reopened = await module.createCourier(f.options);
+  const snapshot = await reopened.snapshot();
+  assert.equal(snapshot.requests.length, count);
+  assert.deepEqual(
+    snapshot.requests.map(request => request.requestId).sort(),
+    Array.from({ length: count }, (_, index) => `atomic-${index}`).sort()
+  );
+
+  const entries = await readdir(f.dataDir);
+  assert.equal(entries.includes('.courier.lock'), false, 'successful clients release their owned lock');
+  assert.deepEqual(
+    entries.filter(name => name.startsWith('.courier-lock-') && name.endsWith('.tmp')),
+    [],
+    'private publication files are cleaned up after success or contention'
+  );
+});
