@@ -475,3 +475,73 @@ test('every concurrent close caller waits until the writer lease is actually rel
   const reopened = await decisionsModule.openDecisions({ directory, now: () => instant });
   await reopened.close();
 });
+
+
+test('decision store preserves COMMIT_DURABILITY_UNCERTAIN after post-rename directory-sync failure', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-post-rename-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let failNextSync = false;
+  const syncDirectory = async location => {
+    if (failNextSync) {
+      failNextSync = false;
+      throw Object.assign(new Error('injected directory sync failure after rename'), { code: 'EIO' });
+    }
+    const handle = await open(location, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const store = await decisionsModule.openDecisions({ directory, now: () => instant, syncDirectory });
+  await store.setPolicy(founder, policy);
+  await store.create(evaluator, proposal());
+  failNextSync = true;
+
+  await assert.rejects(
+    store.decide(founder, request()),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+  await assert.rejects(
+    store.snapshot(founder),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+  await assert.rejects(
+    store.decide(founder, request('REJECT')),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+
+  const retained = JSON.parse(await readFile(join(directory, 'decisions.json'), 'utf8'));
+  assert.equal(retained.payload.projection.decisions[0].status, 'APPROVED',
+    'rename may expose the replacement even though directory durability was not confirmed');
+  await store.close();
+
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant + 1 });
+  try {
+    assert.equal((await reopened.snapshot(founder)).decisions[0].status, 'APPROVED',
+      'only a fresh validated open may expose the retained decision projection');
+  } finally {
+    await reopened.close();
+  }
+});
+
+test('initial decision-envelope rename reports uncertain durability and releases the writer lock', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-initial-uncertain-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await assert.rejects(
+    decisionsModule.openDecisions({
+      directory,
+      now: () => instant,
+      syncDirectory: async () => { throw Object.assign(new Error('injected initial directory sync failure'), { code: 'EIO' }); }
+    }),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+
+  const retained = JSON.parse(await readFile(join(directory, 'decisions.json'), 'utf8'));
+  assert.equal(retained.schema, 'ngl.decisions.store.v1');
+  assert.deepEqual(retained.payload.records, []);
+  await assert.rejects(lstat(join(directory, '.decisions.lock')), { code: 'ENOENT' });
+
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant });
+  try {
+    assert.equal((await reopened.snapshot(founder)).revision, 0);
+  } finally {
+    await reopened.close();
+  }
+});
