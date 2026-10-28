@@ -14,6 +14,7 @@
     "forge": "node scripts/forge.mjs",
     "package:component": "node scripts/package-component.mjs",
     "compounding": "python3 scripts/run-compounding.py",
-    "recover:institution": "node scripts/recover-institution.mjs"
+    "recover:institution": "node scripts/recover-institution.mjs",
+    "inspect:lock": "node scripts/inspect-writer-lock.mjs"
   }
 }
