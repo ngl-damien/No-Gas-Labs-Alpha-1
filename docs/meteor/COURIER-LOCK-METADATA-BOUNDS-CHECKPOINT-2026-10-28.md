@@ -43,3 +43,12 @@ Existing stale-lock coverage uses a schema-less `{pid}` record, so compatibility
 6. Reinspect `main` and open PRs before any integration. Keep this branch draft and unmerged pending human review.
 
 No merge, deployment, release, spending, production key operation, or Founder decision occurred. No real-world Founder identity proof or autonomous-discovery breakthrough is claimed.
+
+
+## Run continuation addendum — documentation and CI reinspection
+
+- Added the user-facing `Lock metadata safety boundary` section to `docs/meteor/courier.md` in commit `cc18032cfbbaccbf8d2b6b56237a8b9f20649374`. It documents the 4096-byte cap, non-blocking read boundary, error codes, legacy PID-only compatibility, and the unresolved check-to-unlink race.
+- The PR now changes four files: `src/institution/courier.mjs`, `test/institution-courier.test.mjs`, this checkpoint, and `docs/meteor/courier.md`.
+- At 2026-10-28 17:43 UTC, exact checkpoint-head CI on `e1313e4d4e46aa987d2937ea9c99a97d96b7a201` showed Genesis Evidence Invariant passed; verify and browser acceptance were still running. Earlier implementation/test heads also had passing verify and Genesis runs, but the latest head must be checked again after each commit.
+- This checkpoint refresh itself changes the branch head. Inspect all three workflows on the resulting exact head and update the PR handoff with their final outcomes before treating verification as complete.
+- The latest `main` observed before this addendum remained `fc1d313152aa17ea90ff5cbd76a3e0cda8d76dbf`. Re-read `main`, open PRs, and Issue #17 before any future integration; do not merge this draft automatically.
