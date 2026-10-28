@@ -318,6 +318,7 @@ export async function createCourier({dataDir,providers,now=Date.now,syncDirector
   await chmod(dir,0o700);
   const enrolled=providers === undefined ? undefined : normalizeProviders(providers);
   let uncertain = false;
+  let leaseLost = false;
   await serialize(dir,async()=>{
     const stored=await readState(path);
     if(stored) {
@@ -326,25 +327,36 @@ export async function createCourier({dataDir,providers,now=Date.now,syncDirector
   });
   function timeNow() { const time=now(); requireValue(Number.isSafeInteger(time),'INVALID_INPUT','Clock must return integer milliseconds');return time; }
   async function transaction(operation) {
-    return serialize(dir,async()=>{
-      if (uncertain) throw error('COMMIT_DURABILITY_UNCERTAIN',
-        'Courier state replacement may have committed without confirmed directory durability; reopen a fresh courier instance before further operations.');
-      const state=await readState(path); requireValue(state,'CORRUPT_STATE','Courier state disappeared');
-      const before=canonicalJSON(state); expire(state,timeNow());
-      let result, failure;
-      try { result=operation(state,timeNow()); } catch(cause) { failure=cause; }
-      if(canonicalJSON(state)!==before) {
-        state.revision++;
-        try { await writeState(dir,state,syncDirectoryFn); }
-        catch (cause) {
-          if (cause.code === 'COMMIT_DURABILITY_UNCERTAIN') uncertain = true;
-          throw cause;
+    if (leaseLost) throw error('LOCK_OWNERSHIP_LOST',
+      'A prior operation lost the courier lock; inspect durable state and reopen a fresh courier instance before retrying.');
+    if (uncertain) throw error('COMMIT_DURABILITY_UNCERTAIN',
+      'Courier state replacement may have committed without confirmed directory durability; reopen a fresh courier instance before further operations.');
+    try {
+      return await serialize(dir,async()=>{
+        if (leaseLost) throw error('LOCK_OWNERSHIP_LOST',
+          'A prior operation lost the courier lock; inspect durable state and reopen a fresh courier instance before retrying.');
+        if (uncertain) throw error('COMMIT_DURABILITY_UNCERTAIN',
+          'Courier state replacement may have committed without confirmed directory durability; reopen a fresh courier instance before further operations.');
+        const state=await readState(path); requireValue(state,'CORRUPT_STATE','Courier state disappeared');
+        const before=canonicalJSON(state); expire(state,timeNow());
+        let result, failure;
+        try { result=operation(state,timeNow()); } catch(cause) { failure=cause; }
+        if(canonicalJSON(state)!==before) {
+          state.revision++;
+          try { await writeState(dir,state,syncDirectoryFn); }
+          catch (cause) {
+            if (cause.code === 'COMMIT_DURABILITY_UNCERTAIN') uncertain = true;
+            throw cause;
+          }
         }
-      }
-      if(failure)throw failure;
-      if(result?.schema === 'ngl.courier.snapshot.v1') result.revision=state.revision;
-      return clone(result);
-    });
+        if(failure)throw failure;
+        if(result?.schema === 'ngl.courier.snapshot.v1') result.revision=state.revision;
+        return clone(result);
+      });
+    } catch (cause) {
+      if (cause.code === 'LOCK_OWNERSHIP_LOST') leaseLost = true;
+      throw cause;
+    }
   }
   return {
     async dispatch(args={}) {
