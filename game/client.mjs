@@ -256,15 +256,33 @@ function openAcademy(){
   const notes=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study').slice().reverse().slice(0,8);
   content.append(node('h3',{class:'section-title',text:'RETAINED STUDY NOTES'}));
   if(!notes.length)content.append(paragraph('No study notes retained yet. The first note should identify an exact source version and what remains to check.','empty-note'));
+  const reviews=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='study-reviewed').slice().reverse().slice(0,8);
   for(const note of notes){
     const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===note.creationId);
-    content.append(node('article',{class:'field-card'},[
+    const review=reviews.find(item=>item.studyId===note.studyId&&item.actor?.id===note.actor?.id&&item.actor?.role===note.actor?.role);
+    const children=[
       node('h3',{text:(source?.title||'Source unavailable')+' · v'+note.version}),
       paragraph('Question: '+note.question),
       paragraph('Attempt: '+note.attempt),
       paragraph('Next check: '+note.nextCheck),
-      paragraph((note.actor?.name||'Unknown actor')+' · '+note.at+' · recorded practice, not mastery.','attribution'),
-      button('Inspect retained source version →',()=>openCreation(note.creationId,note.version),{class:'list-button'})
+      paragraph((note.actor?.name||'Unknown actor')+' · '+note.at+' · recorded practice, not mastery.','attribution')
+    ];
+    if(note.actor?.id===viewer.id&&note.actor?.role===viewer.role&&!review)
+      children.push(button('Review next check →',()=>openStudyReview(note),{class:'list-button'}));
+    if(review)children.push(paragraph('A retrieval review is retained for this note; its response remains self-reported.','form-help'));
+    children.push(button('Inspect retained source version →',()=>openCreation(note.creationId,note.version),{class:'list-button'}));
+    content.append(node('article',{class:'field-card'},children));
+  }
+  content.append(node('h3',{class:'section-title',text:'RETAINED RETRIEVAL REVIEWS'}));
+  if(!reviews.length)content.append(paragraph('No retrieval reviews retained yet. A review must follow your own source-bound study note.','empty-note'));
+  for(const review of reviews){
+    const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===review.creationId);
+    content.append(node('article',{class:'field-card'},[
+      node('h3',{text:(source?.title||'Source unavailable')+' · v'+review.version}),
+      paragraph('Response: '+review.response),
+      paragraph('Reflection: '+review.reflection),
+      paragraph((review.actor?.name||'Unknown actor')+' · '+review.at+' · self-reported retrieval practice, not mastery.','attribution'),
+      button('Inspect reviewed source version →',()=>openCreation(review.creationId,review.version),{class:'list-button'})
     ]));
   }
 }
@@ -297,6 +315,32 @@ function openStudyNote(creationId,versionNumber){
         question:question.value.trim(),attempt:attempt.value.trim(),nextCheck:nextCheck.value.trim()
       });
       toast('Study note retained · exact source version bound · Scholar activity only · no XP or mastery awarded.');
+      openAcademy();
+    }finally{submit.disabled=false;}
+  });
+}
+function openStudyReview(note){
+  const content=showSheet('Review your next check','POLYMATH ACADEMY · RETRIEVAL PRACTICE');
+  content.append(paragraph('Return to the next check you wrote for this earlier note. Answer from memory first if useful, then record what remains uncertain. This is a later self-report, not a correctness score, external observation, or mastery certificate.'));
+  content.append(paragraph('Original next check: '+note.nextCheck,'field-card'));
+  content.append(paragraph('Source: '+note.creationId+' · retained v'+note.version+'.'));
+  const form=node('form',{class:'field-card'},[]);
+  const response=node('textarea',{id:'academy-review-response',maxlength:'1000',rows:'4',placeholder:'Your response to the earlier next check',required:'required'});
+  const reflection=node('textarea',{id:'academy-review-reflection',maxlength:'1000',rows:'3',placeholder:'What changed, what was missing, or what remains uncertain?',required:'required'});
+  const submit=node('button',{id:'academy-review-submit',class:'primary-button',type:'submit',text:'Retain retrieval review'});
+  form.append(
+    field('Response to the next check','academy-review-response',response),
+    field('Reflection and remaining uncertainty','academy-review-reflection',reflection),
+    paragraph('One review is allowed per study note. Start a new source-bound study note for another practice cycle. No XP or mastery is awarded.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      await act({type:'review-study',studyId:note.studyId,response:response.value.trim(),reflection:reflection.value.trim()});
+      toast('Retrieval review retained · source-bound · self-reported · no XP or mastery awarded.');
       openAcademy();
     }finally{submit.disabled=false;}
   });
