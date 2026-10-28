@@ -273,6 +273,8 @@ test('courier reports ownership loss and preserves a replacement lock after a co
     { code: 'LOCK_OWNERSHIP_LOST' }
   );
   assert.equal(f.wasReplaced(), true);
+  await assert.rejects(f.courier.snapshot(), { code: 'LOCK_OWNERSHIP_LOST' },
+    'the instance must remain fenced after losing its lock');
   const lockPath = join(f.dataDir, '.courier.lock');
   assert.equal(await readFile(lockPath, 'utf8'), f.replacement);
   const persisted = JSON.parse(await readFile(join(f.dataDir, 'courier.json'), 'utf8'));
@@ -292,6 +294,8 @@ test('courier preserves a replacement lock when the transaction itself fails', a
     { code: 'LOCK_OWNERSHIP_LOST' }
   );
   assert.equal(f.wasReplaced(), true);
+  await assert.rejects(f.courier.snapshot(), { code: 'LOCK_OWNERSHIP_LOST' },
+    'the instance must remain fenced after losing its lock');
   assert.equal(await readFile(join(f.dataDir, '.courier.lock'), 'utf8'), f.replacement);
   const persisted = JSON.parse(await readFile(join(f.dataDir, 'courier.json'), 'utf8'));
   assert.equal(persisted.requests.length, 0);
