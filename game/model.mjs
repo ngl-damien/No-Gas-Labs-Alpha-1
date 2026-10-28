@@ -96,7 +96,7 @@ export async function validateWorld(raw) {
   try{if(encoder.encode(JSON.stringify(raw)).length>32*1024*1024)invalid('World import exceeds 32 MiB.');}catch(error){if(error.code)throw error;invalid('World must be serializable JSON.');}
   if(!raw||raw.schema!=='ngl.world.v2'||typeof raw.id!=='string'||typeof raw.founderName!=='string'||!Number.isInteger(raw.revision)||raw.revision<0)invalid('Unsupported or malformed world.');
   for(const key of ['creations','drafts','events','contributions','reports','discoveries','methods'])if(!Array.isArray(raw[key]))invalid(`Missing ${key}.`);
-  if(raw.creations.length>12||raw.drafts.length>24||!Number.isFinite(Date.parse(raw.createdAt))||!Number.isFinite(Date.parse(raw.updatedAt)))invalid('Invalid world bounds.');
+  if(raw.creations.length>12||raw.drafts.length>24||!Number.isFinite(Date.parse(raw.createdAt))||!Number.isFinite(Date.parse(raw.updatedAt))||Date.parse(raw.createdAt)>Date.parse(raw.updatedAt))invalid('Invalid world bounds.');
   const ids=new Set(),requestIds=new Set();const unique=id=>{if(typeof id!=='string'||!id||ids.has(id))invalid('Duplicate or missing identity.');ids.add(id)};
   const checkArtifact=async a=>{
     if(!a||!kinds.has(a.kind)||typeof a.title!=='string'||Array.from(a.title).length>80||typeof a.intent!=='string'||Array.from(a.intent).length>2000||typeof a.html!=='string'||encoder.encode(a.html).length>4*1024*1024||!Number.isInteger(a.version)||a.version<1||!a.position||!Number.isFinite(a.position.x)||!Number.isFinite(a.position.y)||a.position.x<80||a.position.x>1520||a.position.y<80||a.position.y>920||!Array.isArray(a.checks)||!a.checks.length||a.checks.some(c=>typeof c.id!=='string'||c.passed!==true))invalid('Malformed creation.');
