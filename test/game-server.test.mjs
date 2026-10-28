@@ -1,7 +1,7 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -1036,4 +1036,57 @@ test('Polymath Academy study notes bind to retained versions and replay idempote
   const finalState = await founder.request('/api/state');
   assert.equal(finalState.body.world.events.filter(item => item.type === 'study').length, 1);
   assert.equal(finalState.body.world.xp, beforeXp);
+});
+
+
+test('decision HTTP route returns 503 for post-rename durability uncertainty and fences retries', async t => {
+  let failNextSync = false;
+  const decisionSyncDirectory = async directory => {
+    if (failNextSync) {
+      failNextSync = false;
+      throw Object.assign(new Error('injected decision directory sync failure'), { code: 'EIO' });
+    }
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const f = await fixture(t, undefined, { decisionSyncDirectory });
+  const founder = f.client();
+  await founder.login();
+
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:api-durability',
+    reviewWindowMs: 60_000,
+    basis: 'Synthetic fault-injection test only; not an operational policy.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+
+  const bytes = '{"schema":"test.evaluation.v1","result":"synthetic decision"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:api-durability',
+    title: 'Synthetic post-rename durability test',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Synthetic test only'],
+    rollback: 'No external effect is executed by this test.',
+    proposedEffect: 'Record a synthetic decision only.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+
+  failNextSync = true;
+  const chosen = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:api-durability',
+    expectedRevision: 1,
+    requestId: 'request:api-durability',
+    action: 'APPROVE'
+  });
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+
+  const retry = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:api-durability',
+    expectedRevision: 1,
+    requestId: 'request:api-durability-retry',
+    action: 'REJECT'
+  });
+  assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
+  assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
 });
