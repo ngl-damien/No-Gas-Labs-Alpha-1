@@ -253,6 +253,72 @@ function openAcademy(){
     button('Study this artifact →',()=>openCreation(creation.id,creation.version),{class:'list-button'})
   ]));
 }
+function openExperimentReport(proposal){
+  const content=showSheet('Record an attempt.','MOONSHOT FIELD · EXPERIMENT REPORT');
+  content.append(paragraph('Retain what was tried and what was observed. The outcome is your report, not an adjudication. Failed attempts and contradictions stay visible. A linked artifact identifies retained bytes only; this form does not verify execution, truth, or success.'));
+  const form=node('form',{class:'field-card'},[]);
+  const procedure=node('textarea',{id:'experiment-procedure',maxlength:'1000',rows:'3',placeholder:'What procedure or method did you actually try?',required:'required'});
+  const observation=node('textarea',{id:'experiment-observation',maxlength:'1000',rows:'3',placeholder:'What did you observe, including failures or contradictions?',required:'required'});
+  const outcome=node('select',{id:'experiment-outcome',required:'required'},[
+    node('option',{value:'',text:'Choose a reported outcome'}),
+    node('option',{value:'supports',text:'Supports hypothesis · self-reported'}),
+    node('option',{value:'contradicts',text:'Contradicts hypothesis · self-reported'}),
+    node('option',{value:'inconclusive',text:'Inconclusive · self-reported'}),
+    node('option',{value:'failed',text:'Attempt failed · self-reported'})
+  ]);
+  const evidenceSource=node('select',{id:'experiment-evidence-source'},[]);
+  evidenceSource.append(node('option',{value:'',text:'No retained artifact linked'}));
+  for(const creation of (Array.isArray(world.creations)?world.creations:[])){
+    evidenceSource.append(node('option',{value:creation.id,text:creation.title+' · current v'+creation.version}));
+  }
+  const evidenceVersion=node('select',{id:'experiment-evidence-version'});
+  const syncEvidenceVersions=()=>{
+    evidenceVersion.replaceChildren();
+    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===evidenceSource.value);
+    if(!creation){
+      evidenceVersion.append(node('option',{value:'',text:'No evidence version'}));
+      evidenceVersion.disabled=true;
+      return;
+    }
+    const versions=[...(Array.isArray(creation.versions)?creation.versions:[]),creation]
+      .filter(version=>Number.isInteger(version.version))
+      .sort((left,right)=>left.version-right.version);
+    for(const version of versions)evidenceVersion.append(node('option',{value:String(version.version),text:(version.version===creation.version?'Current':'Retained')+' version '+version.version}));
+    evidenceVersion.value=String(creation.version);
+    evidenceVersion.disabled=false;
+  };
+  evidenceSource.onchange=syncEvidenceVersions;
+  syncEvidenceVersions();
+  const submit=node('button',{id:'report-experiment',class:'primary-button',type:'submit',text:'Retain experiment report'});
+  form.append(
+    field('Procedure','experiment-procedure',procedure),
+    field('Observed result or failure','experiment-observation',observation),
+    field('Reported outcome · not adjudicated','experiment-outcome',outcome),
+    field('Optional retained evidence artifact','experiment-evidence-source',evidenceSource),
+    field('Evidence version','experiment-evidence-version',evidenceVersion),
+    paragraph('This creates an attributed report event only. It awards no XP and does not mark the hypothesis true or false.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      const selected=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===evidenceSource.value);
+      await act({
+        type:'report-experiment',
+        moonshotId:proposal.moonshotId,
+        procedure:procedure.value.trim(),
+        observation:observation.value.trim(),
+        reportedOutcome:outcome.value,
+        evidenceCreationId:selected?.id??null,
+        evidenceVersion:selected?Number(evidenceVersion.value):null
+      });
+      toast('Experiment report retained · self-reported · not adjudicated · no XP awarded.');
+      openMoonshotField();
+    }finally{submit.disabled=false;}
+  });
+}
 function openMoonshotField(){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
@@ -332,6 +398,25 @@ function openMoonshotField(){
         (creation.version===proposal.sourceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===proposal.sourceVersion))));
     if(sourceExists)card.append(button('Inspect linked source v'+proposal.sourceVersion+' →',()=>openCreation(proposal.sourceCreationId,proposal.sourceVersion),{class:'list-button'}));
     else if(proposal.sourceCreationId)card.append(paragraph('Linked source version is unavailable in this snapshot; the proposal remains visible without an invented target.','evidence-warning'));
+    card.append(button('Record an experiment attempt →',()=>openExperimentReport(proposal),{class:'list-button'}));
+    const reports=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-reported'&&event.moonshotId===proposal.moonshotId);
+    for(const report of reports){
+      const reportCard=node('div',{class:'field-card'},[
+        node('h4',{text:'Experiment report'}),
+        node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED'}),
+        paragraph('Procedure: '+(report.procedure||'not recorded')),
+        paragraph('Observation: '+(report.observation||'not recorded')),
+        paragraph('Reported outcome: '+(report.reportedOutcome||'not supplied')),
+        paragraph('Submitted by '+(report.actor?.name||report.actor?.id||'unknown actor')+' · '+(report.at||'time unavailable'),'form-help')
+      ]);
+      const evidenceCreation=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===report.evidenceCreationId);
+      const evidenceExists=evidenceCreation&&Number.isInteger(report.evidenceVersion)&&
+        (evidenceCreation.version===report.evidenceVersion||(Array.isArray(evidenceCreation.versions)&&evidenceCreation.versions.some(version=>version.version===report.evidenceVersion)));
+      if(evidenceExists)reportCard.append(button('Inspect retained evidence v'+report.evidenceVersion+' →',()=>openCreation(report.evidenceCreationId,report.evidenceVersion),{class:'list-button'}));
+      else if(report.evidenceCreationId)reportCard.append(paragraph('The linked evidence version is unavailable in this snapshot.','evidence-warning'));
+      else reportCard.append(paragraph('No retained artifact is linked; this report has not been independently supported.','evidence-warning'));
+      card.append(reportCard);
+    }
     content.append(card);
   }
   if(viewer.role==='founder'&&!(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.kind==='observatory')){
