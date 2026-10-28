@@ -407,3 +407,30 @@ try {
   assert.equal((await stat(lockPath)).isFIFO(), true);
   assert.equal(await readFile(statePath, 'utf8'), stateBefore);
 });
+
+
+test('courier rejects duplicate PID keys instead of classifying the last value as stale owner metadata', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const duplicate = '{"schema":"ngl.courier-lock.v1","pid":2147483647,"pid":2147483648,"openedAt":"2026-10-28T12:00:00.000Z"}';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, duplicate, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), duplicate);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
+
+test('courier rejects escaped duplicate PID keys after JSON key decoding', async t => {
+  const f = await fixture(t, []);
+  const lockPath = join(f.dataDir, '.courier.lock');
+  const statePath = join(f.dataDir, 'courier.json');
+  const duplicate = '{"schema":"ngl.courier-lock.v1","pid":2147483647,"p\\u0069d":2147483648,"openedAt":"2026-10-28T12:00:00.000Z"}';
+  const stateBefore = await readFile(statePath, 'utf8');
+  await writeFile(lockPath, duplicate, { mode: 0o600 });
+
+  await assert.rejects(module.createCourier(f.options), { code: 'CORRUPT_LOCK' });
+  assert.equal(await readFile(lockPath, 'utf8'), duplicate);
+  assert.equal(await readFile(statePath, 'utf8'), stateBefore);
+});
