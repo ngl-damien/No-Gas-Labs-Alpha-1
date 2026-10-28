@@ -30,14 +30,27 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  * Supports Alpha 1's `id` and recovered donor events' `event_id` schemas.
  * Counts are navigational context only; they do not verify truth or grant rewards.
  */
+function ownDataValue(object,key){
+ if(!object||(typeof object!=='object'&&typeof object!=='function'))return undefined;
+ try{
+  const descriptor=Object.getOwnPropertyDescriptor(object,key);
+  return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;
+ }catch{return undefined;}
+}
+function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
 export function institutionActivityCount(id,world){
  const matches=INSTITUTION_EVENT_MATCHERS[id];
  if(typeof matches!=='function')return 0;
- const events=Array.isArray(world?.events)?world.events:Array.isArray(world?.history)?world.history:[];
+ const worldEvents=ownDataValue(world,'events');
+ const worldHistory=ownDataValue(world,'history');
+ const events=isArraySafely(worldEvents)?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
  const identified=[];
  const counts=new Map();
  for(const event of events){
-  if(!event||typeof event!=='object'||Array.isArray(event))continue;
+  if(!event||typeof event!=='object')continue;
+  let isEventArray;
+  try{isEventArray=Array.isArray(event)}catch{continue}
+  if(isEventArray)continue;
   let descriptors;
   try{descriptors=Object.getOwnPropertyDescriptors(event)}catch{continue}
   if(!descriptors)continue;
@@ -49,7 +62,8 @@ export function institutionActivityCount(id,world){
   if(typeof identity!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(identity))continue;
   counts.set(identity,(counts.get(identity)||0)+1);
   const safe=Object.values(descriptors).every(descriptor=>Object.hasOwn(descriptor,'value'));
-  identified.push({identity,event,safe});
+  const snapshot=safe?Object.fromEntries(Object.entries(descriptors).map(([key,descriptor])=>[key,descriptor.value])):null;
+  identified.push({identity,event:snapshot,safe});
  }
  return identified.filter(({identity,event,safe})=>safe&&counts.get(identity)===1&&matches(event)).length;
 }
