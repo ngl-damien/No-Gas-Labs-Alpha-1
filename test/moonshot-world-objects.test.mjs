@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectMoonshotWorldObjects } from '../game/world-view.mjs';
+import { institutionActivityCount, projectMoonshotWorldObjects } from '../game/world-view.mjs';
 
 function proposal(eventId, moonshotId, title = 'A testable question') {
   return {
@@ -62,6 +62,23 @@ test('invalid proposals and accessor-backed fields are ignored without invoking 
   });
   assert.deepEqual(projectMoonshotWorldObjects(unsafeWorld), []);
   assert.equal(eventsReads, 0);
+
+  let iteratorReads = 0;
+  const events = [proposal('event-iterator', 'moon-iterator')];
+  Object.defineProperty(events, Symbol.iterator, {
+    get() { iteratorReads += 1; throw new Error('array iterator getter must not run'); },
+  });
+  assert.equal(projectMoonshotWorldObjects({ events }).length, 1);
+  const activityEvent = { id: 'event-count', type: 'contribute' };
+  Object.defineProperty(activityEvent, Symbol.iterator, {
+    get() { iteratorReads += 1; throw new Error('event iterator getter must not run'); },
+  });
+  const activityEvents = [activityEvent];
+  Object.defineProperty(activityEvents, Symbol.iterator, {
+    get() { iteratorReads += 1; throw new Error('activity array iterator getter must not run'); },
+  });
+  assert.equal(institutionActivityCount('town-square', { events: activityEvents }), 1);
+  assert.equal(iteratorReads, 0);
 });
 
 test('appending a retained proposal does not move existing research objects', () => {
