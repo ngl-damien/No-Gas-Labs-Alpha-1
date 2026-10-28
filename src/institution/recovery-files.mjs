@@ -61,14 +61,14 @@ export function validateContinuityRecord(state) {
   if (!isPlainRecord(state) ||
       state.schema !== 'ngl.institution-continuity.v1' ||
       state.principal !== 'Damien Featherstone' ||
-      typeof state.mission !== 'string' || !state.mission.trim() ||
+      (Object.hasOwn(state, 'mission') && (typeof state.mission !== 'string' || !state.mission.trim())) ||
       typeof state.authority !== 'string' || !state.authority.trim() ||
       typeof state.nextAction !== 'string' || !state.nextAction.trim() ||
       typeof state.rollback !== 'string' || !state.rollback.trim() ||
       !Array.isArray(state.assignments) || state.assignments.length === 0 ||
       !isPlainRecord(state.machinery) ||
-      !isPlainRecord(state.machinery.M0) ||
-      !isPlainRecord(state.machinery.M1) ||
+      (!isPlainRecord(state.machinery.M0) && typeof state.machinery.M0 !== 'string') ||
+      (!isPlainRecord(state.machinery.M1) && typeof state.machinery.M1 !== 'string') ||
       !Array.isArray(state.openFailures) ||
       !state.openFailures.every(item => typeof item === 'string') ||
       !isPlainRecord(state.taskB) ||
