@@ -5,11 +5,78 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const MAX_RECOVERY_STATE_BYTES = 1024 * 1024;
 export const MAX_RECOVERY_REFERENCE_BYTES = 64 * 1024 * 1024;
+export const MAX_RECOVERY_REFERENCES = 128;
+export const MAX_RECOVERY_TOTAL_BYTES = 128 * 1024 * 1024;
 
 function sameSnapshot(a, b) {
   return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid &&
     a.mode === b.mode && a.size === b.size &&
     a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
+
+function isPlainRecord(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function assertSafeReferenceDescriptor(reference) {
+  const referencePath = reference?.path;
+  if (!isPlainRecord(reference) ||
+      typeof referencePath !== 'string' || !referencePath.trim() ||
+      referencePath.includes('\\\\') || isAbsolute(referencePath) ||
+      /(^|\\/)(\\.runtime|\\.git|secrets|credentials)(\\/|$)|\\.(key|pem)$/i.test(referencePath) ||
+      referencePath.split('/').some(part => !part || part === '.' || part === '..') ||
+      !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? '')) {
+    throw new Error('Unsafe recovery reference');
+  }
+  return referencePath;
+}
+
+function assertReferenceList(references, { maxReferences = MAX_RECOVERY_REFERENCES } = {}) {
+  if (!Array.isArray(references) || references.length === 0) {
+    throw new Error('Continuity record must contain at least one recovery reference');
+  }
+  if (!Number.isSafeInteger(maxReferences) || maxReferences < 1 ||
+      maxReferences > MAX_RECOVERY_REFERENCES) {
+    throw new TypeError('Recovery reference count limit is invalid');
+  }
+  if (references.length > maxReferences) {
+    throw new Error(`Continuity record exceeds the ${maxReferences}-reference limit`);
+  }
+
+  const seen = new Set();
+  for (const reference of references) {
+    const referencePath = assertSafeReferenceDescriptor(reference);
+    if (seen.has(referencePath)) {
+      throw new Error(`Duplicate recovery reference path: ${referencePath}`);
+    }
+    seen.add(referencePath);
+  }
+  return references;
+}
+
+/** Validate the continuity record's control fields before any reference I/O. */
+export function validateContinuityRecord(state) {
+  if (!isPlainRecord(state) ||
+      state.schema !== 'ngl.institution-continuity.v1' ||
+      state.principal !== 'Damien Featherstone' ||
+      typeof state.mission !== 'string' || !state.mission.trim() ||
+      typeof state.authority !== 'string' || !state.authority.trim() ||
+      typeof state.nextAction !== 'string' || !state.nextAction.trim() ||
+      typeof state.rollback !== 'string' || !state.rollback.trim() ||
+      !Array.isArray(state.assignments) || state.assignments.length === 0 ||
+      !isPlainRecord(state.machinery) ||
+      !isPlainRecord(state.machinery.M0) ||
+      !isPlainRecord(state.machinery.M1) ||
+      !Array.isArray(state.openFailures) ||
+      !state.openFailures.every(item => typeof item === 'string') ||
+      !isPlainRecord(state.taskB) ||
+      !isPlainRecord(state.founderDecision)) {
+    throw new Error('Incomplete continuity record');
+  }
+  assertReferenceList(state.references);
+  return state;
 }
 
 /**
@@ -37,6 +104,7 @@ export async function readStableRegularFile(filePath, {
   }
 
   let handle;
+  let total = 0;
   try {
     try {
       handle = await open(filePath, fsConstants.O_RDONLY |
@@ -54,18 +122,14 @@ export async function readStableRegularFile(filePath, {
     }
 
     const chunks = [];
-    let total = 0;
     let position = 0;
-    while (total <= maxBytes) {
-      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - total));
+    while (total < maxBytes) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes - total));
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
       if (bytesRead === 0) break;
       chunks.push(buffer.subarray(0, bytesRead));
       total += bytesRead;
       position += bytesRead;
-    }
-    if (total > maxBytes) {
-      throw new Error(`${label} exceeds its ${maxBytes}-byte limit during reading`);
     }
 
     const afterHandle = await handle.stat();
@@ -84,6 +148,14 @@ export async function readStableRegularFile(filePath, {
       throw new Error(`${label} changed while reading`);
     }
     return Buffer.concat(chunks, total);
+  } catch (error) {
+    // The recovery budget accounts for bytes read even when a concurrent
+    // replacement makes the read unusable. This keeps repeated failures from
+    // silently resetting the aggregate I/O budget.
+    if (error && typeof error === 'object' && !Object.hasOwn(error, 'bytesRead')) {
+      Object.defineProperty(error, 'bytesRead', { value: total, enumerable: false });
+    }
+    throw error;
   } finally {
     await handle?.close().catch(() => {});
   }
@@ -102,14 +174,13 @@ export async function readRecoveryState(filePath) {
  * A hash mismatch is returned as data so the caller can report every stale
  * reference in one run; callers must still fail closed when verified is false.
  */
-export async function readVerifiedReference(rootPath, reference) {
-  const referencePath = reference?.path;
-  if (typeof referencePath !== 'string' || !referencePath.trim() ||
-      referencePath.includes('\\') || isAbsolute(referencePath) ||
-      /(^|\/)(\.runtime|\.git|secrets|credentials)(\/|$)|\.(key|pem)$/i.test(referencePath) ||
-      referencePath.split('/').some(part => !part || part === '.' || part === '..') ||
-      !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? '')) {
-    throw new Error('Unsafe recovery reference');
+export async function readVerifiedReference(rootPath, reference, {
+  maxBytes = MAX_RECOVERY_REFERENCE_BYTES
+} = {}) {
+  const referencePath = assertSafeReferenceDescriptor(reference);
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
+      maxBytes > MAX_RECOVERY_REFERENCE_BYTES) {
+    throw new TypeError('Recovery reference byte limit is invalid');
   }
 
   const root = await realpath(resolve(rootPath));
@@ -136,7 +207,7 @@ export async function readVerifiedReference(rootPath, reference) {
   }
 
   const bytes = await readStableRegularFile(target, {
-    maxBytes: MAX_RECOVERY_REFERENCE_BYTES,
+    maxBytes,
     label: `Recovery reference ${referencePath}`
   });
   const actualSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -147,4 +218,73 @@ export async function readVerifiedReference(rootPath, reference) {
     actualSha256,
     verified: actualSha256 === reference.sha256
   };
+}
+
+/**
+ * Verify a bounded reference set. Duplicate paths are rejected before any
+ * reads; aggregate byte limits include bytes consumed by reads that fail due
+ * to a detected concurrent change.
+ */
+export async function verifyRecoveryReferences(rootPath, references, {
+  maxReferences = MAX_RECOVERY_REFERENCES,
+  maxTotalBytes = MAX_RECOVERY_TOTAL_BYTES,
+  maxReferenceBytes = MAX_RECOVERY_REFERENCE_BYTES
+} = {}) {
+  assertReferenceList(references, { maxReferences });
+  if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1) {
+    throw new TypeError('Total recovery byte limit is invalid');
+  }
+  if (!Number.isSafeInteger(maxReferenceBytes) || maxReferenceBytes < 1 ||
+      maxReferenceBytes > MAX_RECOVERY_REFERENCE_BYTES) {
+    throw new TypeError('Per-reference recovery byte limit is invalid');
+  }
+
+  const recovered = [];
+  const receipts = [];
+  const failures = [];
+  let bytesRead = 0;
+
+  for (const reference of references) {
+    const referencePath = reference.path;
+    const remaining = maxTotalBytes - bytesRead;
+    if (remaining <= 0) {
+      const message = `Total recovery reference byte budget (${maxTotalBytes} bytes) exhausted`;
+      receipts.push({ path: referencePath, status: 'error', error: message });
+      failures.push({ path: referencePath, reason: message, message: `Recovery reference error: ${referencePath}: ${message}` });
+      continue;
+    }
+
+    try {
+      const verified = await readVerifiedReference(rootPath, reference, {
+        maxBytes: Math.min(maxReferenceBytes, remaining)
+      });
+      bytesRead += verified.size;
+      const status = verified.verified ? 'verified' : 'mismatch';
+      receipts.push({
+        path: referencePath,
+        status,
+        expectedSha256: verified.expectedSha256,
+        actualSha256: verified.actualSha256,
+        size: verified.size
+      });
+      if (verified.verified) {
+        recovered.push(referencePath);
+      } else {
+        failures.push({
+          path: referencePath,
+          reason: 'sha256-mismatch',
+          expectedSha256: verified.expectedSha256,
+          actualSha256: verified.actualSha256,
+          message: `Recovery reference changed: ${referencePath} (expected SHA-256 ${verified.expectedSha256}, observed ${verified.actualSha256})`
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bytesRead += Number.isSafeInteger(error?.bytesRead) && error.bytesRead > 0 ? error.bytesRead : 0;
+      receipts.push({ path: referencePath, status: 'error', error: message });
+      failures.push({ path: referencePath, reason: message, message: `Recovery reference error: ${referencePath}: ${message}` });
+    }
+  }
+
+  return { recovered, receipts, failures, bytesRead };
 }
