@@ -861,4 +861,36 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(reports[0].outcome, undefined);
   assert.equal(reports[0].status, undefined);
   assert.equal(state.body.world.xp, published.world.xp);
+
+  // An uncertain client response can be retried after a process restart without
+  // creating a second challenge or losing its evidence reference.
+  await f.closeGame();
+  let restarted;
+  t.after(async () => { if (restarted) await restarted.closeGame().catch(() => {}); });
+  restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const replay = await fetch(origin + '/api/action', {
+    method: 'POST',
+    headers: { cookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify(challengeAction)
+  });
+  assert.equal(replay.status, 200);
+  const replayBody = await replay.json();
+  assert.equal(replayBody.idempotentReplay, true);
+  assert.equal(replayBody.result.challengeId, first.body.result.challengeId);
+  const restartedState = await (await fetch(origin + '/api/state', { headers: { cookie } })).json();
+  const afterRestart = restartedState.world.events.filter(event => event.type === 'experiment-challenged');
+  assert.equal(afterRestart.length, 1);
+  assert.equal(afterRestart[0].evidenceCreationId, published.result.creationId);
+  assert.equal(afterRestart[0].evidenceVersion, 1);
+  await restarted.closeGame();
+  restarted = null;
 });
