@@ -21,12 +21,16 @@ Branch: `fix/recovery-reference-stable-read-20261028`.
 5. Recovery output preserves the existing `recovered` path list and adds per-reference receipts with expected/observed SHA-256, byte size and status. It reports all reference failures in one run, emits a compatibility stderr diagnostic for changed receipts, and exits nonzero if any reference is unsafe, missing, changed or mismatched.
 6. Nine tests cover stable reads, symlink rejection, byte limits, traversal/sensitive paths, checksum mismatch, invalid UTF-8, controlled successful child-process recovery, and fail-closed reporting for the actual default continuity record.
 
-## CI failures inspected and repaired
+## CI findings and repairs
 
-- Exact-head full verification run `40652767809` failed because the default continuity record's stored SHA-256 for `src/institution/decisions.mjs` no longer matched current repository bytes. The initial test incorrectly assumed all historical pins still matched.
-- On the next code head, full verification run `40653370507` exposed two further test-contract issues: the existing `test/institution-continuity.test.mjs` expects a `changed` diagnostic on stderr, and the new controlled-success test asserted a nonexistent `sha256` field instead of `expectedSha256`.
-- The implementation now preserves the stderr diagnostic while emitting structured receipts, and the test asserts the actual report schema. The default-record test checks all ten references and requires a nonzero exit whenever any receipt is not verified; the controlled fixture tests the successful path independently.
-- Genesis Evidence Invariant runs `40652767829` and `40653370788` passed. Browser run `40653370724` was still in progress at the last poll. Inspect all workflows again on the newest head; no post-repair full-verification or browser success is claimed yet.
+- Full verification run `40652767809` initially failed because the default continuity record's stored SHA-256 for `src/institution/decisions.mjs` no longer matched current repository bytes. The initial test incorrectly assumed all historical pins still matched.
+- Full verification run `40653370507` then exposed two test-contract issues: the existing continuity test expects a `changed` diagnostic on stderr, and the new controlled-success test asserted a nonexistent `sha256` field instead of `expectedSha256`.
+- The implementation now preserves the stderr diagnostic while emitting structured receipts, reports all mismatches in one run, and fails closed. The tests now cover both a controlled successful record and the real default record's ten receipts.
+- On implementation head `6b79af6e6b155daead806fa1b95ad882e22b8579`, all three required GitHub Actions workflows passed:
+  - Full verification run [40653702814](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40653702814): Node suite exit 0, Python inspector exit 0, package build exit 0, bounded institutional exercise `passed: true`.
+  - Genesis Evidence Invariant run [40653702773](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40653702773): success, including the attack-evidence-boundary step.
+  - Browser acceptance run [40653702747](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40653702747): success; browser journeys completed and receipts/screenshots uploaded at [artifact 12799928897](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/40653702747/artifacts/12799928897).
+- These are GitHub-hosted results. No local test execution is claimed. A checkpoint-only commit follows the verified implementation head; inspect fresh workflows on the final PR head before treating that head as green.
 
 I did **not** rewrite the continuity record's pinned digest to make CI green. That would silently replace historical evidence binding. A deliberate record refresh needs its own provenance decision.
 
@@ -43,11 +47,7 @@ I did **not** rewrite the continuity record's pinned digest to make CI green. Th
 - `c51b516d6a4290427cb688e24a4fafb7d008c00b` — test stale-receipt reporting and controlled success.
 - `c2a664a59fb2664719cc5946d565e1e21640d826` — preserve stderr diagnostics for changed receipts.
 - `75106e5cf47e60e957626c2cef8a9b4ee6514a63` — align receipt assertions with the report schema.
-- The checkpoint refresh commit must be inspected as the final head.
-
-## Verification boundary
-
-No local test execution is claimed. The full Node suite, package build, bounded institutional exercise, Genesis Evidence Invariant, and browser acceptance must be inspected on the final checkpoint head. Main's prior green workflows are not evidence for this branch.
+- Checkpoint refresh commit must be inspected as the final head.
 
 ## Safety limits / unresolved blockers
 
@@ -60,7 +60,7 @@ No local test execution is claimed. The full Node suite, package build, bounded 
 
 ## Next steps
 
-1. Inspect all three workflows on the newest PR head. Fix only demonstrated defects and rerun.
-2. Review all ten reported continuity receipts; decide separately whether the record is historical or should be deliberately re-pinned with a provenance note.
+1. Inspect all three workflows on the final checkpoint head. Fix only demonstrated defects and rerun.
+2. Review all ten continuity receipts; decide separately whether the record is historical or should be deliberately re-pinned with a provenance note.
 3. Continue Issue #17's concurrency and crash/stale-lock acceptance without automatic lock deletion.
 4. Reconcile stale security branches against fresh main; keep production trust fail-closed until independently controlled key custody and actual mutation-path wiring are demonstrated.
