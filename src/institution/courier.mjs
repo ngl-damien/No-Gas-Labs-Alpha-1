@@ -166,7 +166,8 @@ async function releaseOwnedLock(path, identity) {
       current.dev !== identity.dev || current.ino !== identity.ino) return false;
   // This identity check is best-effort: filesystems do not expose an atomic
   // compare-and-unlink primitive, so callers must not treat it as a full race-free lease.
-  await unlink(path).catch(cause => { if (cause.code !== 'ENOENT') throw cause; });
+  try { await unlink(path); }
+  catch (cause) { if (cause.code === 'ENOENT') return false; throw cause; }
   return true;
 }
 async function acquireLock(path) {
