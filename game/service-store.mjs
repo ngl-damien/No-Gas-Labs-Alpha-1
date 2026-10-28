@@ -239,12 +239,12 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let lease;
   try { lease = await open(lockPath, 'wx', 0o600); }
   catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('Exclusive service writer lock already exists; stop the owner before opening this store. Stale locks require manual offline recovery.'), { code: 'SERVICE_LOCKED' }); throw error; }
-  const ownership = randomUUID();
   let leaseIdentity;
   try {
     const stat = await lease.stat();
     leaseIdentity = { dev: stat.dev, ino: stat.ino };
-    await lease.writeFile(ownership);
+    await lease.writeFile(canonicalStringify({ schema: 'ngl.service-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
+    await lease.sync();
     await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
     await lease.close().catch(() => {});

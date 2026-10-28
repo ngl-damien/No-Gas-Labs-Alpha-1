@@ -169,7 +169,7 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
   try {
     const stat = await lock.stat();
     lockIdentity = { dev: stat.dev, ino: stat.ino };
-    await lock.writeFile(JSON.stringify({ pid: process.pid, openedAt: new Date().toISOString() }));
+    await lock.writeFile(canonicalStringify({ schema: 'ngl.ledger-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
     await assertPrivateDirectory(location, directoryIdentity);
     let state = createKernel({ actors, founderId });
