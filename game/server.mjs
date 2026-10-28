@@ -174,7 +174,7 @@ function validateHistory(world) {
         throw new Error('Stored experiment report is malformed or repeated');
       }
       reportIds.add(event.reportId);
-      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && proposal.at <= event.at).length !== 1) {
+      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && Date.parse(proposal.at) <= Date.parse(event.at)).length !== 1) {
         throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
