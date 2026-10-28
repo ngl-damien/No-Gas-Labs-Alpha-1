@@ -83,3 +83,55 @@ test('Academy review lookup searches the full history beyond the eight reviews s
   assert.equal(findStudyReview(notes[8], allReviews)?.reviewId, 'review-8');
   assert.equal(findStudyReview(notes[8], visibleReviews), null);
 });
+
+
+function challengeQuestWorld({ publicationPosition = 'before' } = {}) {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const proposalAt = '2026-10-28T17:01:00.000Z';
+  const reportAt = '2026-10-28T17:03:00.000Z';
+  const challengeAt = '2026-10-28T17:04:00.000Z';
+  const artifact = {
+    id: 'challenge-evidence-1', kind: 'observatory', title: 'Challenge evidence',
+    version: 1, publishedAt, receipt: { digest: 'b'.repeat(64), size: 16 }, versions: []
+  };
+  const publication = {
+    id: 'challenge-publication-1', type: 'publish', creationId: artifact.id,
+    version: 1, at: publishedAt, actor: founder
+  };
+  const proposal = {
+    id: 'challenge-proposal-1', type: 'moonshot-proposed', moonshotId: 'challenge-moon-1',
+    actor: witness, at: proposalAt, title: 'Test the report', hypothesis: 'A bounded hypothesis',
+    falsifier: 'An observable counterexample', evidenceNeeded: 'A retained artifact'
+  };
+  const report = {
+    id: 'challenge-report-event-1', type: 'experiment-reported', reportId: 'challenge-report-1',
+    moonshotId: 'challenge-moon-1', actor: witness, at: reportAt,
+    procedure: 'Repeat the documented procedure', observation: 'The record is incomplete',
+    reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+  };
+  const challenge = {
+    id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
+    reportId: report.reportId, moonshotId: report.moonshotId, actor: founder, at: challengeAt,
+    challengeType: 'missing-evidence', challengeText: 'The procedure is not reproducible from the record.',
+    evidenceCreationId: artifact.id, evidenceVersion: 1
+  };
+  const events = publicationPosition === 'missing'
+    ? [proposal, report, challenge]
+    : publicationPosition === 'after'
+      ? [proposal, report, challenge, publication]
+      : [publication, proposal, report, challenge];
+  return { creations: [artifact], events, discoveries: [], contributions: [], reports: [] };
+}
+
+test('experiment challenge evidence requires one matching publication event earlier in history', () => {
+  const milestone = worldState => getQuestTrail(worldState, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+
+  assert.equal(milestone(challengeQuestWorld()).complete, true, 'a valid earlier publication is accepted');
+  for (const publicationPosition of ['missing', 'after']) {
+    const result = milestone(challengeQuestWorld({ publicationPosition }));
+    assert.equal(result.complete, false, publicationPosition);
+    assert.equal(result.progress, 0, publicationPosition);
+    assert.deepEqual(result.evidenceIds, [], publicationPosition);
+  }
+});
