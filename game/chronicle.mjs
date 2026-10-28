@@ -220,9 +220,10 @@ function matchingNote(records, event, consumed, collectionValid = true) {
 function worldEntry(event, index, creations, notes) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
-  const creationId = text(event?.creationId);
+  const creationId = text(event?.creationId) || text(event?.sourceCreationId);
   const version = Number.isInteger(event?.version) ? event.version
-    : Number.isInteger(event?.baseVersion) ? event.baseVersion : null;
+    : Number.isInteger(event?.baseVersion) ? event.baseVersion
+    : Number.isInteger(event?.sourceVersion) ? event.sourceVersion : null;
   const target = findVersion(creations, creationId, version);
   const location = PLACE_NAMES[event?.locationId];
   const entry = {
@@ -278,6 +279,20 @@ function worldEntry(event, index, creations, notes) {
       } else {
         entry.warning = "The event is retained, but its corresponding text record is absent from this snapshot.";
       }
+    }
+  } else if (type === "moonshot-proposed") {
+    entry.title = `Moonshot proposed · ${text(event?.title) || "untitled question"}`;
+    entry.category = "MOONSHOT FIELD";
+    entry.summary = "A falsifiable research proposal was retained. It is not an executed experiment, observed result, or breakthrough.";
+    entry.detail = [
+      `Hypothesis: ${text(event?.hypothesis) || "not recorded"}`,
+      `Falsifier: ${text(event?.falsifier) || "not recorded"}`,
+      `Evidence required: ${text(event?.evidenceNeeded) || "not recorded"}`,
+    ].join(" · ");
+    if (event?.sourceCreationId && !target) {
+      entry.warning = "The referenced source version is unavailable in this snapshot; the proposal remains visible without an invented target.";
+    } else if (target) {
+      entry.detail += ` · Source: ${text(target.title) || creationId} v${version}`;
     }
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
