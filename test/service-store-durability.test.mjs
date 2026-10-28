@@ -302,3 +302,29 @@ test('service-store rejects accessor-backed commit candidates without invoking g
   assert.equal(store.value.revision, 0);
   await store.close();
 });
+
+test('service-store applies the revision guard to the canonical world payload', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-world-revision-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const validateWorldPayload = async value => {
+    if (!value?.world || !Number.isInteger(value.world.revision)) throw new Error('invalid test world payload');
+    return structuredClone(value);
+  };
+  const initial = { world: { revision: 0 }, events: [] };
+  const store = await createServiceStore({ dataDir, initial, validate: validateWorldPayload });
+  const results = await Promise.allSettled([
+    store.commit({ world: { revision: 1 }, events: ['first'] }),
+    store.commit({ world: { revision: 1 }, events: ['second'] })
+  ]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const rejected = results.find(result => result.status === 'rejected');
+  assert.equal(rejected.reason.code, 'SERVICE_STALE_REVISION');
+  assert.equal(store.value.world.revision, 1);
+  assert.equal(store.value.events.length, 1);
+  await store.close();
+
+  const reopened = await createServiceStore({ dataDir, initial, validate: validateWorldPayload });
+  assert.equal(reopened.value.world.revision, 1);
+  assert.equal(reopened.value.events.length, 1, 'replay must retain exactly one winning world event');
+  await reopened.close();
+});
