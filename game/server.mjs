@@ -484,10 +484,17 @@ async function assertPrivateDataDirectory(dataDir) {
   if (directory.isSymbolicLink() || !directory.isDirectory()) {
     throw new Error('Founder data directory must be a regular, non-symlink directory');
   }
-  if ((directory.mode & 0o077) !== 0) {
+  const mode = directory.mode & 0o777;
+  if ((mode & 0o700) !== 0o700) {
+    throw new Error('Founder data directory owner permissions must include read, write and execute (0700)');
+  }
+  if ((mode & 0o077) !== 0) {
     throw new Error('Founder data directory permissions must exclude group and other access (0700)');
   }
-  return { dev: directory.dev, ino: directory.ino };
+  if (typeof process.getuid === 'function' && directory.uid !== process.getuid()) {
+    throw new Error('Founder data directory must be owned by the current process user');
+  }
+  return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
@@ -497,7 +504,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const dataDirectory = await assertPrivateDataDirectory(dataDir);
   const key = await getFounderKey(dataDir, founderKey);
   const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
-  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev || dataDirectory.ino !== dataDirectoryAfterKeyRead.ino) {
+  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
+      dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
+      dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
+      dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
     throw new Error('Founder data directory changed during startup');
   }
   const forge = forgeCapabilities();
