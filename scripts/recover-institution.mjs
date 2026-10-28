@@ -26,9 +26,15 @@ try {
   }
 
   const recovered = [];
+  const receipts = [];
   for (const reference of state.references) {
-    await readVerifiedReference(root, reference);
+    const verified = await readVerifiedReference(root, reference);
     recovered.push(reference.path);
+    receipts.push({
+      path: reference.path,
+      sha256: reference.sha256,
+      size: verified.size
+    });
   }
 
   console.log(JSON.stringify({
@@ -44,6 +50,7 @@ try {
     nextAction: state.nextAction,
     rollback: state.rollback,
     recovered,
+    receipts,
     scope: 'New Node process using durable files only; not a fresh cloud/environment restoration.'
   }, null, 2));
 } catch (error) {
