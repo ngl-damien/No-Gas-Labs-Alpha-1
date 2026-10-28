@@ -503,6 +503,9 @@ async function assertNoSymlinkPathComponents(path) {
 }
 
 async function assertPrivateDataDirectory(dataDir) {
+  // Recheck after mkdir and again after key loading so a visible ancestor swap
+  // fails before credential access and cannot be mistaken for a private path.
+  await assertNoSymlinkPathComponents(dataDir);
   const directory = await lstat(dataDir);
   if (directory.isSymbolicLink() || !directory.isDirectory()) {
     throw new Error('Founder data directory must be a regular, non-symlink directory');
