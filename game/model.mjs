@@ -156,7 +156,8 @@ export async function validateWorld(raw) {
        typeof e.procedure!=='string'||!e.procedure.trim()||Array.from(e.procedure).length>1000||
        typeof e.observation!=='string'||!e.observation.trim()||Array.from(e.observation).length>1000||
        !allowedReportedOutcomes.has(e.reportedOutcome))invalid('Malformed experiment report.');
-    const proposals=raw.events.filter(proposal=>proposal.type==='moonshot-proposed'&&proposal.moonshotId===e.moonshotId&&proposal.at<=e.at);
+    const reportIndex=raw.events.indexOf(e);
+    const proposals=raw.events.slice(0,reportIndex).filter(proposal=>proposal.type==='moonshot-proposed'&&proposal.moonshotId===e.moonshotId&&proposal.at<=e.at);
     if(proposals.length!==1)invalid('Experiment report must reference one earlier retained moonshot proposal.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
