@@ -238,3 +238,37 @@ test('escaped spellings of duplicate JSON keys are rejected', async t => {
   assert.equal(result.reason, 'duplicate-json-key');
   assert.equal(result.safeToRemove, false);
 });
+
+
+test('recognizes each current writer-lock schema', async t => {
+  const directory = await temp(t);
+  for (const schema of ['ngl.service-lock.v1', 'ngl.ledger-lock.v1', 'ngl.decisions-lock.v1']) {
+    const path = join(directory, schema + '.lock');
+    await writeFile(path, JSON.stringify({
+      schema,
+      pid: process.pid,
+      openedAt: '2026-10-28T11:00:00.000Z'
+    }), { mode: 0o600 });
+    const result = await inspectWriterLock(path);
+    assert.equal(result.status, 'present');
+    assert.equal(result.format, 'owner-metadata');
+    assert.equal(result.owner.schema, schema);
+    assert.equal(result.safeToRemove, false);
+  }
+});
+
+test('does not interpret an unknown writer-lock schema as owner metadata', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, JSON.stringify({
+    schema: 'ngl.future-lock.v99',
+    pid: process.pid,
+    openedAt: '2026-10-28T11:00:00.000Z'
+  }), { mode: 0o600 });
+  const result = await inspectWriterLock(path);
+  assert.equal(result.status, 'present');
+  assert.equal(result.format, 'unrecognized-json');
+  assert.equal(result.reason, 'unsupported-lock-schema');
+  assert.equal(result.owner, undefined);
+  assert.equal(result.safeToRemove, false);
+});
