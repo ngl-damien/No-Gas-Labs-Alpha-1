@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,16 @@ async function temp(t) {
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function runRecovery(statePath) {
+  return execFileAsync(
+    process.execPath,
+    statePath
+      ? [join(repositoryRoot, 'scripts/recover-institution.mjs'), statePath]
+      : [join(repositoryRoot, 'scripts/recover-institution.mjs')],
+    { cwd: repositoryRoot, maxBuffer: 1024 * 1024 }
+  );
 }
 
 test('stable reader returns exact bytes from a regular file', async t => {
@@ -69,6 +79,8 @@ test('hash-pinned reference returns only a contained regular file', async t => {
   });
   assert.equal(result.target, path);
   assert.equal(result.size, bytes.length);
+  assert.equal(result.verified, true);
+  assert.equal(result.actualSha256, result.expectedSha256);
 });
 
 test('hash-pinned reference rejects a symlinked file or parent directory', async t => {
@@ -107,15 +119,19 @@ test('hash-pinned reference rejects traversal and sensitive path classes', async
   }
 });
 
-test('hash-pinned reference rejects content that differs from its receipt', async t => {
+test('hash-pinned reference reports a digest mismatch without treating it as verified', async t => {
   const directory = await temp(t);
   const docs = join(directory, 'docs');
+  const bytes = Buffer.from('actual bytes');
   await mkdir(docs, { mode: 0o700 });
-  await writeFile(join(docs, 'source.md'), 'actual bytes', { mode: 0o600 });
-  await assert.rejects(
-    readVerifiedReference(directory, { path: 'docs/source.md', sha256: '0'.repeat(64) }),
-    /Recovery reference changed/
-  );
+  await writeFile(join(docs, 'source.md'), bytes, { mode: 0o600 });
+  const result = await readVerifiedReference(directory, {
+    path: 'docs/source.md',
+    sha256: '0'.repeat(64)
+  });
+  assert.equal(result.verified, false);
+  assert.equal(result.expectedSha256, '0'.repeat(64));
+  assert.equal(result.actualSha256, sha256(bytes));
 });
 
 test('recovery command rejects a non-UTF-8 continuity record', async t => {
@@ -123,29 +139,54 @@ test('recovery command rejects a non-UTF-8 continuity record', async t => {
   const path = join(directory, 'state.json');
   await writeFile(path, Buffer.from([0xff, 0xfe, 0xfd]), { mode: 0o600 });
   await assert.rejects(
-    execFileAsync(process.execPath, [join(repositoryRoot, 'scripts/recover-institution.mjs'), path], {
-      cwd: repositoryRoot,
-      maxBuffer: 1024 * 1024
-    }),
+    runRecovery(path),
     error => error.code === 1 && /not valid UTF-8/.test(error.stderr)
   );
 });
 
-test('default recovery command verifies retained references and emits byte receipts in a fresh Node process', async () => {
-  const { stdout } = await execFileAsync(
-    process.execPath,
-    [join(repositoryRoot, 'scripts/recover-institution.mjs')],
-    { cwd: repositoryRoot, maxBuffer: 1024 * 1024 }
-  );
+test('recovery command succeeds on a controlled record and emits exact byte receipts', async t => {
+  const directory = await temp(t);
+  const packageBytes = await readFile(join(repositoryRoot, 'package.json'));
+  const state = {
+    schema: 'ngl.institution-continuity.v1',
+    principal: 'Damien Featherstone',
+    references: [{ path: 'package.json', sha256: sha256(packageBytes) }],
+    assignments: [{ role: 'test' }],
+    authority: 'Test-only authority statement',
+    nextAction: 'No action',
+    rollback: 'No mutation',
+    machinery: { M0: {}, M1: {} },
+    openFailures: [],
+    taskB: {},
+    founderDecision: {}
+  };
+  const statePath = join(directory, 'state.json');
+  await writeFile(statePath, JSON.stringify(state), { mode: 0o600 });
+
+  const { stdout } = await runRecovery(statePath);
+  const report = JSON.parse(stdout);
+  assert.equal(report.passed, true);
+  assert.deepEqual(report.recovered, ['package.json']);
+  assert.equal(report.receipts.length, 1);
+  assert.equal(report.receipts[0].status, 'verified');
+  assert.equal(report.receipts[0].sha256, state.references[0].sha256);
+  assert.equal(report.receipts[0].size, packageBytes.length);
+});
+
+test('default recovery command reports all references and fails closed on any drift', async () => {
+  let stdout;
+  let exitCode = 0;
+  try {
+    ({ stdout } = await runRecovery());
+  } catch (error) {
+    stdout = error.stdout;
+    exitCode = Number(error.code);
+  }
   const report = JSON.parse(stdout);
   assert.equal(report.schema, 'ngl.fresh-process-recovery.v1');
-  assert.equal(report.passed, true);
-  assert.equal(report.recovered.length, 10);
-  assert.equal(report.receipts.length, report.recovered.length);
-  for (const receipt of report.receipts) {
-    assert.ok(report.recovered.includes(receipt.path));
-    assert.match(receipt.sha256, /^[a-f0-9]{64}$/);
-    assert.ok(Number.isSafeInteger(receipt.size) && receipt.size >= 0);
-  }
+  assert.equal(report.receipts.length, 10);
+  assert.equal(report.passed, exitCode === 0);
+  assert.equal(report.failures.length, report.receipts.filter(receipt => receipt.status !== 'verified').length);
+  if (!report.passed) assert.ok(report.failures.length > 0);
   assert.match(report.scope, /not a fresh cloud\/environment restoration/);
 });
