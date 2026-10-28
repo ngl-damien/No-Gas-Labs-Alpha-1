@@ -73,7 +73,9 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         if(typeof action.sourceCreationId!=='string'||!action.sourceCreationId.trim()||!Number.isSafeInteger(action.sourceVersion)||action.sourceVersion<1)fail('INVALID_SOURCE','Source artifact and version must be valid.');
         const source=world.creations.find(c=>c.id===action.sourceCreationId);
         if(!source)fail('NOT_FOUND','Source artifact not found.',404);
-        if(source.version!==action.sourceVersion&&!source.versions.some(v=>v.version===action.sourceVersion))fail('STALE_VERSION','That source version is not retained.',409);
+        const version=source.version===action.sourceVersion?source:source.versions.find(v=>v.version===action.sourceVersion);
+        if(!version)fail('STALE_VERSION','That source version is not retained.',409);
+        if(!Number.isFinite(Date.parse(version.publishedAt))||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That source version was not published at the proposal time.',409);
         sourceCreationId=source.id;sourceVersion=action.sourceVersion;
       }
       const moonshotId=uid('moonshot');
