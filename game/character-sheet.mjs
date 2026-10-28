@@ -140,6 +140,19 @@ export function projectCharacter(world, viewer) {
     }
     return true;
   });
+  const studyIdCounts = new Map();
+  for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
+  const publishedStudyVersions = new Set(matchedPublications(world).map(event => versionKey(event.creationId, event.version)));
+  const studyEvents = events.filter(event => {
+    if (event.type !== 'study' || typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
+        typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
+        typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
+        typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500 ||
+        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at))) return false;
+    const key = versionKey(event.creationId, event.version), version = retainedVersions.get(key);
+    return Boolean(version && publishedStudyVersions.has(key) && Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+  });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -167,6 +180,13 @@ export function projectCharacter(world, viewer) {
       count: mine(world?.contributions, viewer).length,
       record: 'field notes',
       basis: 'Attributed notes attached to a published version.'
+    },
+    {
+      id: 'scholar',
+      label: 'Scholar',
+      count: studyEvents.length,
+      record: 'source-bound study notes',
+      basis: 'Unique study notes matched to a retained published version, a question, an explanation and a next check; this counts recorded practice, not mastery.'
     },
     {
       id: 'challenger',
