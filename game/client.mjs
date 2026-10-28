@@ -254,14 +254,89 @@ function openAcademy(){
   ]));
 }
 function openMoonshotField(){
-  const content=showSheet('Moonshot Field','BOUNDED EXPERIMENTS · NO FREE SUCCESS');
-  content.append(paragraph('A moonshot begins as a bounded question, not a claimed breakthrough. A useful brief names what could disconfirm it and which evidence would be needed. Drafting a proposal does not count as a successful experiment.'));
-  const studies=world.creations.filter(creation=>creation.kind==='observatory');
-  if(studies.length){
-    for(const creation of studies)content.append(button(creation.title+' · source observatory v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
-  }else content.append(paragraph('No published source observatory is present yet.','empty-note'));
-  if(viewer.role==='founder')content.append(button('Draft a source observatory →',()=>openWorkshop('observatory'),{class:'primary-button'}));
-  else content.append(paragraph('Witnesses cannot draft or publish. Inspect existing work and leave a specific report instead.'));
+  const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
+  content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
+  const form=node('form',{class:'field-card'},[]);
+  const title=node('input',{id:'moonshot-title',maxlength:'80',placeholder:'A concise question to investigate',autocomplete:'off'});
+  const hypothesis=node('textarea',{id:'moonshot-hypothesis',maxlength:'1000',rows:'3',placeholder:'What do you predict, and under which conditions?'});
+  const falsifier=node('textarea',{id:'moonshot-falsifier',maxlength:'1000',rows:'3',placeholder:'What observable result would count against the hypothesis?'});
+  const evidence=node('textarea',{id:'moonshot-evidence',maxlength:'1000',rows:'3',placeholder:'What source, artifact, measurement, or independent observation is needed?'});
+  const source=node('select',{id:'moonshot-source'});
+  source.append(node('option',{value:'',text:'Standalone question — no artifact linked'}));
+  for(const creation of (Array.isArray(world.creations)?world.creations:[])){
+    source.append(node('option',{value:creation.id,text:creation.title+' · current v'+creation.version}));
+  }
+  const sourceVersion=node('select',{id:'moonshot-source-version'});
+  const syncSourceVersions=()=>{
+    sourceVersion.replaceChildren();
+    const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===source.value);
+    if(!creation){
+      sourceVersion.append(node('option',{value:'',text:'No source version'}));
+      sourceVersion.disabled=true;
+      return;
+    }
+    const versions=[...(Array.isArray(creation.versions)?creation.versions:[]),creation]
+      .filter(version=>Number.isInteger(version.version))
+      .sort((left,right)=>left.version-right.version);
+    for(const version of versions){
+      sourceVersion.append(node('option',{value:String(version.version),text:(version.version===creation.version?'Current':'Retained')+' version '+version.version}));
+    }
+    sourceVersion.value=String(creation.version);
+    sourceVersion.disabled=false;
+  };
+  source.onchange=syncSourceVersions;
+  syncSourceVersions();
+  const submit=node('button',{id:'propose-moonshot',class:'primary-button',type:'submit',text:'Retain moonshot proposal'});
+  form.append(
+    field('Proposal title','moonshot-title',title),
+    field('Hypothesis','moonshot-hypothesis',hypothesis),
+    field('Falsification condition','moonshot-falsifier',falsifier),
+    field('Evidence required','moonshot-evidence',evidence),
+    field('Optional source artifact','moonshot-source',source),
+    field('Source version','moonshot-source-version',sourceVersion),
+    paragraph('A proposal is not an experiment result. Failed, refuted, or contradictory evidence must be recorded separately; no outcome is inferred here.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      const selected=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===source.value);
+      await act({
+        type:'propose-moonshot',
+        title:title.value.trim(),
+        hypothesis:hypothesis.value.trim(),
+        falsifier:falsifier.value.trim(),
+        evidenceNeeded:evidence.value.trim(),
+        sourceCreationId:selected?.id??null,
+        sourceVersion:selected?Number(sourceVersion.value):null
+      });
+      toast('Moonshot proposal retained · not executed · no XP awarded.');
+      openMoonshotField();
+    }finally{submit.disabled=false;}
+  });
+  const proposals=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='moonshot-proposed');
+  if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
+  for(const proposal of [...proposals].reverse()){
+    const card=node('article',{class:'field-card'},[
+      node('h3',{text:proposal.title||'Untitled moonshot proposal'}),
+      node('span',{class:'pill',text:'PROPOSED · NOT EXECUTED'}),
+      paragraph('Hypothesis: '+proposal.hypothesis),
+      paragraph('Falsification condition: '+proposal.falsifier),
+      paragraph('Evidence required: '+proposal.evidenceNeeded),
+      paragraph('Submitted by '+(proposal.actor?.name||proposal.actor?.id||'unknown actor')+' · '+(proposal.at||'time unavailable'),'form-help')
+    ]);
+    const sourceExists=proposal.sourceCreationId&&Number.isInteger(proposal.sourceVersion)&&
+      (Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===proposal.sourceCreationId&&
+        (creation.version===proposal.sourceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===proposal.sourceVersion))));
+    if(sourceExists)card.append(button('Inspect linked source v'+proposal.sourceVersion+' →',()=>openCreation(proposal.sourceCreationId,proposal.sourceVersion),{class:'list-button'}));
+    else if(proposal.sourceCreationId)card.append(paragraph('Linked source version is unavailable in this snapshot; the proposal remains visible without an invented target.','evidence-warning'));
+    content.append(card);
+  }
+  if(viewer.role==='founder'&&!(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.kind==='observatory')){
+    content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
+  }
 }
 function openPublicationHouse(kindFilter=null){
   const content=showSheet('Publication House','PUBLISHED ARTIFACTS · PRESERVED VERSIONS');
