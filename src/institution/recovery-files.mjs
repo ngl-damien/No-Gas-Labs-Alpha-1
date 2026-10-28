@@ -149,9 +149,7 @@ export async function readStableRegularFile(filePath, {
     }
     return Buffer.concat(chunks, total);
   } catch (error) {
-    // The recovery budget accounts for bytes read even when a concurrent
-    // replacement makes the read unusable. This keeps repeated failures from
-    // silently resetting the aggregate I/O budget.
+    // Count bytes even when a concurrent replacement makes the read unusable.
     if (error && typeof error === 'object' && !Object.hasOwn(error, 'bytesRead')) {
       Object.defineProperty(error, 'bytesRead', { value: total, enumerable: false });
     }
