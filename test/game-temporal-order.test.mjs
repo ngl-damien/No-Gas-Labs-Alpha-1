@@ -90,3 +90,51 @@ test('world import binds each published version timestamp to exactly one publica
 
   await assert.rejects(validateWorld(forged), error => error.code === 'INVALID_WORLD');
 });
+
+test('experiment report accepts an earlier proposal timestamp whose offset string sorts after the report time', async () => {
+  const published = await publishedSource();
+  const proposed = await applyAction(published.world, proposal(), witness, {
+    now: '2026-10-27T00:00:03.000Z'
+  });
+  const offsetWorld = structuredClone(proposed.world);
+  // Same instant as 00:00:03Z, but lexical comparison against 00:00:04Z says it is later.
+  offsetWorld.events.at(-1).at = '2026-10-27T02:00:03+02:00';
+  offsetWorld.updatedAt = '2026-10-27T02:00:03+02:00';
+  const valid = await validateWorld(offsetWorld);
+
+  const report = await applyAction(valid, {
+    type: 'report-experiment',
+    moonshotId: proposed.result.moonshotId,
+    procedure: 'Compare the stated condition.',
+    observation: 'The attempt was recorded after the proposal.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-27T00:00:04.000Z' });
+
+  assert.equal(report.world.events.at(-1).type, 'experiment-reported');
+  assert.equal(report.world.events.at(-1).moonshotId, proposed.result.moonshotId);
+  await validateWorld(report.world);
+});
+
+test('mutation rejects a clock rollback before creating a backward event', async () => {
+  const start = createWorld({ id: 'clock-rollback-world', now: '2026-10-27T00:00:00.000Z' });
+  const first = await applyAction(start, { type: 'discover', locationId: 'river' }, witness, {
+    now: '2026-10-27T00:00:02.000Z'
+  });
+
+  await assert.rejects(
+    applyAction(first.world, { type: 'discover', locationId: 'overlook' }, witness, {
+      now: '2026-10-27T00:00:01.000Z'
+    }),
+    error => error.code === 'INVALID_CHRONOLOGY' && error.status === 409
+  );
+  assert.equal(first.world.events.length, 1, 'a rejected transition leaves the caller-owned state untouched');
+  assert.equal(first.world.revision, 1);
+
+  const sameInstant = await applyAction(first.world, {
+    type: 'discover', locationId: 'overlook'
+  }, witness, { now: '2026-10-27T00:00:02.000Z' });
+  assert.equal(sameInstant.world.events.length, 2);
+  await validateWorld(sameInstant.world);
+});

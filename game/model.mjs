@@ -16,7 +16,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
-  const world=clone(original),at=date(now);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
+  const world=clone(original),at=date(now);const previousAt=Date.parse(original?.updatedAt);if(!Number.isFinite(previousAt)||Date.parse(at)<previousAt)fail('INVALID_CHRONOLOGY','Action time cannot precede the current world update time.',409);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
   switch(action.type){
     case 'draft':{
@@ -85,8 +85,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     }
     case 'report-experiment':{
       const moonshotId=text(action.moonshotId,128,'Moonshot ID');
-      const proposal=world.events.find(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId&&e.at<=at);
-      if(!proposal)fail('NOT_FOUND','A retained moonshot proposal is required before reporting an attempt.',404);
+      const proposals=world.events.filter(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId);
+      if(proposals.length!==1||!Number.isFinite(Date.parse(proposals[0].at))||Date.parse(proposals[0].at)>Date.parse(at))fail('NOT_FOUND','A unique earlier retained moonshot proposal is required before reporting an attempt.',404);
       const procedure=text(action.procedure,1000,'Procedure');
       const observation=text(action.observation,1000,'Observation');
       const reportedOutcome=action.reportedOutcome;
