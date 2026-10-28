@@ -1,13 +1,72 @@
-import {readFile,realpath} from 'node:fs/promises';
-import {resolve,dirname,relative,sep} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
-const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-try{
- const path=process.argv[2]?resolve(process.argv[2]):resolve(root,'docs/institution/compounding/STATE.json');
- const state=JSON.parse(await readFile(path,'utf8'));
- if(state.schema!=='ngl.institution-continuity.v1'||state.principal!=='Damien Featherstone'||!Array.isArray(state.references)||!state.references.length||!Array.isArray(state.assignments)||!state.assignments.length||!state.authority||!state.nextAction||!state.rollback||!state.machinery?.M0||!state.machinery?.M1||!Array.isArray(state.openFailures)||!state.taskB||!state.founderDecision)throw Error('Incomplete continuity record');
- const recovered=[];
- for(const reference of state.references){if(typeof reference.path!=='string'||reference.path.includes('\\')||/(^|\/)(\.runtime|\.git|secrets|credentials)(\/|$)|\.(key|pem)$/i.test(reference.path)||!/^[a-f0-9]{64}$/.test(reference.sha256))throw Error('Unsafe recovery reference');const target=await realpath(resolve(root,reference.path)),r=relative(root,target);if(r==='..'||r.startsWith('..'+sep)||r.startsWith(sep))throw Error('Recovery reference escapes repository');const bytes=await readFile(target);if(createHash('sha256').update(bytes).digest('hex')!==reference.sha256)throw Error('Recovery reference changed: '+reference.path);recovered.push(reference.path);}
- console.log(JSON.stringify({schema:'ngl.fresh-process-recovery.v1',passed:true,principal:state.principal,authority:state.authority,assignments:state.assignments,machinery:state.machinery,openFailures:state.openFailures,taskB:state.taskB,founderDecision:state.founderDecision,nextAction:state.nextAction,rollback:state.rollback,recovered,scope:'New Node process using durable files only; not a fresh cloud/environment restoration.'},null,2));
-}catch(error){console.error(error.message);process.exitCode=1;}
+import { createHash } from 'node:crypto';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  MAX_RECOVERY_REFERENCE_BYTES,
+  MAX_RECOVERY_REFERENCES,
+  MAX_RECOVERY_TOTAL_BYTES,
+  readRecoveryState,
+  validateContinuityRecord,
+  verifyRecoveryReferences
+} from '../src/institution/recovery-files.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+try {
+  const path = process.argv[2]
+    ? resolve(process.argv[2])
+    : resolve(root, 'docs/institution/compounding/STATE.json');
+  const stateBytes = await readRecoveryState(path);
+  const stateText = stateBytes.toString('utf8');
+  if (!Buffer.from(stateText, 'utf8').equals(stateBytes)) {
+    throw new Error('Continuity record is not valid UTF-8');
+  }
+  const state = validateContinuityRecord(JSON.parse(stateText));
+  const continuityRecord = {
+    path: process.argv[2] ? path : 'docs/institution/compounding/STATE.json',
+    size: stateBytes.length,
+    sha256: createHash('sha256').update(stateBytes).digest('hex')
+  };
+  const {
+    recovered,
+    receipts,
+    failures,
+    bytesRead
+  } = await verifyRecoveryReferences(root, state.references);
+  const passed = failures.length === 0 && recovered.length === state.references.length;
+
+  console.log(JSON.stringify({
+    schema: 'ngl.fresh-process-recovery.v1',
+    passed,
+    continuityRecord,
+    principal: state.principal,
+    authority: state.authority,
+    assignments: state.assignments,
+    machinery: state.machinery,
+    openFailures: state.openFailures,
+    taskB: state.taskB,
+    founderDecision: state.founderDecision,
+    nextAction: state.nextAction,
+    rollback: state.rollback,
+    recovered,
+    receipts,
+    failures: failures.map(({ path, reason, expectedSha256, actualSha256 }) => ({
+      path, reason, expectedSha256, actualSha256
+    })),
+    bytesRead,
+    limits: {
+      maxReferences: MAX_RECOVERY_REFERENCES,
+      maxTotalBytes: MAX_RECOVERY_TOTAL_BYTES,
+      maxReferenceBytes: MAX_RECOVERY_REFERENCE_BYTES
+    },
+    scope: 'New Node process using durable files only; not a fresh cloud/environment restoration.'
+  }, null, 2));
+
+  if (!passed) {
+    console.error(failures.map(failure => failure.message).join('\n'));
+    process.exitCode = 1;
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
