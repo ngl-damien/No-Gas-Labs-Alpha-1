@@ -163,7 +163,7 @@ test('experiment reports preserve failed and contradictory attempts without adju
   assert.match(entry.summary, /not independently observed, adjudicated, or accepted/i);
   assert.match(entry.detail, /Observation: The observed comparison contradicted the prediction/);
   assert.match(entry.detail, /Linked artifact: Source artifact v1/);
-  assert.equal(entry.warning, undefined);
+  assert.equal(entry.warning, '');
 
   const witnessQuest = getQuestTrail(valid, witness).find(item => item.id === 'witness-experiment-report');
   const founderQuest = getQuestTrail(valid, founder).find(item => item.id === 'founder-experiment-report');
