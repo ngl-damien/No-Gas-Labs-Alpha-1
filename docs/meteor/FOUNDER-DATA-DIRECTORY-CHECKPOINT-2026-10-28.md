@@ -50,3 +50,11 @@ No merge, deployment, release, spending, production key operation, or Founder de
 - The path walk now also runs inside `assertPrivateDataDirectory()`, so it is repeated after recursive directory creation and at the existing post-key check. This narrows the interval in which a visible symlinked-ancestor replacement could escape detection.
 - This remains best-effort pathname validation; it does not make the sequence atomic or eliminate same-user races. No production identity or key-custody claim follows from this check.
 - The exact final head must pass full repository verification, Genesis Evidence Invariant, and browser acceptance.
+
+
+## Follow-up cycle — repair verification failures and stale-lock race
+
+- Test assertion repair: `7eed4ce9f5cd7018a4a6a9ca60282692ea6b7d1d`. The new pre-mkdir ancestor check intentionally rejects a final symlink earlier than the old final-directory validator; the existing test now accepts either correct fail-closed message.
+- Courier lock race fix: `219a36d35118284882bcc86615011e796d9ba8f7`. The failed full-verification log showed the existing concurrent-client test could report `STALE_LOCK` while a lock pathname was being released/reacquired. Lock metadata is now read from a stable file snapshot; after an `ESRCH` PID probe, the code rechecks that the exact observed device/inode still occupies the path and probes the PID again before reporting stale.
+- The courier fix does not delete stale locks and does not infer safety from a PID probe alone. The existing concurrency regression is the verification target.
+- The exact final head requires full repository verification, Genesis Evidence Invariant, and browser acceptance. Prior failure was observed in full verification: 548/550 tests passed; failures were the changed Founder-directory error expectation and the courier concurrency race. No local tests are claimed.
