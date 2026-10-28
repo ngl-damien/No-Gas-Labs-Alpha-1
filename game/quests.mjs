@@ -310,14 +310,22 @@ export function getQuestTrail(world, viewer) {
     if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string') moonshotIdCounts.set(event.moonshotId, (moonshotIdCounts.get(event.moonshotId) || 0) + 1);
     if (event?.type === 'experiment-reported' && typeof event.reportId === 'string') reportIdCounts.set(event.reportId, (reportIdCounts.get(event.reportId) || 0) + 1);
   }
-  const validMoonshotIds = new Set(trailRows(events).filter(event =>
-    event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
-    moonshotIdCounts.get(event.moonshotId) === 1 && uniqueMoonshotEventIds.has(event.id)
-  ).map(event => event.moonshotId));
+  const proposalPositionById = new Map();
+  trailRows(events).forEach((event, index) => {
+    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
+        moonshotIdCounts.get(event.moonshotId) === 1 && uniqueMoonshotEventIds.has(event.id) &&
+        typeof event.at === 'string' && Number.isFinite(Date.parse(event.at))) {
+      proposalPositionById.set(event.moonshotId, index);
+    }
+  });
+  const validMoonshotIds = new Set(proposalPositionById.keys());
   const experimentReports = events.filter(event =>
     event?.type === 'experiment-reported' && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
     reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
+    proposalPositionById.get(event.moonshotId) < events.indexOf(event) &&
+    Date.parse(events[proposalPositionById.get(event.moonshotId)]?.at) <= Date.parse(event.at) &&
+    typeof event.at === 'string' && Number.isFinite(Date.parse(event.at)) &&
     event.actor?.id === actorId && event.actor?.role === actorRole &&
     typeof event.procedure === 'string' && event.procedure.trim() &&
     typeof event.observation === 'string' && event.observation.trim() &&
