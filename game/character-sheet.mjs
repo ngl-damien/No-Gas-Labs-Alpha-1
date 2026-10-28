@@ -107,6 +107,16 @@ export function projectCharacter(world, viewer) {
       basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
     },
     {
+      id: 'researcher',
+      label: 'Researcher',
+      count: events.filter(event => event.type === 'moonshot-proposed' &&
+        typeof event.moonshotId === 'string' && typeof event.hypothesis === 'string' &&
+        event.hypothesis.trim() && typeof event.falsifier === 'string' && event.falsifier.trim() &&
+        typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()).length,
+      record: 'retained falsifiable proposals',
+      basis: 'Attributed proposals with a hypothesis, falsifier and evidence requirement; this counts research activity, not a validated discovery or experiment result.'
+    },
+    {
       id: 'restorer',
       label: 'Restorer',
       count: mine(world?.methods, viewer).length,
@@ -136,8 +146,10 @@ export function projectCharacter(world, viewer) {
     .map(event => Object.freeze({
       type: typeof event.type === 'string' ? event.type : 'unknown',
       at: event.at,
-      creationId: typeof event.creationId === 'string' ? event.creationId : null,
-      version: Number.isInteger(event.version) ? event.version : null,
+      creationId: typeof event.creationId === 'string' ? event.creationId
+        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId : null,
+      version: Number.isInteger(event.version) ? event.version
+        : Number.isInteger(event.sourceVersion) ? event.sourceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null
     }));
 
