@@ -95,39 +95,70 @@ const RESEARCH_ROLES = new Set(['founder', 'witness']);
 const RESEARCH_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
 const RESEARCH_CHALLENGE_TYPES = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
 
-function validResearchEvidenceVersion(item, creationId, versionNumber, atMs) {
-  if (!item || typeof item !== 'object' ||
-      ownDataValue(item, 'id') !== creationId ||
-      ownDataValue(item, 'version') !== versionNumber) return false;
-  const publishedAt = ownDataValue(item, 'publishedAt');
-  return typeof publishedAt === 'string' &&
-    Number.isFinite(Date.parse(publishedAt)) && Date.parse(publishedAt) <= atMs;
+function unsafeOwnAccessor(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return Boolean(descriptor && !Object.hasOwn(descriptor, 'value'));
+  } catch {
+    return true;
+  }
 }
 
-function hasRetainedResearchEvidence(world, creationId, versionNumber, atMs) {
+function indexRetainedResearchVersions(world) {
+  const index = new Map();
   const creations = ownDataValue(world, 'creations');
-  if (!isArraySafely(creations)) return false;
+  if (!isArraySafely(creations)) return index;
   const creationCount = ownDataValue(creations, 'length');
-  if (!Number.isSafeInteger(creationCount) || creationCount < 0 || creationCount > MAX_WORLD_EVENT_SCAN) return false;
-  let matches = 0;
-  for (let index = 0; index < creationCount; index += 1) {
-    const creation = ownDataValue(creations, String(index));
-    if (!creation || typeof creation !== 'object' || ownDataValue(creation, 'id') !== creationId) continue;
+  if (!Number.isSafeInteger(creationCount) || creationCount < 0 || creationCount > MAX_WORLD_EVENT_SCAN) return index;
+  let totalVersions = 0;
+  const add = (item, creationId) => {
+    if (!item || typeof item !== 'object') return;
+    const itemId = ownDataValue(item, 'id');
+    const version = ownDataValue(item, 'version');
+    if (itemId !== creationId || !Number.isSafeInteger(version) || version < 1) return;
+    const publishedAt = ownDataValue(item, 'publishedAt');
+    const publishedAtMs = typeof publishedAt === 'string' ? Date.parse(publishedAt) : NaN;
+    const key = creationId + '\0' + version;
+    const previous = index.get(key);
+    index.set(key, {
+      count: (previous?.count || 0) + 1,
+      publishedAtMs: previous ? previous.publishedAtMs : (Number.isFinite(publishedAtMs) ? publishedAtMs : NaN),
+    });
+  };
+
+  for (let indexPosition = 0; indexPosition < creationCount; indexPosition += 1) {
+    if (unsafeOwnAccessor(creations, String(indexPosition))) return new Map();
+    const creation = ownDataValue(creations, String(indexPosition));
+    if (!creation || typeof creation !== 'object') continue;
+    if (unsafeOwnAccessor(creation, 'id')) return new Map();
+    const creationId = ownDataValue(creation, 'id');
+    if (typeof creationId !== 'string' || !creationId) continue;
+    if (unsafeOwnAccessor(creation, 'version') || unsafeOwnAccessor(creation, 'publishedAt') ||
+        unsafeOwnAccessor(creation, 'versions')) return new Map();
     const versions = ownDataValue(creation, 'versions');
+    if (versions !== undefined && versions !== null && !isArraySafely(versions)) return new Map();
+    const versionItems = [];
     if (isArraySafely(versions)) {
       const versionCount = ownDataValue(versions, 'length');
-      if (!Number.isSafeInteger(versionCount) || versionCount < 0 || versionCount > MAX_WORLD_EVENT_SCAN) return false;
+      if (!Number.isSafeInteger(versionCount) || versionCount < 0 || versionCount > MAX_WORLD_EVENT_SCAN) return new Map();
+      totalVersions += versionCount;
+      if (totalVersions > MAX_WORLD_EVENT_SCAN) return new Map();
       for (let versionIndex = 0; versionIndex < versionCount; versionIndex += 1) {
-        if (validResearchEvidenceVersion(ownDataValue(versions, String(versionIndex)), creationId, versionNumber, atMs)) matches += 1;
+        if (unsafeOwnAccessor(versions, String(versionIndex))) return new Map();
+        const versionItem = ownDataValue(versions, String(versionIndex));
+        if (versionItem && typeof versionItem === 'object' &&
+            (unsafeOwnAccessor(versionItem, 'id') || unsafeOwnAccessor(versionItem, 'version') ||
+             unsafeOwnAccessor(versionItem, 'publishedAt'))) return new Map();
+        versionItems.push(versionItem);
       }
     }
-    if (validResearchEvidenceVersion(creation, creationId, versionNumber, atMs)) matches += 1;
-    if (matches > 1) return false;
+    add(creation, creationId);
+    for (const versionItem of versionItems) add(versionItem, creationId);
   }
-  return matches === 1;
+  return index;
 }
 
-function validOptionalResearchEvidence(world, event, atMs) {
+function validOptionalResearchEvidence(evidenceIndex, event, atMs) {
   const creationId = ownDataValue(event, 'evidenceCreationId');
   const version = ownDataValue(event, 'evidenceVersion');
   const hasId = typeof creationId === 'string' && creationId.length > 0;
@@ -136,8 +167,10 @@ function validOptionalResearchEvidence(world, event, atMs) {
     return (creationId === null || creationId === undefined) &&
       (version === null || version === undefined);
   }
-  return hasId && hasVersion && WORLD_OBJECT_ID.test(creationId) &&
-    hasRetainedResearchEvidence(world, creationId, version, atMs);
+  if (!hasId || !hasVersion || !WORLD_OBJECT_ID.test(creationId)) return false;
+  const retained = evidenceIndex.get(creationId + '\0' + version);
+  return Boolean(retained && retained.count === 1 &&
+    Number.isFinite(retained.publishedAtMs) && retained.publishedAtMs <= atMs);
 }
 
 /**
@@ -153,6 +186,7 @@ export function projectMoonshotWorldObjects(world) {
   if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) return Object.freeze([]);
   const eventList = [];
   for (let index = 0; index < eventCount; index += 1) eventList.push(ownDataValue(events, String(index)));
+  const evidenceIndex = indexRetainedResearchVersions(world);
 
   const eventIdCounts = new Map();
   const moonshotIdCounts = new Map();
@@ -228,7 +262,7 @@ export function projectMoonshotWorldObjects(world) {
         !proposal || index <= proposal.index || !Number.isFinite(atMs) || atMs < proposal.atMs ||
         typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
         !boundedWorldText(procedure, 1000) || !boundedWorldText(observation, 1000) ||
-        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(world, event, atMs)) continue;
+        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
     validReports.push({ eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index });
   }
 
@@ -258,7 +292,7 @@ export function projectMoonshotWorldObjects(world) {
         index <= report.index || !Number.isFinite(atMs) || atMs < report.atMs ||
         typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
         !RESEARCH_CHALLENGE_TYPES.has(challengeType) || !boundedWorldText(challengeText, 1000) ||
-        !validOptionalResearchEvidence(world, event, atMs)) continue;
+        !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
     challengeCounts.set(moonshotId, challengeCounts.get(moonshotId) + 1);
   }
 
