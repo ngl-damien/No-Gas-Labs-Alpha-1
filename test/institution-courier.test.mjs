@@ -1,23 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, writeFile, stat, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 
 let module;
 try { module = await import('../src/institution/courier.mjs'); } catch {}
 const exec = promisify(execFile);
 const keys = () => generateKeyPairSync('ed25519');
 const provider = (id, key, extra = {}) => ({id, publicKey:key.publicKey.export({format:'pem',type:'spki'}), capabilities:['review'], ...extra});
-async function fixture(t, providers) {
+async function fixture(t, providers, makeNow) {
   assert.ok(module?.createCourier, 'courier must expose a real durable authenticated implementation');
   const dataDir = await mkdtemp(join(tmpdir(),'ngl-courier-test-'));
   t.after(() => rm(dataDir,{recursive:true,force:true}));
   let time = 1000;
-  const options = {dataDir, providers, now:()=>time};
+  const options = {dataDir, providers, now:makeNow ? makeNow(dataDir) : ()=>time};
   return {dataDir, options, courier:await module.createCourier(options), tick:(n)=>{time=n;}};
 }
 function receipt(packet, kind, privateKey, extra={}) {
@@ -219,6 +221,38 @@ for(const mode of ['cross-request','cross-seat']) {
     await assert.rejects(module.createCourier(f.options),{code:'CORRUPT_STATE'});
   });
 }
+
+test('courier release preserves a replacement lock and emits inspectable owner metadata', async t => {
+  let calls = 0;
+  let replacement;
+  const f = await fixture(t, [], dataDir => () => {
+    calls += 1;
+    if (calls === 2) {
+      const lockPath = join(dataDir, '.courier.lock');
+      const original = readFileSync(lockPath);
+      const owner = JSON.parse(original.toString('utf8'));
+      assert.equal(owner.schema, 'ngl.courier-lock.v1');
+      assert.equal(owner.pid, process.pid);
+      assert.ok(Number.isFinite(Date.parse(owner.openedAt)));
+
+      // Replace the path with a different inode carrying identical bytes while
+      // the transaction still owns its original lock handle.
+      renameSync(lockPath, lockPath + '.displaced');
+      writeFileSync(lockPath, original, { mode: 0o600 });
+      replacement = readFileSync(lockPath);
+    }
+    return 1000;
+  });
+
+  await f.courier.dispatch({ requestId: 'replacement-lock', capability: 'review', input: {}, expiresAt: 5000 });
+  const lockPath = join(f.dataDir, '.courier.lock');
+  assert.deepEqual(await readFile(lockPath), replacement);
+  const report = await inspectWriterLock(lockPath);
+  assert.equal(report.status, 'present');
+  assert.equal(report.format, 'owner-metadata');
+  assert.equal(report.owner.schema, 'ngl.courier-lock.v1');
+  assert.equal(report.safeToRemove, false);
+});
 
 test('concurrent clients preserve stale lock and state until explicit recovery; normal clients serialize', async t => {
   const f=await fixture(t,[]),lock=join(f.dataDir,'.courier.lock');
