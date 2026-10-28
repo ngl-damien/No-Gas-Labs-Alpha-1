@@ -752,6 +752,6 @@ test('server rejects backward offset timestamps even when their strings sort for
 
   await assert.rejects(
     createGameServer({ dataDir: f.dataDir, founderKey: KEY }),
-    /World history integrity mismatch|authority \/ time mismatch/
+    /World event timestamps are not chronological|World history integrity mismatch|authority \/ time mismatch/
   );
 });
