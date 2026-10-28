@@ -6,6 +6,21 @@ import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.m
 
 const MAX_SERVICE_STORE_BYTES = 64 * 1024 * 1024;
 const digest = value => artifactReceipt(canonicalStringify(value)).digest;
+
+// The public value getter and commit result must not expose the mutable object
+// retained as the in-memory projection. Normalize through the same strict JSON
+// representation used on disk, then freeze the detached JSON graph once.
+function immutableSnapshot(value) {
+  const snapshot = JSON.parse(canonicalStringify(value));
+  const freeze = item => {
+    if (item && typeof item === 'object' && !Object.isFrozen(item)) {
+      for (const child of Object.values(item)) freeze(child);
+      Object.freeze(item);
+    }
+    return item;
+  };
+  return freeze(snapshot);
+}
 const storeReadError = (code, message) => Object.assign(new Error(message), { code });
 
 // Best-effort path walk: reject symlinked ancestors before recursive creation,
@@ -239,10 +254,10 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
         throw storeReadError('SERVICE_STORE_NONCANONICAL', 'Service store envelope must use canonical JSON encoding');
       }
       if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
-      current = await validate(envelope.payload);
+      current = immutableSnapshot(await validate(envelope.payload));
     } catch (error) { await close(); throw error; }
   } else {
-    try { current = await validate(initial); await persist(current); }
+    try { current = immutableSnapshot(await validate(initial)); await persist(current); }
     catch (error) { await close(); throw error; }
   }
   async function assertStableDirectory() {
@@ -305,7 +320,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
         if (released) throw closedStoreError();
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
-        const valid = await validate(snapshot);
+        const valid = immutableSnapshot(await validate(snapshot));
         const previousRevision = revisionOf(current);
         const candidateRevision = revisionOf(valid);
         if (previousRevision !== null && candidateRevision !== null &&
