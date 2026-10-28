@@ -44,3 +44,48 @@ test('duplicate study identities cannot complete the Academy quest or inflate Sc
   assert.equal(quest.complete,false);assert.equal(projectCharacter(ambiguous,witness).skills.find(skill=>skill.id==='scholar').count,0);
   await assert.rejects(validateWorld(ambiguous),error=>error.code==='INVALID_WORLD');
 });
+
+test('Academy retrieval review is actor-scoped, source-bound activity without XP or mastery',async()=>{
+  const published=await publishedSource();
+  const studied=await applyAction(published.world,{type:'study',creationId:published.result.creationId,version:1,question:'What does the receipt prove?',attempt:'Only byte identity, not truth.',nextCheck:'Name one independent observation that could challenge the claim.'},witness,{now:'2026-10-28T00:00:03.000Z'});
+  const source=studied.world.events.at(-1);
+  const before=getQuestTrail(studied.world,witness).find(item=>item.id==='witness-academy-study-review');
+  assert.equal(before.complete,false);
+  assert.deepEqual(before.action,{type:'location',id:'academy'});
+  const reviewed=await applyAction(studied.world,{type:'review-study',studyId:source.studyId,response:'I need an observation produced outside the original claim.',reflection:'I still need to locate and inspect that observation.'},witness,{now:'2026-10-28T00:00:04.000Z',requestId:'academy-review-model-001',actionFingerprint:'c'.repeat(64)});
+  const valid=await validateWorld(reviewed.world),event=valid.events.at(-1);
+  assert.equal(event.type,'study-reviewed');
+  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.studyId,source.studyId);
+  assert.equal(event.creationId,source.creationId);
+  assert.equal(event.version,source.version);
+  assert.equal(event.response,'I need an observation produced outside the original claim.');
+  assert.equal(valid.xp,studied.world.xp);
+  assert.equal(event.outcome,undefined);
+  assert.equal(event.approved,undefined);
+  assert.equal(institutionActivityCount('academy',valid),2);
+  const entry=projectChronicle({world:valid}).entries.find(item=>item.eventType==='study-reviewed');
+  assert.ok(entry);
+  assert.equal(entry.category,'POLYMATH ACADEMY');
+  assert.match(entry.summary,/self-reported practice/i);
+  assert.equal(entry.targetAvailable,true);
+  const character=projectCharacter(valid,witness);
+  assert.equal(character.xp,0);
+  assert.equal(character.skills.find(skill=>skill.id==='retriever').count,1);
+  assert.equal(getQuestTrail(valid,witness).find(item=>item.id==='witness-academy-study-review').complete,true);
+  assert.equal(getQuestTrail(valid,founder).find(item=>item.id==='founder-academy-study-review').complete,false);
+  await assert.rejects(applyAction(valid,{type:'review-study',studyId:source.studyId,response:'Repeat',reflection:'Repeat'},witness,{now:'2026-10-28T00:00:05.000Z'}),error=>error.code==='STUDY_ALREADY_REVIEWED');
+});
+test('Academy retrieval review rejects unknown notes and another actor cannot review a Witness note',async()=>{
+  const published=await publishedSource();
+  const studied=await applyAction(published.world,{type:'study',creationId:published.result.creationId,version:1,question:'What is unknown?',attempt:'The source is not an independent observation.',nextCheck:'Find a separate observation.'},witness,{now:'2026-10-28T00:00:03.000Z'});
+  const source=studied.world.events.at(-1);
+  await assert.rejects(applyAction(studied.world,{type:'review-study',studyId:'missing-study',response:'An answer',reflection:'Still unsure'},witness,{now:'2026-10-28T00:00:04.000Z'}),error=>error.code==='NOT_FOUND');
+  await assert.rejects(applyAction(studied.world,{type:'review-study',studyId:source.studyId,response:'An answer',reflection:'Still unsure'},founder,{now:'2026-10-28T00:00:04.000Z'}),error=>error.code==='FORBIDDEN');
+  const reviewed=await applyAction(studied.world,{type:'review-study',studyId:source.studyId,response:'An answer',reflection:'Still unsure'},witness,{now:'2026-10-28T00:00:04.000Z'});
+  const tampered=structuredClone(reviewed.world);
+  tampered.events.push({...tampered.events.at(-1),id:'duplicate-review-event',reviewId:'duplicate-review-id',at:'2026-10-28T00:00:05.000Z'});
+  tampered.revision=tampered.events.length;
+  tampered.updatedAt=tampered.events.at(-1).at;
+  await assert.rejects(validateWorld(tampered),error=>error.code==='INVALID_WORLD');
+});
