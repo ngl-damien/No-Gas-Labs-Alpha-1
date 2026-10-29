@@ -225,9 +225,15 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Inspect research record: Attempt · contradicts',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')")
+        activity_record=page.locator('[data-research-activity-id]').filter(has_text='The attempt contradicted the prediction.')
+        assert activity_record.evaluate('(element)=>element===document.activeElement'), 'Walking to an attempt object should focus its retained report card'
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':1,'creations':0,'xp':0,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':1,'researchActivityObjects':1,'creations':0,'xp':0,'errors':errors}
     finally:
         context.close()
 
