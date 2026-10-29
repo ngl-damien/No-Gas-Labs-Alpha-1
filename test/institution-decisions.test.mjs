@@ -451,9 +451,9 @@ test('independent Node processes contend for one decision-writer lease and prese
     assert.equal(filesAfterRace.some(name => name.startsWith('.decisions-lock-') && name.endsWith('.tmp')), false,
       'failed contender must remove its temporary lease file');
 
-    owner.child.stdin.write('commit\\n');
+    owner.child.stdin.write('commit\n');
     assert.equal(await bounded(owner.nextLine(), 'winning worker did not commit'), 'COMMITTED', owner.stderr);
-    owner.child.stdin.end('close\\n');
+    owner.child.stdin.end('close\n');
     assert.equal(await bounded(owner.nextLine(), 'winning worker did not release'), 'RELEASED', owner.stderr);
     const ownerExit = await bounded(owner.exit, 'winning worker did not exit');
     assert.equal(ownerExit.code, 0, ownerExit.stderr);
