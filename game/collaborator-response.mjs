@@ -1,4 +1,5 @@
 import { isCollaboratorPacket } from './collaborator-contracts.mjs';
+import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_ARRAY_ITEMS = 64;
@@ -206,7 +207,16 @@ export function validateCollaboratorResponse(packet, responseText) {
   if (new TextEncoder().encode(responseText).byteLength > MAX_RESPONSE_BYTES) return reject('RESPONSE_TOO_LARGE');
 
   let response;
-  try { response = JSON.parse(responseText); } catch { return reject('RESPONSE_JSON_INVALID'); }
+  try {
+    // External model output is untrusted: reject duplicate keys before JSON.parse's
+    // last-key-wins behavior can make the reviewed representation ambiguous.
+    assertNoDuplicateJsonObjectKeys(responseText, { label: 'COLLABORATOR_RESPONSE', maxDepth: MAX_DEPTH });
+    response = JSON.parse(responseText);
+  } catch (error) {
+    return reject(error?.message === 'COLLABORATOR_RESPONSE_DUPLICATE_JSON_KEY'
+      ? 'RESPONSE_DUPLICATE_JSON_KEY'
+      : 'RESPONSE_JSON_INVALID');
+  }
   if (!ownPlainObject(response) || !safeJsonValue(response)) return reject('RESPONSE_VALUE_INVALID');
   if (!validateRoleResponse(payload, response)) return reject('RESPONSE_SCHEMA_OR_SCOPE_INVALID');
 
