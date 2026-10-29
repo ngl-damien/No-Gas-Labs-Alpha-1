@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getActiveQuest,getQuestTrail,getLocationAction,findStudyReview} from '../game/quests.mjs';
+import {getQuest,getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -505,4 +505,20 @@ test('study review lookup requires one later review bound to the exact source ve
     study, valid, { id: valid.id, type: 'discover', actor: witness }
   ]), null, 'review event IDs must be unique across the full history');
   assert.equal(findStudyReview(study, [valid, study]), null, 'a review cannot precede its source in append-only history');
+});
+
+test('an unresolved review record is surfaced separately from no review attempt', () => {
+  const study = {
+    id: 'study-event-1', type: 'study', studyId: 'study-1',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z', actor: founder
+  };
+  const malformed = {
+    id: 'review-event-1', type: 'study-reviewed', reviewId: 'review-1',
+    studyId: study.studyId, creationId: 'wrong-source', version: 2,
+    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    response: 'A response', reflection: 'A reflection'
+  };
+  assert.equal(hasStudyReviewRecord(study, [study]), false);
+  assert.equal(hasStudyReviewRecord(study, [study, malformed]), true);
+  assert.equal(findStudyReview(study, [study, malformed]), null);
 });
