@@ -1063,6 +1063,61 @@ test('Polymath Academy study notes bind to retained versions and replay idempote
 });
 
 
+test('Decision Chamber map summary updates from the durable gate without exposing proposal content', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  const witness = f.client();
+  await founder.login();
+  const stream = await founder.stream();
+  t.after(() => stream.close());
+
+  const initial = await stream.next('world');
+  assert.equal(initial.institution.decisionSummary.schema, 'ngl.decisions.summary.v1');
+  assert.equal(initial.institution.decisionSummary.available, true);
+  assert.equal(initial.institution.decisionSummary.decisionCount, 0);
+
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:world-map',
+    reviewWindowMs: 60_000,
+    basis: 'Synthetic map integration test only; not an operational review policy.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+  const policyWorld = await stream.next('world');
+  assert.equal(policyWorld.institution.decisionSummary.revision, 1);
+
+  const bytes = '{"schema":"test.evaluation.v1","result":"private map fixture"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:world-map',
+    title: 'Private decision title',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Private decision risk'],
+    rollback: 'Private rollback detail',
+    proposedEffect: 'Private proposed effect; no execution.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  const pendingWorld = await stream.next('world');
+  assert.equal(pendingWorld.institution.decisionSummary.decisionCount, 1);
+  assert.equal(pendingWorld.institution.decisionSummary.counts.PENDING, 1);
+
+  const chosen = await founder.request('/api/decisions/choose', {
+    decisionId: 'decision:world-map',
+    expectedRevision: 1,
+    requestId: 'request:world-map',
+    action: 'REJECT'
+  });
+  assert.equal(chosen.response.status, 200, JSON.stringify(chosen.body));
+  const rejectedWorld = await stream.next('world');
+  assert.equal(rejectedWorld.institution.decisionSummary.counts.PENDING, 0);
+  assert.equal(rejectedWorld.institution.decisionSummary.counts.REJECTED, 1);
+
+  const publicState = await witness.request('/api/state');
+  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 1);
+  const publicInstitution = JSON.stringify(publicState.body.institution);
+  for (const privateValue of ['Private decision title', 'Private decision risk', 'Private rollback detail', 'Private proposed effect', bytes]) {
+    assert.equal(publicInstitution.includes(privateValue), false, 'world map summary must remain aggregate-only');
+  }
+});
+
 test('decision HTTP route returns 503 for post-rename durability uncertainty and fences retries', async t => {
   let failNextSync = false;
   const decisionSyncDirectory = async directory => {
