@@ -91,6 +91,24 @@ function snapshotDataObject(value, expectedKeys) {
   }
 }
 
+function snapshotSelectedDataFields(value, fields) {
+  try {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const snapshot = Object.create(null);
+    for (const field of fields) {
+      const descriptor = descriptors[field];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) return null;
+      snapshot[field] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
 function snapshotDecisionPayload(payload) {
   const raw = snapshotDataObject(payload, DECISION_KEYS);
   if (!raw) return null;
@@ -122,12 +140,14 @@ function snapshotSignedReceipt(signed) {
 }
 
 export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
-  if (!proposal || typeof proposal.event_id !== "string" ||
-      !IDENTIFIER.test(proposal.event_id) || proposal.type !== "PROPOSAL") {
+  const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id"]);
+  if (!proposalFields || typeof proposalFields.event_id !== "string" ||
+      !IDENTIFIER.test(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
     throw new Error("proposal required");
   }
-  if (!quest || typeof quest.quest_id !== "string" ||
-      !IDENTIFIER.test(quest.quest_id) || proposal.quest_id !== quest.quest_id) {
+  const questFields = snapshotSelectedDataFields(quest, ["quest_id"]);
+  if (!questFields || typeof questFields.quest_id !== "string" ||
+      !IDENTIFIER.test(questFields.quest_id) || proposalFields.quest_id !== questFields.quest_id) {
     throw new Error("quest binding mismatch");
   }
   const capabilityScope = copyScope(capabilities);
@@ -142,8 +162,8 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
 
   const payload = Object.freeze({
     schema: "ngl.founder-decision.v1",
-    proposal_id: proposal.event_id,
-    quest_id: quest.quest_id,
+    proposal_id: proposalFields.event_id,
+    quest_id: questFields.quest_id,
     capabilities: capabilityScope,
     outputs: outputScope,
     acceptance: acceptanceScope,
