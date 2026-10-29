@@ -171,7 +171,7 @@ def basic(page,url,out,label):
     for role in ('archivist','adversary','synthesizer','tutor'):
         packet=page.locator(f'[data-collaborator-role="{role}"]')
         packet.locator('details.collaborator-packet summary').click()
-        prompt=packet.locator('textarea').input_value()
+        prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
         assert 'NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF v1' in prompt, role
         assert '"authority": "advisory-only"' in prompt and '"mayWriteCanonicalState": false' in prompt, role
         assert 'A model assertion is not evidence.' in prompt, role
