@@ -278,3 +278,32 @@ test('collaborator list fields accept bounded strings only and synthesis experim
   missingOutcome.nextDiscriminatingExperiment = { procedure: 'Repeat with a defined control.' };
   assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(missingOutcome)).valid, false);
 });
+
+test('rejects duplicate JSON keys before last-key-wins parsing', () => {
+  const packet = packetsForTest().tutor;
+  const valid = JSON.stringify(validResponses.tutor);
+
+  const duplicateTopLevel = valid.replace(
+    '"concepts":["falsifiability"]',
+    '"concepts":["falsifiability"],"concepts":["different"]'
+  );
+  assert.equal(validateCollaboratorResponse(packet, duplicateTopLevel).reason,
+    'RESPONSE_DUPLICATE_JSON_KEY');
+
+  // JSON escape spelling must not evade duplicate detection: both names decode
+  // to the same property, even though their raw source text differs.
+  const escapedDuplicate = valid.replace(
+    '"concepts":["falsifiability"]',
+    '"\\u0063oncepts":["falsifiability"],"concepts":["different"]'
+  );
+  assert.equal(validateCollaboratorResponse(packet, escapedDuplicate).reason,
+    'RESPONSE_DUPLICATE_JSON_KEY');
+
+  // Duplicate keys nested inside an otherwise valid response are rejected too.
+  const nestedDuplicate = JSON.stringify(validResponses.synthesizer).replace(
+    '"moonshotId":"moonshot-1"',
+    '"moonshotId":"moonshot-1","moonshotId":"moonshot-2"'
+  );
+  assert.equal(validateCollaboratorResponse(packetsForTest().synthesizer, nestedDuplicate).reason,
+    'RESPONSE_DUPLICATE_JSON_KEY');
+});
