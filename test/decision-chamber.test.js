@@ -101,6 +101,15 @@ test("an expired exact signature is not current authority", () => {
   });
 });
 
+test("non-canonical base64url signature encodings are rejected", () => {
+  for (const suffix of ["!", "="]) {
+    assert.deepEqual(verify({ ...signed, signature: signed.signature + suffix }), {
+      valid: false,
+      reason: "SIGNATURE_INVALID"
+    });
+  }
+});
+
 test("authorizationEvent rejects a caller-forged valid flag", () => {
   assert.throws(
     () => authorizationEvent({ signed, payload, verification: { valid: true } }),
