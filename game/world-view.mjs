@@ -56,6 +56,17 @@ function ownDataValue(object,key){
  }catch{return undefined;}
 }
 function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
+const INSTITUTION_SUMMARY_SCHEMA='ngl.shared-institution-summary.v1';
+const INSTITUTION_KERNEL_SCHEMA='ngl.institution.v1';
+export function institutionSummaryFromState(dto){
+ const summary=ownDataValue(dto,'institution');
+ if(!summary||typeof summary!=='object'||isArraySafely(summary)||
+    ownDataValue(summary,'schema')!==INSTITUTION_SUMMARY_SCHEMA)return null;
+ const kernel=ownDataValue(summary,'kernel');
+ if(!kernel||typeof kernel!=='object'||isArraySafely(kernel)||
+    ownDataValue(kernel,'schema')!==INSTITUTION_KERNEL_SCHEMA)return null;
+ return summary;
+}
 function addIdentifiedActivity(events,matchers,activity){
  if(!isArraySafely(events))return;
  const eventCount=ownDataValue(events,'length');
@@ -99,6 +110,8 @@ function computeInstitutionActivityCounts(world,institution=null){
  // Do not present a partial kernel response as a complete institutional count.
  // The server's revision, declared count and delivered array length must agree.
  const kernel=ownDataValue(institution,'kernel');
+ if(ownDataValue(institution,'schema')!==INSTITUTION_SUMMARY_SCHEMA||
+    ownDataValue(kernel,'schema')!==INSTITUTION_KERNEL_SCHEMA)return activity;
  const kernelEvents=ownDataValue(kernel,'events');
  const kernelCount=ownDataValue(kernel,'eventCount');
  const kernelRevision=ownDataValue(kernel,'revision');
