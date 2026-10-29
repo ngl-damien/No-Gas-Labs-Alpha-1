@@ -479,7 +479,7 @@ test('study review lookup requires one later review bound to the exact source ve
     response: 'The earlier version lacks the measured field.',
     reflection: 'Repeat the check against the retained bytes.'
   };
-  assert.equal(findStudyReview(study, [valid]), valid);
+  assert.equal(findStudyReview(study, [study, valid]), valid);
 
   const invalidReviews = [
     { ...valid, version: 1 },
@@ -491,17 +491,18 @@ test('study review lookup requires one later review bound to the exact source ve
     { ...valid, reflection: '   ' }
   ];
   for (const invalid of invalidReviews) {
-    assert.equal(findStudyReview(study, [invalid]), null);
+    assert.equal(findStudyReview(study, [study, invalid]), null);
   }
 
   assert.equal(findStudyReview(study, [
-    valid, { ...valid, id: 'review-event-2', reviewId: 'review-2' }
+    study, valid, { ...valid, id: 'review-event-2', reviewId: 'review-2' }
   ]), null, 'two reviews for one study are ambiguous');
   assert.equal(findStudyReview(study, [
     valid, { ...valid, id: valid.id, reviewId: 'review-2' }
   ]), null, 'duplicate event IDs are ambiguous');
-  assert.equal(findStudyReview({ ...study, at: '2026-10-29' }, [valid]), null);
+  assert.equal(findStudyReview({ ...study, at: '2026-10-29' }, [study, valid]), null);
   assert.equal(findStudyReview(study, [
     study, valid, { id: valid.id, type: 'discover', actor: witness }
   ]), null, 'review event IDs must be unique across the full history');
+  assert.equal(findStudyReview(study, [valid, study]), null, 'a review cannot precede its source in append-only history');
 });
