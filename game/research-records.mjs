@@ -50,15 +50,26 @@ function validReport(event) {
  * logic, not adjudication: invalid or ambiguous records remain visible, but
  * their context is not guessed.
  */
-export function projectResearchRecords(input) {
+export function projectResearchRecords(input, retainedCreations = []) {
   const events = rows(input);
   const eventIdCounts = countBy(events, 'id', value => hasText(value));
   const proposalCounts = countBy(events.filter(event => event?.type === 'moonshot-proposed'), 'moonshotId', value => hasText(value));
   const reportCounts = countBy(events.filter(event => event?.type === 'experiment-reported'), 'reportId', value => hasText(value));
   const challengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenged'), 'challengeId', value => hasText(value));
 
-  // A proposal's optional source is historical evidence only when the exact
-  // retained version has one unambiguous publication event before the proposal.
+  // Cross-check event history against the actual retained version objects. A publish
+  // event by itself is not enough to activate a link: its exact version must exist
+  // once, its timestamp must agree, and the publication must be Founder-attributed.
+  const retainedVersionsByReference = new Map();
+  for (const creation of rows(retainedCreations)) {
+    for (const version of [...rows(creation?.versions), creation]) {
+      if (!hasText(version?.id) || !Number.isSafeInteger(version?.version) || version.version < 1) continue;
+      const key = JSON.stringify([version.id, version.version]);
+      if (!retainedVersionsByReference.has(key)) retainedVersionsByReference.set(key, []);
+      retainedVersionsByReference.get(key).push(version);
+    }
+  }
+
   const publicationsByReference = new Map();
   events.forEach((event, index) => {
     if (event?.type !== 'publish' || !hasText(event.creationId) ||
@@ -75,13 +86,22 @@ export function projectResearchRecords(input) {
     const hasVersion = version !== undefined && version !== null;
     if (!hasCreationId && !hasVersion) return 'not-provided';
     if (!hasCreationId || !Number.isSafeInteger(version) || version < 1) return 'invalid';
-    const candidates = publicationsByReference.get(JSON.stringify([creationId, version])) || [];
+
+    const key = JSON.stringify([creationId, version]);
+    const candidates = publicationsByReference.get(key) || [];
     if (!candidates.length) return 'unavailable';
     if (candidates.length !== 1 || !eventIdentityIsUnique(candidates[0].event, eventIdCounts)) return 'ambiguous';
     const candidate = candidates[0];
     if (candidate.index >= index) return 'not-earlier';
     if (!validTime(candidate.event.at) || !validTime(event.at) ||
         Date.parse(candidate.event.at) > Date.parse(event.at)) return 'timestamp-conflict';
+
+    const retained = retainedVersionsByReference.get(key) || [];
+    if (!retained.length) return 'unavailable';
+    if (retained.length !== 1) return 'ambiguous';
+    if (!hasText(candidate.event.actor?.id) || candidate.event.actor.role !== 'founder') return 'invalid';
+    if (!validTime(retained[0].publishedAt) ||
+        Date.parse(retained[0].publishedAt) !== Date.parse(candidate.event.at)) return 'timestamp-conflict';
     return 'linked';
   };
 
