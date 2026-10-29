@@ -308,6 +308,13 @@ test("authorizationEvent rejects accessor-backed replacement payloads", () => {
 test("decision scope cannot expand capabilities or weaken quest acceptance", () => {
   assert.throws(
     () => makePayload({ capabilities: ["repository.admin"] }),
+    /decision capabilities must match proposal request/
+  );
+  assert.throws(
+    () => makePayload({
+      proposal: { ...proposal, capability: "repository.admin" },
+      capabilities: ["repository.admin"]
+    }),
     /decision capabilities exceed quest scope/
   );
   assert.throws(
