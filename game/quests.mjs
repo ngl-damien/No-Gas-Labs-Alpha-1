@@ -562,8 +562,10 @@ export function getQuestTrail(world, viewer) {
     const creation = creationById.get(event.evidenceCreationId);
     const version = creation && [creation, ...trailRows(creation.versions)]
       .find(item => item?.version === event.evidenceVersion);
+    const eventPosition = eventPositionByReference.get(event);
     return Boolean(version && isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
-      Date.parse(version.publishedAt) <= Date.parse(event.at));
+      Date.parse(version.publishedAt) <= Date.parse(event.at) &&
+      hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
   };
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);

@@ -355,3 +355,67 @@ test('the main quest continues to select the first unfinished objective', () => 
   assert.equal(quest.action, 'trail');
   assert.deepEqual(quest.nextAction, { type: 'location', id: 'evidence_archive' });
 });
+
+
+test('challenge evidence requires exactly one matching publication earlier in retained history', () => {
+  const worldWithChallenge = () => {
+    const world = experimentQuestWorld();
+    world.events.push({
+      id: 'challenge-event-1',
+      type: 'experiment-challenged',
+      challengeId: 'challenge-1',
+      reportId: 'report-1',
+      moonshotId: 'moon-1',
+      actor: witness,
+      at: '2026-10-28T17:04:00.000Z',
+      challengeType: 'methodology',
+      challengeText: 'The procedure needs an independent reproduction.',
+      evidenceCreationId: 'evidence-1',
+      evidenceVersion: 1
+    });
+    return world;
+  };
+  const milestone = world => getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+
+  assert.equal(milestone(worldWithChallenge()).complete, true, 'one matching earlier publication is accepted');
+
+  const missingPublication = worldWithChallenge();
+  missingPublication.events = missingPublication.events.filter(event => event.type !== 'publish');
+  assert.equal(milestone(missingPublication).complete, false, 'a retained version object alone is not enough');
+
+  const publicationAfterChallenge = worldWithChallenge();
+  const publication = publicationAfterChallenge.events.find(event => event.type === 'publish');
+  publicationAfterChallenge.events = publicationAfterChallenge.events.filter(event => event.type !== 'publish');
+  publicationAfterChallenge.events.push(publication);
+  assert.equal(milestone(publicationAfterChallenge).complete, false, 'a backdated publication after the challenge is rejected');
+
+  const duplicatePublication = worldWithChallenge();
+  const original = duplicatePublication.events.find(event => event.type === 'publish');
+  duplicatePublication.events.push({ ...original, id: 'publish-evidence-duplicate' });
+  assert.equal(milestone(duplicatePublication).complete, false, 'ambiguous duplicate publication references are rejected');
+});
+
+
+test('quest trail does not unlock research progress from incomplete or unattributed proposals', () => {
+  const invalidProposals = [
+    { title: '' },
+    { hypothesis: '' },
+    { falsifier: '' },
+    { evidenceNeeded: '' },
+    { actor: null },
+    { actor: { id: 'untrusted', role: 'system' } }
+  ];
+  for (const invalid of invalidProposals) {
+    const world = experimentQuestWorld();
+    const proposal = world.events.find(event => event.type === 'moonshot-proposed');
+    Object.assign(proposal, invalid);
+    const trail = getQuestTrail(world, founder);
+    const proposalMilestone = trail.find(item => item.id === 'founder-moonshot-proposal');
+    const reportMilestone = trail.find(item => item.id === 'founder-experiment-report');
+    assert.equal(proposalMilestone.complete, false);
+    assert.equal(reportMilestone.complete, false);
+    assert.equal(reportMilestone.progress, 0);
+    assert.equal(reportMilestone.blockedReason, 'Propose a falsifiable moonshot first.');
+  }
+});
