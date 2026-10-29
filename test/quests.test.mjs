@@ -51,7 +51,7 @@ test('Founder objectives route to the actual next activity, including the second
 
 test('main quest invitation routes to the next evidence-backed institutional objective', () => {
   const world = trailFixture();
-  const secondPlace = { ...publishedV1, id: 'c-2', title: 'Second place', versions: [] };
+  const secondPlace = { ...publishedV1, id: 'c-2', title: 'Second place', publishedAt: at2, versions: [] };
   world.creations = [
     { ...publishedV1, kind: 'custom', versions: [] },
     { ...secondPlace, kind: 'custom' }
