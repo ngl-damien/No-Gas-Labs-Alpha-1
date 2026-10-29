@@ -178,6 +178,35 @@ test('overlong event identifiers are excluded instead of being truncated into fa
   assert.ok(packets.every(packet => packet.packetJson === null && packet.prompt === null));
 });
 
+test('hard byte budget fails closed when clipped multibyte text still exceeds the packet limit', () => {
+  const world = researchWorld();
+  const oversized = '🧪'.repeat(3000);
+  world.events[1].procedure = oversized;
+  world.events[1].observation = oversized;
+  for (let index = 0; index < 5; index += 1) {
+    world.events.push({
+      id: 'unicode-report-event-' + index,
+      type: 'experiment-reported',
+      reportId: 'unicode-report-' + index,
+      moonshotId: 'moonshot-1',
+      actor: witness,
+      at: new Date(Date.parse(at3) + (index + 1) * 60_000).toISOString(),
+      procedure: oversized,
+      observation: oversized,
+      reportedOutcome: 'inconclusive',
+      evidenceCreationId: null,
+      evidenceVersion: null
+    });
+  }
+  world.revision += 5;
+
+  const synthesis = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
+  assert.equal(synthesis.available, false);
+  assert.match(synthesis.reason, /hard size budget/i);
+  assert.equal(synthesis.packetJson, null);
+  assert.equal(synthesis.prompt, null);
+});
+
 test('snapshot event count excludes sparse slots and accessor-backed entries without invoking getters', () => {
   const world = researchWorld();
   const original = world.events;
