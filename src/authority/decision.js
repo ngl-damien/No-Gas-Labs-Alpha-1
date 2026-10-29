@@ -5,9 +5,9 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
 const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) && !RESERVED_IDENTIFIERS.has(value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
-const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "capabilities", "outputs", "acceptance", "expires_at"];
+const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
-const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
+const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -63,6 +63,7 @@ function isDecisionPayload(payload) {
   return payload.schema === "ngl.founder-decision.v1" &&
     isIdentifier(payload.proposal_id) &&
     isIdentifier(payload.quest_id) &&
+    isIdentifier(payload.audience) &&
     isScope(payload.capabilities) && isScope(payload.outputs) && isScope(payload.acceptance) &&
     isCanonicalUtcTimestamp(payload.expires_at);
 }
@@ -123,6 +124,7 @@ function snapshotDecisionPayload(payload) {
     schema: raw.schema,
     proposal_id: raw.proposal_id,
     quest_id: raw.quest_id,
+    audience: raw.audience,
     capabilities,
     outputs,
     acceptance,
@@ -181,9 +183,10 @@ function snapshotCallArguments(value, requiredKeys, optionalKeys = []) {
 }
 
 export function makeDecisionPayload(input) {
-  const args = snapshotCallArguments(input, ["proposal", "quest", "capabilities", "outputs", "acceptance", "expires_at"]);
+  const args = snapshotCallArguments(input, ["proposal", "quest", "capabilities", "outputs", "acceptance", "expires_at", "audience"]);
   if (!args) throw new Error("decision arguments must be own data properties");
-  const { proposal, quest, capabilities, outputs, acceptance, expires_at } = args;
+  const { proposal, quest, capabilities, outputs, acceptance, expires_at, audience } = args;
+  if (!isIdentifier(audience)) throw new Error("decision audience required");
   const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id", "capability"]);
   if (!proposalFields || !isIdentifier(proposalFields.event_id) ||
       proposalFields.type !== "PROPOSAL" || !isIdentifier(proposalFields.capability)) {
@@ -222,6 +225,7 @@ export function makeDecisionPayload(input) {
     schema: "ngl.founder-decision.v1",
     proposal_id: proposalFields.event_id,
     quest_id: questFields.quest_id,
+    audience,
     capabilities: capabilityScope,
     outputs: outputScope,
     acceptance: acceptanceScope,
@@ -232,12 +236,13 @@ export function makeDecisionPayload(input) {
 }
 
 export function verifyFounderDecision(input) {
-  const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint"], ["now"]);
+  const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint", "expected_audience"], ["now"]);
   if (!args) return rejected("VERIFICATION_INPUT_INVALID");
-  const { signed, payload, public_key_jwk, expected_fingerprint } = args;
+  const { signed, payload, public_key_jwk, expected_fingerprint, expected_audience } = args;
   const now = args.now === undefined ? Date.now() : args.now;
   const decision = snapshotDecisionPayload(payload);
   if (!decision || !isDecisionPayload(decision)) return rejected("DECISION_PAYLOAD_INVALID");
+  if (!isIdentifier(expected_audience) || decision.audience !== expected_audience) return rejected("AUDIENCE_MISMATCH");
 
   const digest = decisionDigest(decision);
   if (!signed || typeof signed !== "object" || Array.isArray(signed)) return rejected("PAYLOAD_DIGEST_MISMATCH");
@@ -311,6 +316,7 @@ export function authorizationEvent(input) {
     event_id: "authorize:" + decision.proposal_id + ":" + seal.payloadDigest,
     type: "QUEST_AUTHORIZED",
     quest_id: decision.quest_id,
+    audience: decision.audience,
     proposal_id: decision.proposal_id,
     grant_id: seal.payloadDigest,
     actor: "founder",
@@ -324,16 +330,16 @@ export function authorizationEvent(input) {
 }
 
 export function verifyAuthorizationEvent(event, options = {}) {
-  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint"], ["now"]);
+  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"], ["now"]);
   if (!args) return false;
-  const { public_key_jwk, expected_fingerprint } = args;
+  const { public_key_jwk, expected_fingerprint, expected_audience } = args;
   const now = args.now === undefined ? Date.now() : args.now;
   // The persisted event is an untrusted boundary. Snapshot exact own data fields
   // before reading anything; accessors, inherited fields, and extras fail closed.
   const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
   if (!raw || raw.type !== "QUEST_AUTHORIZED" || raw.actor !== "founder" ||
       typeof raw.event_id !== "string" || typeof raw.proposal_id !== "string" ||
-      typeof raw.quest_id !== "string" || typeof raw.grant_id !== "string" ||
+      typeof raw.quest_id !== "string" || !isIdentifier(raw.audience) || typeof raw.grant_id !== "string" ||
       !/^[a-f0-9]{64}$/.test(raw.grant_id) ||
       typeof raw.key_fingerprint !== "string" || !FINGERPRINT.test(raw.key_fingerprint) ||
       raw.event_id !== "authorize:" + raw.proposal_id + ":" + raw.grant_id) return false;
@@ -342,6 +348,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
     schema: "ngl.founder-decision.v1",
     proposal_id: raw.proposal_id,
     quest_id: raw.quest_id,
+    audience: raw.audience,
     capabilities: raw.capabilities,
     outputs: raw.outputs,
     acceptance: raw.acceptance,
@@ -352,15 +359,15 @@ export function verifyAuthorizationEvent(event, options = {}) {
     key_fingerprint: raw.key_fingerprint,
     signature: raw.signature
   };
-  return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, now }).valid === true;
+  return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, expected_audience, now }).valid === true;
 }
 
 export function createFounderAuthorizationVerifier(options = {}) {
   const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint"]);
   if (!args) throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
-  const { public_key_jwk, expected_fingerprint } = args;
+  const { public_key_jwk, expected_fingerprint, expected_audience } = args;
   const publicKeyJwk = snapshotPublicKeyJwk(public_key_jwk);
-  if (!publicKeyJwk || typeof expected_fingerprint !== "string" || !FINGERPRINT.test(expected_fingerprint)) {
+  if (!publicKeyJwk || typeof expected_fingerprint !== "string" || !FINGERPRINT.test(expected_fingerprint) || !isIdentifier(expected_audience)) {
     throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
   }
   let actualFingerprint;
@@ -378,6 +385,7 @@ export function createFounderAuthorizationVerifier(options = {}) {
   // obtain expected_fingerprint from trusted startup configuration, not a request.
   return event => verifyAuthorizationEvent(event, {
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint
+    expected_fingerprint,
+    expected_audience
   });
 }
