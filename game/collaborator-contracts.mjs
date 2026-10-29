@@ -29,6 +29,18 @@ const safeArray = value => {
   try { return Array.isArray(value) ? value : []; } catch { return []; }
 };
 
+// Only packets produced by this module may be used for response validation.
+// The WeakSet is module-private; copied or caller-constructed packet objects fail closed.
+const issuedPackets = new WeakSet();
+function sealPacket(packet) {
+  const sealed = Object.freeze(packet);
+  issuedPackets.add(sealed);
+  return sealed;
+}
+export function isCollaboratorPacket(packet) {
+  return Boolean(packet && typeof packet === 'object' && issuedPackets.has(packet));
+}
+
 const ROLE_SPECS = Object.freeze([
   {
     id: 'archivist',
@@ -207,7 +219,7 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     packetJson
   ].join('\n');
   if (utf8Bytes(packetJson) > MAX_PACKET_BYTES || utf8Bytes(prompt) > MAX_PACKET_PROMPT_BYTES) {
-    return Object.freeze({
+    return sealPacket({
       id: spec.id,
       name: spec.name,
       objective: spec.objective,
@@ -221,7 +233,7 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
       prompt: null
     });
   }
-  return Object.freeze({
+  return sealPacket({
     id: spec.id,
     name: spec.name,
     objective: spec.objective,
@@ -321,7 +333,7 @@ export function projectCollaboratorPackets(world) {
     }
 
     if (!target || inputs.length === 0) {
-      return Object.freeze({
+      return sealPacket({
         id: spec.id,
         name: spec.name,
         objective: spec.objective,
