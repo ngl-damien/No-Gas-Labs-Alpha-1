@@ -55,6 +55,20 @@ async function fixture(t, dataDir, options = {}) {
   }
   return { ...game, dataDir, url, client };
 }
+async function nextWithin(stream, type, timeoutMs = 1500) {
+  let timer;
+  try {
+    return await Promise.race([
+      stream.next(type),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${type} event`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function publish(founder, title = 'Observed bytes') {
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'custom', title, intent: 'Preserve exact locally authored bytes', html: '<!doctype html><html><body><button onclick="this.textContent=\'Done\'">Try</button></body></html>' });
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
@@ -1152,6 +1166,11 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(created.response.status, 200, JSON.stringify(created.body));
 
+  const stream = await founder.stream();
+  t.after(() => stream.close());
+  const initialWorld = await stream.next('world');
+  assert.equal(initialWorld.institution.decisionSummary.available, true);
+
   failNextSync = true;
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1161,6 +1180,9 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
   assert.equal(chosen.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+  const unavailableWorld = await nextWithin(stream, 'world');
+  assert.equal(unavailableWorld.institution.decisionSummary.available, false,
+    'an uncertain ledger must invalidate the shared map summary immediately');
 
   const retry = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
