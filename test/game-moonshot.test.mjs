@@ -230,7 +230,7 @@ test('experiment-report quest can act on another actor\'s retained proposal with
   }, founder, { now: '2026-10-27T00:00:03.000Z' });
   const witnessQuest = getQuestTrail(proposal.world, witness).find(item => item.id === 'witness-experiment-report');
   assert.equal(witnessQuest.complete, false);
-  assert.deepEqual(witnessQuest.action, { type: 'location', id: 'moonshot_field' });
+  assert.deepEqual(witnessQuest.action, { type: 'research-object', id: 'moonshot-object:' + proposal.result.moonshotId, moonshotId: proposal.result.moonshotId });
   assert.equal(witnessQuest.blockedReason, null);
 });
 
@@ -259,7 +259,13 @@ test('Moonshot Field challenge is an actor-scoped quest backed by a different ac
   const founderBefore = getQuestTrail(report.world, founder)
     .find(item => item.id === 'founder-challenge-experiment-report');
   assert.equal(founderBefore.complete, false);
-  assert.deepEqual(founderBefore.action, { type: 'location', id: 'moonshot_field' });
+  const targetReportEvent = report.world.events.find(event => event.type === 'experiment-reported');
+  assert.deepEqual(founderBefore.action, {
+    type: 'research-activity',
+    id: 'research-activity:' + targetReportEvent.id,
+    moonshotId: proposal.result.moonshotId,
+    activityId: report.result.reportId
+  });
   const witnessBefore = getQuestTrail(report.world, witness)
     .find(item => item.id === 'witness-challenge-experiment-report');
   assert.equal(witnessBefore.complete, false);
