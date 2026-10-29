@@ -142,6 +142,42 @@ test("a decision verified before expiry cannot authorize after its expiry", () =
   );
 });
 
+test("verification rejects accessor-backed decision payloads and signed receipts", () => {
+  const accessorPayload = { ...payload };
+  Object.defineProperty(accessorPayload, "outputs", {
+    configurable: true,
+    enumerable: true,
+    get() { return ["mesh"]; }
+  });
+  assert.deepEqual(verify(signed, accessorPayload), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+
+  const accessorReceipt = { ...signed };
+  Object.defineProperty(accessorReceipt, "signature", {
+    configurable: true,
+    enumerable: true,
+    get() { return signed.signature; }
+  });
+  assert.deepEqual(verify(accessorReceipt), {
+    valid: false,
+    reason: "SIGNATURE_INVALID"
+  });
+});
+
+test("verification rejects extra receipt fields and inherited payload fields", () => {
+  assert.deepEqual(verify({ ...signed, ignored: true }), {
+    valid: false,
+    reason: "SIGNATURE_INVALID"
+  });
+  const inheritedPayload = Object.assign(Object.create({ untrusted: true }), payload);
+  assert.deepEqual(verify(signed, inheritedPayload), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+});
+
 test("decision payloads require exact canonical UTC expiry timestamps", () => {
   for (const expires_at of [
     "2099-01-01",
