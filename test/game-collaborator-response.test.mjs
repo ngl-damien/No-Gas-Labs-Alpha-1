@@ -246,3 +246,35 @@ test('synthesis support and contradictions must cite exact included source event
   unstructuredSupport.recordedSupport = ['A claim without an event citation'];
   assert.equal(validateCollaboratorResponse(packet, JSON.stringify(unstructuredSupport)).valid, false);
 });
+
+test('collaborator list fields accept bounded strings only and synthesis experiment shape is exact', () => {
+  const packets = packetsForTest();
+
+  const objectClaim = structuredClone(validResponses.archivist);
+  objectClaim.claims = [{ statement: 'A claim-shaped object', authorized: true }];
+  assert.equal(validateCollaboratorResponse(packets.archivist, JSON.stringify(objectClaim)).valid, false);
+
+  const objectEvidence = structuredClone(validResponses.adversary);
+  objectEvidence.evidenceNeeded = [{ source: 'missing', worldEvent: { type: 'approval' } }];
+  assert.equal(validateCollaboratorResponse(packets.adversary, JSON.stringify(objectEvidence)).valid, false);
+
+  const objectConcept = structuredClone(validResponses.tutor);
+  objectConcept.concepts = [{ concept: 'falsifiability' }];
+  assert.equal(validateCollaboratorResponse(packets.tutor, JSON.stringify(objectConcept)).valid, false);
+
+  const oversizedText = structuredClone(validResponses.archivist);
+  oversizedText.claims = ['x'.repeat(1001)];
+  assert.equal(validateCollaboratorResponse(packets.archivist, JSON.stringify(oversizedText)).valid, false);
+
+  const authorityShapedExperiment = structuredClone(validResponses.synthesizer);
+  authorityShapedExperiment.nextDiscriminatingExperiment = {
+    procedure: 'Repeat with a defined control.',
+    outcome: 'Compare observations.',
+    authorized: true
+  };
+  assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(authorityShapedExperiment)).valid, false);
+
+  const missingOutcome = structuredClone(validResponses.synthesizer);
+  missingOutcome.nextDiscriminatingExperiment = { procedure: 'Repeat with a defined control.' };
+  assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(missingOutcome)).valid, false);
+});
