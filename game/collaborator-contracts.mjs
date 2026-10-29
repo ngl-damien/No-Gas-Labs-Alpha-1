@@ -7,7 +7,7 @@ const MAX_PACKET_PROMPT_BYTES = 72 * 1024;
 export const MAX_PACKET_OMITTED_IDS = 64;
 const MAX_PACKET_FIELD_CHARS = 2048;
 export const MAX_PACKET_ID_CHARS = 128;
-const boundedIdentifier = value => typeof value === 'string' &&
+export const isBoundedIdentifier = value => typeof value === 'string' &&
   value.length > 0 && Array.from(value).length <= MAX_PACKET_ID_CHARS && value.trim() === value;
 function boundedPacketText(value, field, truncatedFields) {
   if (typeof value !== 'string') return value;
@@ -141,7 +141,7 @@ function packetIdentifiersBounded(record) {
     identifiers.push(record.challengeId, record.reportId);
     if (record.evidenceCreationId != null) identifiers.push(record.evidenceCreationId);
   }
-  return identifiers.every(boundedIdentifier);
+  return identifiers.every(isBoundedIdentifier);
 }
 
 function ownArrayDataCount(value) {
