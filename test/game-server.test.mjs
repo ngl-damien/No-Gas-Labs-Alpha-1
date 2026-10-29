@@ -1109,6 +1109,8 @@ test('Decision Chamber map summary updates from the durable gate without exposin
   const rejectedWorld = await stream.next('world');
   assert.equal(rejectedWorld.institution.decisionSummary.counts.PENDING, 0);
   assert.equal(rejectedWorld.institution.decisionSummary.counts.REJECTED, 1);
+  assert.equal(rejectedWorld.world.xp, 0, 'decision dispositions do not award game XP');
+  assert.equal(rejectedWorld.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
 
   const publicState = await witness.request('/api/state');
   assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 1);
