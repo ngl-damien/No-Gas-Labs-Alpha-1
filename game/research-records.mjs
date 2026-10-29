@@ -1,6 +1,8 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 
-const rows = value => Array.isArray(value) ? value : [];
+const rows = value => {
+  try { return Array.isArray(value) ? value : []; } catch { return []; }
+};
 const hasText = value => typeof value === 'string' && value.trim().length > 0;
 const validTime = isStrictTimestamp;
 const sameActor = (left, right) => left?.id === right?.id;
@@ -10,6 +12,129 @@ const RESEARCH_TYPES = new Set([
   'experiment-reported',
   'experiment-challenged'
 ]);
+
+// Research projections consume event-shaped data that may have crossed a model,
+// plugin, donor, or offline-sync boundary. Snapshot own data descriptors only:
+// never invoke getters, custom iterators, or caller-controlled toJSON methods.
+const MAX_EVENT_COUNT = 100_000;
+const MAX_RETAINED_CREATIONS = 20_000;
+const MAX_SNAPSHOT_DEPTH = 16;
+const MAX_OBJECT_FIELDS = 256;
+const MAX_ARRAY_ITEMS = 100_000;
+const MAX_STRING_LENGTH = 100_000;
+
+function snapshotData(value, ancestors = new WeakSet(), depth = 0) {
+  if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'undefined') {
+    return { value, safe: true };
+  }
+  if (typeof value === 'string') {
+    return value.length <= MAX_STRING_LENGTH
+      ? { value, safe: true }
+      : { value: undefined, safe: false };
+  }
+  if (typeof value !== 'object' || depth > MAX_SNAPSHOT_DEPTH) {
+    return { value: undefined, safe: false };
+  }
+
+  let isArray;
+  let prototype;
+  let descriptors;
+  try {
+    isArray = Array.isArray(value);
+    prototype = Object.getPrototypeOf(value);
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    return { value: null, safe: false };
+  }
+
+  if (ancestors.has(value)) return { value: null, safe: false };
+  if (isArray ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) {
+    return { value: isArray ? [] : Object.create(null), safe: false };
+  }
+
+  ancestors.add(value);
+  try {
+    const keys = Reflect.ownKeys(descriptors);
+    if (isArray) {
+      const lengthDescriptor = descriptors.length;
+      const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+        ? lengthDescriptor.value : null;
+      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_ARRAY_ITEMS) {
+        return { value: [], safe: false };
+      }
+
+      const result = [];
+      const allowedKeys = new Set(['length']);
+      let safe = true;
+      for (let index = 0; index < length; index++) {
+        const key = String(index);
+        allowedKeys.add(key);
+        const descriptor = descriptors[key];
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+          result.push(null);
+          safe = false;
+          continue;
+        }
+        const child = snapshotData(descriptor.value, ancestors, depth + 1);
+        result.push(child.value);
+        if (!child.safe) safe = false;
+      }
+      for (const key of keys) {
+        if (typeof key !== 'string' || !allowedKeys.has(key)) safe = false;
+      }
+      return { value: result, safe };
+    }
+
+    const result = Object.create(null);
+    let safe = keys.length <= MAX_OBJECT_FIELDS;
+    for (const key of keys.slice(0, MAX_OBJECT_FIELDS)) {
+      if (typeof key !== 'string') {
+        safe = false;
+        continue;
+      }
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+        safe = false;
+        continue;
+      }
+      const child = snapshotData(descriptor.value, ancestors, depth + 1);
+      result[key] = child.value;
+      if (!child.safe) safe = false;
+    }
+    return { value: result, safe };
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function snapshotArrayEntries(value, maxItems) {
+  let isArray;
+  let descriptors;
+  try {
+    isArray = Array.isArray(value);
+    if (!isArray) return [];
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    return [];
+  }
+  const lengthDescriptor = descriptors.length;
+  const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+    ? lengthDescriptor.value : null;
+  if (!Number.isSafeInteger(length) || length < 0 || length > maxItems) return [];
+
+  const ancestors = new WeakSet();
+  ancestors.add(value);
+  const entries = [];
+  for (let index = 0; index < length; index++) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+      entries.push({ value: null, safe: false });
+      continue;
+    }
+    entries.push(snapshotData(descriptor.value, ancestors, 1));
+  }
+  return entries;
+}
 
 function countBy(events, field, predicate = () => true) {
   const counts = new Map();
@@ -25,7 +150,7 @@ function eventIdentityIsUnique(event, eventIdCounts) {
   return hasText(event?.id) && eventIdCounts.get(event.id) === 1;
 }
 
-export function isValidMoonshotProposal(event) {
+function validMoonshotProposalData(event) {
   return event?.type === 'moonshot-proposed' &&
     hasText(event.moonshotId) && validTime(event.at) &&
     hasText(event.title) && Array.from(event.title).length <= 80 &&
@@ -35,13 +160,20 @@ export function isValidMoonshotProposal(event) {
     hasText(event.actor?.id) && ['founder', 'witness'].includes(event.actor.role);
 }
 
+export function isValidMoonshotProposal(event) {
+  const snapshot = snapshotData(event);
+  return snapshot.safe && validMoonshotProposalData(snapshot.value);
+}
+
 function validReport(event) {
-  return event?.type === 'experiment-reported' &&
-    hasText(event.reportId) && hasText(event.moonshotId) &&
-    validTime(event.at) && hasText(event.procedure) &&
-    hasText(event.observation) &&
-    ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome) &&
-    hasText(event.actor?.id) && ['founder', 'witness'].includes(event.actor.role);
+  const snapshot = snapshotData(event);
+  const record = snapshot.value;
+  return snapshot.safe && record?.type === 'experiment-reported' &&
+    hasText(record.reportId) && hasText(record.moonshotId) &&
+    validTime(record.at) && hasText(record.procedure) &&
+    hasText(record.observation) &&
+    ['supports', 'contradicts', 'inconclusive', 'failed'].includes(record.reportedOutcome) &&
+    hasText(record.actor?.id) && ['founder', 'witness'].includes(record.actor.role);
 }
 
 /**
@@ -53,7 +185,20 @@ function validReport(event) {
  * their context is not guessed.
  */
 export function projectResearchRecords(input, retainedCreations = []) {
-  const events = rows(input);
+  const eventEntries = snapshotArrayEntries(input, MAX_EVENT_COUNT);
+  const events = eventEntries.map(entry => entry.value);
+  const unsafeEvents = new WeakSet();
+  eventEntries.forEach(entry => {
+    if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeEvents.add(entry.value);
+  });
+
+  const creationEntries = snapshotArrayEntries(retainedCreations, MAX_RETAINED_CREATIONS);
+  const creations = creationEntries.map(entry => entry.value);
+  const unsafeCreations = new WeakSet();
+  creationEntries.forEach(entry => {
+    if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeCreations.add(entry.value);
+  });
+
   const eventIdCounts = countBy(events, 'id', value => hasText(value));
   const proposalCounts = countBy(events.filter(event => event?.type === 'moonshot-proposed'), 'moonshotId', value => hasText(value));
   const reportCounts = countBy(events.filter(event => event?.type === 'experiment-reported'), 'reportId', value => hasText(value));
@@ -63,12 +208,15 @@ export function projectResearchRecords(input, retainedCreations = []) {
   // event by itself is not enough to activate a link: its exact version must exist
   // once, its timestamp must agree, and the publication must be Founder-attributed.
   const retainedVersionsByReference = new Map();
-  for (const creation of rows(retainedCreations)) {
-    for (const version of [...rows(creation?.versions), creation]) {
-      if (!hasText(version?.id) || !Number.isSafeInteger(version?.version) || version.version < 1) continue;
+  for (const creation of creations) {
+    if (!creation || typeof creation !== 'object') continue;
+    const creationSafe = !unsafeCreations.has(creation);
+    for (const version of [...rows(creation.versions), creation]) {
+      if (!version || typeof version !== 'object' ||
+          !hasText(version.id) || !Number.isSafeInteger(version.version) || version.version < 1) continue;
       const key = JSON.stringify([version.id, version.version]);
       if (!retainedVersionsByReference.has(key)) retainedVersionsByReference.set(key, []);
-      retainedVersionsByReference.get(key).push(version);
+      retainedVersionsByReference.get(key).push({ version, safe: creationSafe });
     }
   }
 
@@ -78,10 +226,11 @@ export function projectResearchRecords(input, retainedCreations = []) {
         !Number.isSafeInteger(event.version) || event.version < 1) return;
     const key = JSON.stringify([event.creationId, event.version]);
     if (!publicationsByReference.has(key)) publicationsByReference.set(key, []);
-    publicationsByReference.get(key).push({ event, index });
+    publicationsByReference.get(key).push({ event, index, safe: !unsafeEvents.has(event) });
   });
 
   const artifactStatusFor = (event, index, idField, versionField) => {
+    if (unsafeEvents.has(event)) return 'invalid';
     const creationId = event?.[idField];
     const version = event?.[versionField];
     const hasCreationId = hasText(creationId);
@@ -94,6 +243,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
     if (!candidates.length) return 'unavailable';
     if (candidates.length !== 1 || !eventIdentityIsUnique(candidates[0].event, eventIdCounts)) return 'ambiguous';
     const candidate = candidates[0];
+    if (!candidate.safe || unsafeEvents.has(candidate.event)) return 'invalid';
     if (candidate.index >= index) return 'not-earlier';
     if (!validTime(candidate.event.at) || !validTime(event.at) ||
         Date.parse(candidate.event.at) > Date.parse(event.at)) return 'timestamp-conflict';
@@ -101,23 +251,25 @@ export function projectResearchRecords(input, retainedCreations = []) {
     const retained = retainedVersionsByReference.get(key) || [];
     if (!retained.length) return 'unavailable';
     if (retained.length !== 1) return 'ambiguous';
+    if (!retained[0].safe) return 'invalid';
+    const retainedVersion = retained[0].version;
     if (!hasText(candidate.event.actor?.id) || candidate.event.actor.role !== 'founder') return 'invalid';
-    if (!validTime(retained[0].publishedAt) ||
-        Date.parse(retained[0].publishedAt) !== Date.parse(candidate.event.at)) return 'timestamp-conflict';
+    if (!validTime(retainedVersion.publishedAt) ||
+        Date.parse(retainedVersion.publishedAt) !== Date.parse(candidate.event.at)) return 'timestamp-conflict';
     return 'linked';
   };
 
   const proposalByMoonshot = new Map();
   events.forEach((event, index) => {
-    if (!isValidMoonshotProposal(event) || !eventIdentityIsUnique(event, eventIdCounts) ||
-        proposalCounts.get(event.moonshotId) !== 1) return;
+    if (unsafeEvents.has(event) || !isValidMoonshotProposal(event) ||
+        !eventIdentityIsUnique(event, eventIdCounts) || proposalCounts.get(event.moonshotId) !== 1) return;
     proposalByMoonshot.set(event.moonshotId, { event, index });
   });
 
   const reportById = new Map();
   events.forEach((event, index) => {
-    if (!validReport(event) || !eventIdentityIsUnique(event, eventIdCounts) ||
-        reportCounts.get(event.reportId) !== 1) return;
+    if (unsafeEvents.has(event) || !validReport(event) ||
+        !eventIdentityIsUnique(event, eventIdCounts) || reportCounts.get(event.reportId) !== 1) return;
     const proposal = proposalByMoonshot.get(event.moonshotId);
     if (!proposal || proposal.index >= index || Date.parse(proposal.event.at) > Date.parse(event.at)) return;
     reportById.set(event.reportId, { event, index });
@@ -126,11 +278,14 @@ export function projectResearchRecords(input, retainedCreations = []) {
   return events
     .map((event, index) => {
       if (!RESEARCH_TYPES.has(event?.type)) return null;
+      const recordSafe = !unsafeEvents.has(event);
       const eventIdUnique = eventIdentityIsUnique(event, eventIdCounts);
       let proposal = null;
       let proposalStatus = 'not-applicable';
 
-      if (event.type === 'moonshot-proposed') {
+      if (!recordSafe) {
+        proposalStatus = 'ambiguous';
+      } else if (event.type === 'moonshot-proposed') {
         proposalStatus = eventIdUnique && isValidMoonshotProposal(event) && proposalCounts.get(event.moonshotId) === 1
           ? 'unique'
           : 'ambiguous';
@@ -154,7 +309,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
       let targetReport = null;
       let targetReportStatus = 'not-applicable';
       if (event.type === 'experiment-challenged') {
-        if (!eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
+        if (!recordSafe || !eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
         else if (!hasText(event.actor?.id) || !['founder', 'witness'].includes(event.actor.role) ||
             !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
             !hasText(event.challengeText) || Array.from(event.challengeText).length > 1000) targetReportStatus = 'invalid-challenge';
@@ -179,6 +334,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
         _projection: Object.freeze({
           index,
           eventIdUnique,
+          recordSafe,
           proposal,
           proposalStatus,
           sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : 'not-applicable',
