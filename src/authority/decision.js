@@ -146,15 +146,27 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
   if (!proposalFields || !isIdentifier(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
     throw new Error("proposal required");
   }
-  const questFields = snapshotSelectedDataFields(quest, ["quest_id"]);
+  const questFields = snapshotSelectedDataFields(quest, ["quest_id", "capabilities", "acceptance"]);
   if (!questFields || !isIdentifier(questFields.quest_id) || proposalFields.quest_id !== questFields.quest_id) {
     throw new Error("quest binding mismatch");
+  }
+  const questCapabilities = copyScope(questFields.capabilities);
+  const questAcceptance = copyScope(questFields.acceptance);
+  if (questCapabilities === null || questAcceptance === null) {
+    throw new Error("quest scope must contain valid capability and acceptance lists");
   }
   const capabilityScope = copyScope(capabilities);
   const outputScope = copyScope(outputs);
   const acceptanceScope = copyScope(acceptance);
   if ([capabilityScope, outputScope, acceptanceScope].some(scope => scope === null)) {
     throw new Error("decision scope arrays must contain unique, bounded, non-empty strings");
+  }
+  if (capabilityScope.some(capability => !questCapabilities.includes(capability))) {
+    throw new Error("decision capabilities exceed quest scope");
+  }
+  if (acceptanceScope.length !== questAcceptance.length ||
+      questAcceptance.some(condition => !acceptanceScope.includes(condition))) {
+    throw new Error("decision acceptance must preserve quest acceptance");
   }
   if (!isCanonicalUtcTimestamp(expires_at)) {
     throw new Error("canonical UTC expiry required");
