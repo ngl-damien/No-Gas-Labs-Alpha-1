@@ -190,9 +190,21 @@ export async function validateWorld(raw) {
   for(const c of raw.creations){unique(c.id);await checkArtifact(c);if(!Array.isArray(c.versions)||c.versions.length!==c.version-1)invalid('Incomplete version history.');for(let i=0;i<c.versions.length;i++){const v=c.versions[i];if(v.id!==c.id||v.version!==i+1||v.versions!==undefined)invalid('Invalid flat version history.');await checkArtifact(v)}}
   for(const d of raw.drafts){unique(d.id);await checkArtifact(d);if(!Number.isInteger(d.baseVersion)||d.baseVersion<0||d.version!==d.baseVersion+1)invalid('Invalid draft base.');if(d.creationId&&!raw.creations.some(c=>c.id===d.creationId))invalid('Orphan draft.');}
   if(raw.xp!==raw.creations.reduce((sum,c)=>sum+c.version*100,0))invalid('Game rewards do not match published versions.');
+  // Index retained history once. Validation below is intentionally linear in event count:
+  // a bounded 32 MiB world must not trigger a full-history scan for every report or study.
+  const eventPositions=new Map(),publicationsByVersion=new Map(),proposalsByMoonshot=new Map(),studiesById=new Map();
+  const historyKey=(...parts)=>JSON.stringify(parts);
+  const addHistory=(map,key,value)=>{const list=map.get(key)||[];list.push(value);map.set(key,list);};
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];if(!e||typeof e!=='object')continue;
+    eventPositions.set(e,index);
+    if(e.type==='publish')addHistory(publicationsByVersion,historyKey(e.creationId,e.version),e);
+    if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
+    if(e.type==='study')addHistory(studiesById,e.studyId,e);
+  }
   let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
-  for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=raw.events.filter(e=>e.type==='publish'&&e.creationId===version.id&&e.version===version.version);if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
+  for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=publicationsByVersion.get(historyKey(version.id,version.version))||[];if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
   for(const e of raw.events)if(e.type==='moonshot-proposed'){
     unique(e.moonshotId);
     if(typeof e.title!=='string'||!e.title.trim()||Array.from(e.title).length>80||
@@ -219,8 +231,8 @@ export async function validateWorld(raw) {
        typeof e.procedure!=='string'||!e.procedure.trim()||Array.from(e.procedure).length>1000||
        typeof e.observation!=='string'||!e.observation.trim()||Array.from(e.observation).length>1000||
        !allowedReportedOutcomes.has(e.reportedOutcome))invalid('Malformed experiment report.');
-    const reportIndex=raw.events.indexOf(e);
-    const proposals=raw.events.slice(0,reportIndex).filter(proposal=>proposal.type==='moonshot-proposed'&&proposal.moonshotId===e.moonshotId&&Date.parse(proposal.at)<=Date.parse(e.at));
+    const reportIndex=eventPositions.get(e);
+    const proposals=(proposalsByMoonshot.get(e.moonshotId)||[]).filter(proposal=>proposal.index<reportIndex&&Date.parse(proposal.event.at)<=Date.parse(e.at));
     if(proposals.length!==1)invalid('Experiment report must reference one earlier retained moonshot proposal.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
@@ -240,7 +252,7 @@ export async function validateWorld(raw) {
     unique(e.challengeId);
     if(challengeIds.has(e.challengeId)||typeof e.challengeId!=='string'||!e.challengeId||typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||!challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000)invalid('Malformed or repeated experiment challenge.');
     challengeIds.add(e.challengeId);
-    const report=experimentReports.get(e.reportId),reportIndex=raw.events.findIndex(item=>item.type==='experiment-reported'&&item.reportId===e.reportId);
+    const report=experimentReports.get(e.reportId),reportIndex=report?eventPositions.get(report):-1;
     if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||report.actor.id===e.actor.id||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
@@ -265,7 +277,7 @@ export async function validateWorld(raw) {
        typeof e.nextCheck!=='string'||!e.nextCheck.trim()||Array.from(e.nextCheck).length>500)invalid('Malformed Academy study note.');
     const source=raw.creations.find(c=>c.id===e.creationId);
     const versions=source?[...source.versions,source].filter(v=>v.version===e.version):[];
-    const publicationEvents=raw.events.filter(p=>p.type==='publish'&&p.creationId===e.creationId&&p.version===e.version);
+    const publicationEvents=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
     if(versions.length!==1||!isStrictTimestamp(versions[0].publishedAt)||
        Date.parse(versions[0].publishedAt)>Date.parse(e.at)||publicationEvents.length!==1||
        Date.parse(publicationEvents[0].at)>Date.parse(e.at))invalid('Study note must bind to one earlier retained published version.');
@@ -281,15 +293,15 @@ export async function validateWorld(raw) {
        typeof e.reflection!=='string'||!e.reflection.trim()||Array.from(e.reflection).length>1000||
        reviewedStudyIds.has(e.studyId))invalid('Malformed or repeated Academy study review.');
     reviewedStudyIds.add(e.studyId);
-    const sourceEvents=raw.events.filter(s=>s.type==='study'&&s.studyId===e.studyId);
-    const source=sourceEvents[0],sourceIndex=raw.events.indexOf(source),reviewIndex=raw.events.indexOf(e);
+    const sourceEvents=studiesById.get(e.studyId)||[];
+    const source=sourceEvents[0],sourceIndex=source?eventPositions.get(source):-1,reviewIndex=eventPositions.get(e);
     if(sourceEvents.length!==1||sourceIndex<0||sourceIndex>=reviewIndex||
        source.actor?.id!==e.actor?.id||source.actor?.role!==e.actor?.role||
        source.creationId!==e.creationId||source.version!==e.version||
        !isStrictTimestamp(source.at)||Date.parse(source.at)>=Date.parse(e.at))invalid('Study review must follow its author’s matching source note.');
     const reviewSource=raw.creations.find(c=>c.id===e.creationId);
     const reviewVersions=reviewSource?[...reviewSource.versions,reviewSource].filter(v=>v.version===e.version):[];
-    const reviewPublications=raw.events.filter(p=>p.type==='publish'&&p.creationId===e.creationId&&p.version===e.version);
+    const reviewPublications=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
     if(reviewVersions.length!==1||!isStrictTimestamp(reviewVersions[0].publishedAt)||
        Date.parse(reviewVersions[0].publishedAt)>Date.parse(e.at)||reviewPublications.length!==1||
        Date.parse(reviewPublications[0].at)>Date.parse(e.at))invalid('Study review must retain its exact earlier published source version.');
