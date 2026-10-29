@@ -1,5 +1,5 @@
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -401,7 +401,10 @@ function openAcademy(){
       paragraph('Next check: '+note.nextCheck),
       paragraph((note.actor?.name||'Unknown actor')+' · '+note.at+' · recorded practice, not mastery.','attribution')
     ];
-    if(note.actor?.id===viewer.id&&note.actor?.role===viewer.role&&!review)
+    const unresolvedReview=hasStudyReviewRecord(note,world.events)&&!review;
+    if(unresolvedReview)
+      children.push(paragraph('A review record exists, but it does not uniquely match this retained note and source version. No completion is credited; inspect the retained history rather than creating a duplicate.','evidence-warning'));
+    else if(note.actor?.id===viewer.id&&note.actor?.role===viewer.role&&!review)
       children.push(button('Review next check →',()=>openStudyReview(note),{class:'list-button'}));
     if(review)children.push(paragraph('A retrieval review is retained for this note; its response remains self-reported.','form-help'));
     children.push(button('Inspect retained source version →',()=>openCreation(note.creationId,note.version),{class:'list-button'}));
