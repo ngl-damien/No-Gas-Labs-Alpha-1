@@ -501,4 +501,7 @@ test('study review lookup requires one later review bound to the exact source ve
     valid, { ...valid, id: valid.id, reviewId: 'review-2' }
   ]), null, 'duplicate event IDs are ambiguous');
   assert.equal(findStudyReview({ ...study, at: '2026-10-29' }, [valid]), null);
+  assert.equal(findStudyReview(study, [
+    study, valid, { id: valid.id, type: 'discover', actor: witness }
+  ]), null, 'review event IDs must be unique across the full history');
 });
