@@ -5,7 +5,7 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
 const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) && !RESERVED_IDENTIFIERS.has(value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
-const DECISION_SCHEMA = DECISION_SCHEMA;
+const DECISION_SCHEMA = "ngl.founder-decision.v2";
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
 const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
