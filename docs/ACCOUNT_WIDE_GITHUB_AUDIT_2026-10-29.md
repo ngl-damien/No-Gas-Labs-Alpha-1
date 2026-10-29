@@ -116,3 +116,18 @@ No key was rotated, no history was rewritten, and no private-key material is inc
 ## Audit safety rule
 
 No branch was deleted, no PR was merged, no repository was archived, no key was rotated, and no public deployment was performed during this audit. These are deliberately withheld until the evidence, dependencies, and recovery path are established.
+
+
+## Additional source and package-entrypoint audit
+
+A static comparison of declared package commands against the current tracked file trees found these concrete blockers. These are tree/source observations; no fresh dependency install or build was performed.
+
+- **AI-BI Node-Gate is incomplete as currently committed.** Its `package.json` declares `node index.js`, `node --watch index.js`, and `node --test tests/`, but the current 16-file tree contains neither root `index.js` nor a `tests/` directory. `CORE_INVENTORY.md` lists a much larger “Official” inventory (including a 19 KB index and multiple core/test files) that is not present in this destination tree. Treat it as partial recovery, not a runnable service; recover the exact missing blobs from the stated source commit and compare hashes before any integration.
+- **The monorepo is not runnable from its current tree.** `src/backend/package.json` declares `node server.js`, but the four-file repository contains no `src/backend/server.js`. The README/todo/package shell is not an integrated monorepo.
+- **Omnichain_Bridge_wallet is a partial recovery vessel.** Its README describes a 41-file source project; the current tree has 11 files. The inspected Express server exposes `POST /wallet-init` (invoking a fixed local Node command via `child_process.exec`) and append-only XP/ping log routes without visible route-level authentication or rate limiting. This is a review blocker before hosting, not evidence that the server is deployed or that arbitrary command injection is possible. Recover missing files and add an explicit threat model, auth, input bounds, rate limits, and safer process invocation before exposure.
+- **Several “agent” repositories contain deterministic placeholders rather than real analysis.** `SonicForgeNGL/main.py` explicitly prints that it is a recovery vessel and says the full source is elsewhere. The inspected `VeritasShieldNGL/main.py` returns a hard-coded “fact_check: passed” and 0.95 accuracy; `PulseMonitorNGL/main.py` returns hard-coded positive sentiment/confidence. These must be labeled as stubs/fixtures, not marketed or integrated as fact-checking or sentiment-analysis capability.
+- **EvidenceOS is a plausible utility but not verified.** It has a real two-pass pipeline and HTTP server source, but its current 14-file tree has no test files even though the package declares a test command. Fresh runtime and API-boundary checks are still required.
+- **Alpha 1's embedded TaskAgile package manifest is not a runnable full copy.** The manifest under `integrations/taskagile-reference/package.json` points to `server/index.ts`, which is absent from that reference snapshot. This is consistent with the intended source-only preservation; do not run or describe that snapshot as a working app.
+- **Current NGL-001 and TaskAgile packages have declared entry files in their source trees, but no fresh build was run during this audit.** Entry-file presence is a prerequisite, not proof of a successful build or correct behavior.
+
+These findings increase the recovery priority for AI-BI, Omnichain_Bridge_wallet, and the small agent repositories. Recover missing source from the stated official blob/commit, verify exact hashes and license, and test in isolation before importing anything into Alpha 1.
