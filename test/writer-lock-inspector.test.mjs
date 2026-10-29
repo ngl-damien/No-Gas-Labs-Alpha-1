@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile, readdir } from 'node:fs/promises';
 import { renameSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,10 +53,14 @@ test('inspects active service, ledger, and decision locks with owner metadata', 
     now: () => Date.parse('2026-10-28T06:00:00.000Z')
   }));
 
+  const guardDir = join(decisionsDir, '.decisions.lock.guard');
+  const guardOwners = (await readdir(guardDir)).filter(name => name.startsWith('.owner-'));
+  assert.equal(guardOwners.length, 1, 'one active decision guard owner receipt');
   const targets = [
     [join(serviceDir, '.service.lock'), 'ngl.service-lock.v1'],
     [join(ledgerDir, '.writer.lock'), 'ngl.ledger-lock.v1'],
-    [join(decisionsDir, '.decisions.lock'), 'ngl.decisions-lock.v1']
+    [join(decisionsDir, '.decisions.lock'), 'ngl.decisions-lock.v1'],
+    [join(guardDir, guardOwners[0]), 'ngl.decisions-lock-guard.v1']
   ];
   for (const [path, schema] of targets) {
     const result = await inspectWriterLock(path);
