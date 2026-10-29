@@ -621,10 +621,12 @@ export function getQuestTrail(world, viewer) {
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
     .find(event => !linkedExperimentReportIds.has(event.id)) || null;
-  const nextAttemptProposal = events.find(event =>
+  // Event append order is authoritative for target selection; supplied timestamps can be backdated.
+  const nextAttemptProposal = events.slice().reverse().find(event =>
     isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
   ) || null;
-  const challengeTargetReport = allExperimentReports.find(event => event.actor?.id !== actorId) || null;
+  // Prefer the newest appended eligible report from another actor, not the oldest matching record.
+  const challengeTargetReport = allExperimentReports.slice().reverse().find(event => event.actor?.id !== actorId) || null;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
