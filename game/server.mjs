@@ -355,19 +355,39 @@ async function validatePayload(raw) {
   const kernel = replayKernel(raw.institutionalEvents, CONFIG, { artifacts });
   const all = snapshots(world);
   if (all.length !== raw.publicationBindings.length || Object.values(kernel.works).length !== all.length || kernel.events.length !== all.length * 5) throw new Error('Publication institutional history mismatch');
+
+  // Build exact-key indexes once. Re-scanning every binding, kernel event, and
+  // game publication for every retained version made startup validation quadratic.
+  const keyOf = (id, version) => JSON.stringify([id, version]);
+  const addIndex = (map, key, value) => {
+    const values = map.get(key) || [];
+    values.push(value);
+    map.set(key, values);
+  };
+  const bindingsByVersion = new Map();
+  const eventsByWorkId = new Map();
+  const gamePublicationsByVersion = new Map();
+  for (const binding of raw.publicationBindings) {
+    addIndex(bindingsByVersion, keyOf(binding.creationId, binding.version), binding);
+  }
+  for (const event of kernel.events) addIndex(eventsByWorkId, event.workId, event);
+  for (const event of world.events) {
+    if (event.type === 'publish') addIndex(gamePublicationsByVersion, keyOf(event.creationId, event.version), event);
+  }
+
   const bindings = new Set();
   for (const publication of all) {
-    const key = `${publication.id}:${publication.version}`;
-    const matches = raw.publicationBindings.filter(b => b.creationId === publication.id && b.version === publication.version);
+    const key = keyOf(publication.id, publication.version);
+    const matches = bindingsByVersion.get(key) || [];
     if (matches.length !== 1 || bindings.has(key)) throw new Error('Duplicate or missing publication binding');
     bindings.add(key);
     const binding = matches[0]; exact(binding, ['creationId', 'version', 'digest', 'size', 'workId']);
     const work = kernel.works[binding.workId];
     const bytes = artifacts.get(binding.digest);
     if (!work || work.stage !== 'accepted' || work.action !== 'preserve-artifact-bytes' || work.subject.id !== publication.id || work.subject.version !== publication.version || work.outputs.length !== 1 || canonicalStringify(work.outputs[0]) !== canonicalStringify(publication.receipt) || publication.receipt.digest !== binding.digest || publication.receipt.size !== binding.size || !bytes || !bytes.equals(Buffer.from(publication.html, 'utf8'))) throw new Error('Publication receipt / version binding mismatch');
-    const history = kernel.events.filter(event => event.workId === work.id);
+    const history = eventsByWorkId.get(work.id) || [];
     if (history.map(event => event.type).join(',') !== 'claim,authorize,execute,observe,adjudicate') throw new Error('Publication stage history mismatch');
-    const gameEvents = world.events.filter(event => event.type === 'publish' && event.creationId === publication.id && event.version === publication.version);
+    const gameEvents = gamePublicationsByVersion.get(key) || [];
     if (gameEvents.length !== 1 || gameEvents[0].actor.id !== CONFIG.founderId || gameEvents[0].actor.role !== 'founder' || gameEvents[0].reward !== 100) throw new Error('Publication game history binding mismatch');
   }
   return { world, institutionalEvents: structuredClone(raw.institutionalEvents), artifacts: structuredClone(raw.artifacts), publicationBindings: structuredClone(raw.publicationBindings) };
