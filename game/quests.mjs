@@ -51,6 +51,12 @@ export function findStudyReview(note, events) {
   );
   return candidates.length === 1 ? candidates[0] : null;
 }
+/** Detect a retained review attempt even when it cannot safely satisfy the note. */
+export function hasStudyReviewRecord(note, events) {
+  return typeof note?.studyId === 'string' && note.studyId.length > 0 &&
+    rows(events).some(event => event?.type === 'study-reviewed' && event.studyId === note.studyId);
+}
+
 
 export function getQuest(world, viewer) {
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return {
