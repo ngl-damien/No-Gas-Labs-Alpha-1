@@ -178,6 +178,29 @@ test('overlong event identifiers are excluded instead of being truncated into fa
   assert.ok(packets.every(packet => packet.packetJson === null && packet.prompt === null));
 });
 
+test('snapshot event count excludes sparse slots and accessor-backed entries without invoking getters', () => {
+  const world = researchWorld();
+  const original = world.events;
+  const events = [];
+  let getterCalls = 0;
+  events.length = 4;
+  events[0] = original[0];
+  Object.defineProperty(events, '1', {
+    enumerable: true,
+    get() { getterCalls += 1; return original[1]; }
+  });
+  events[2] = original[1];
+  events[3] = original[2];
+  world.events = events;
+
+  const packets = projectCollaboratorPackets(world);
+  assert.equal(getterCalls, 0);
+  assert.ok(packets.every(packet => packet.available));
+  assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'identified'));
+  assert.ok(packets.every(packet => packet.sourceSnapshot.suppliedEventCount === 3),
+    'snapshot marker counts safe own data entries, not the array length of four');
+});
+
 test('playable client and bounded packet module pass the JavaScript parser', () => {
   for (const path of ['game/client.mjs', 'game/collaborator-contracts.mjs']) {
     const checked = spawnSync(process.execPath, ['--check', resolve(ROOT, path)], { encoding: 'utf8' });
