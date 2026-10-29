@@ -94,8 +94,8 @@ function followResearchTarget(object,fallback){
   view.goTo(object.id);
   if(view.target!==object.id){fallback();return}
   if(!view.route.length){
-    const nearest=view.nearest();
-    if(nearest?.id===object.id&&nearest.distance<160){view.interact();return}
+    const nearest=view.nearest(object.id);
+    if(nearest?.id===object.id&&nearest.distance<160){view.interact(object.id);return}
     fallback();
   }
 }
