@@ -2,14 +2,14 @@
 
 **Status:** Phase 1 completed; source-level audit and reconciliation remain in progress.  
 **Canonical target:** `ngl-damien/No-Gas-Labs-Alpha-1`  
-**Baseline observed:** Alpha 1 `main` at `5ff8b276078f0644e4ef748f43ba3685de5c0070`.  
+**Initial baseline:** Alpha 1 `main` at `5ff8b276078f0644e4ef748f43ba3685de5c0070`. **Current main after reviewed gameplay merges:** `c41985ac950382e12cc980703f764a5bd84a3998`.  
 **Evidence method:** GitHub repository metadata, non-truncated recursive default-branch trees, selected README/manifests/source files, open pull-request metadata, compare-commits results, and exact-head CI check runs. This is not a claim that every line in every repository has been manually reviewed or that all applications build.
 
 ## Executive findings
 
-1. The connected account currently returns **32 repositories**, not the 12 recorded in the older reconciliation plan. Their observed default-branch trees contain **1,239 tracked files** in total. All 32 recursive trees returned without truncation; source content has been sampled selectively, not line-by-line audited.
-2. Alpha 1 is the canonical integration target and has **622 tracked files** in its default-branch tree. Its current `main` has successful recent `verify`, `world-projection`, and `playable-world` checks. That is evidence for those workflows only, not a complete device/product validation.
-3. Alpha 1 had **409 branches** at the initial inventory (four full pages of 100 plus nine on page five) and **20 open pull requests**. Creating this audit branch brings the current branch count to **410**. This is the largest coordination risk: overlapping and stacked changes need a controlled merge sequence, not indiscriminate branch cleanup.
+1. The connected account returns **32 repositories**, not the 12 recorded in the older reconciliation plan. Their default-branch trees contained **1,239 tracked files** at initial inventory; after the reviewed Alpha 1 merges below, the current total is **1,243 tracked files**. All 32 recursive trees returned without truncation; source content has been sampled selectively, not line-by-line audited.
+2. Alpha 1 is the canonical integration target and now has **626 tracked files** in its default-branch tree (622 at initial inventory). Its current `main` has successful recent `verify`, `world-projection`, and `playable-world` checks. That is evidence for those workflows only, not a complete device/product validation.
+3. Alpha 1 had **409 branches** and **20 open pull requests** at initial inventory. The audit branch and the challenge-evidence fix branch bring its current branch count to **411**; three feature PRs have since merged, while this audit and fix PR remain open, leaving **19 open pull requests**. This is the largest coordination risk: overlapping and stacked changes need a controlled merge sequence, not indiscriminate branch cleanup.
 4. The playable-world chain is `#160 → #163 → #165`. PR #165 is five commits beyond #163 and changes only `game/model.mjs`, `game/server.mjs`, and their tests. PR #163 is based on #160 and changes 18 files. GitHub compare reports 75 commits between #160 and #163, so inspect its full diff/history before merging; green checks alone do not resolve scope or branch-history risk.
 5. PR #162 is a separate Moonshot Evidence Archive draft that is **diverged from #160** (20 commits ahead, 2 behind) and overlaps #163's client/quest/research/server/browser-test files. Do not merge #162 separately if #163 is the intended combined delivery; reconcile its unique commits against #163 first.
 6. A tracked private signing-key field is confirmed in the private `Damien-Featherstone` repository at `.data/institutional_keypair.json`; `server.ts` loads that file and uses the private key to sign receipts. The key is not reproduced in this report. Existing PR #1 and issue #2 correctly identify coordinated rotation/runtime migration as required. **Do not merge the field deletion alone or treat key rotation/history cleanup as complete.**
@@ -22,7 +22,7 @@ Counts are tracked file blobs from the observed default-branch recursive tree, n
 
 | Repository | Files | Observed scope / next action |
 |---|---:|---|
-| `No-Gas-Labs-Alpha-1` | 622 | Canonical world, institutional state, evidence, quests, Forge, recovery snapshots and tests. Keep as sole integration target. |
+| `No-Gas-Labs-Alpha-1` | 626 | Canonical world, institutional state, evidence, quests, Forge, recovery snapshots and tests. Keep as sole integration target. |
 | `Damien-Featherstone` | 77 | Large React/Vite + Express/WebSocket application and tracked data/key material. High reuse potential; security/key handling first. |
 | `ngl-recovery-2026-10-25` | 85 | Recovery manifests, transport notes, staged source and archives. Reconcile against its historical 94-repository manifest. |
 | `ngl001-def4us28` | 24 | React/Vite UI and contact ledger/runtime. Snapshot history says large App.jsx and evidence-bearing state need careful byte/provenance handling. |
@@ -59,9 +59,9 @@ Counts are tracked file blobs from the observed default-branch recursive tree, n
 
 ### Gameplay dependency chain
 
-- **#160** — Guild Hall adversary + evidence-linked quest. Two commits ahead of main; four files changed. Its inspected head passed the available `verify`, `world-projection`, and `playable-world` workflows.
+- **#160 — MERGED** at `7f6393785ae51bda5ebb80533ee4cb58b7b98d5f`. It added the bounded Contradiction Clerk and evidence-linked quest; its exact head passed `verify`, `world-projection`, and `playable-world`.
 - **#163** — stacked integration of Guild Hall and Evidence Archive. Eighteen files changed. Its inspected head passed the same workflow types, but GitHub compare reports 75 commits between #160 and #163; inspect history and unique changes before any merge.
-- **#165** — five commits beyond #163; four files changed (model/server plus tests). Its inspected head passed the available workflow types. Keep stacked on #163; do not merge independently.
+- **#165 — MERGED** at `c41985ac950382e12cc980703f764a5bd84a3998`. It added indexed retained-history lookups and large-history regression coverage. The tests do not assert numeric before/after speedup, so no measured speedup is claimed.
 
 **Recommended sequence:** review #160's exact diff and tests; reconcile #162's unique work into #163 (do not merge the diverged #162 independently); review #163's full commit history and scope; then review #165 against #163. Keep all three as drafts until the intended sequence and exact-head checks are revalidated.
 
@@ -115,7 +115,7 @@ No key was rotated, no history was rewritten, and no private-key material is inc
 
 ## Audit safety rule
 
-No branch was deleted, no PR was merged, no repository was archived, no key was rotated, and no public deployment was performed during this audit. These are deliberately withheld until the evidence, dependencies, and recovery path are established.
+No branch was deleted and no repository was archived. PRs #160, #163, and #165 were merged after exact-head checks and dependency review; PRs #57, #66, and #73 were converted to draft because they are stale/diverged. No key was rotated, no history was rewritten, and no public deployment was performed.
 
 
 ## Additional source and package-entrypoint audit
@@ -135,12 +135,12 @@ These findings increase the recovery priority for AI-BI, Omnichain_Bridge_wallet
 
 ## Branch-sprawl classification snapshot
 
-A fresh enumeration after creating this audit branch returned **410 unique branches**. Prefix counts show the scale and shape of the backlog:
+A fresh enumeration after creating the audit branch returned 410 unique branches; after creating the challenge-evidence fix branch, Alpha 1 has **411 unique branches**. Prefix counts show the scale and shape of the backlog:
 
 | Branch family | Count |
 |---|---:|
 | `experiment/` | 134 |
-| `fix/` | 50 |
+| `fix/` | 51 |
 | `stutter-step/` | 44 |
 | `security/` | 25 |
 | `integration/` | 15 |
@@ -215,7 +215,7 @@ A direct parse of the 94-row historical CSV gives 83 rows marked private and 35 
 
 ## Branch count across all 32 repositories
 
-A branch-list query was run for every current repository. The account has **529 branches total**; Alpha 1 alone accounts for 410 of them. All other repositories have the following counts:
+A branch-list query was run for every current repository. The account had 529 branches at the initial cross-repository count; after adding the challenge-evidence fix branch, it has **530 branches total**. Alpha 1 accounts for **411**. All other repositories have the following counts:
 
 | Repository | Branches |
 |---|---:|
@@ -229,3 +229,12 @@ A branch-list query was run for every current repository. The account has **529 
 | Each of the other 24 repositories | 1 each |
 
 This reinforces that branch cleanup should focus first on Alpha 1, then Command Center and TaskAgile. The single-branch shells are not necessarily complete projects; a one-branch count is not a health signal.
+
+
+## Execution log after initial inventory
+
+- Merged PR #160 (bounded Contradiction Clerk + evidence-linked quest): `7f6393785ae51bda5ebb80533ee4cb58b7b98d5f`.
+- Retargeted #163 to current main, reviewed the 75-commit feature history and 18-file diff, then merged the Guild Hall + Evidence Archive integration: `ae7390bceff59d19bf36ba6b395d91af4f72c3d8`.
+- Retargeted #165 to current main, kept the performance claim scoped to indexed-history behavior rather than measured speedup, and merged: `c41985ac950382e12cc980703f764a5bd84a3998`.
+- Opened draft PR #167 to restore the missing requirement that challenge evidence reference exactly one earlier publication event, with tests for missing, future-in-history, and duplicate publication events plus invalid proposal progress.
+- PR #166 (this audit report) remains draft; its latest commit is still awaiting its own exact-head workflows. The latest main merge commit's own CI status must be checked separately before declaring the new mainline fully verified.
