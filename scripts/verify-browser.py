@@ -68,7 +68,11 @@ def basic(page,url,out,label):
     page.goto(url,wait_until='networkidle')
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
-    page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    try:
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    except Exception as error:
+        if errors: raise AssertionError('Browser runtime errors before private mode: '+repr(errors)) from error
+        raise
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     first_objective=page.locator('[data-objective-id="founder-first-place"]')
