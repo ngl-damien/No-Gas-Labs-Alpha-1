@@ -2,6 +2,8 @@ import { createHash, createPublicKey, verify as verifySignature } from "node:cry
 
 const verificationSeals = new WeakMap();
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
+const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) && !RESERVED_IDENTIFIERS.has(value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
@@ -58,8 +60,8 @@ function isDecisionPayload(payload) {
   if (keys.length !== DECISION_KEYS.length ||
       keys.some((key, index) => key !== [...DECISION_KEYS].sort()[index])) return false;
   return payload.schema === "ngl.founder-decision.v1" &&
-    typeof payload.proposal_id === "string" && IDENTIFIER.test(payload.proposal_id) &&
-    typeof payload.quest_id === "string" && IDENTIFIER.test(payload.quest_id) &&
+    isIdentifier(payload.proposal_id) &&
+    isIdentifier(payload.quest_id) &&
     isScope(payload.capabilities) && isScope(payload.outputs) && isScope(payload.acceptance) &&
     isCanonicalUtcTimestamp(payload.expires_at);
 }
@@ -141,13 +143,11 @@ function snapshotSignedReceipt(signed) {
 
 export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
   const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id"]);
-  if (!proposalFields || typeof proposalFields.event_id !== "string" ||
-      !IDENTIFIER.test(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
+  if (!proposalFields || !isIdentifier(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
     throw new Error("proposal required");
   }
   const questFields = snapshotSelectedDataFields(quest, ["quest_id"]);
-  if (!questFields || typeof questFields.quest_id !== "string" ||
-      !IDENTIFIER.test(questFields.quest_id) || proposalFields.quest_id !== questFields.quest_id) {
+  if (!questFields || !isIdentifier(questFields.quest_id) || proposalFields.quest_id !== questFields.quest_id) {
     throw new Error("quest binding mismatch");
   }
   const capabilityScope = copyScope(capabilities);
