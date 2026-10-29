@@ -70,7 +70,8 @@ test("persisted Founder authorization event survives JSON round-trip and authori
   const persistedEvent = JSON.parse(JSON.stringify(event));
   const verifyAuthorization = createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   });
   assert.equal(verifyAuthorization(persistedEvent), true);
   const worldProjection = projectWorld([persistedEvent], undefined, { verifyAuthorization });
@@ -105,7 +106,8 @@ test("tampered persisted decision fields cannot authorize a quest", () => {
   const { event, quest, publicKeyJwk, expectedFingerprint } = fixture();
   const verifyAuthorization = createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   });
   const tampered = { ...event, capabilities: ["repository.admin"] };
   assert.equal(verifyAuthorization(tampered), false);
@@ -119,7 +121,8 @@ test("host verifier snapshots its configured public key and rejects a mismatched
   const mutableJwk = { ...publicKeyJwk };
   const verifyAuthorization = createFounderAuthorizationVerifier({
     public_key_jwk: mutableJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   });
   mutableJwk.x = "attacker-controlled-after-configuration";
   assert.equal(verifyAuthorization(event), true);
@@ -134,7 +137,8 @@ test("persisted authorization verifier rejects accessors without executing them"
   const { event, publicKeyJwk, expectedFingerprint } = fixture();
   const verifyAuthorization = createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   });
   const hostile = { ...event };
   let getterCalls = 0;
@@ -146,7 +150,8 @@ test("persisted authorization verifier rejects accessors without executing them"
   assert.equal(verifyAuthorization(hostile), false);
   assert.equal(verifyAuthorizationEvent(hostile, {
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   }), false);
   assert.equal(getterCalls, 0);
 });
@@ -172,7 +177,8 @@ test("legacy self-asserted authorizeQuest output cannot pass the signed host ver
   const { quest, publicKeyJwk, expectedFingerprint } = fixture();
   const verifyAuthorization = createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
   });
   const forged = authorizeQuest({ quest, grant_id: "caller-invented-grant", actor: "founder" });
   assert.equal(verifyAuthorization(forged), false);
