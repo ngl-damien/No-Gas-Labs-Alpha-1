@@ -228,3 +228,40 @@ test("payload scope arrays are frozen against post-construction mutation", () =>
   assert.equal(Object.isFrozen(payload.capabilities), true);
   assert.throws(() => payload.capabilities.push("repository.admin"), TypeError);
 });
+
+test("authorizationEvent emits only the immutable snapshot sealed by verification", () => {
+  const verification = verify();
+  const payloadProxy = new Proxy(payload, {
+    get(target, property, receiver) {
+      if (property === "outputs") return ["repository.admin"];
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const signedProxy = new Proxy(signed, {
+    get(target, property, receiver) {
+      if (property === "key_fingerprint") return "0".repeat(64);
+      return Reflect.get(target, property, receiver);
+    }
+  });
+
+  const event = authorizationEvent({ signed: signedProxy, payload: payloadProxy, verification });
+  assert.deepEqual(event.outputs, ["mesh"]);
+  assert.equal(event.key_fingerprint, fingerprint);
+  assert.equal(event.grant_id, signed.payload_sha256);
+  assert.equal(Object.isFrozen(event.outputs), true);
+  assert.throws(() => event.outputs.push("repository.admin"), TypeError);
+});
+
+test("authorizationEvent rejects accessor-backed replacement payloads", () => {
+  const verification = verify();
+  const accessorPayload = { ...payload };
+  Object.defineProperty(accessorPayload, "outputs", {
+    configurable: true,
+    enumerable: true,
+    get() { return ["repository.admin"]; }
+  });
+  assert.throws(
+    () => authorizationEvent({ signed, payload: accessorPayload, verification }),
+    /verified Founder decision required/
+  );
+});
