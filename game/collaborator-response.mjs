@@ -88,6 +88,17 @@ function stringIds(value, allowed, { maximum = 64, unique = true } = {}) {
   return true;
 }
 
+function sourceStatementList(value, allowed, { maximum = 32, minimumSources = 1 } = {}) {
+  if (!Array.isArray(value) || value.length > maximum) return false;
+  return value.every(item =>
+    exactKeys(item, ['sourceEventIds', 'statement']) &&
+    Array.isArray(item.sourceEventIds) &&
+    item.sourceEventIds.length >= minimumSources &&
+    stringIds(item.sourceEventIds, allowed, { maximum: 8 }) &&
+    boundedString(item.statement, 1000)
+  );
+}
+
 function exactStringIds(value, allowed, { maximum = 64 } = {}) {
   return stringIds(value, allowed, { maximum }) && value.length === allowed.size;
 }
@@ -158,8 +169,8 @@ function validateRoleResponse(payload, response) {
         response.scope.moonshotId !== payload.targetMoonshotId ||
         !exactStringIds(response.scope.includedEventIds, inputIds) ||
         !exactStringIds(response.scope.omittedEventIds, omittedIds) ||
-        !boundedList(response.recordedSupport, 32) ||
-        !boundedList(response.contradictions, 32) ||
+        !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
+        !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
         !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
         !boundedList(response.unknowns, 32) ||
         !ownPlainObject(response.nextDiscriminatingExperiment) ||
