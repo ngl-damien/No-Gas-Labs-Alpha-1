@@ -399,6 +399,73 @@ test('quest preserve-version objective requires an actual earlier retained snaps
   assert.equal(preserved.progress, 1);
 });
 
+test('quest projection rejects a publication with a non-positive retained version', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const world = {
+    creations: [{
+      id: 'invalid-version-source',
+      kind: 'observatory',
+      title: 'Malformed source',
+      version: 0,
+      publishedAt,
+      receipt: { digest: 'c'.repeat(64), size: 12 },
+      versions: []
+    }],
+    events: [{
+      id: 'publish-version-zero',
+      type: 'publish',
+      creationId: 'invalid-version-source',
+      version: 0,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const observatory = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-observatory');
+  assert.equal(observatory.complete, false);
+  assert.equal(observatory.progress, 0);
+});
+
+test('quest preserve-version objective ignores invalid prior version numbers', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const creation = {
+    id: 'creation-with-invalid-prior',
+    kind: 'loom',
+    title: 'Current version',
+    version: 2,
+    publishedAt,
+    receipt: { digest: 'd'.repeat(64), size: 12 },
+    versions: [{
+      id: 'creation-with-invalid-prior',
+      version: -1,
+      publishedAt: '2026-10-28T16:59:00.000Z',
+      receipt: { digest: 'e'.repeat(64), size: 12 },
+      versions: []
+    }]
+  };
+  const world = {
+    creations: [creation],
+    events: [{
+      id: 'publish-current-with-invalid-prior',
+      type: 'publish',
+      creationId: creation.id,
+      version: 2,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const preserve = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(preserve.complete, false);
+  assert.equal(preserve.progress, 0);
+});
+
 function academyQuestWorld(publicationFirst) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const source = {
