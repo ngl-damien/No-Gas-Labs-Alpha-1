@@ -4,6 +4,7 @@ const verificationSeals = new WeakMap();
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "capabilities", "outputs", "acceptance", "expires_at"];
+const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -67,6 +68,59 @@ function rejected(reason) {
   return Object.freeze({ valid: false, reason });
 }
 
+function snapshotDataObject(value, expectedKeys) {
+  try {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== expectedKeys.length ||
+        keys.some(key => typeof key !== "string" || !expectedKeys.includes(key))) return null;
+
+    const snapshot = Object.create(null);
+    for (const key of expectedKeys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotDecisionPayload(payload) {
+  const raw = snapshotDataObject(payload, DECISION_KEYS);
+  if (!raw) return null;
+  const capabilities = copyScope(raw.capabilities);
+  const outputs = copyScope(raw.outputs);
+  const acceptance = copyScope(raw.acceptance);
+  if ([capabilities, outputs, acceptance].some(scope => scope === null)) return null;
+  return Object.freeze({
+    schema: raw.schema,
+    proposal_id: raw.proposal_id,
+    quest_id: raw.quest_id,
+    capabilities,
+    outputs,
+    acceptance,
+    expires_at: raw.expires_at
+  });
+}
+
+function snapshotSignedReceipt(signed) {
+  const raw = snapshotDataObject(signed, SIGNED_KEYS);
+  if (!raw || typeof raw.payload_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.payload_sha256) ||
+      typeof raw.key_fingerprint !== "string" || !FINGERPRINT.test(raw.key_fingerprint) ||
+      typeof raw.signature !== "string" || raw.signature.length === 0 || raw.signature.length > 16384) return null;
+  return Object.freeze({
+    payload_sha256: raw.payload_sha256,
+    key_fingerprint: raw.key_fingerprint,
+    signature: raw.signature
+  });
+}
+
 export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
   if (!proposal || typeof proposal.event_id !== "string" ||
       !IDENTIFIER.test(proposal.event_id) || proposal.type !== "PROPOSAL") {
@@ -100,15 +154,18 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
 }
 
 export function verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, now = Date.now() }) {
-  if (!isDecisionPayload(payload)) return rejected("DECISION_PAYLOAD_INVALID");
+  const decision = snapshotDecisionPayload(payload);
+  if (!decision || !isDecisionPayload(decision)) return rejected("DECISION_PAYLOAD_INVALID");
 
-  const digest = decisionDigest(payload);
-  if (!signed || typeof signed !== "object" || Array.isArray(signed) ||
-      signed.payload_sha256 !== digest) return rejected("PAYLOAD_DIGEST_MISMATCH");
+  const digest = decisionDigest(decision);
+  if (!signed || typeof signed !== "object" || Array.isArray(signed)) return rejected("PAYLOAD_DIGEST_MISMATCH");
+  const receipt = snapshotSignedReceipt(signed);
+  if (!receipt) return rejected("SIGNATURE_INVALID");
+  if (receipt.payload_sha256 !== digest) return rejected("PAYLOAD_DIGEST_MISMATCH");
   if (typeof expected_fingerprint !== "string" || !FINGERPRINT.test(expected_fingerprint) ||
-      signed.key_fingerprint !== expected_fingerprint) return rejected("KEY_NOT_ENROLLED");
+      receipt.key_fingerprint !== expected_fingerprint) return rejected("KEY_NOT_ENROLLED");
   if (!Number.isFinite(now)) return rejected("VERIFICATION_TIME_INVALID");
-  if (now >= Date.parse(payload.expires_at)) return rejected("DECISION_EXPIRED");
+  if (now >= Date.parse(decision.expires_at)) return rejected("DECISION_EXPIRED");
 
   try {
     const key = createPublicKey({ key: public_key_jwk, format: "jwk" });
@@ -116,15 +173,14 @@ export function verifyFounderDecision({ signed, payload, public_key_jwk, expecte
       .update(key.export({ type: "spki", format: "der" }))
       .digest("hex");
     if (actualFingerprint !== expected_fingerprint) return rejected("KEY_NOT_ENROLLED");
-    if (typeof signed.signature !== "string" || !signed.signature) return rejected("SIGNATURE_INVALID");
-    const signatureBytes = Buffer.from(signed.signature, "base64url");
-    if (signatureBytes.length === 0 || signatureBytes.toString("base64url") !== signed.signature) {
+    const signatureBytes = Buffer.from(receipt.signature, "base64url");
+    if (signatureBytes.length === 0 || signatureBytes.toString("base64url") !== receipt.signature) {
       return rejected("SIGNATURE_INVALID");
     }
 
     const valid = verifySignature(
       "sha256",
-      Buffer.from(canonical(payload)),
+      Buffer.from(canonical(decision)),
       key,
       signatureBytes
     );
@@ -132,9 +188,10 @@ export function verifyFounderDecision({ signed, payload, public_key_jwk, expecte
 
     const verification = Object.freeze({ valid: true, reason: null });
     verificationSeals.set(verification, {
+      payload: decision,
       payloadDigest: digest,
-      signature: signed.signature,
-      keyFingerprint: signed.key_fingerprint
+      signature: receipt.signature,
+      keyFingerprint: receipt.key_fingerprint
     });
     return verification;
   } catch {
