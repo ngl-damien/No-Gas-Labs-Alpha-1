@@ -324,3 +324,34 @@ test('main quest stops repeating the generic task when every current objective h
     assert.match(quest.copy, /not approval, truth verification, mastery, or proof of external execution/i);
   }
 });
+
+
+test('an empty objective list does not imply that the current quest trail is complete', () => {
+  const founderWorld = {
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+  };
+  const quest = getActiveQuest(founderWorld, founder, []);
+  assert.equal(quest.id, 'founder-connect');
+  assert.notEqual(quest.id, 'founder-current-trail-recorded');
+});
+
+test('the main quest continues to select the first unfinished objective', () => {
+  const founderWorld = {
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+  };
+  const trail = [
+    { id: 'already-recorded', complete: true },
+    { id: 'next-objective', title: 'Preserve the exact source', complete: false, progress: 0, target: 1,
+      action: { type: 'location', id: 'evidence_archive' }, interpretation: 'Inspect a retained version.' }
+  ];
+  const quest = getActiveQuest(founderWorld, founder, trail);
+  assert.equal(quest.id, 'next-objective');
+  assert.equal(quest.title, 'Preserve the exact source');
+  assert.equal(quest.button, 'Go do this →');
+  assert.equal(quest.action, 'trail');
+  assert.deepEqual(quest.nextAction, { type: 'location', id: 'evidence_archive' });
+});

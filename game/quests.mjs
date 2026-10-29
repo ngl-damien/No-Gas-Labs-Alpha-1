@@ -143,13 +143,17 @@ export function getActiveQuest(world, viewer, trail = null) {
 
   const objectives = Array.isArray(trail) ? trail : getQuestTrail(world, viewer);
   const next = objectives.find(item => !item.complete);
-  if (!next) return Object.freeze({
+  if (!next) {
+    // An empty/missing objective list is not evidence that the objective set was completed.
+    if (objectives.length === 0) return introductory;
+    return Object.freeze({
     id: `${viewer.role}-current-trail-recorded`,
     title: 'Current quest trail · all objectives recorded',
     copy: 'Every currently defined objective has a matching retained record. This is a gameplay checkpoint—not approval, truth verification, mastery, or proof of external execution. Inspect the retained trail, then choose a new research question when ready.',
     button: 'Inspect retained quest trail →',
     action: 'trail'
-  });
+    });
+  }
 
   const copy = next.blockedReason || next.interpretation ||
     `Progress ${next.progress}/${next.target}. Only retained, attributable activity advances this objective; it does not certify the underlying claim.`;
