@@ -27,8 +27,8 @@ const ROLE_SPECS = Object.freeze([
     name: 'Adversary',
     objective: 'Draft a falsifiable challenge to a retained experiment report. The draft is dissent for human review, not an adjudication.',
     unavailable: 'No uniquely identified experiment report linked to a retained proposal is available to challenge.',
-    outputContract: '{"targetEventId":"string","challengeType":"missing-evidence|methodology|contradiction|reproducibility|scope|other","challengeDraft":"string, max 1000 characters","counterexample":"string","evidenceNeeded":[],"unknowns":[]}',
-    task: 'Construct the strongest fair, falsifiable challenge to the supplied experiment report. Prefer a concrete counterexample, missing control, alternative explanation, or replication requirement. Do not invent an observation, source, tool execution, or result. Return a challenge draft for a human to review and separately record; do not adjudicate.'
+    outputContract: '{"targetEventId":"string","challengeType":"missing-evidence|methodology|contradiction|reproducibility|scope|other","challengeDraft":"string, max 1000 characters","distinctnessAssessment":"string","duplicateOfEventIds":[],"counterexample":"string","evidenceNeeded":[],"unknowns":[]}',
+    task: 'Construct the strongest fair, falsifiable challenge to the supplied experiment report. Inspect any prior challenges targeting this report and do not repeat one verbatim; if no distinct challenge is justified, say so. Prefer a concrete counterexample, missing control, alternative explanation, or replication requirement. Do not invent an observation, source, tool execution, or result. Return a challenge draft for a human to review and separately record; do not adjudicate.'
   },
   {
     id: 'synthesizer',
@@ -195,7 +195,10 @@ export function projectCollaboratorPackets(world) {
       const proposal = proposalByMoonshot.get(selectedReport.moonshotId);
       if (proposal) {
         target = proposal.moonshotId;
-        inputs = [proposal, selectedReport];
+        const priorChallenges = activities.filter(record =>
+          record.type === 'experiment-challenged' && record.reportId === selectedReport.reportId
+        );
+        inputs = [proposal, selectedReport, ...priorChallenges];
       }
     } else if (spec.id === 'synthesizer' && latestProposal) {
       target = latestProposal.moonshotId;
