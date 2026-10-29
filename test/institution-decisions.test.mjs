@@ -433,6 +433,9 @@ test('independent Node processes contend for one decision-writer lease and prese
     const rejected = await contender.exit;
     assert.equal(rejected.code, 0, rejected.stderr);
     assert.match(contender.stderr, /^$/);
+    // The rejected contender must not remove or replace the winner's live lease.
+    const liveLock = await lstat(join(directory, '.decisions.lock'));
+    assert.equal(liveLock.isFile(), true);
 
     owner.child.stdin.write('commit\\n');
     assert.equal(await owner.nextLine(), 'COMMITTED', owner.stderr);
