@@ -381,6 +381,36 @@ test('an interrupted writer-lease mutation guard blocks new writers until explic
   await assert.rejects(lstat(guard), { code: 'ENOENT' });
 });
 
+test('symlinked and non-directory decision guards fail closed without writing through them', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-decisions-guard-path-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const linkedDirectory = join(root, 'linked-decisions');
+  const target = join(root, 'target');
+  await mkdir(linkedDirectory, { mode: 0o700 });
+  await mkdir(target, { mode: 0o700 });
+  await symlink(target, join(linkedDirectory, '.decisions.lock.guard'));
+
+  await rejected(
+    decisionsModule.openDecisions({ directory: linkedDirectory, now: () => instant }),
+    'DECISIONS_LOCKED'
+  );
+  assert.deepEqual(await readdir(target), [], 'a symlinked guard must not receive an owner receipt');
+  await assert.rejects(lstat(join(linkedDirectory, '.decisions.lock')), { code: 'ENOENT' });
+
+  const fileDirectory = join(root, 'file-decisions');
+  await mkdir(fileDirectory, { mode: 0o700 });
+  const guardFile = join(fileDirectory, '.decisions.lock.guard');
+  await writeFile(guardFile, 'pre-existing non-directory guard', { mode: 0o600 });
+
+  await rejected(
+    decisionsModule.openDecisions({ directory: fileDirectory, now: () => instant }),
+    'DECISIONS_LOCKED'
+  );
+  assert.equal(await readFile(guardFile, 'utf8'), 'pre-existing non-directory guard');
+  await assert.rejects(lstat(join(fileDirectory, '.decisions.lock')), { code: 'ENOENT' });
+});
+
 test('independent Node processes contend for one decision-writer lease and preserve the durable ledger', { timeout: 30000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-cross-process-'));
   const moduleUrl = new URL('../src/institution/decisions.mjs', import.meta.url).href;
