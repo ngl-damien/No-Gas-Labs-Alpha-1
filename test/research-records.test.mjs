@@ -48,9 +48,20 @@ const challenge = (overrides = {}) => ({
   ...overrides
 });
 
+const retainedSource = (overrides = {}) => ({
+  id: 'source-1',
+  kind: 'observatory',
+  title: 'Retained source',
+  version: 1,
+  publishedAt: '2026-10-28T16:59:00.000Z',
+  versions: [],
+  ...overrides
+});
+const project = (events, creations = [retainedSource()]) => projectResearchRecords(events, creations);
+
 test('proposal source links require one earlier publication with consistent time', () => {
   const source = { sourceCreationId: 'source-1', sourceVersion: 1 };
-  const status = events => projectResearchRecords(events)
+  const status = events => project(events)
     .find(event => event.id === 'proposal-event-1')._projection.sourceStatus;
 
   assert.equal(status([publication(), proposal(source)]), 'linked');
@@ -65,7 +76,7 @@ test('proposal source links require one earlier publication with consistent time
 
 test('report and challenge evidence links require unique earlier publications', () => {
   const evidence = { evidenceCreationId: 'source-1', evidenceVersion: 1 };
-  const byId = events => new Map(projectResearchRecords(events).map(event => [event.id, event]));
+  const byId = events => new Map(project(events).map(event => [event.id, event]));
   const linked = byId([publication(), proposal(), report(evidence), challenge(evidence)]);
   assert.equal(linked.get('report-event-1')._projection.evidenceStatus, 'linked');
   assert.equal(linked.get('challenge-event-1')._projection.evidenceStatus, 'linked');
@@ -94,7 +105,7 @@ test('report and challenge evidence links require unique earlier publications', 
 });
 
 test('unique, earlier research records receive only explicit chronological links', () => {
-  const projected = projectResearchRecords([proposal(), report(), challenge()]);
+  const projected = project([proposal(), report(), challenge()]);
   const byId = new Map(projected.map(event => [event.id, event]));
   assert.equal(byId.get('report-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
@@ -105,7 +116,7 @@ test('unique, earlier research records receive only explicit chronological links
 });
 
 test('duplicate proposal identity is preserved but never used to infer report context', () => {
-  const projected = projectResearchRecords([
+  const projected = project([
     proposal(),
     proposal({ id: 'proposal-event-2', title: 'Conflicting proposal title' }),
     report(),
@@ -120,7 +131,7 @@ test('duplicate proposal identity is preserved but never used to infer report co
 });
 
 test('duplicate report identifiers cannot silently choose a challenge target', () => {
-  const projected = projectResearchRecords([
+  const projected = project([
     proposal(),
     report(),
     report({ id: 'report-event-2', observation: 'A conflicting second record' }),
@@ -132,7 +143,7 @@ test('duplicate report identifiers cannot silently choose a challenge target', (
 });
 
 test('a challenge cannot point forward to a later report in append-only history', () => {
-  const projected = projectResearchRecords([proposal(), challenge(), report()]);
+  const projected = project([proposal(), challenge(), report()]);
   const target = projected.find(event => event.id === 'challenge-event-1');
   assert.equal(target._projection.targetReport, null);
   assert.equal(target._projection.targetReportStatus, 'not-earlier');
@@ -141,7 +152,7 @@ test('a challenge cannot point forward to a later report in append-only history'
 test('duplicate event IDs remain visible but cannot establish linked context', () => {
   const source = [proposal(), { id: 'proposal-event-1', type: 'unrelated-event' }, report(), challenge()];
   const before = structuredClone(source);
-  const projected = projectResearchRecords(source);
+  const projected = project(source);
   const byId = new Map(projected.map(event => [event.id, event]));
   assert.equal(byId.get('proposal-event-1')._projection.eventIdUnique, false);
   assert.equal(byId.get('report-event-1')._projection.proposal, null);
@@ -151,14 +162,14 @@ test('duplicate event IDs remain visible but cannot establish linked context', (
 
 test('a challenge by the report author is not linked as an independent challenge', () => {
   const sameActorChallenge = challenge({ actor: { id: 'witness-1', role: 'witness' } });
-  const target = projectResearchRecords([proposal(), report(), sameActorChallenge])
+  const target = project([proposal(), report(), sameActorChallenge])
     .find(event => event.type === 'experiment-challenged');
   assert.equal(target._projection.targetReport, null);
   assert.equal(target._projection.targetReportStatus, 'same-actor');
 });
 
 test('records with missing or invalid timestamps stay visible without invented links', () => {
-  const projected = projectResearchRecords([
+  const projected = project([
     proposal({ at: 'not-a-time' }),
     report({ at: 'not-a-time' }),
     challenge({ at: 'not-a-time' })
@@ -169,7 +180,7 @@ test('records with missing or invalid timestamps stay visible without invented l
 });
 
 test('duplicate challenge identity cannot establish a target report', () => {
-  const projected = projectResearchRecords([
+  const projected = project([
     proposal(),
     report(),
     challenge(),
@@ -182,12 +193,12 @@ test('duplicate challenge identity cannot establish a target report', () => {
 
 test('a challenge with no attributable actor or a duplicate event ID gets no target link', () => {
   const missingActor = challenge({ actor: null });
-  const missingActorProjection = projectResearchRecords([proposal(), report(), missingActor])
+  const missingActorProjection = project([proposal(), report(), missingActor])
     .find(event => event.type === 'experiment-challenged');
   assert.equal(missingActorProjection._projection.targetReport, null);
   assert.equal(missingActorProjection._projection.targetReportStatus, 'invalid-challenge');
 
-  const duplicateIdProjection = projectResearchRecords([
+  const duplicateIdProjection = project([
     proposal(), report(), challenge(),
     { id: 'challenge-event-1', type: 'unrelated-event' }
   ]).find(event => event.type === 'experiment-challenged');
@@ -206,11 +217,35 @@ test('incomplete or unattributed proposals remain visible but cannot anchor rese
     { actor: { id: 'untrusted', role: 'system' } }
   ];
   for (const invalid of invalidProposals) {
-    const projected = projectResearchRecords([proposal(invalid), report()]);
+    const projected = project([proposal(invalid), report()]);
     const proposalRecord = projected.find(event => event.type === 'moonshot-proposed');
     const reportRecord = projected.find(event => event.type === 'experiment-reported');
     assert.equal(proposalRecord._projection.proposalStatus, 'ambiguous');
     assert.equal(reportRecord._projection.proposal, null);
     assert.equal(reportRecord._projection.proposalStatus, 'missing');
   }
+});
+
+test('artifact links require one retained version and a matching Founder publication', () => {
+  const sourceLink = { sourceCreationId: 'source-1', sourceVersion: 1 };
+  const evidenceLink = { evidenceCreationId: 'source-1', evidenceVersion: 1 };
+  const statuses = (creations, publicationEvent = publication()) => {
+    const projected = project([
+      publicationEvent,
+      proposal(sourceLink),
+      report(evidenceLink)
+    ], creations);
+    const proposalRecord = projected.find(event => event.type === 'moonshot-proposed');
+    const reportRecord = projected.find(event => event.type === 'experiment-reported');
+    return [proposalRecord._projection.sourceStatus, reportRecord._projection.evidenceStatus];
+  };
+
+  assert.deepEqual(statuses([retainedSource()]), ['linked', 'linked']);
+  assert.deepEqual(statuses([]), ['unavailable', 'unavailable']);
+  assert.deepEqual(statuses([retainedSource(), retainedSource()]), ['ambiguous', 'ambiguous']);
+  assert.deepEqual(statuses([retainedSource({ publishedAt: '2026-10-28T18:00:00.000Z' })]),
+    ['timestamp-conflict', 'timestamp-conflict']);
+  assert.deepEqual(statuses([retainedSource()], publication({
+    actor: { id: 'witness-1', role: 'witness', name: 'Witness' }
+  })), ['invalid', 'invalid']);
 });
