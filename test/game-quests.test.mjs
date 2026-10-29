@@ -395,3 +395,27 @@ test('challenge evidence requires exactly one matching publication earlier in re
   duplicatePublication.events.push({ ...original, id: 'publish-evidence-duplicate' });
   assert.equal(milestone(duplicatePublication).complete, false, 'ambiguous duplicate publication references are rejected');
 });
+
+
+test('quest trail does not unlock research progress from incomplete or unattributed proposals', () => {
+  const invalidProposals = [
+    { title: '' },
+    { hypothesis: '' },
+    { falsifier: '' },
+    { evidenceNeeded: '' },
+    { actor: null },
+    { actor: { id: 'untrusted', role: 'system' } }
+  ];
+  for (const invalid of invalidProposals) {
+    const world = experimentQuestWorld();
+    const proposal = world.events.find(event => event.type === 'moonshot-proposed');
+    Object.assign(proposal, invalid);
+    const trail = getQuestTrail(world, founder);
+    const proposalMilestone = trail.find(item => item.id === 'founder-moonshot-proposal');
+    const reportMilestone = trail.find(item => item.id === 'founder-experiment-report');
+    assert.equal(proposalMilestone.complete, false);
+    assert.equal(reportMilestone.complete, false);
+    assert.equal(reportMilestone.progress, 0);
+    assert.equal(reportMilestone.blockedReason, 'Propose a falsifiable moonshot first.');
+  }
+});
