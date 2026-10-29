@@ -435,9 +435,18 @@ export function getQuestTrail(world, viewer) {
   // Challenge evidence must resolve to one retained version, not whichever
   // duplicate version happens to appear first in a creation's array.
   const retainedVersionsByCreationAndVersion = new Map();
+  const minimumPriorVersionByCreation = new Map();
   for (const creation of trailRows(world?.creations)) {
     if (!creation || typeof creation.id !== 'string') continue;
-    for (const version of [...trailRows(creation.versions), creation]) {
+    const priorVersions = trailRows(creation.versions);
+    for (const version of priorVersions) {
+      if (!Number.isInteger(version?.version)) continue;
+      const currentMinimum = minimumPriorVersionByCreation.get(creation.id);
+      if (!Number.isInteger(currentMinimum) || version.version < currentMinimum) {
+        minimumPriorVersionByCreation.set(creation.id, version.version);
+      }
+    }
+    for (const version of [...priorVersions, creation]) {
       if (!Number.isSafeInteger(version?.version) || version.version < 1) continue;
       const key = JSON.stringify([creation.id, version.version]);
       const matches = retainedVersionsByCreationAndVersion.get(key) || [];
@@ -454,6 +463,9 @@ export function getQuestTrail(world, viewer) {
   const publishedObservatoryVersions = publications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   );
+  const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
+    JSON.stringify([event.creationId, event.version])
+  ));
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
@@ -600,14 +612,12 @@ export function getQuestTrail(world, viewer) {
   });
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
-    publishedObservatoryVersions.some(event =>
-      event.creationId === match.record.creationId && event.version === match.record.version
-    )
+    observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
   );
   const earlierVersionRepairs = myPublications.filter(event => {
     if (event.version <= 1) return false;
-    const creation = trailRows(world?.creations).find(item => item?.id === event.creationId);
-    return Boolean(creation && trailRows(creation.versions).some(version => Number.isInteger(version?.version) && version.version < event.version));
+    const minimumPriorVersion = minimumPriorVersionByCreation.get(event.creationId);
+    return Number.isInteger(minimumPriorVersion) && minimumPriorVersion < event.version;
   });
 
   const guideOrder = ['relay', 'river', 'overlook', 'ruins'];
