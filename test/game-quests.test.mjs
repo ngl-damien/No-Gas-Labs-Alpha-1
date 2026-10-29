@@ -158,8 +158,32 @@ test('moonshot evidence objective stays open when an attempt has no retained art
   const milestone = getQuestTrail(world, founder).find(item => item.id === 'founder-experiment-evidence');
   assert.equal(milestone.complete, false);
   assert.equal(milestone.progress, 0);
-  assert.deepEqual(milestone.action, { type: 'location', id: 'moonshot_field' });
+  assert.deepEqual(milestone.action, { type: 'research-activity', id: 'research-activity:report-event-1', moonshotId: 'moon-1', activityId: 'report-1' });
   assert.equal(milestone.blockedReason, null);
+});
+
+test('research quests target the exact proposal or retained report they need', () => {
+  const withoutReport = experimentQuestWorld();
+  withoutReport.events = withoutReport.events.filter(event => event.type !== 'experiment-reported');
+  const attempt = getQuestTrail(withoutReport, founder)
+    .find(item => item.id === 'founder-experiment-report');
+  assert.deepEqual(attempt.action, {
+    type: 'research-object', id: 'moonshot-object:moon-1', moonshotId: 'moon-1'
+  });
+
+  const unlinked = getQuestTrail(experimentQuestWorld({ evidence: false }), founder)
+    .find(item => item.id === 'founder-experiment-evidence');
+  assert.deepEqual(unlinked.action, {
+    type: 'research-activity', id: 'research-activity:report-event-1',
+    moonshotId: 'moon-1', activityId: 'report-1'
+  });
+
+  const challenge = getQuestTrail(experimentQuestWorld(), witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.deepEqual(challenge.action, {
+    type: 'research-activity', id: 'research-activity:report-event-1',
+    moonshotId: 'moon-1', activityId: 'report-1'
+  });
 });
 
 test('moonshot evidence objective rejects future-in-history and ambiguous publication references', () => {

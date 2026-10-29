@@ -328,6 +328,27 @@ function distinctCreationEvents(events) {
   return [...byCreation.values()];
 }
 
+const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const safeResearchId = value => typeof value === 'string' &&
+  RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
+
+function researchObjectAction(proposal) {
+  const moonshotId = proposal?.moonshotId;
+  if (!safeResearchId(moonshotId)) return null;
+  return { type: 'research-object', id: 'moonshot-object:' + moonshotId, moonshotId };
+}
+
+function researchActivityAction(event, activityId) {
+  if (!safeResearchId(event?.id) || !safeResearchId(event?.moonshotId) ||
+      !safeResearchId(activityId)) return null;
+  return {
+    type: 'research-activity',
+    id: 'research-activity:' + event.id,
+    moonshotId: event.moonshotId,
+    activityId,
+  };
+}
+
 function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
@@ -585,6 +606,13 @@ export function getQuestTrail(world, viewer) {
   const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
   const hasExperimentChallenge = experimentChallenges.length >= 1;
   const hasStudy = studies.length >= 1;
+  const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
+  const unlinkedExperimentReport = [...experimentReports].reverse()
+    .find(event => !linkedExperimentReportIds.has(event.id)) || null;
+  const nextAttemptProposal = events.find(event =>
+    isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
+  ) || null;
+  const challengeTargetReport = allExperimentReports.find(event => event.actor?.id !== actorId) || null;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -650,13 +678,16 @@ export function getQuestTrail(world, viewer) {
       trailMilestone(
         'founder-experiment-report', 'Record an experiment attempt', 1,
         experimentReports.map(event => event.id), experimentReports,
-        hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+        hasAnyMoonshotProposal && !hasExperimentReport
+          ? (researchObjectAction(nextAttemptProposal) || { type: 'location', id: 'moonshot_field' }) : null,
         !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
       ),
       trailMilestone(
         'founder-experiment-evidence', 'Link a retained artifact to an experiment attempt', 1,
         experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
-        hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
+        hasExperimentReport && !hasExperimentEvidence
+          ? (researchActivityAction(unlinkedExperimentReport, unlinkedExperimentReport?.reportId) ||
+            { type: 'location', id: 'moonshot_field' }) : null,
         !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
           !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
@@ -664,7 +695,9 @@ export function getQuestTrail(world, viewer) {
       trailMilestone(
         'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
         experimentChallenges.map(event => event.id), experimentChallenges,
-        hasChallengeTarget && !hasExperimentChallenge ? { type: 'location', id: 'moonshot_field' } : null,
+        hasChallengeTarget && !hasExperimentChallenge
+          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+            { type: 'location', id: 'moonshot_field' }) : null,
         !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
@@ -721,13 +754,16 @@ export function getQuestTrail(world, viewer) {
     trailMilestone(
       'witness-experiment-report', 'Record an experiment attempt', 1,
       experimentReports.map(event => event.id), experimentReports,
-      hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
+      hasAnyMoonshotProposal && !hasExperimentReport
+          ? (researchObjectAction(nextAttemptProposal) || { type: 'location', id: 'moonshot_field' }) : null,
       !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
     ),
     trailMilestone(
       'witness-experiment-evidence', 'Link a retained artifact to an experiment attempt', 1,
       experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
-      hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
+      hasExperimentReport && !hasExperimentEvidence
+          ? (researchActivityAction(unlinkedExperimentReport, unlinkedExperimentReport?.reportId) ||
+            { type: 'location', id: 'moonshot_field' }) : null,
       !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
         !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
@@ -735,7 +771,9 @@ export function getQuestTrail(world, viewer) {
     trailMilestone(
       'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
       experimentChallenges.map(event => event.id), experimentChallenges,
-      hasChallengeTarget && !hasExperimentChallenge ? { type: 'location', id: 'moonshot_field' } : null,
+      hasChallengeTarget && !hasExperimentChallenge
+          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+            { type: 'location', id: 'moonshot_field' }) : null,
       !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
