@@ -115,6 +115,7 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     inputRefs,
     omittedEventIds,
     omittedCount,
+    omittedEventIdListTruncated: omittedCount > omittedEventIds.length,
     inputRecords
   };
   const prompt = [
