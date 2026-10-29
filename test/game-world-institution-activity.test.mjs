@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
 
 test('institution counters count only uniquely identified matching records', () => {
@@ -268,4 +269,13 @@ test('shared-state normalization returns only a recognized institution summary',
   });
   assert.equal(institutionSummaryFromState(dto), null);
   assert.equal(getterCalls, 0);
+});
+
+
+test('shared client replaces rather than retains an old institutional summary on every state refresh', async () => {
+  const source = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+
+  assert.match(source, /institutionSummaryFromState/);
+  assert.match(source, /institution=institutionSummaryFromState\(dto\)/);
+  assert.doesNotMatch(source, /institution=dto\.institution\|\|institution/);
 });
