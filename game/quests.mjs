@@ -87,6 +87,31 @@ export function getQuest(world, viewer) {
 }
 
 
+/**
+ * Keep the main quest invitation attached to the next unfinished evidence-backed
+ * objective once the introductory journey is complete. This is a read-only view
+ * of the trail: opening an objective never records progress or awards XP.
+ */
+export function getActiveQuest(world, viewer) {
+  const introductory = getQuest(world, viewer);
+  if (!['founder-connect', 'witness-return'].includes(introductory.id)) return introductory;
+
+  const next = getQuestTrail(world, viewer).find(item => !item.complete);
+  if (!next) return introductory;
+
+  const copy = next.blockedReason || next.interpretation ||
+    `Progress ${next.progress}/${next.target}. Only retained, attributable activity advances this objective; it does not certify the underlying claim.`;
+  return Object.freeze({
+    id: next.id,
+    title: next.title,
+    copy,
+    button: next.action ? 'Go do this →' : 'View quest trail →',
+    action: 'trail',
+    nextAction: next.action
+  });
+}
+
+
 const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
 const inspect = (creation, label, explanation) => creation && typeof creation.id === 'string'
   ? { type: 'inspect', creationId: creation.id, label, explanation }
