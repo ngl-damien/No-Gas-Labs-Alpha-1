@@ -183,7 +183,9 @@ test('chronology accepts only canonical UTC timestamps with real calendar dates'
   const invalidTimes = [
     '1',
     '2026-10-28',
-    '2026-10-28T17:00:00Z',
+    '2026-10-28T17:00:00.000',
+    '2026-13-01T17:00:00.000Z',
+    '2026-10-28T25:00:00Z',
     '2026-02-30T17:00:00.000Z',
     'October 28, 2026'
   ];
