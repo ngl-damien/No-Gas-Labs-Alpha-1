@@ -186,6 +186,36 @@ test('research quests target the exact proposal or retained report they need', (
   });
 });
 
+test('research quest targets the latest appended eligible records even when their timestamps are backdated', () => {
+  const proposals = experimentQuestWorld();
+  proposals.events = proposals.events.filter(event => event.type !== 'experiment-reported');
+  proposals.events.push({
+    id: 'proposal-2', type: 'moonshot-proposed', moonshotId: 'moon-2',
+    actor: founder, at: '2026-10-28T17:00:30.000Z', title: 'Second retained question',
+    hypothesis: 'A second bounded hypothesis', falsifier: 'An observable counterexample',
+    evidenceNeeded: 'A retained source or independent observation'
+  });
+  const attempt = getQuestTrail(proposals, founder)
+    .find(item => item.id === 'founder-experiment-report');
+  assert.deepEqual(attempt.action, {
+    type: 'research-object', id: 'moonshot-object:moon-2', moonshotId: 'moon-2'
+  }, 'the latest appended proposal is the target even when its timestamp is earlier');
+
+  const reports = experimentQuestWorld();
+  reports.events.push({
+    id: 'report-event-2', type: 'experiment-reported', reportId: 'report-2',
+    moonshotId: 'moon-1', actor: founder, at: '2026-10-28T17:02:00.000Z',
+    procedure: 'Repeat the bounded procedure', observation: 'The second report remains inconclusive',
+    reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+  });
+  const challenge = getQuestTrail(reports, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.deepEqual(challenge.action, {
+    type: 'research-activity', id: 'research-activity:report-event-2',
+    moonshotId: 'moon-1', activityId: 'report-2'
+  }, 'the newest appended other-actor report is the challenge target, not the oldest');
+});
+
 test('moonshot evidence objective rejects future-in-history and ambiguous publication references', () => {
   const after = getQuestTrail(experimentQuestWorld({ publicationAfterReport: true }), founder)
     .find(item => item.id === 'founder-experiment-evidence');
