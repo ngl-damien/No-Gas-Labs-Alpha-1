@@ -1168,6 +1168,9 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
   assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+  const unavailable = await founder.request('/api/state');
+  assert.equal(unavailable.response.status, 200);
+  assert.equal(unavailable.body.institution.decisionSummary.available, false, 'uncertain ledger must not masquerade as a zero-count gate');
 });
 
 
