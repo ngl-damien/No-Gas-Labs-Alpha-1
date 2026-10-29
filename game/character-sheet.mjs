@@ -1,3 +1,6 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+import { isValidMoonshotProposal } from './research-records.mjs';
+
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   (viewer.role === 'founder' || viewer.role === 'witness')
@@ -23,7 +26,7 @@ function uniqueEvents(events) {
 
 function validRetainedVersion(version) {
   return version && Number.isSafeInteger(version.version) && version.version > 0 &&
-    typeof version.publishedAt === 'string' && Number.isFinite(Date.parse(version.publishedAt)) &&
+    isStrictTimestamp(version.publishedAt) &&
     version.receipt?.algorithm === 'sha256' &&
     typeof version.receipt.digest === 'string' && /^[a-f0-9]{64}$/.test(version.receipt.digest) &&
     Number.isSafeInteger(version.receipt.size) && version.receipt.size >= 0;
@@ -57,7 +60,7 @@ function matchedPublications(world) {
     if (event.type !== 'publish' || event.actor?.role !== 'founder' ||
         !Number.isSafeInteger(event.reward) || event.reward !== XP_PER_PUBLICATION ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
-        event.version < 1 || typeof event.at !== 'string') continue;
+        event.version < 1 || !isStrictTimestamp(event.at)) continue;
     const key = versionKey(event.creationId, event.version);
     const version = versions.get(key);
     if (!version || version.publishedAt !== event.at) continue;
@@ -82,10 +85,12 @@ export function projectCharacter(world, viewer) {
     }
   }
   const proposalPositions = new Map();
+  const validMoonshotProposalIds = new Set();
   allEvents.forEach((event, index) => {
-    if (event?.type === 'moonshot-proposed' && typeof event.moonshotId === 'string' &&
-        proposalCounts.get(event.moonshotId) === 1 && typeof event.at === 'string' &&
-        Number.isFinite(Date.parse(event.at))) proposalPositions.set(event.moonshotId, index);
+    if (isValidMoonshotProposal(event) && proposalCounts.get(event.moonshotId) === 1) {
+      proposalPositions.set(event.moonshotId, index);
+      validMoonshotProposalIds.add(event.id);
+    }
   });
   const proposalIds = new Set(proposalPositions.keys());
   const validExperimentReports = allEvents.filter(event => {
@@ -94,8 +99,10 @@ export function projectCharacter(world, viewer) {
     return event.type === 'experiment-reported' &&
       typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
       proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
-      allEvents.indexOf(event) > proposalIndex && typeof event.at === 'string' &&
-      Number.isFinite(Date.parse(event.at)) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      allEvents.indexOf(event) > proposalIndex && isStrictTimestamp(event.at) &&
+      isStrictTimestamp(proposal.at) && Date.parse(proposal.at) <= Date.parse(event.at) &&
+      typeof event.actor?.id === 'string' && event.actor.id.trim() &&
+      ['founder', 'witness'].includes(event.actor.role) &&
       typeof event.procedure === 'string' && event.procedure.trim() &&
       typeof event.observation === 'string' && event.observation.trim() &&
       ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
@@ -123,8 +130,8 @@ export function projectCharacter(world, viewer) {
         typeof event.challengeText !== 'string' || !event.challengeText.trim() ||
         Array.from(event.challengeText).length > 1000 ||
         reportPosition < 0 || challengePosition <= reportPosition ||
-        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) ||
-        !Number.isFinite(Date.parse(report.at)) || Date.parse(report.at) > Date.parse(event.at)) return false;
+        !isStrictTimestamp(event.at) || !isStrictTimestamp(report.at) ||
+        Date.parse(report.at) > Date.parse(event.at)) return false;
 
     const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
     const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
@@ -135,7 +142,7 @@ export function projectCharacter(world, viewer) {
     )) return false;
     if (hasEvidenceId) {
       const version = retainedVersions.get(versionKey(event.evidenceCreationId, event.evidenceVersion));
-      if (!version || !Number.isFinite(Date.parse(version.publishedAt)) ||
+      if (!version || !isStrictTimestamp(version.publishedAt) ||
           Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
     }
     return true;
@@ -149,9 +156,9 @@ export function projectCharacter(world, viewer) {
         typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
         typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500 ||
-        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at))) return false;
+        !isStrictTimestamp(event.at)) return false;
     const key = versionKey(event.creationId, event.version), version = retainedVersions.get(key);
-    return Boolean(version && publishedStudyVersions.has(key) && Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+    return Boolean(version && publishedStudyVersions.has(key) && isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study-reviewed') {
@@ -168,13 +175,13 @@ export function projectCharacter(world, viewer) {
         source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
         source.creationId !== event.creationId || source.version !== event.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
-        typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at)) || !Number.isFinite(Date.parse(source.at)) ||
+        !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
         Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
     const version = retainedVersions.get(versionKey(event.creationId, event.version));
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
-      Number.isFinite(Date.parse(version.publishedAt)) && Date.parse(version.publishedAt) <= Date.parse(event.at));
+      isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
   const publications = mine(matchedPublications(world), viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
@@ -228,10 +235,7 @@ export function projectCharacter(world, viewer) {
     {
       id: 'researcher',
       label: 'Researcher',
-      count: events.filter(event => event.type === 'moonshot-proposed' &&
-        typeof event.moonshotId === 'string' && typeof event.hypothesis === 'string' &&
-        event.hypothesis.trim() && typeof event.falsifier === 'string' && event.falsifier.trim() &&
-        typeof event.evidenceNeeded === 'string' && event.evidenceNeeded.trim()).length,
+      count: events.filter(event => validMoonshotProposalIds.has(event.id)).length,
       record: 'retained falsifiable proposals',
       basis: 'Attributed proposals with a hypothesis, falsifier and evidence requirement; this counts research activity, not a validated discovery or experiment result.'
     },
@@ -271,7 +275,7 @@ export function projectCharacter(world, viewer) {
     }));
 
   const recentActivity = events
-    .filter(event => typeof event.at === 'string' && Number.isFinite(Date.parse(event.at)))
+    .filter(event => isStrictTimestamp(event.at))
     .slice()
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) ||
       String(a.id).localeCompare(String(b.id)))
