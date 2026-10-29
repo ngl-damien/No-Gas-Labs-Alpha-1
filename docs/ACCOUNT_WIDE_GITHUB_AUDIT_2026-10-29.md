@@ -70,9 +70,9 @@ Counts are tracked file blobs from the observed default-branch recursive tree, n
 - **#156 courier lock publication, #159 service/ledger/decision locks, #161 experiment lock publication:** related atomic-publication changes across distinct stores. Review together for consistency and platform assumptions. They intentionally fail closed when hard-link publication is unavailable. The lock-release check-then-unlink race and stale-lock recovery remain explicit limitations; tests passing do not eliminate those races.
 - **#164 Founder decision verification:** focused changes to `src/authority/decision.js` and its tests; the inspected head passed the available workflow types. The PR description correctly leaves real key custody and canonical integration as separate blockers.
 - **#157 and #158:** separate quest and adversarial NPC drafts overlap the same client/quest area now represented in the combined #163 chain. Reconcile unique work; do not merge both blindly.
-- **#57 and #49:** TaskAgile source-recovery tranches. Preserve as source-only until provenance, licensing, and selected components are reviewed.
+- **#57 and #49:** TaskAgile source-recovery tranches. PR #57 is 74 commits ahead and 141 behind current main, with 80 files and about 20,285 changed lines in the compare result; this is far too large/stale to merge without a fresh, narrow reconciliation. PR #49 is 3 ahead / 147 behind. Preserve useful source-only recovery, but split and rebase only reviewed unique files after checking provenance and licensing.
 - **#48:** earlier assimilation checkpoint; compare with this account-wide inventory and update rather than maintain conflicting inventories.
-- **#26, #58, #60, #63, #66, #73, #74, #76:** older security/storage/observation branches. At least #66 is demonstrably diverged from current main (60 commits ahead, 138 behind); the rest require fresh exact-base comparisons and must not be merged from their historic checkpoint descriptions.
+- **#26, #58, #60, #63, #66, #73, #74, #76:** all are diverged from current main in fresh comparisons: #26 (15 ahead / 163 behind), #58 (6 / 140), #60 (18 / 140), #63 (8 / 138), #66 (60 / 138), #73 (31 / 133), #74 (27 / 135), and #76 (6 / 120). PRs #73 and #66 are not drafts. Do not merge any of these directly from historic checkpoint descriptions; transplant/rebase the unique behavior onto current main and rerun exact-head verification.
 - Current main's latest observed `verify`, `world-projection`, and `playable-world` checks were successful. Exact-head checks are required again after any rebasing or new commits.
 
 ## Critical security finding: tracked institutional signing key
@@ -153,3 +153,24 @@ A fresh enumeration after creating this audit branch returned **410 unique branc
 | `test/` | 5 |
 
 These labels are only a first-pass grouping by branch-name prefix. They do **not** establish whether a branch is merged, obsolete, safe to delete, or unique. The many `ngl-###-*-evidence` branches also need individual disposition. Before deleting branches, compare their heads against main and open PRs, record any unique commits/artifacts, and preserve recovery/evidence branches where needed.
+
+
+## Fresh stale-PR comparison matrix
+
+The following current-main comparisons were run after the initial PR inventory. “Ahead/behind” counts are Git commit-graph results, not changed-line counts.
+
+| PR | Ahead | Behind | Changed files | Changed lines reported | Disposition |
+|---|---:|---:|---:|---:|---|
+| #57 TaskAgile recovery | 74 | 141 | 80 | 20,285 | Do not merge as-is; extract reviewed unique files into a fresh narrow tranche. |
+| #66 observation attestation | 60 | 138 | 19 | 1,763 | Rebase/transplant and reverify; security behavior is not discarded. |
+| #73 signed world trust roots | 31 | 133 | 15 | 1,739 | Reconcile against current security implementation before reuse. |
+| #74 audience binding | 27 | 135 | 14 | 1,648 | Reconcile against current security implementation before reuse. |
+| #76 signed world attestation | 6 | 120 | 6 | 567 | Reconcile unique change; no direct merge. |
+| #63 Founder key-file hardening | 8 | 138 | 3 | 258 | Compare with current key-loading path; no direct merge. |
+| #60 store durability | 18 | 140 | 8 | 505 | Compare with newer lock/durability changes; no direct merge. |
+| #58 ledger boundaries | 6 | 140 | 3 | 73 | Compare with newer ledger changes; no direct merge. |
+| #49 TaskAgile UI primitives | 3 | 147 | 16 | 1,660 | Preserve only reviewed source deltas. |
+| #48 assimilation checkpoint | 1 | 147 | 1 | 52 | Superseded by this account-wide inventory; retain as historical evidence. |
+| #26 observation verifier boundary | 15 | 163 | 12 | 424 | Reconcile against current world-projection code. |
+
+Large “ahead” counts do not mean all those commits are unique or desirable; large “behind” counts mean the branch was created from an old base and its diff needs fresh scrutiny. Preserve the branches until unique changes and recovery artifacts are recorded.
