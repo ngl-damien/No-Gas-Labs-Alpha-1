@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
 import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
@@ -343,4 +343,43 @@ test('browser and server strict JSON guards stay behaviorally aligned', () => {
   for (const [label, source] of samples) {
     assert.equal(outcome(assertGameJsonKeys, source), outcome(assertSourceJsonKeys, source), label);
   }
+});
+
+
+test('packet omission disclosure is unique, disjoint, bounded, and internally consistent', () => {
+  const packets = packetsForTest(75);
+  for (const packet of Object.values(packets)) {
+    const payload = JSON.parse(packet.packetJson);
+    const included = new Set(payload.inputRefs);
+    const omitted = payload.omittedEventIds;
+    assert.ok(omitted.length <= MAX_PACKET_OMITTED_IDS, packet.id);
+    assert.equal(new Set(omitted).size, omitted.length, packet.id);
+    assert.ok(omitted.every(id =>
+      typeof id === 'string' && id.length > 0 && id.length <= MAX_PACKET_ID_CHARS &&
+      id.trim() === id && !included.has(id)
+    ), packet.id);
+    assert.ok(Number.isSafeInteger(payload.omittedCount), packet.id);
+    assert.ok(payload.omittedCount >= omitted.length, packet.id);
+    assert.equal(payload.omittedEventIdListTruncated, payload.omittedCount > omitted.length, packet.id);
+  }
+
+  const packet = packets.synthesizer;
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.omittedEventIdListTruncated, true);
+  const response = structuredClone(validResponses.synthesizer);
+  response.scope = {
+    moonshotId: payload.targetMoonshotId,
+    includedEventIds: [...payload.inputRefs],
+    omittedEventIds: [...payload.omittedEventIds]
+  };
+  response.recordedSupport = [{
+    sourceEventIds: [payload.inputRefs[0]],
+    statement: 'The proposal is included in the supplied packet.'
+  }];
+  response.contradictions = [];
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(response)).valid, true,
+    'the validator accepts the exact capped omission disclosure without treating it as exhaustive history');
 });
