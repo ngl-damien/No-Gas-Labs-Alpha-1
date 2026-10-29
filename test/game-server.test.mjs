@@ -280,7 +280,7 @@ test('serves every first-party module imported by the playable game client', asy
   const source = await client.request('/client.mjs');
   assert.equal(source.response.status, 200);
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
-  for (const module of ['model', 'quests', 'character-sheet', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk']) {
+  for (const module of ['model', 'quests', 'character-sheet', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
   const institutionView = await client.request('/institution-view.mjs');
