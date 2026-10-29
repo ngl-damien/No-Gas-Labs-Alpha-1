@@ -92,6 +92,14 @@ function exactStringIds(value, allowed, { maximum = 64 } = {}) {
   return stringIds(value, allowed, { maximum }) && value.length === allowed.size;
 }
 
+function freezeJson(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const key of Object.keys(value)) freezeJson(value[key]);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 function packetPayload(packet) {
   if (!isCollaboratorPacket(packet) || packet.available !== true || typeof packet.packetJson !== 'string' ||
       new TextEncoder().encode(packet.packetJson).byteLength > MAX_RESPONSE_BYTES) return null;
@@ -185,6 +193,8 @@ export function validateCollaboratorResponse(packet, responseText) {
   if (!ownPlainObject(response) || !safeJsonValue(response)) return reject('RESPONSE_VALUE_INVALID');
   if (!validateRoleResponse(payload, response)) return reject('RESPONSE_SCHEMA_OR_SCOPE_INVALID');
 
+  // Preserve the exact data that passed validation for the human-review view.
+  freezeJson(response);
   return Object.freeze({
     valid: true,
     status: 'valid-for-human-review',
