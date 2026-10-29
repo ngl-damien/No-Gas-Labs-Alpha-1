@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectCollaboratorPackets, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
 import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
@@ -356,8 +356,7 @@ test('packet omission disclosure is unique, disjoint, bounded, and internally co
     assert.ok(omitted.length <= MAX_PACKET_OMITTED_IDS, packet.id);
     assert.equal(new Set(omitted).size, omitted.length, packet.id);
     assert.ok(omitted.every(id =>
-      typeof id === 'string' && id.length > 0 && id.length <= MAX_PACKET_ID_CHARS &&
-      id.trim() === id && !included.has(id)
+      isBoundedIdentifier(id) && !included.has(id)
     ), packet.id);
     assert.ok(Number.isSafeInteger(payload.omittedCount), packet.id);
     assert.ok(payload.omittedCount >= omitted.length, packet.id);
