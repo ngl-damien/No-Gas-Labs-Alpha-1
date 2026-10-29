@@ -57,6 +57,32 @@ export function projectResearchRecords(input) {
   const reportCounts = countBy(events.filter(event => event?.type === 'experiment-reported'), 'reportId', value => hasText(value));
   const challengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenged'), 'challengeId', value => hasText(value));
 
+  // A proposal's optional source is historical evidence only when the exact
+  // retained version has one unambiguous publication event before the proposal.
+  const publicationsByReference = new Map();
+  events.forEach((event, index) => {
+    if (event?.type !== 'publish' || !hasText(event.creationId) ||
+        !Number.isSafeInteger(event.version) || event.version < 1) return;
+    const key = JSON.stringify([event.creationId, event.version]);
+    if (!publicationsByReference.has(key)) publicationsByReference.set(key, []);
+    publicationsByReference.get(key).push({ event, index });
+  });
+
+  const sourceStatusFor = (event, index) => {
+    const hasSourceId = hasText(event?.sourceCreationId);
+    const hasSourceVersion = event?.sourceVersion !== undefined && event?.sourceVersion !== null;
+    if (!hasSourceId && !hasSourceVersion) return 'not-provided';
+    if (!hasSourceId || !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1) return 'invalid';
+    const candidates = publicationsByReference.get(JSON.stringify([event.sourceCreationId, event.sourceVersion])) || [];
+    if (!candidates.length) return 'unavailable';
+    if (candidates.length !== 1 || !eventIdentityIsUnique(candidates[0].event, eventIdCounts)) return 'ambiguous';
+    const candidate = candidates[0];
+    if (candidate.index >= index) return 'not-earlier';
+    if (!validTime(candidate.event.at) || !validTime(event.at) ||
+        Date.parse(candidate.event.at) > Date.parse(event.at)) return 'timestamp-conflict';
+    return 'linked';
+  };
+
   const proposalByMoonshot = new Map();
   events.forEach((event, index) => {
     if (!isValidMoonshotProposal(event) || !eventIdentityIsUnique(event, eventIdCounts) ||
@@ -131,6 +157,7 @@ export function projectResearchRecords(input) {
           eventIdUnique,
           proposal,
           proposalStatus,
+          sourceStatus: event.type === 'moonshot-proposed' ? sourceStatusFor(event, index) : 'not-applicable',
           targetReport,
           targetReportStatus
         })
