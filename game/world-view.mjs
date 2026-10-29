@@ -46,14 +46,35 @@ function ownDataValue(object,key){
  }catch{return undefined;}
 }
 function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
-function computeInstitutionActivityCounts(world){
- const activity=Object.create(null);
- for(const id of Object.keys(INSTITUTION_EVENT_MATCHERS))activity[id]=0;
- const worldEvents=ownDataValue(world,'events');
- const worldHistory=ownDataValue(world,'history');
- const events=isArraySafely(worldEvents)?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
+const INSTITUTION_KERNEL_EVENT_MATCHERS=Object.freeze({
+ // Guild Hall: claims, scoped grants, adjudications and preserved revocations.
+ guild_hall:event=>['claim','authorize','adjudicate','revoke'].includes(event?.type),
+ // Forge: actual retained execution-stage receipts, not proposals or approvals.
+ forge:event=>event?.type==='execute',
+ // Evidence Archive and TownSquare retain the complete institutional work trail.
+ evidence_archive:event=>['claim','authorize','execute','observe','adjudicate','revoke'].includes(event?.type),
+ 'town-square':event=>['claim','authorize','execute','observe','adjudicate','revoke'].includes(event?.type),
+ // Decision Chamber: bounded authority, adjudication and revocation records.
+ decision_chamber:event=>['authorize','adjudicate','revoke'].includes(event?.type)
+});
+/**
+ * Count one retained source stream. Identity collisions are ambiguous within a
+ * stream, but IDs from the world log and institutional kernel are separate
+ * namespaces and must not erase each other. These are navigational counts only.
+ */
+const MAX_WORLD_EVENT_SCAN=100_000;
+function ownDataValue(object,key){
+ if(!object||(typeof object!=='object'&&typeof object!=='function'))return undefined;
+ try{
+  const descriptor=Object.getOwnPropertyDescriptor(object,key);
+  return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;
+ }catch{return undefined;}
+}
+function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
+function addIdentifiedActivity(events,matchers,activity){
+ if(!isArraySafely(events))return;
  const eventCount=ownDataValue(events,'length');
- if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN)return activity;
+ if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN)return;
  const identified=[];
  const identityCounts=new Map();
  for(let index=0;index<eventCount;index++){
@@ -78,15 +99,34 @@ function computeInstitutionActivityCounts(world){
  }
  for(const {identity,event,safe} of identified){
   if(!safe||identityCounts.get(identity)!==1)continue;
-  for(const [id,matches] of Object.entries(INSTITUTION_EVENT_MATCHERS)){
-   if(matches(event))activity[id]+=1;
+  for(const [id,matches] of Object.entries(matchers)){
+   if(Object.hasOwn(activity,id)&&matches(event))activity[id]+=1;
   }
+ }
+}
+function computeInstitutionActivityCounts(world,institution=null){
+ const activity=Object.create(null);
+ for(const id of Object.keys(INSTITUTION_EVENT_MATCHERS))activity[id]=0;
+ const worldEvents=ownDataValue(world,'events');
+ const worldHistory=ownDataValue(world,'history');
+ const events=isArraySafely(worldEvents)?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
+ addIdentifiedActivity(events,INSTITUTION_EVENT_MATCHERS,activity);
+ // Do not present a partial kernel response as a complete institutional count.
+ // The server's revision, declared count and delivered array length must agree.
+ const kernel=ownDataValue(institution,'kernel');
+ const kernelEvents=ownDataValue(kernel,'events');
+ const kernelCount=ownDataValue(kernel,'eventCount');
+ const kernelRevision=ownDataValue(kernel,'revision');
+ const deliveredCount=ownDataValue(kernelEvents,'length');
+ if(isArraySafely(kernelEvents)&&Number.isSafeInteger(kernelCount)&&kernelCount===deliveredCount&&
+    Number.isSafeInteger(kernelRevision)&&kernelRevision===kernelCount){
+  addIdentifiedActivity(kernelEvents,INSTITUTION_KERNEL_EVENT_MATCHERS,activity);
  }
  return activity;
 }
-export function institutionActivityCount(id,world){
+export function institutionActivityCount(id,world,institution=null){
  if(!Object.hasOwn(INSTITUTION_EVENT_MATCHERS,id))return 0;
- return computeInstitutionActivityCounts(world)[id]??0;
+ return computeInstitutionActivityCounts(world,institution)[id]??0;
 }
 
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -459,14 +499,14 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionCounts=computeInstitutionActivityCounts(this.world);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());this.onBlur=()=>{this.keys.clear();this.input={x:0,y:0}};
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world){const next=world||{creations:[]};this.world=next;this.institutionCounts=computeInstitutionActivityCounts(next);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
+  setWorld(world,institutionSummary=this.institutionSummary){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' unique records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
