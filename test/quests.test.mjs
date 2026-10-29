@@ -70,10 +70,10 @@ test('main quest invitation routes to the next evidence-backed institutional obj
   const before = structuredClone(world);
   const first = getActiveQuest(world, founder);
   const second = getActiveQuest(world, founder);
-  assert.equal(first.id, 'founder-source-observatory');
-  assert.equal(first.title, 'Publish a source observatory');
+  assert.equal(first.id, 'founder-preserve-version');
+  assert.equal(first.title, 'Preserve an earlier version');
   assert.equal(first.action, 'trail');
-  assert.deepEqual(first.nextAction, { type: 'workbench', recipe: 'observatory' });
+  assert.deepEqual(first.nextAction, { type: 'creation', id: 'c-1', version: 1 });
   assert.equal(first.button, 'Go do this →');
   assert.deepEqual(second, first);
   assert.deepEqual(world, before, 'displaying or selecting the next quest must not mutate world state');
