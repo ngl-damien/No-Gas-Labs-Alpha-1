@@ -9,7 +9,7 @@
 
 1. The connected account currently returns **32 repositories**, not the 12 recorded in the older reconciliation plan. Their observed default-branch trees contain **1,239 tracked files** in total. All 32 recursive trees returned without truncation; source content has been sampled selectively, not line-by-line audited.
 2. Alpha 1 is the canonical integration target and has **622 tracked files** in its default-branch tree. Its current `main` has successful recent `verify`, `world-projection`, and `playable-world` checks. That is evidence for those workflows only, not a complete device/product validation.
-3. Alpha 1 has **409 branches** (four full pages of 100 plus nine on page five) and **20 open pull requests**. This is the largest coordination risk: overlapping and stacked changes need a controlled merge sequence, not indiscriminate branch cleanup.
+3. Alpha 1 had **409 branches** at the initial inventory (four full pages of 100 plus nine on page five) and **20 open pull requests**. Creating this audit branch brings the current branch count to **410**. This is the largest coordination risk: overlapping and stacked changes need a controlled merge sequence, not indiscriminate branch cleanup.
 4. The playable-world chain is `#160 → #163 → #165`. PR #165 is five commits beyond #163 and changes only `game/model.mjs`, `game/server.mjs`, and their tests. PR #163 is based on #160 and changes 18 files. GitHub compare reports 75 commits between #160 and #163, so inspect its full diff/history before merging; green checks alone do not resolve scope or branch-history risk.
 5. PR #162 is a separate Moonshot Evidence Archive draft that is **diverged from #160** (20 commits ahead, 2 behind) and overlaps #163's client/quest/research/server/browser-test files. Do not merge #162 separately if #163 is the intended combined delivery; reconcile its unique commits against #163 first.
 6. A tracked private signing-key field is confirmed in the private `Damien-Featherstone` repository at `.data/institutional_keypair.json`; `server.ts` loads that file and uses the private key to sign receipts. The key is not reproduced in this report. Existing PR #1 and issue #2 correctly identify coordinated rotation/runtime migration as required. **Do not merge the field deletion alone or treat key rotation/history cleanup as complete.**
@@ -131,3 +131,25 @@ A static comparison of declared package commands against the current tracked fil
 - **Current NGL-001 and TaskAgile packages have declared entry files in their source trees, but no fresh build was run during this audit.** Entry-file presence is a prerequisite, not proof of a successful build or correct behavior.
 
 These findings increase the recovery priority for AI-BI, Omnichain_Bridge_wallet, and the small agent repositories. Recover missing source from the stated official blob/commit, verify exact hashes and license, and test in isolation before importing anything into Alpha 1.
+
+
+## Branch-sprawl classification snapshot
+
+A fresh enumeration after creating this audit branch returned **410 unique branches**. Prefix counts show the scale and shape of the backlog:
+
+| Branch family | Count |
+|---|---:|
+| `experiment/` | 134 |
+| `fix/` | 50 |
+| `stutter-step/` | 44 |
+| `security/` | 25 |
+| `integration/` | 15 |
+| `game/` | 12 |
+| `feat/` | 10 |
+| `recovery/` | 6 |
+| `audit/` | 5 |
+| `codex/` | 5 |
+| `gameplay/` | 5 |
+| `test/` | 5 |
+
+These labels are only a first-pass grouping by branch-name prefix. They do **not** establish whether a branch is merged, obsolete, safe to delete, or unique. The many `ngl-###-*-evidence` branches also need individual disposition. Before deleting branches, compare their heads against main and open PRs, record any unique commits/artifacts, and preserve recovery/evidence branches where needed.
