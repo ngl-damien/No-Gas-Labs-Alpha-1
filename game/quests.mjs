@@ -279,7 +279,7 @@ function matchingTrailRecords(type, records, events, fields, actorId, actorRole)
     event?.type === type && event?.actor?.id === actorId && event?.actor?.role === actorRole && validIds.has(event.id)
   );
   const key = entry => JSON.stringify([entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])]);
-  const recordCounts = new Map(), eventCounts = new Map();
+  const recordCounts = new Map(), eventCounts = new Map(), eventByFingerprint = new Map();
   for (const record of owned) {
     const fingerprint = key(record);
     recordCounts.set(fingerprint, (recordCounts.get(fingerprint) || 0) + 1);
@@ -287,12 +287,14 @@ function matchingTrailRecords(type, records, events, fields, actorId, actorRole)
   for (const event of candidates) {
     const fingerprint = key(event);
     eventCounts.set(fingerprint, (eventCounts.get(fingerprint) || 0) + 1);
+    if (!eventByFingerprint.has(fingerprint)) eventByFingerprint.set(fingerprint, event);
   }
+  // Resolve the one-to-one join from indexes instead of rescanning every candidate
+  // for each record. Duplicate fingerprints remain deliberately unusable.
   return owned.flatMap(record => {
     const fingerprint = key(record);
-    const matches = candidates.filter(event => key(event) === fingerprint);
-    return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1 && matches.length === 1
-      ? [{ record, event: matches[0] }] : [];
+    return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1
+      ? [{ record, event: eventByFingerprint.get(fingerprint) }] : [];
   });
 }
 
@@ -301,30 +303,28 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
   const validIds = uniqueEventIds(events);
   const creations = trailRows(world?.creations);
   const versions = creations.flatMap(creation => [...trailRows(creation?.versions), creation]);
+  const versionCounts = new Map();
+  const versionKey = (id, version, publishedAt) => JSON.stringify([id, version, publishedAt]);
+  for (const version of versions) {
+    const key = versionKey(version?.id, version?.version, version?.publishedAt);
+    versionCounts.set(key, (versionCounts.get(key) || 0) + 1);
+  }
   return events.filter(event => {
     if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
         typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
         !isStrictTimestamp(event.at) || typeof event.actor?.id !== 'string' || event.actor?.role !== 'founder' ||
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
-    const matches = versions.filter(version => version?.id === event.creationId &&
-      version?.version === event.version && version?.publishedAt === event.at);
-    return matches.length === 1;
+    return versionCounts.get(versionKey(event.creationId, event.version, event.at)) === 1;
   });
 }
 
-function referencesEarlierRetainedPublication(match, publications, events) {
+function referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference) {
   const event = match?.event;
   if (!event || typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
       event.version < 1 || !isStrictTimestamp(event.at)) return false;
-  const eventPosition = events.indexOf(event);
-  if (eventPosition < 0) return false;
-  const at = Date.parse(event.at);
-  return publications.some(publication => {
-    const publicationPosition = events.indexOf(publication);
-    return publicationPosition >= 0 && publicationPosition < eventPosition &&
-      publication.creationId === event.creationId && publication.version === event.version &&
-      isStrictTimestamp(publication.at) && Date.parse(publication.at) <= at;
-  });
+  return hasUniqueEarlierPublication(
+    event.creationId, event.version, event.at, eventPositionByReference.get(event)
+  );
 }
 
 function distinctCreationEvents(events) {
@@ -451,9 +451,9 @@ export function getQuestTrail(world, viewer) {
     }
   }
   const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
-    .filter(match => referencesEarlierRetainedPublication(match, publications, events));
+    .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
-    .filter(match => referencesEarlierRetainedPublication(match, publications, events));
+    .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
@@ -513,18 +513,20 @@ export function getQuestTrail(world, viewer) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
-  const allExperimentReports = events.filter(event =>
-    event?.type === 'experiment-reported' && typeof event.id === 'string' &&
-    uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
-    reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
-    proposalPositionById.get(event.moonshotId) < events.indexOf(event) &&
-    isStrictTimestamp(event.at) &&
-    Date.parse(events[proposalPositionById.get(event.moonshotId)]?.at) <= Date.parse(event.at) &&
-    typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
-    typeof event.procedure === 'string' && event.procedure.trim() &&
-    typeof event.observation === 'string' && event.observation.trim() &&
-    ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
-  );
+  const allExperimentReports = events.filter(event => {
+    const eventPosition = eventPositionByReference.get(event);
+    const proposalPosition = proposalPositionById.get(event?.moonshotId);
+    return event?.type === 'experiment-reported' && typeof event.id === 'string' &&
+      uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
+      reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
+      Number.isInteger(eventPosition) && proposalPosition < eventPosition &&
+      isStrictTimestamp(event.at) &&
+      Date.parse(events[proposalPosition]?.at) <= Date.parse(event.at) &&
+      typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
+      typeof event.procedure === 'string' && event.procedure.trim() &&
+      typeof event.observation === 'string' && event.observation.trim() &&
+      ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome);
+  });
   const experimentReports = allExperimentReports.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
@@ -535,14 +537,9 @@ export function getQuestTrail(world, viewer) {
   const experimentEvidenceReports = experimentReports.filter(event => {
     if (typeof event.evidenceCreationId !== 'string' || !event.evidenceCreationId ||
         !Number.isSafeInteger(event.evidenceVersion) || event.evidenceVersion < 1) return false;
-    const reportPosition = events.indexOf(event);
-    const matchingPublications = publications.filter(publication =>
-      publication.creationId === event.evidenceCreationId &&
-      publication.version === event.evidenceVersion &&
-      events.indexOf(publication) >= 0 && events.indexOf(publication) < reportPosition &&
-      Date.parse(publication.at) <= Date.parse(event.at)
+    return hasUniqueEarlierPublication(
+      event.evidenceCreationId, event.evidenceVersion, event.at, eventPositionByReference.get(event)
     );
-    return matchingPublications.length === 1;
   });
   const challengeIdCounts = new Map();
   for (const event of events) {
@@ -569,8 +566,8 @@ export function getQuestTrail(world, viewer) {
   };
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
-    const reportPosition = report ? events.indexOf(report) : -1;
-    const challengePosition = events.indexOf(event);
+    const reportPosition = report ? (eventPositionByReference.get(report) ?? -1) : -1;
+    const challengePosition = eventPositionByReference.get(event) ?? -1;
     return event?.type === 'experiment-challenged' && typeof event.id === 'string' &&
       uniqueMoonshotEventIds.has(event.id) &&
       typeof event.challengeId === 'string' && challengeIdCounts.get(event.challengeId) === 1 &&
