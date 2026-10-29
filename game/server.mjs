@@ -222,7 +222,7 @@ function validateHistory(world) {
       if (!source || source.actor.id !== event.actor.id || source.actor.role !== event.actor.role ||
           source.creationId !== event.creationId || source.version !== event.version ||
           Date.parse(source.at) >= eventAt) throw new Error('Stored Academy study review must follow its author’s matching source note');
-      if (!published.some(item => item.id === event.creationId && item.version === event.version && Date.parse(item.publishedAt) <= eventAt)) {
+      if (!(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(item => Date.parse(item.publishedAt) <= eventAt)) {
         throw new Error('Stored Academy study review does not bind to an earlier retained published version');
       }
       reviewIds.add(event.reviewId);
@@ -318,7 +318,7 @@ function validateHistory(world) {
       if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !(publishedByVersion.get(historyKey(event.creationId, event.baseVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) throw new Error('Stored repair version history mismatch');
       drafts.set(event.draftId, event);
     }
-    if (event.type === 'publish' && !published.some(p => p.id === event.creationId && p.version === event.version && p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
+    if (event.type === 'publish' && !(publishedByVersion.get(historyKey(event.creationId, event.version)) || []).some(p => p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
     if (Object.hasOwn(notes, event.type)) {
       if (event.type === 'discover' && event.repeat === true) continue;
       const index = notes[event.type].findIndex(note => note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor) && (event.type === 'discover' ? note.locationId === event.locationId : note.creationId === event.creationId && note.version === event.version));
