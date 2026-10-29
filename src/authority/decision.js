@@ -17,7 +17,7 @@ export const decisionDigest = payload => createHash("sha256").update(canonical(p
 
 function isCanonicalUtcTimestamp(value) {
   if (typeof value !== "string" ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value)) return false;
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
   const milliseconds = Date.parse(value);
   return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
 }
