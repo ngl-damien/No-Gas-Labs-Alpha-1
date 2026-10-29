@@ -5,6 +5,7 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
 const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) && !RESERVED_IDENTIFIERS.has(value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
+const DECISION_SCHEMA = DECISION_SCHEMA;
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
 const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
@@ -60,7 +61,7 @@ function isDecisionPayload(payload) {
   const keys = Object.keys(payload).sort();
   if (keys.length !== DECISION_KEYS.length ||
       keys.some((key, index) => key !== [...DECISION_KEYS].sort()[index])) return false;
-  return payload.schema === "ngl.founder-decision.v2" &&
+  return payload.schema === DECISION_SCHEMA &&
     isIdentifier(payload.proposal_id) &&
     isIdentifier(payload.quest_id) &&
     isIdentifier(payload.audience) &&
@@ -222,7 +223,7 @@ export function makeDecisionPayload(input) {
   }
 
   const payload = Object.freeze({
-    schema: "ngl.founder-decision.v2",
+    schema: DECISION_SCHEMA,
     proposal_id: proposalFields.event_id,
     quest_id: questFields.quest_id,
     audience,
@@ -345,7 +346,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
       raw.event_id !== "authorize:" + raw.proposal_id + ":" + raw.grant_id) return false;
 
   const payload = {
-    schema: "ngl.founder-decision.v2",
+    schema: DECISION_SCHEMA,
     proposal_id: raw.proposal_id,
     quest_id: raw.quest_id,
     audience: raw.audience,
