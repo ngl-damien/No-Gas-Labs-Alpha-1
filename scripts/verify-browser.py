@@ -180,6 +180,27 @@ def basic(page,url,out,label):
             assert json.dumps(report_event['id']) in prompt, (role,report_event['id'])
         packet.get_by_role('button',name='Copy hand-off packet',exact=True).click()
         expect(page.locator('#toast')).to_contain_text(re.compile('Bounded packet copied|Packet selected'))
+        if role=='adversary':
+            packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\\n',1)[1])
+            target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
+            response_field=packet.locator('textarea[aria-label="Adversary response JSON"]')
+            response={
+                'targetEventId':target_event,
+                'challengeType':'methodology',
+                'challengeDraft':'The procedure does not specify a control condition.',
+                'distinctnessAssessment':'This is a draft for human review against the supplied challenge.',
+                'duplicateOfEventIds':[],
+                'counterexample':'A controlled comparison could produce a different result.',
+                'evidenceNeeded':['A retained controlled replication.'],
+                'unknowns':['No independent measurement is supplied.']
+            }
+            response_field.fill(json.dumps(response))
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+            response['targetEventId']='event-not-in-packet'
+            response_field.fill(json.dumps(response))
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('RESPONSE_SCHEMA_OR_SCOPE_INVALID')
         expect(page.locator('#xp-count')).to_have_text('200')
     state_after_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world disappeared');return JSON.parse(raw)}")
     before_world=state_before_packets;after_world=state_after_packets
