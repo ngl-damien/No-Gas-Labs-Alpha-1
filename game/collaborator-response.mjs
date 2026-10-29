@@ -1,4 +1,4 @@
-import { isCollaboratorPacket } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -111,6 +111,22 @@ function exactStringIds(value, allowed, { maximum = 64 } = {}) {
   return stringIds(value, allowed, { maximum }) && value.length === allowed.size;
 }
 
+function validOmissionDisclosure(payload) {
+  const omitted = payload.omittedEventIds;
+  if (!Array.isArray(omitted) || omitted.length > MAX_PACKET_OMITTED_IDS ||
+      !Number.isSafeInteger(payload.omittedCount) || payload.omittedCount < 0 ||
+      payload.omittedCount < omitted.length ||
+      payload.omittedEventIdListTruncated !== (payload.omittedCount > omitted.length)) return false;
+
+  const includedIds = new Set(payload.inputRefs);
+  const seen = new Set();
+  for (const id of omitted) {
+    if (!isBoundedIdentifier(id) || includedIds.has(id) || seen.has(id)) return false;
+    seen.add(id);
+  }
+  return true;
+}
+
 function freezeJson(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const key of Object.keys(value)) freezeJson(value[key]);
@@ -130,7 +146,7 @@ function packetPayload(packet) {
       payload.inputRefs.length !== payload.inputRecords.length ||
       payload.inputRefs.some((id, index) => typeof id !== 'string' || id !== payload.inputRecords[index]?.eventId) ||
       new Set(payload.inputRefs).size !== payload.inputRefs.length ||
-      !Array.isArray(payload.omittedEventIds) ||
+      !validOmissionDisclosure(payload) ||
       payload.mayWriteCanonicalState !== false || payload.mayGrantAuthority !== false ||
       payload.mayAwardProgress !== false || payload.mayCertifyTruthOrExecution !== false) return null;
   if (!Array.isArray(packet.inputRefs) || packet.inputRefs.length !== payload.inputRefs.length ||
@@ -176,7 +192,7 @@ function validateRoleResponse(payload, response) {
         !exactKeys(response.scope, ['moonshotId', 'includedEventIds', 'omittedEventIds']) ||
         response.scope.moonshotId !== payload.targetMoonshotId ||
         !exactStringIds(response.scope.includedEventIds, inputIds) ||
-        !exactStringIds(response.scope.omittedEventIds, omittedIds) ||
+        !exactStringIds(response.scope.omittedEventIds, omittedIds, { maximum: omittedIds.size }) ||
         !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
         !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
         !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||

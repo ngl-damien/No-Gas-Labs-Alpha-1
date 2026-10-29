@@ -293,3 +293,14 @@ test('playable client and bounded packet module pass the JavaScript parser', () 
     assert.equal(checked.status, 0, path + ': ' + (checked.stderr || checked.stdout || 'syntax check failed'));
   }
 });
+
+test('collaborator prompt discloses the actual omitted-ID cap', () => {
+  const packets = projectCollaboratorPackets(researchWorld());
+  for (const packet of packets) {
+    assert.equal(packet.available, true, packet.id);
+    assert.match(packet.prompt, /omittedEventIds lists at most 64 omitted event IDs/);
+    assert.doesNotMatch(packet.prompt, /omittedEventIds lists at most 100 omitted event IDs/);
+    const payload = JSON.parse(packet.packetJson);
+    assert.ok(payload.omittedEventIds.length <= 64, packet.id);
+  }
+});
