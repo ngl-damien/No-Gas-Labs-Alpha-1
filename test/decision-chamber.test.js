@@ -162,6 +162,19 @@ test("decision scopes reject empty, duplicate, malformed and oversized values", 
   assert.throws(() => makePayload({ outputs: Array.from({ length: 33 }, (_, i) => "output-" + i) }), /decision scope arrays/);
 });
 
+test("decision scopes reject sparse arrays and accessor-backed elements", () => {
+  const sparse = new Array(1);
+  assert.throws(() => makePayload({ capabilities: sparse }), /decision scope arrays/);
+
+  const accessor = ["repository.write"];
+  Object.defineProperty(accessor, "0", {
+    configurable: true,
+    enumerable: true,
+    get() { return "repository.write"; }
+  });
+  assert.throws(() => makePayload({ outputs: accessor }), /decision scope arrays/);
+});
+
 test("verification independently rejects malformed expiry and scope even when signed", () => {
   const malformedExpiry = { ...payload, expires_at: "2099-01-01" };
   assert.deepEqual(verify(signedReceipt(malformedExpiry), malformedExpiry), {
