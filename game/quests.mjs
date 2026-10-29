@@ -16,11 +16,18 @@ export function findStudyReview(note, events) {
       !identifier(note?.actor?.id) || !['founder', 'witness'].includes(note.actor.role)) return null;
 
   const reviews = rows(events).filter(event => event?.type === 'study-reviewed');
-  const countBy = (field, value) => reviews.filter(event => event?.[field] === value).length;
+  const counts = { id: new Map(), reviewId: new Map(), studyId: new Map() };
+  for (const event of reviews) {
+    for (const field of Object.keys(counts)) {
+      const value = event?.[field];
+      if (typeof value === 'string') counts[field].set(value, (counts[field].get(value) || 0) + 1);
+    }
+  }
+  const unique = (field, value) => counts[field].get(value) === 1;
   const candidates = reviews.filter(event =>
-    identifier(event?.id) && countBy('id', event.id) === 1 &&
-    identifier(event?.reviewId) && countBy('reviewId', event.reviewId) === 1 &&
-    event.studyId === note.studyId && countBy('studyId', note.studyId) === 1 &&
+    identifier(event?.id) && unique('id', event.id) &&
+    identifier(event?.reviewId) && unique('reviewId', event.reviewId) &&
+    event.studyId === note.studyId && unique('studyId', note.studyId) &&
     event.creationId === note.creationId && event.version === note.version &&
     event.actor?.id === note.actor.id && event.actor?.role === note.actor.role &&
     isStrictTimestamp(event.at) && Date.parse(event.at) > Date.parse(note.at) &&
@@ -31,6 +38,7 @@ export function findStudyReview(note, events) {
   );
   return candidates.length === 1 ? candidates[0] : null;
 }
+
 
 export function getQuest(world, viewer) {
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return {
