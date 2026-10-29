@@ -9,35 +9,38 @@ const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
 
-function packetsForTest() {
+function packetsForTest(challengeCount = 1) {
+  const events = [
+    {
+      id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
+      actor: founder, at: at1, title: 'Bounded test', hypothesis: 'A claim holds under a stated condition.',
+      falsifier: 'A repeatable counterexample', evidenceNeeded: 'An independently observed measurement',
+      sourceCreationId: null, sourceVersion: null
+    },
+    {
+      id: 'report-event-1', type: 'experiment-reported', reportId: 'report-1', moonshotId: 'moonshot-1',
+      actor: witness, at: at2, procedure: 'Run the stated procedure once.',
+      observation: 'The expected result did not occur.', reportedOutcome: 'failed',
+      evidenceCreationId: null, evidenceVersion: null
+    }
+  ];
+  for (let index = 1; index <= challengeCount; index += 1) {
+    events.push({
+      id: 'challenge-event-' + index, type: 'experiment-challenged', challengeId: 'challenge-' + index,
+      reportId: 'report-1', moonshotId: 'moonshot-1', actor: founder,
+      at: new Date(Date.parse(at2) + index * 60_000).toISOString(),
+      challengeType: 'methodology', challengeText: 'The procedure omits a control (' + index + ').',
+      evidenceCreationId: null, evidenceVersion: null
+    });
+  }
   const world = {
     id: 'world-test-1',
-    revision: 3,
+    revision: events.length,
     creations: [],
-    events: [
-      {
-        id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
-        actor: founder, at: at1, title: 'Bounded test', hypothesis: 'A claim holds under a stated condition.',
-        falsifier: 'A repeatable counterexample', evidenceNeeded: 'An independently observed measurement',
-        sourceCreationId: null, sourceVersion: null
-      },
-      {
-        id: 'report-event-1', type: 'experiment-reported', reportId: 'report-1', moonshotId: 'moonshot-1',
-        actor: witness, at: at2, procedure: 'Run the stated procedure once.',
-        observation: 'The expected result did not occur.', reportedOutcome: 'failed',
-        evidenceCreationId: null, evidenceVersion: null
-      },
-      {
-        id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
-        reportId: 'report-1', moonshotId: 'moonshot-1', actor: founder, at: at3,
-        challengeType: 'methodology', challengeText: 'The procedure omits a control.',
-        evidenceCreationId: null, evidenceVersion: null
-      }
-    ]
+    events
   };
   return Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
 }
-
 const validResponses = {
   archivist: {
     eventChainFindings: ['The proposal precedes the report in the supplied chain.'],
@@ -109,6 +112,9 @@ test('synthesis scope cannot claim a different Moonshot or invented included/omi
   const inventedSource = structuredClone(validResponses.synthesizer);
   inventedSource.scope.includedEventIds.push('event-not-in-packet');
   assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(inventedSource)).valid, false);
+  const missingSource = structuredClone(validResponses.synthesizer);
+  missingSource.scope.includedEventIds.pop();
+  assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(missingSource)).valid, false);
   const inventedOmission = structuredClone(validResponses.synthesizer);
   inventedOmission.scope.omittedEventIds.push('event-not-disclosed-as-omitted');
   assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(inventedOmission)).valid, false);
@@ -171,4 +177,38 @@ test('synthesis dissent references must name included challenge events only', ()
   const duplicate = structuredClone(validResponses.synthesizer);
   duplicate.dissentPreserved = ['challenge-event-1', 'challenge-event-1'];
   assert.equal(validateCollaboratorResponse(packet, JSON.stringify(duplicate)).valid, false);
+});
+
+test('synthesis scope must account for every supplied event and disclosed omission', () => {
+  const packet = packetsForTest(7).synthesizer;
+  const payload = JSON.parse(packet.packetJson);
+  const response = structuredClone(validResponses.synthesizer);
+  response.scope.includedEventIds = [...payload.inputRefs];
+  response.scope.omittedEventIds = [...payload.omittedEventIds];
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(response)).valid, true);
+
+  const missingIncluded = structuredClone(response);
+  missingIncluded.scope.includedEventIds.pop();
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(missingIncluded)).valid, false);
+
+  const missingOmitted = structuredClone(response);
+  missingOmitted.scope.omittedEventIds.pop();
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(missingOmitted)).valid, false);
+
+  const missingDissent = structuredClone(response);
+  missingDissent.dissentPreserved.pop();
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(missingDissent)).valid, false);
+});
+
+test('omitted event ID disclosure fits the response array budget and signals truncation', () => {
+  const packets = packetsForTest(80);
+  for (const role of ['adversary', 'synthesizer']) {
+    const payload = JSON.parse(packets[role].packetJson);
+    assert.equal(payload.omittedEventIds.length, 64, role);
+    assert.equal(payload.omittedEventIdListTruncated, true, role);
+    assert.ok(payload.omittedCount > payload.omittedEventIds.length, role);
+  }
 });
