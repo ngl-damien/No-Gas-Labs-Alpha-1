@@ -228,3 +228,38 @@ test('accessor-backed attempt and challenge fields are ignored without invoking 
   assert.equal(object.challengeCount, 0);
   assert.equal(reads, 0);
 });
+
+
+test('individual attempt and dissent records become stable navigable world objects', () => {
+  const events = [
+    proposal('proposal-activity', 'moon-activity'),
+    experimentReport('report-event-activity', 'report-activity', 'moon-activity', 'witness-1', '2026-10-28T17:01:00.000Z'),
+    experimentChallenge('challenge-event-activity', 'challenge-activity', 'report-activity', 'moon-activity', 'witness-2', '2026-10-28T17:02:00.000Z'),
+  ];
+  const [before] = projectMoonshotWorldObjects({ events });
+  assert.deepEqual(before.activityObjects.map(object => [object.recordType, object.activityId, object.title]), [
+    ['experiment-reported', 'report-activity', 'Attempt · inconclusive'],
+    ['experiment-challenged', 'challenge-activity', 'Dissent · reproducibility'],
+  ]);
+  assert.ok(Object.isFrozen(before.activityObjects));
+  assert.ok(before.activityObjects.every(Object.isFrozen));
+  assert.ok(before.activityObjects.every(object => object.mapVisible && Number.isFinite(object.x) && Number.isFinite(object.y)));
+  assert.ok(before.activityObjects.every(object => !Object.hasOwn(object, 'verifiedOutcome') && !Object.hasOwn(object, 'xp') && !Object.hasOwn(object, 'authority')));
+
+  const after = projectMoonshotWorldObjects({
+    events: [...events, experimentReport('report-event-later', 'report-later', 'moon-activity', 'witness-3', '2026-10-28T17:03:00.000Z')],
+  })[0].activityObjects;
+  assert.deepEqual(after.slice(0, 2).map(object => [object.id, object.x, object.y]),
+    before.activityObjects.map(object => [object.id, object.x, object.y]));
+});
+
+test('date-only research timestamps cannot create proposal or activity map objects', () => {
+  const looseProposal = { ...proposal('proposal-loose-time', 'moon-loose-time'), at: '2026-10-28' };
+  assert.deepEqual(projectMoonshotWorldObjects({ events: [looseProposal] }), []);
+
+  const validProposal = proposal('proposal-strict-time', 'moon-strict-time');
+  const looseReport = experimentReport('report-event-loose-time', 'report-loose-time', 'moon-strict-time', 'witness-1', '2026-10-28');
+  const [object] = projectMoonshotWorldObjects({ events: [validProposal, looseReport] });
+  assert.equal(object.attemptCount, 0);
+  assert.deepEqual(object.activityObjects, []);
+});

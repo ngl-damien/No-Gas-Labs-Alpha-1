@@ -1,3 +1,5 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
 export const PLACES=[
  {id:'workbench',name:'The Making Bench',x:325,y:645,type:'workbench',purpose:'Make a draft, check it, and publish only by explicit Founder action.'},
@@ -117,7 +119,7 @@ function indexRetainedResearchVersions(world) {
     const version = ownDataValue(item, 'version');
     if (itemId !== creationId || !Number.isSafeInteger(version) || version < 1) return;
     const publishedAt = ownDataValue(item, 'publishedAt');
-    const publishedAtMs = typeof publishedAt === 'string' ? Date.parse(publishedAt) : NaN;
+    const publishedAtMs = isStrictTimestamp(publishedAt) ? Date.parse(publishedAt) : NaN;
     const key = creationId + '\0' + version;
     const previous = index.get(key);
     index.set(key, {
@@ -220,7 +222,7 @@ export function projectMoonshotWorldObjects(world) {
     const actorId = ownDataValue(actor, 'id');
     const actorRole = ownDataValue(actor, 'role');
     const at = ownDataValue(event, 'at');
-    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
     const title = ownDataValue(event, 'title');
     const hypothesis = ownDataValue(event, 'hypothesis');
     const falsifier = ownDataValue(event, 'falsifier');
@@ -253,7 +255,7 @@ export function projectMoonshotWorldObjects(world) {
     const actorId = ownDataValue(actor, 'id');
     const actorRole = ownDataValue(actor, 'role');
     const at = ownDataValue(event, 'at');
-    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
     const procedure = ownDataValue(event, 'procedure');
     const observation = ownDataValue(event, 'observation');
     const outcome = ownDataValue(event, 'reportedOutcome');
@@ -263,10 +265,16 @@ export function projectMoonshotWorldObjects(world) {
         typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
         !boundedWorldText(procedure, 1000) || !boundedWorldText(observation, 1000) ||
         !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
-    validReports.push({ eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index });
+    validReports.push({
+      eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
+      procedure, observation, reportedOutcome: outcome,
+      evidenceCreationId: ownDataValue(event, 'evidenceCreationId') ?? null,
+      evidenceVersion: ownDataValue(event, 'evidenceVersion') ?? null,
+    });
   }
 
   const reportById = new Map(validReports.map(report => [report.reportId, report]));
+  const validChallenges = [];
   const attemptCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
   const challengeCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
   for (const report of validReports) attemptCounts.set(report.moonshotId, attemptCounts.get(report.moonshotId) + 1);
@@ -283,7 +291,7 @@ export function projectMoonshotWorldObjects(world) {
     const actorId = ownDataValue(actor, 'id');
     const actorRole = ownDataValue(actor, 'role');
     const at = ownDataValue(event, 'at');
-    const atMs = typeof at === 'string' ? Date.parse(at) : NaN;
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
     const challengeType = ownDataValue(event, 'challengeType');
     const challengeText = ownDataValue(event, 'challengeText');
     if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
@@ -294,6 +302,68 @@ export function projectMoonshotWorldObjects(world) {
         !RESEARCH_CHALLENGE_TYPES.has(challengeType) || !boundedWorldText(challengeText, 1000) ||
         !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
     challengeCounts.set(moonshotId, challengeCounts.get(moonshotId) + 1);
+    validChallenges.push({
+      eventId, challengeId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
+      challengeType, challengeText,
+    });
+  }
+
+  const activityByMoonshot = new Map(retained.map(proposal => [proposal.moonshotId, []]));
+  const activityRecords = [
+    ...validReports.map(report => ({
+      ...report,
+      recordType: 'experiment-reported',
+      activityId: report.reportId,
+      title: 'Attempt · ' + report.reportedOutcome,
+      summary: report.observation,
+    })),
+    ...validChallenges.map(challenge => ({
+      ...challenge,
+      recordType: 'experiment-challenged',
+      activityId: challenge.challengeId,
+      title: 'Dissent · ' + challenge.challengeType.replaceAll('-', ' '),
+      summary: challenge.challengeText,
+    })),
+  ].sort((left, right) => left.index - right.index);
+  const GRID_COLUMNS = 14, GRID_ROWS = 18, GRID_CAPACITY = GRID_COLUMNS * GRID_ROWS;
+  const occupiedSlots = new Set();
+  const activityHash = value => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+  for (const activity of activityRecords) {
+    const id = 'research-activity:' + activity.eventId;
+    let slot = activityHash(id) % GRID_CAPACITY;
+    let probes = 0;
+    while (occupiedSlots.has(slot) && probes < GRID_CAPACITY) {
+      slot = (slot + 1) % GRID_CAPACITY;
+      probes += 1;
+    }
+    const mapVisible = !occupiedSlots.has(slot);
+    if (mapVisible) occupiedSlots.add(slot);
+    const activityObject = Object.freeze({
+      id,
+      type: 'research-activity',
+      activityId: activity.activityId,
+      recordType: activity.recordType,
+      eventId: activity.eventId,
+      moonshotId: activity.moonshotId,
+      title: activity.title,
+      summary: activity.summary,
+      actorId: activity.actorId,
+      actorRole: activity.actorRole,
+      at: activity.at,
+      reportedOutcome: activity.recordType === 'experiment-reported' ? activity.reportedOutcome : null,
+      challengeType: activity.recordType === 'experiment-challenged' ? activity.challengeType : null,
+      x: mapVisible ? 1110 + (slot % GRID_COLUMNS) * 34 : null,
+      y: mapVisible ? 610 + Math.floor(slot / GRID_COLUMNS) * 19 : null,
+      mapVisible,
+    });
+    activityByMoonshot.get(activity.moonshotId)?.push(activityObject);
   }
 
   return Object.freeze(retained.map((proposal, index) => Object.freeze({
@@ -307,6 +377,7 @@ export function projectMoonshotWorldObjects(world) {
     at: proposal.at,
     attemptCount: attemptCounts.get(proposal.moonshotId) || 0,
     challengeCount: challengeCounts.get(proposal.moonshotId) || 0,
+    activityObjects: Object.freeze([...(activityByMoonshot.get(proposal.moonshotId) || [])]),
     x: 1320 + (index % 4) * 54,
     y: 520 + Math.floor(index / 4) * 50,
   })));
@@ -341,14 +412,14 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionCounts=computeInstitutionActivityCounts(this.world);this.researchObjects=projectMoonshotWorldObjects(this.world);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionCounts=computeInstitutionActivityCounts(this.world);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());this.onBlur=()=>{this.keys.clear();this.input={x:0,y:0}};
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world){const next=world||{creations:[]};this.world=next;this.institutionCounts=computeInstitutionActivityCounts(next);this.researchObjects=projectMoonshotWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target)this.goTo(this.target);}
+  setWorld(world){const next=world||{creations:[]};this.world=next;this.institutionCounts=computeInstitutionActivityCounts(next);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target)this.goTo(this.target);}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' unique records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
@@ -357,12 +428,12 @@ export class WorldView {
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}
   cancelRoute(){this.route=[];this.target=null;}
   focusCreation(id){this.goTo(id);}
-  goTo(id){let target=id;if(typeof id==='string'){const creation=this.world.creations?.find(c=>c.id===id);const place=PLACES.find(p=>p.id===id);const researchObject=this.researchObjects.find(object=>object.id===id);if(creation)target={x:creation.position.x,y:creation.position.y+90};else if(place)target={x:place.x,y:place.y+50};else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};else {this.cancelRoute();return}}const route=findRoute(this.player,target,this.world.creations);if(!route.length){this.cancelRoute();return}this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;}
-  nearest(){const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title}))];return options.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0];}
-  interact(){const nearest=this.nearest();if(nearest&&nearest.distance<160){if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);this.callbacks.onInteract(nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:{type:nearest.type,id:nearest.id});}else this.goTo('workbench');}
+  goTo(id){let target=id;if(typeof id==='string'){const creation=this.world.creations?.find(c=>c.id===id);const place=PLACES.find(p=>p.id===id);const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);if(creation)target={x:creation.position.x,y:creation.position.y+90};else if(place)target={x:place.x,y:place.y+50};else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};else {this.cancelRoute();return}}const route=findRoute(this.player,target,this.world.creations);if(!route.length){this.cancelRoute();return}this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;}
+  nearest(){const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];return options.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0];}
+  interact(){const nearest=this.nearest();if(nearest&&nearest.distance<160){if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};this.callbacks.onInteract(interaction);}else this.goTo('workbench');}
   update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
     const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(175*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target;this.target=null;const researchObject=this.researchObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target;this.target=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;const desired={x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
@@ -383,13 +454,14 @@ export class WorldView {
     c.save();c.translate(1490,110);this.line([[0,-28],[0,28]],'#65755b',1.3);this.line([[-20,0],[20,0]],'#65755b',1.3);c.fillStyle='#65755b';c.beginPath();c.moveTo(0,-27);c.lineTo(-6,0);c.lineTo(6,0);c.closePath();c.fill();this.text('N',0,-37,11,'#65755b');c.restore();
   }
   drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
+  drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(dissent?'D':'A',0,4,9,dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
   drawWorkbench(){const c=this.ctx;c.save();c.translate(325,645);this.ellipse(0,24,65,19,'#444b2620');for(const x of [-37,34])this.line([[x,5],[x-3,36]],'#67543b',7);c.fillStyle='#bc9e68';c.strokeStyle=palette.ink;c.lineWidth=2;c.beginPath();c.moveTo(-60,-17);c.lineTo(35,-30);c.lineTo(62,-3);c.lineTo(-36,12);c.closePath();c.fill();c.stroke();c.fillStyle='#f6efdb';c.fillRect(-20,-31,37,24);this.line([[-14,-25],[9,-25]],'#9a9876',1);this.line([[-14,-19],[3,-19]],'#9a9876',1);this.line([[26,-24],[39,-43]],'#aa532f',4);c.fillStyle='#d6803f';c.fillRect(-45,-30,10,16);this.text('THE MAKING BENCH',0,67,12);this.text('ideas become places',0,84,10,'#7b8162');c.restore()}
   drawPlaces(){const c=this.ctx;for(const place of PLACES.filter(p=>p.type==='discovery')){const{x,y,id}=place;c.save();c.translate(x,y);this.ellipse(0,25,43,12,'#44532b14');if(id==='relay'){this.line([[0,20],[0,-76]],'#646e4a',5);this.line([[-26,-55],[25,-55]],'#646e4a',4);c.fillStyle='#ce7443';c.beginPath();c.moveTo(3,-78);c.quadraticCurveTo(44,-88,42,-53);c.quadraticCurveTo(18,-68,3,-53);c.closePath();c.fill();this.line([[-12,20],[-7,4],[8,4],[16,20]],'#887951',2)}else if(id==='river'){for(let i=0;i<3;i++)this.rock(i*16-16,i*3,.7);this.line([[6,-10],[6,-58]],'#586a4c',3);c.fillStyle='#e9d39a';c.fillRect(7,-59,35,22);this.text('≡',24,-43,18,'#746f50')}else if(id==='overlook'){for(let n=0;n<4;n++)this.line([[-44+n*10,28-n*11],[44-n*10,28-n*11]],'#a5a27a',8);this.line([[-22,-10],[-22,-51],[21,-51],[21,-10]],'#797e5b',5);this.line([[-30,-51],[29,-51]],'#797e5b',8);this.line([[8,-48],[8,-72],[45,-70]],'#5b7566',4);this.ellipse(47,-69,9,8,'#c7be85','#5b7566')}else{for(const [bx,h] of [[-29,41],[-5,28],[28,53]]){c.fillStyle='#bfc1a0';c.strokeStyle='#8e9877';c.lineWidth=1.5;c.fillRect(bx-9,17-h,18,h);c.strokeRect(bx-9,17-h,18,h);this.line([[bx-10,17-h],[bx+4,10-h],[bx+10,17-h]],'#7d886a',2)}this.line([[-42,26],[42,26]],'#9ca17a',5)}this.text(place.name.toUpperCase(),0,57,11,'#687756');c.restore()}for(const place of PLACES.filter(p=>p.type==='institution'&&p.id!=='town-square'))this.drawInstitution(place);}
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
   drawPlayer(player,other=false){const c=this.ctx;c.save();c.translate(player.x,player.y);this.ellipse(0,9,13,5,'#354a3a33');const bob=!this.reduced&&this.moving&&!other?Math.sin(this.time*16)*1.5:0;c.translate(0,bob);this.line([[-4,0],[-5,8]],'#3c4b43',4);this.line([[5,0],[7,8]],'#3c4b43',4);c.fillStyle=other?'#6e8c76':'#385e58';c.beginPath();c.roundRect(-9,-20,18,23,5);c.fill();this.ellipse(0,-26,9,10,'#e2b68b','#675d42');this.ellipse(0,-33,11,8,other?'#819a75':palette.orange,'#7d6541');c.fillStyle=other?'#819a75':'#e38942';c.fillRect(-11,-33,22,5);this.ellipse(0,-42,4,4,other?'#819a75':palette.orange);this.line([[-9,-17],[-14,-8]],'#c7a17b',4);this.line([[9,-17],[13,-8]],'#c7a17b',4);if(!other){this.ellipse(0,-52,3,3,'#fff4ce');this.text('YOU',0,27,9,'#35574d','system-ui')}else if(player.name)this.text(String(player.name).slice(0,24),0,27,10,'#546c53');c.restore()}
   render(){const c=this.ctx;c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.save();c.translate(this.width/2-this.camera.x*this.zoom,this.height/2-this.camera.y*this.zoom);c.scale(this.zoom,this.zoom);this.drawLandscape();if(this.route.length){this.line([[this.player.x,this.player.y],...this.route.map(p=>[p.x,p.y])],'#b56a3e99',2,[4,7]);const p=this.route.at(-1);this.ellipse(p.x,p.y,8,4,undefined,'#b56a3e')}
-    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
-    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
+    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
+    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.width*.2,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#786f3600');vignette.addColorStop(1,'#786f3618');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
   }
   destroy(){this.destroyed=true;cancelAnimationFrame(this.animation);this.resizeObserver.disconnect();removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);this.canvas.removeEventListener('pointerdown',this.onPointer);}
