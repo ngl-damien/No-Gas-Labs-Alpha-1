@@ -156,8 +156,9 @@ function snapshotPublicKeyJwk(value) {
 }
 
 export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
-  const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id"]);
-  if (!proposalFields || !isIdentifier(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
+  const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id", "capability"]);
+  if (!proposalFields || !isIdentifier(proposalFields.event_id) ||
+      proposalFields.type !== "PROPOSAL" || !isIdentifier(proposalFields.capability)) {
     throw new Error("proposal required");
   }
   const questFields = snapshotSelectedDataFields(quest, ["quest_id", "capabilities", "acceptance"]);
@@ -174,6 +175,9 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
   const acceptanceScope = copyScope(acceptance);
   if ([capabilityScope, outputScope, acceptanceScope].some(scope => scope === null)) {
     throw new Error("decision scope arrays must contain unique, bounded, non-empty strings");
+  }
+  if (capabilityScope.length !== 1 || capabilityScope[0] !== proposalFields.capability) {
+    throw new Error("decision capabilities must match proposal request");
   }
   if (capabilityScope.some(capability => !questCapabilities.includes(capability))) {
     throw new Error("decision capabilities exceed quest scope");
