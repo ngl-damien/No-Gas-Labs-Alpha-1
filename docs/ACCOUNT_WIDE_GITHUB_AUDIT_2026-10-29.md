@@ -238,3 +238,10 @@ This reinforces that branch cleanup should focus first on Alpha 1, then Command 
 - Retargeted #165 to current main, kept the performance claim scoped to indexed-history behavior rather than measured speedup, and merged: `c41985ac950382e12cc980703f764a5bd84a3998`.
 - Opened draft PR #167 to restore the missing requirement that challenge evidence reference exactly one earlier publication event, with tests for missing, future-in-history, and duplicate publication events plus invalid proposal progress.
 - PR #166 (this audit report) remains draft; its latest commit is still awaiting its own exact-head workflows. The latest main merge commit's own CI status must be checked separately before declaring the new mainline fully verified.
+
+
+## Public/private source-boundary finding
+
+Alpha 1 is public, but its current main contains a seven-file `integrations/recovery-vault/cockpit-reference/` snapshot associated with the separate private `dia-p2e-cockpit` repository. The snapshot's inventory names Official head `e5fcc85bd4157e680dcbb711faa119a08457a37c`; six source paths overlap the private repository, but the blob SHAs and sizes differ, so this is an adapted/partial snapshot, not a bit-for-bit mirror. The private source tree has no license file in the observed 20-file inventory. A limited pattern scan of the six sampled snapshot source/manifests found no obvious key/token/secret patterns; that is not a complete secret scan.
+
+This may be an intentional public recovery artifact, but it is a real public/private boundary decision. Confirm whether the snapshot is meant to be public and establish license/IP permission before further copying. If it was not meant to be public, deleting the current files alone will not remove them from Git history; preserve a backup and plan history remediation deliberately. No files were removed during this audit. The current Alpha 1 tree has no suspicious key/secret-named paths, but the connected integration did not expose GitHub's official secret-scanning/dependency-alert endpoints, so alert status remains unknown.
