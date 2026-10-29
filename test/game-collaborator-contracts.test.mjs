@@ -83,7 +83,7 @@ test('collaborator packets select the newest eligible research chain from append
   const world = researchWorld();
   world.events.push({
     id: 'proposal-event-2', type: 'moonshot-proposed', moonshotId: 'moonshot-2',
-    actor: founder, at: '2026-10-29T04:03:00.000Z',
+    actor: founder, at: '2026-10-29T03:50:00.000Z',
     title: 'Newer proposal', hypothesis: 'A newer claim under a stated condition.',
     falsifier: 'A repeatable counterexample to the newer claim.',
     evidenceNeeded: 'An independently observed measurement.',
@@ -91,7 +91,7 @@ test('collaborator packets select the newest eligible research chain from append
   });
   world.events.push({
     id: 'report-event-2', type: 'experiment-reported', reportId: 'report-2', moonshotId: 'moonshot-2',
-    actor: witness, at: '2026-10-29T04:04:00.000Z',
+    actor: witness, at: '2026-10-29T03:51:00.000Z',
     procedure: 'Run the newer procedure once.',
     observation: 'The newer attempt did not support the prediction.',
     reportedOutcome: 'failed', evidenceCreationId: null, evidenceVersion: null
@@ -103,8 +103,8 @@ test('collaborator packets select the newest eligible research chain from append
       challengeId: 'challenge-' + (index + 1),
       reportId: 'report-2',
       moonshotId: 'moonshot-2',
-      actor: index % 2 ? witness : founder,
-      at: new Date(Date.parse('2026-10-29T04:04:00.000Z') + index * 60_000).toISOString(),
+      actor: founder,
+      at: new Date(Date.parse('2026-10-29T03:51:00.000Z') + index * 60_000).toISOString(),
       challengeType: 'methodology',
       challengeText: 'Distinct control concern ' + index,
       evidenceCreationId: null,
