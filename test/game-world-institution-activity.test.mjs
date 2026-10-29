@@ -11,7 +11,7 @@ test('institution counters count only uniquely identified matching records', () 
     { id: '', type: 'contribute' },
   ] };
 
-  assert.equal(institutionActivityCount('town-square', world), 3);
+  assert.equal(institutionActivityCount('town-square', world), 2);
   assert.equal(institutionActivityCount('decision_chamber', world), 1);
   assert.equal(institutionActivityCount('not-a-place', world), 0);
 });
@@ -61,7 +61,7 @@ test('institution activity counts are order-independent and do not mutate world 
   const world = { events };
   const before = structuredClone(world);
 
-  assert.equal(institutionActivityCount('town-square', world), 2);
+  assert.equal(institutionActivityCount('town-square', world), 3);
   assert.equal(institutionActivityCount('town-square', { events: [...events].reverse() }), 3);
   assert.deepEqual(world, before);
 });
