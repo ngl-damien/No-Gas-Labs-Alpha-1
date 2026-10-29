@@ -393,7 +393,7 @@ function openAcademy(){
   const reviews=allReviews.slice().reverse().slice(0,8);
   for(const note of notes){
     const source=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===note.creationId);
-    const review=findStudyReview(note,allReviews);
+    const review=findStudyReview(note,world.events);
     const children=[
       node('h3',{text:(source?.title||'Source unavailable')+' · v'+note.version}),
       paragraph('Question: '+note.question),
