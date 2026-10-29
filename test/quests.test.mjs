@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
+import {getQuest,getActiveQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -47,6 +47,53 @@ test('Founder objectives route to the actual next activity, including the second
   assert.deepEqual([getQuest(world,founder).id,getQuest(world,founder).action],['founder-create-second','workbench']);
   world.creations.push({...creation,id:'c-2'});
   assert.equal(getQuest(world,founder).id,'founder-connect');
+});
+
+test('main quest invitation routes to the next evidence-backed institutional objective', () => {
+  const world = trailFixture();
+  const secondPlace = { ...publishedV1, id: 'c-2', title: 'Second place', versions: [] };
+  world.creations = [
+    { ...publishedV1, kind: 'custom', versions: [] },
+    { ...secondPlace, kind: 'custom' }
+  ];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'discover-river', type: 'discover', actor: founder, at: at2, locationId: 'river' },
+    { id: 'field-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+    { id: 'publish-v1-second', type: 'publish', actor: founder, at: at2, creationId: 'c-2', version: 1 }
+  ];
+  world.discoveries = [{ id: 'd-river', locationId: 'river', actor: founder, at: at2 }];
+  world.contributions = [{
+    id: 'n-founder', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'A specific field observation'
+  }];
+
+  const before = structuredClone(world);
+  const first = getActiveQuest(world, founder);
+  const second = getActiveQuest(world, founder);
+  assert.equal(first.id, 'founder-source-observatory');
+  assert.equal(first.title, 'Publish a source observatory');
+  assert.equal(first.action, 'trail');
+  assert.deepEqual(first.nextAction, { type: 'workbench', recipe: 'observatory' });
+  assert.equal(first.button, 'Go do this →');
+  assert.deepEqual(second, first);
+  assert.deepEqual(world, before, 'displaying or selecting the next quest must not mutate world state');
+});
+
+test('main quest invitation exposes blocked trail dependencies without inventing progress', () => {
+  const world = trailFixture();
+  const witnessWorld = {
+    ...world,
+    creations: [],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) => ({
+      id: 'd-' + index, locationId, actor: witness, at: at1
+    })),
+    events: []
+  };
+  const quest = getActiveQuest(witnessWorld, witness);
+  assert.equal(quest.id, 'witness-await-work');
+  assert.equal(quest.action, 'places');
+  assert.equal(quest.nextAction, undefined);
+  assert.equal(witnessWorld.xp, undefined);
 });
 
 test('quest projection is deterministic and never mutates canonical world state',()=>{
