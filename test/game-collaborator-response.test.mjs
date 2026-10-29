@@ -191,6 +191,8 @@ test('synthesis scope must account for every supplied event and disclosed omissi
   const response = structuredClone(validResponses.synthesizer);
   response.scope.includedEventIds = [...payload.inputRefs];
   response.scope.omittedEventIds = [...payload.omittedEventIds];
+  response.recordedSupport[0].sourceEventIds = [payload.inputRefs[0]];
+  response.recordedSupport[0].statement = 'The proposal is included in the bounded packet.';
   response.dissentPreserved = payload.inputRecords
     .filter(record => record.type === 'experiment-challenged')
     .map(record => record.eventId);
