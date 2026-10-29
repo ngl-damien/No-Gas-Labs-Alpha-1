@@ -163,9 +163,10 @@ def basic(page,url,out,label):
     expect(archivist).to_contain_text('revision')
     expect(adversary).to_contain_text('Inputs: event-')
     expect(synthesizer).to_contain_text('Inputs: event-')
-    state_before_packets=page.evaluate("async()=>await (await fetch('/api/state')).json()")
-    proposal_event=next(event for event in state_before_packets['world']['events'] if event.get('type')=='moonshot-proposed' and event.get('moonshotId')==proposal_moonshot_id)
-    report_event=next(event for event in state_before_packets['world']['events'] if event.get('type')=='experiment-reported' and event.get('moonshotId')==proposal_moonshot_id)
+    # This journey is private: read its persisted local world, not the unrelated shared-service API.
+    state_before_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world was not persisted');return JSON.parse(raw)}")
+    proposal_event=next(event for event in state_before_packets['events'] if event.get('type')=='moonshot-proposed' and event.get('moonshotId')==proposal_moonshot_id)
+    report_event=next(event for event in state_before_packets['events'] if event.get('type')=='experiment-reported' and event.get('moonshotId')==proposal_moonshot_id)
     request_start=len(requests)
     for role in ('archivist','adversary','synthesizer','tutor'):
         packet=page.locator(f'[data-collaborator-role="{role}"]')
@@ -180,8 +181,8 @@ def basic(page,url,out,label):
         packet.get_by_role('button',name='Copy hand-off packet',exact=True).click()
         expect(page.locator('#toast')).to_contain_text(re.compile('Bounded packet copied|Packet selected'))
         expect(page.locator('#xp-count')).to_have_text('200')
-    state_after_packets=page.evaluate("async()=>await (await fetch('/api/state')).json()")
-    before_world=state_before_packets['world'];after_world=state_after_packets['world']
+    state_after_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world disappeared');return JSON.parse(raw)}")
+    before_world=state_before_packets;after_world=state_after_packets
     assert before_world['revision']==after_world['revision'], 'Inspecting/copying collaborator packets must not append world events'
     assert before_world['xp']==after_world['xp'], 'Inspecting/copying collaborator packets must not award XP'
     assert before_world['events']==after_world['events'], 'Collaborator packets must preserve the exact event history'
