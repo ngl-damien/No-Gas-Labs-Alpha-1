@@ -131,10 +131,31 @@ function packetIdentifiersBounded(record) {
   return identifiers.every(boundedIdentifier);
 }
 
+function ownArrayDataCount(value) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = descriptors.length;
+    const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+      ? lengthDescriptor.value : null;
+    if (!Number.isSafeInteger(length) || length < 0 || length > 100_000) return null;
+    let count = 0;
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (descriptor && Object.hasOwn(descriptor, 'value')) count += 1;
+    }
+    return count;
+  } catch {
+    return null;
+  }
+}
+
 function snapshotSource(world, events) {
   const worldId = ownDataValue(world, 'id');
   const revision = ownDataValue(world, 'revision');
-  const suppliedEventCount = ownDataValue(events, 'length');
+  // Count actual own data records, not array length: sparse slots and accessor-backed
+  // entries are not safe event records and must not inflate the snapshot marker.
+  const suppliedEventCount = ownArrayDataCount(events);
   const validWorldId = typeof worldId === 'string' && worldId.length > 0 && worldId.length <= 128 && worldId.trim() === worldId;
   const validRevision = Number.isSafeInteger(revision) && revision >= 0;
   const validEventCount = Number.isSafeInteger(suppliedEventCount) && suppliedEventCount >= 0 && suppliedEventCount <= 100_000;
