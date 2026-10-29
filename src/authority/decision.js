@@ -22,11 +22,33 @@ function isCanonicalUtcTimestamp(value) {
   return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
 }
 
+function copyScope(values) {
+  try {
+    if (!Array.isArray(values)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(values);
+    const keys = Reflect.ownKeys(descriptors);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 1 || length > 32 ||
+        keys.length !== length + 1 || !keys.includes("length")) return null;
+
+    const copy = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.enumerable !== true) return null;
+      const value = descriptor.value;
+      if (typeof value !== "string" || value.length === 0 ||
+          value.length > 128 || value.trim() !== value) return null;
+      copy.push(value);
+    }
+    if (new Set(copy).size !== copy.length) return null;
+    return Object.freeze(copy);
+  } catch {
+    return null;
+  }
+}
+
 function isScope(values) {
-  return Array.isArray(values) && values.length > 0 && values.length <= 32 &&
-    values.every(value => typeof value === "string" && value.length > 0 &&
-      value.length <= 128 && value.trim() === value) &&
-    new Set(values).size === values.length;
+  return copyScope(values) !== null;
 }
 
 function isDecisionPayload(payload) {
@@ -54,7 +76,10 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
       !IDENTIFIER.test(quest.quest_id) || proposal.quest_id !== quest.quest_id) {
     throw new Error("quest binding mismatch");
   }
-  if (![capabilities, outputs, acceptance].every(isScope)) {
+  const capabilityScope = copyScope(capabilities);
+  const outputScope = copyScope(outputs);
+  const acceptanceScope = copyScope(acceptance);
+  if ([capabilityScope, outputScope, acceptanceScope].some(scope => scope === null)) {
     throw new Error("decision scope arrays must contain unique, bounded, non-empty strings");
   }
   if (!isCanonicalUtcTimestamp(expires_at)) {
@@ -65,9 +90,9 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
     schema: "ngl.founder-decision.v1",
     proposal_id: proposal.event_id,
     quest_id: quest.quest_id,
-    capabilities: Object.freeze([...capabilities]),
-    outputs: Object.freeze([...outputs]),
-    acceptance: Object.freeze([...acceptance]),
+    capabilities: capabilityScope,
+    outputs: outputScope,
+    acceptance: acceptanceScope,
     expires_at
   });
   if (!isDecisionPayload(payload)) throw new Error("decision payload invalid");
