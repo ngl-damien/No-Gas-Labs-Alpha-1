@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
+import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
+import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -306,4 +308,25 @@ test('rejects duplicate JSON keys before last-key-wins parsing', () => {
   );
   assert.equal(validateCollaboratorResponse(packetsForTest().synthesizer, nestedDuplicate).reason,
     'RESPONSE_DUPLICATE_JSON_KEY');
+});
+
+test('browser and server strict JSON guards stay behaviorally aligned', () => {
+  const samples = [
+    ['valid nested JSON', '{"outer":{"value":1}}'],
+    ['top-level duplicate', '{"value":1,"value":2}'],
+    ['escaped duplicate spelling', '{"value":1,"\\u0076alue":2}'],
+    ['nested duplicate', '{"outer":{"value":1,"value":2}}'],
+    ['malformed object', '{"value":']
+  ];
+  const outcome = (guard, source) => {
+    try {
+      guard(source, { label: 'STRICT_JSON_PARITY', maxDepth: 8 });
+      return 'accepted';
+    } catch (error) {
+      return error.message;
+    }
+  };
+  for (const [label, source] of samples) {
+    assert.equal(outcome(assertGameJsonKeys, source), outcome(assertSourceJsonKeys, source), label);
+  }
 });
