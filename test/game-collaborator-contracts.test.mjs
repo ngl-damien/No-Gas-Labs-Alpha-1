@@ -183,14 +183,15 @@ test('snapshot event count excludes sparse slots and accessor-backed entries wit
   const original = world.events;
   const events = [];
   let getterCalls = 0;
-  events.length = 4;
+  events.length = 5;
   events[0] = original[0];
   Object.defineProperty(events, '1', {
     enumerable: true,
     get() { getterCalls += 1; return original[1]; }
   });
-  events[2] = original[1];
-  events[3] = original[2];
+  events[2] = 'not an event record';
+  events[3] = original[1];
+  events[4] = original[2];
   world.events = events;
 
   const packets = projectCollaboratorPackets(world);
@@ -198,7 +199,7 @@ test('snapshot event count excludes sparse slots and accessor-backed entries wit
   assert.ok(packets.every(packet => packet.available));
   assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'identified'));
   assert.ok(packets.every(packet => packet.sourceSnapshot.suppliedEventCount === 3),
-    'snapshot marker counts safe own data entries, not the array length of four');
+    'snapshot marker counts own data object entries, not the array length of five');
 });
 
 test('playable client and bounded packet module pass the JavaScript parser', () => {
