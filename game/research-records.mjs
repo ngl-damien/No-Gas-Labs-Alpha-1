@@ -68,12 +68,14 @@ export function projectResearchRecords(input) {
     publicationsByReference.get(key).push({ event, index });
   });
 
-  const sourceStatusFor = (event, index) => {
-    const hasSourceId = hasText(event?.sourceCreationId);
-    const hasSourceVersion = event?.sourceVersion !== undefined && event?.sourceVersion !== null;
-    if (!hasSourceId && !hasSourceVersion) return 'not-provided';
-    if (!hasSourceId || !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1) return 'invalid';
-    const candidates = publicationsByReference.get(JSON.stringify([event.sourceCreationId, event.sourceVersion])) || [];
+  const artifactStatusFor = (event, index, idField, versionField) => {
+    const creationId = event?.[idField];
+    const version = event?.[versionField];
+    const hasCreationId = hasText(creationId);
+    const hasVersion = version !== undefined && version !== null;
+    if (!hasCreationId && !hasVersion) return 'not-provided';
+    if (!hasCreationId || !Number.isSafeInteger(version) || version < 1) return 'invalid';
+    const candidates = publicationsByReference.get(JSON.stringify([creationId, version])) || [];
     if (!candidates.length) return 'unavailable';
     if (candidates.length !== 1 || !eventIdentityIsUnique(candidates[0].event, eventIdCounts)) return 'ambiguous';
     const candidate = candidates[0];
@@ -157,7 +159,10 @@ export function projectResearchRecords(input) {
           eventIdUnique,
           proposal,
           proposalStatus,
-          sourceStatus: event.type === 'moonshot-proposed' ? sourceStatusFor(event, index) : 'not-applicable',
+          sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : 'not-applicable',
+          evidenceStatus: event.type === 'experiment-reported' || event.type === 'experiment-challenged'
+            ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion')
+            : 'not-applicable',
           targetReport,
           targetReportStatus
         })
