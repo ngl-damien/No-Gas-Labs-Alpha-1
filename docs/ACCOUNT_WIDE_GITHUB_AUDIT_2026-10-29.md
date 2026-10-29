@@ -250,3 +250,8 @@ This may be an intentional public recovery artifact, but it is a real public/pri
 ### Command Center API exposure review
 
 The current `no-gas-labs-command-center/server/index.ts` mounts JSON parsing, exposes health/capability endpoints, and calls `server.listen(process.env.PORT || 3000)`. The inspected `server/routes/node-gate.ts` and `server/routes/evidenceos.ts` expose POST routes for intervention, deliberation, and analysis. I found request handling/schema logic, but no authentication/session/rate-limit middleware in the inspected server entrypoint or these route modules. This is not proof the service is deployed or reachable, but it is a release blocker if bound to a network: require explicit authentication/authorization, bounded request sizes, rate limits, and a documented local-only versus remote deployment boundary before exposing it.
+
+
+### Agent wallet seed risk
+
+The current `VoxScriptNGL`, `VeritasShieldNGL`, and `PulseMonitorNGL` entrypoints derive the uAgents `seed` directly from the public agent name in `agent_config.yaml`, and call `fund_agent_if_low` on startup. A public, deterministic seed is not a secret and must not be used for a wallet identity that may receive funds. Do not run, fund, or deploy these agents as-is. If the projects are revived, require a high-entropy secret supplied outside Git, fail closed when it is missing, and make funding an explicit operator action. This is separate from their hard-coded placeholder outputs; both identity security and actual analysis behavior need replacement.
