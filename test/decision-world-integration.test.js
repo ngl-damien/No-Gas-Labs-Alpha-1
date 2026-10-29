@@ -13,6 +13,8 @@ import { defineQuest, projectQuest, QUEST_STATUS, authorizeQuest } from "../src/
 import { projectWorld } from "../src/world/project.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
 
+const audience = "ngl-alpha-1-test";
+
 function fixture() {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const publicKeyJwk = publicKey.export({ format: "jwk" });
@@ -39,7 +41,8 @@ function fixture() {
     capabilities: ["repository.write"],
     outputs: ["handoff-packet"],
     acceptance: ["packet-review"],
-    expires_at: "2099-01-01T00:00:00.000Z"
+    expires_at: "2099-01-01T00:00:00.000Z",
+    audience
   });
   const canonical = value => Array.isArray(value)
     ? "[" + value.map(canonical).join(",") + "]"
@@ -53,7 +56,8 @@ function fixture() {
   };
   const verification = verifyFounderDecision({
     signed, payload, public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint, now: 0
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: audience, now: 0
   });
   assert.equal(verification.valid, true);
   const event = authorizationEvent({ signed, payload, verification });
@@ -80,6 +84,23 @@ test("persisted Founder authorization event survives JSON round-trip and authori
   assert.deepEqual(projection.executions, []);
 });
 
+test("signed authorization cannot be replayed into a different institution audience", () => {
+  const { event, publicKeyJwk, expectedFingerprint } = fixture();
+  const otherAudience = "ngl-alpha-1-other";
+  assert.equal(verifyAuthorizationEvent(event, {
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: otherAudience,
+    now: 0
+  }), false);
+  const otherVerifier = createFounderAuthorizationVerifier({
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: otherAudience
+  });
+  assert.equal(otherVerifier(event), false);
+});
+
 test("tampered persisted decision fields cannot authorize a quest", () => {
   const { event, quest, publicKeyJwk, expectedFingerprint } = fixture();
   const verifyAuthorization = createFounderAuthorizationVerifier({
@@ -104,7 +125,8 @@ test("host verifier snapshots its configured public key and rejects a mismatched
   assert.equal(verifyAuthorization(event), true);
   assert.throws(() => createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
-    expected_fingerprint: "0".repeat(64)
+    expected_fingerprint: "0".repeat(64),
+    expected_audience: audience
   }), /FOUNDER_TRUST_FINGERPRINT_MISMATCH/);
 });
 
@@ -134,11 +156,13 @@ test("persisted authorization verifier rejects altered signatures and expired de
   assert.equal(verifyAuthorizationEvent({ ...event, signature: event.signature + "x" }, {
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
     now: 0
   }), false);
   assert.equal(verifyAuthorizationEvent(event, {
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
+    expected_audience: audience,
     now: Date.parse("2100-01-01T00:00:00.000Z")
   }), false);
 });
