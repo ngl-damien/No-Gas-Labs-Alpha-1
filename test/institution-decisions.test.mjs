@@ -430,6 +430,9 @@ test('independent Node processes contend for one decision-writer lease and prese
 
     const owner = outcomes[0] === 'ACQUIRED' ? first : second;
     const contender = owner === first ? second : first;
+    // The rejected worker never enters its stdin command loop; close that pipe
+    // so Node can exit instead of keeping the test runner alive indefinitely.
+    contender.child.stdin.end();
     const rejected = await contender.exit;
     assert.equal(rejected.code, 0, rejected.stderr);
     assert.match(contender.stderr, /^$/);
