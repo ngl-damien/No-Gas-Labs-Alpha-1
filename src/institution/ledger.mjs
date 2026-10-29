@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
+import { link, lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { resolve, join, parse, sep } from 'node:path';
 import { KernelError, createKernel, applyEvent, canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -162,15 +162,37 @@ export async function openLedger({ directory, actors, founderId, syncDirectory: 
   await mkdir(location, { recursive: true, mode: 0o700 });
   const directoryIdentity = await assertPrivateDirectory(location);
   const lockPath = join(location, '.writer.lock');
+  const lockTemporaryPath = join(location, `.writer-lock-${randomUUID()}.tmp`);
   let lock;
-  try { lock = await open(lockPath, 'wx', 0o600); }
-  catch (error) { if (error.code === 'EEXIST') fail('LEDGER_LOCKED', 'A writer already owns this ledger; inspect any stale lock before recovery'); throw error; }
   let lockIdentity;
+  let lockPublished = false;
   try {
+    // Prepare and sync the complete private lock record away from the canonical
+    // pathname. A same-directory hard link publishes the complete inode atomically
+    // and fails with EEXIST rather than replacing a competing writer's lock.
+    lock = await open(lockTemporaryPath, 'wx', 0o600);
     const stat = await lock.stat();
     lockIdentity = { dev: stat.dev, ino: stat.ino };
     await lock.writeFile(canonicalStringify({ schema: 'ngl.ledger-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lock.sync();
+    await assertPrivateDirectory(location, directoryIdentity);
+    try {
+      await link(lockTemporaryPath, lockPath);
+      lockPublished = true;
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        fail('LEDGER_LOCKED', 'A writer already owns this ledger; inspect any stale lock before recovery');
+      }
+      throw error;
+    }
+    await unlink(lockTemporaryPath);
+  } catch (error) {
+    await lock?.close().catch(() => {});
+    await unlink(lockTemporaryPath).catch(() => {});
+    if (lockPublished) await unlinkOwnedLock(lockPath, lockIdentity).catch(() => {});
+    throw error;
+  }
+  try {
     await assertPrivateDirectory(location, directoryIdentity);
     let state = createKernel({ actors, founderId });
     const config = { actors: state.actors, founderId: state.founderId };

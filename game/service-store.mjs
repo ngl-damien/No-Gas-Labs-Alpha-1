@@ -1,5 +1,5 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, mkdir, open, rename, rm, unlink } from 'node:fs/promises';
+import { link, lstat, mkdir, open, rename, rm, unlink } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canonicalStringify, artifactReceipt } from '../src/institution/kernel.mjs';
@@ -236,19 +236,32 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   const directoryIdentity = await assertPrivateDirectory(dataDir);
   const path = join(dataDir, 'service.json');
   const lockPath = join(dataDir, '.service.lock');
+  const lockTemporaryPath = join(dataDir, `.service-lock-${randomUUID()}.tmp`);
   let lease;
-  try { lease = await open(lockPath, 'wx', 0o600); }
-  catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('Exclusive service writer lock already exists; stop the owner before opening this store. Stale locks require manual offline recovery.'), { code: 'SERVICE_LOCKED' }); throw error; }
   let leaseIdentity;
+  let lockPublished = false;
   try {
+    lease = await open(lockTemporaryPath, 'wx', 0o600);
     const stat = await lease.stat();
     leaseIdentity = { dev: stat.dev, ino: stat.ino };
     await lease.writeFile(canonicalStringify({ schema: 'ngl.service-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lease.sync();
     await assertPrivateDirectory(dataDir, directoryIdentity);
+    try {
+      await link(lockTemporaryPath, lockPath);
+      lockPublished = true;
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        throw Object.assign(new Error('Exclusive service writer lock already exists; stop the owner before opening this store. Stale locks require manual offline recovery.'), { code: 'SERVICE_LOCKED' });
+      }
+      throw error;
+    }
+    await unlink(lockTemporaryPath);
+    await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
-    await lease.close().catch(() => {});
-    await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
+    await lease?.close().catch(() => {});
+    await unlink(lockTemporaryPath).catch(() => {});
+    if (lockPublished) await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
     throw error;
   }
   let released = false;

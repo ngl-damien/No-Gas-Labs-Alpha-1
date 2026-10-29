@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
-import { lstat, mkdtemp, readFile, rename, symlink, writeFile, unlink, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, rename, symlink, writeFile, unlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -146,6 +146,66 @@ test('ledger close preserves a replacement writer lock even when bytes are ident
   assert.deepEqual(await readFile(lockPath), replacement);
 });
 
+test('ledger publishes a complete private writer-lock record and leaves no publication temp behind', async t => {
+  const directory = await temp(t);
+  const ledger = await openLedger({ directory, ...config });
+  const lockPath = join(directory, '.writer.lock');
+  const names = await readdir(directory);
+  assert.equal(names.some(name => /^\.writer-lock-[a-f0-9-]+\.tmp$/.test(name)), false,
+    'successful acquisition must not leave its private publication file behind');
+  const stat = await lstat(lockPath);
+  assert.equal(stat.isSymbolicLink(), false);
+  assert.equal(stat.isFile(), true);
+  assert.equal(stat.mode & 0o777, 0o600);
+  const metadata = JSON.parse(await readFile(lockPath, 'utf8'));
+  assert.deepEqual(Object.keys(metadata).sort(), ['openedAt', 'pid', 'schema']);
+  assert.equal(metadata.schema, 'ngl.ledger-lock.v1');
+  assert.equal(Number.isSafeInteger(metadata.pid) && metadata.pid > 0, true);
+  assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
+  await ledger.close();
+  const after = await readdir(directory);
+  assert.equal(after.some(name => /^\.writer-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' });
+});
+
+
+test('service store publishes a complete private lock record without a publication temp file', async t => {
+  const dataDir = await temp(t);
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const names = await readdir(dataDir);
+  assert.equal(names.some(name => /^\.service-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
+  const stat = await lstat(lockPath);
+  assert.equal(stat.isFile(), true);
+  assert.equal(stat.isSymbolicLink(), false);
+  assert.equal(stat.mode & 0o777, 0o600);
+  const metadata = JSON.parse(await readFile(lockPath, 'utf8'));
+  assert.deepEqual(Object.keys(metadata).sort(), ['openedAt', 'pid', 'schema']);
+  assert.equal(metadata.schema, 'ngl.service-lock.v1');
+  assert.equal(Number.isSafeInteger(metadata.pid) && metadata.pid > 0, true);
+  assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
+  await store.close();
+  assert.equal((await readdir(dataDir)).some(name => /^\.service-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
+});
+
+test('decision store publishes a complete private lock record without a publication temp file', async t => {
+  const directory = await temp(t);
+  const store = await openDecisions({ directory, now: () => Date.parse('2026-10-27T00:00:00.000Z') });
+  const lockPath = join(directory, '.decisions.lock');
+  const names = await readdir(directory);
+  assert.equal(names.some(name => /^\.decisions-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
+  const stat = await lstat(lockPath);
+  assert.equal(stat.isFile(), true);
+  assert.equal(stat.isSymbolicLink(), false);
+  assert.equal(stat.mode & 0o777, 0o600);
+  const metadata = JSON.parse(await readFile(lockPath, 'utf8'));
+  assert.deepEqual(Object.keys(metadata).sort(), ['openedAt', 'pid', 'schema']);
+  assert.equal(metadata.schema, 'ngl.decisions-lock.v1');
+  assert.equal(Number.isSafeInteger(metadata.pid) && metadata.pid > 0, true);
+  assert.equal(Number.isFinite(Date.parse(metadata.openedAt)), true);
+  await store.close();
+  assert.equal((await readdir(directory)).some(name => /^\.decisions-lock-[a-f0-9-]+\.tmp$/.test(name)), false);
+});
 
 test('decision-store close preserves a replacement lock even when bytes are identical', async t => {
   const directory = await temp(t);
