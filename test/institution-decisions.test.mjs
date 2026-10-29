@@ -361,7 +361,7 @@ test('rejects broken record-chain links and does not leave a lock after failed r
   await recovered.close();
 });
 
-test('independent Node processes contend for one decision-writer lease and preserve the durable ledger', { timeout: 15000 }, async t => {
+test('independent Node processes contend for one decision-writer lease and preserve the durable ledger', { timeout: 30000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-cross-process-'));
   const moduleUrl = new URL('../src/institution/decisions.mjs', import.meta.url).href;
   const workerScript = `
@@ -388,11 +388,19 @@ test('independent Node processes contend for one decision-writer lease and prese
   `;
 
   const workers = [];
+  const bounded = (promise, label) => {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label)), 7000);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  };
   const startWorker = () => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', workerScript], {
       env: { ...process.env, NGL_DECISIONS_TEST_DIR: directory },
       stdio: ['pipe', 'pipe', 'pipe']
     });
+    child.stdin.on('error', () => {}); // A worker may exit before the parent closes its pipe.
     const lines = [];
     const waiters = [];
     let stderr = '';
@@ -421,7 +429,7 @@ test('independent Node processes contend for one decision-writer lease and prese
     // publication, rather than an in-process queue, decides who owns the lease.
     const first = startWorker();
     const second = startWorker();
-    const outcomes = await Promise.all([first.nextLine(), second.nextLine()]);
+    const outcomes = await bounded(Promise.all([first.nextLine(), second.nextLine()]), 'workers did not report lease outcomes');
     assert.deepEqual(
       [...outcomes].sort(),
       ['ACQUIRED', 'ERROR:DECISIONS_LOCKED'].sort(),
@@ -433,7 +441,7 @@ test('independent Node processes contend for one decision-writer lease and prese
     // The rejected worker never enters its stdin command loop; close that pipe
     // so Node can exit instead of keeping the test runner alive indefinitely.
     contender.child.stdin.end();
-    const rejected = await contender.exit;
+    const rejected = await bounded(contender.exit, 'rejected contender did not exit');
     assert.equal(rejected.code, 0, rejected.stderr);
     assert.match(contender.stderr, /^$/);
     // The rejected contender must not remove or replace the winner's live lease.
@@ -444,10 +452,10 @@ test('independent Node processes contend for one decision-writer lease and prese
       'failed contender must remove its temporary lease file');
 
     owner.child.stdin.write('commit\\n');
-    assert.equal(await owner.nextLine(), 'COMMITTED', owner.stderr);
+    assert.equal(await bounded(owner.nextLine(), 'winning worker did not commit'), 'COMMITTED', owner.stderr);
     owner.child.stdin.end('close\\n');
-    assert.equal(await owner.nextLine(), 'RELEASED', owner.stderr);
-    const ownerExit = await owner.exit;
+    assert.equal(await bounded(owner.nextLine(), 'winning worker did not release'), 'RELEASED', owner.stderr);
+    const ownerExit = await bounded(owner.exit, 'winning worker did not exit');
     assert.equal(ownerExit.code, 0, ownerExit.stderr);
 
     // Reopen in the parent process: the single winning writer's committed
