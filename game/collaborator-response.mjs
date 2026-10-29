@@ -1,4 +1,5 @@
 import { isCollaboratorPacket } from './collaborator-contracts.mjs';
+import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_ARRAY_ITEMS = 64;
@@ -74,8 +75,15 @@ function boundedString(value, maximum, { allowEmpty = false } = {}) {
     (allowEmpty || value.trim().length > 0);
 }
 
-function boundedList(value, maximum = 32) {
-  return Array.isArray(value) && value.length <= maximum && value.every(item => safeJsonValue(item));
+function boundedStringList(value, maximum = 32, maxChars = 1000) {
+  return Array.isArray(value) && value.length <= maximum &&
+    value.every(item => boundedString(item, maxChars));
+}
+
+function validNextDiscriminatingExperiment(value) {
+  return exactKeys(value, ['procedure', 'outcome']) &&
+    boundedString(value.procedure, 1000) &&
+    boundedString(value.outcome, 1000);
 }
 
 function stringIds(value, allowed, { maximum = 64, unique = true } = {}) {
@@ -86,6 +94,29 @@ function stringIds(value, allowed, { maximum = 64, unique = true } = {}) {
     seen.add(id);
   }
   return true;
+}
+
+function sourceStatementList(value, allowed, { maximum = 32, minimumSources = 1 } = {}) {
+  if (!Array.isArray(value) || value.length > maximum) return false;
+  return value.every(item =>
+    exactKeys(item, ['sourceEventIds', 'statement']) &&
+    Array.isArray(item.sourceEventIds) &&
+    item.sourceEventIds.length >= minimumSources &&
+    stringIds(item.sourceEventIds, allowed, { maximum: 8 }) &&
+    boundedString(item.statement, 1000)
+  );
+}
+
+function exactStringIds(value, allowed, { maximum = 64 } = {}) {
+  return stringIds(value, allowed, { maximum }) && value.length === allowed.size;
+}
+
+function freezeJson(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const key of Object.keys(value)) freezeJson(value[key]);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function packetPayload(packet) {
@@ -114,7 +145,7 @@ function validateRoleResponse(payload, response) {
 
   if (payload.role === 'archivist') {
     const keys = ['eventChainFindings', 'claims', 'linkageIssues', 'unknowns', 'nextChecks'];
-    return exactKeys(response, keys) && keys.every(key => boundedList(response[key], 32));
+    return exactKeys(response, keys) && keys.every(key => boundedStringList(response[key], 32, 1000));
   }
 
   if (payload.role === 'adversary') {
@@ -129,30 +160,35 @@ function validateRoleResponse(payload, response) {
         !Array.isArray(response.duplicateOfEventIds) ||
         !response.duplicateOfEventIds.every(id => typeof id === 'string' && records.get(id)?.type === 'experiment-challenged') ||
         new Set(response.duplicateOfEventIds).size !== response.duplicateOfEventIds.length ||
-        !boundedList(response.evidenceNeeded, 16) || !boundedList(response.unknowns, 16)) return false;
+        !boundedStringList(response.evidenceNeeded, 16, 1000) || !boundedStringList(response.unknowns, 16, 1000)) return false;
     return true;
   }
 
   if (payload.role === 'synthesizer') {
     const keys = ['scope', 'recordedSupport', 'contradictions', 'dissentPreserved', 'unknowns', 'nextDiscriminatingExperiment'];
+    // Scope is a completeness claim: the response must account for every event
+    // supplied and every omission ID disclosed in this exact packet. Dissent is
+    // complete only when every included challenge event is named exactly once.
+    const includedChallengeIds = new Set(payload.inputRecords
+      .filter(record => record?.type === 'experiment-challenged' && typeof record.eventId === 'string')
+      .map(record => record.eventId));
     if (!exactKeys(response, keys) ||
         !exactKeys(response.scope, ['moonshotId', 'includedEventIds', 'omittedEventIds']) ||
         response.scope.moonshotId !== payload.targetMoonshotId ||
-        !stringIds(response.scope.includedEventIds, inputIds) ||
-        !stringIds(response.scope.omittedEventIds, omittedIds) ||
-        !boundedList(response.recordedSupport, 32) ||
-        !boundedList(response.contradictions, 32) ||
-        !boundedList(response.dissentPreserved, 32) ||
-        !boundedList(response.unknowns, 32) ||
-        !ownPlainObject(response.nextDiscriminatingExperiment) ||
-        !safeJsonValue(response.nextDiscriminatingExperiment)) return false;
+        !exactStringIds(response.scope.includedEventIds, inputIds) ||
+        !exactStringIds(response.scope.omittedEventIds, omittedIds) ||
+        !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
+        !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
+        !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
+        !boundedStringList(response.unknowns, 32, 1000) ||
+        !validNextDiscriminatingExperiment(response.nextDiscriminatingExperiment)) return false;
     return true;
   }
 
   if (payload.role === 'tutor') {
     const keys = ['concepts', 'prerequisites', 'explanation', 'questions', 'answerKey', 'whatRemainsUnproven'];
     return exactKeys(response, keys) &&
-      ['concepts', 'prerequisites', 'questions', 'answerKey', 'whatRemainsUnproven'].every(key => boundedList(response[key], 32)) &&
+      ['concepts', 'prerequisites', 'questions', 'answerKey', 'whatRemainsUnproven'].every(key => boundedStringList(response[key], 32, 1000)) &&
       boundedString(response.explanation, 4096);
   }
 
@@ -171,10 +207,21 @@ export function validateCollaboratorResponse(packet, responseText) {
   if (new TextEncoder().encode(responseText).byteLength > MAX_RESPONSE_BYTES) return reject('RESPONSE_TOO_LARGE');
 
   let response;
-  try { response = JSON.parse(responseText); } catch { return reject('RESPONSE_JSON_INVALID'); }
+  try {
+    // External model output is untrusted: reject duplicate keys before JSON.parse's
+    // last-key-wins behavior can make the reviewed representation ambiguous.
+    assertNoDuplicateJsonObjectKeys(responseText, { label: 'COLLABORATOR_RESPONSE', maxDepth: MAX_DEPTH });
+    response = JSON.parse(responseText);
+  } catch (error) {
+    return reject(error?.message === 'COLLABORATOR_RESPONSE_DUPLICATE_JSON_KEY'
+      ? 'RESPONSE_DUPLICATE_JSON_KEY'
+      : 'RESPONSE_JSON_INVALID');
+  }
   if (!ownPlainObject(response) || !safeJsonValue(response)) return reject('RESPONSE_VALUE_INVALID');
   if (!validateRoleResponse(payload, response)) return reject('RESPONSE_SCHEMA_OR_SCOPE_INVALID');
 
+  // Preserve the exact data that passed validation for the human-review view.
+  freezeJson(response);
   return Object.freeze({
     valid: true,
     status: 'valid-for-human-review',
