@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID, sign as signSignature } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -504,4 +504,160 @@ test('ledger reader rejects malformed UTF-8 before parsing persisted approval re
   bytes[index + 1] = 0xff;
   await writeFile(ledgerPath, bytes, { mode: 0o600 });
   await assert.rejects(() => openStore(lib, storeDir, founder), /LEDGER_UTF8_INVALID/);
+}));
+
+test('institution directory replacement after open fails closed before writing', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storePath = join(dir, 'store');
+  const originalPath = join(dir, 'store-original');
+  const store = await openStore(lib, storePath, founder);
+  const draft = proposal(lib, executor, { nonce: 'install-dir-replace-0001', maxUses: 2 });
+  await store.commit(draft, approve(lib, draft, founder.privateKey));
+  const originalLedger = await readFile(join(storePath, 'institution.json'));
+
+  await rename(storePath, originalPath);
+  await mkdir(storePath, { mode: 0o700 });
+  const decision = { kind: 'REUSE', id: draft.id, nonce: 'reuse-dir-replace-0001', input: 3, output: 9 };
+  await assert.rejects(
+    () => store.commit(decision, receipt(lib, decision, executor.privateKey)),
+    /INSTITUTION_DIRECTORY_CHANGED/
+  );
+
+  assert.deepEqual(await readFile(join(originalPath, 'institution.json')), originalLedger);
+  assert.deepEqual(await readdir(storePath), [], 'replacement directory must not receive a ledger or leftover lock');
+  assert.equal(store.snapshot().sequence, 1, 'rejected writes must not advance the in-memory snapshot');
+}));
+
+test('a writer killed after lock publication leaves inspectable evidence and fails closed', () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storePath = join(dir, 'store');
+  const store = await openStore(lib, storePath, founder);
+  const lockPath = join(storePath, 'institution.json.lock');
+  const readyPath = join(dir, 'lock-ready');
+  const helperUrl = new URL('./atomic-lock.mjs', import.meta.url).href;
+  const worker = `
+    import { writeFile } from 'node:fs/promises';
+    const [helperUrl, lockPath, readyPath] = process.argv.slice(1);
+    const { publishAtomicLock } = await import(helperUrl);
+    await publishAtomicLock(lockPath, JSON.stringify({
+      schema: 'ngl.ledger-lock.v1',
+      pid: process.pid,
+      openedAt: new Date().toISOString()
+    }));
+    await writeFile(readyPath, 'ready', { mode: 0o600 });
+    setInterval(() => {}, 1000);
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', worker, helperUrl, lockPath, readyPath], {
+    stdio: 'ignore'
+  });
+  try {
+    const deadline = Date.now() + 5000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      try { await readFile(readyPath, 'utf8'); ready = true; break; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error('LOCK_WORKER_EXITED_BEFORE_READY');
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(ready, true, 'child must publish the lock before being killed');
+    child.kill('SIGKILL');
+    await new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve();
+      child.once('exit', resolve);
+    });
+
+    const lockBytes = await readFile(lockPath, 'utf8');
+    assert.equal(JSON.parse(lockBytes).pid, child.pid);
+    const inspection = await (await import('../src/institution/lock-inspector.mjs')).inspectWriterLock(lockPath);
+    assert.equal(inspection.safeToRemove, false, 'a stale-looking lock is not self-authorizing for deletion');
+
+    const draft = proposal(lib, executor, { nonce: 'install-crash-lock-0001' });
+    await assert.rejects(
+      () => store.commit(draft, approve(lib, draft, founder.privateKey)),
+      /LEDGER_LOCKED/
+    );
+    assert.equal(store.snapshot().sequence, 0);
+    assert.equal(await readFile(lockPath, 'utf8'), lockBytes, 'failed commit must preserve crash evidence');
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await new Promise(resolve => child.once('exit', resolve));
+    }
+  }
+}));
+
+test('process death after ledger rename leaves a complete visible record and requires explicit recovery', { skip: process.platform === 'win32' }, () => temp(async dir => {
+  const founder = pair(), executor = pair(), lib = await loadPinned(founder);
+  const storePath = join(dir, 'store');
+  const store = await openStore(lib, storePath, founder);
+  const lockPath = join(storePath, 'institution.json.lock');
+  const ledgerPath = join(storePath, 'institution.json');
+  const markerPath = join(dir, 'renamed-before-sync');
+  const moduleUrl = new URL('./institutional-cycle.mjs', import.meta.url).href;
+  const draft = proposal(lib, executor, { nonce: 'install-crash-after-rename-0001' });
+  const signature = approve(lib, draft, founder.privateKey);
+  const worker = `
+    import fs from 'node:fs/promises';
+    import { syncBuiltinESMExports } from 'node:module';
+    const [moduleUrl, storePath, publicKeyPem, decisionJson, signature, markerPath] = process.argv.slice(1);
+    const originalRename = fs.rename;
+    fs.rename = async (from, to) => {
+      const result = await originalRename(from, to);
+      if (to.endsWith('institution.json')) {
+        await fs.writeFile(markerPath, 'renamed', { mode: 0o600 });
+        process.kill(process.pid, 'SIGSTOP');
+      }
+      return result;
+    };
+    syncBuiltinESMExports();
+    const { openInstitution } = await import(moduleUrl);
+    const childStore = await openInstitution(storePath, publicKeyPem);
+    await childStore.commit(JSON.parse(decisionJson), signature);
+  `;
+  const child = spawn(process.execPath, [
+    '--input-type=module', '-e', worker, moduleUrl, storePath, pem(founder),
+    JSON.stringify(draft), signature, markerPath
+  ], {
+    stdio: 'ignore',
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+
+  try {
+    const deadline = Date.now() + 5000;
+    let renamed = false;
+    while (Date.now() < deadline) {
+      try { await readFile(markerPath, 'utf8'); renamed = true; break; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error('CRASH_WORKER_EXITED_BEFORE_RENAME');
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(renamed, true, 'child must stop after rename and before directory sync');
+    child.kill('SIGKILL');
+    const exit = await new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve({ code: child.exitCode, signal: child.signalCode });
+      child.once('exit', (code, signal) => resolve({ code, signal }));
+    });
+    assert.equal(exit.signal, 'SIGKILL');
+
+    const visible = JSON.parse(await readFile(ledgerPath, 'utf8'));
+    assert.equal(visible.sequence, 1, 'rename exposes a complete ledger record before directory sync');
+    const lockBytes = await readFile(lockPath, 'utf8');
+    assert.equal(JSON.parse(lockBytes).pid, child.pid);
+    await assert.rejects(() => store.commit(draft, signature), /LEDGER_LOCKED/);
+    assert.equal(store.snapshot().sequence, 0, 'the old in-memory writer must not adopt the visible record');
+
+    // Test-only operator recovery: process exit is confirmed, evidence is preserved,
+    // and the stale lock is removed explicitly before a fresh validated reopen.
+    await unlink(lockPath);
+    const reopened = await openStore(lib, storePath, founder);
+    assert.equal(reopened.snapshot().sequence, 1);
+    const reuse = { kind: 'REUSE', id: draft.id, nonce: 'reuse-after-crash-0001', input: 3, output: 9 };
+    await reopened.commit(reuse, receipt(lib, reuse, executor.privateKey));
+    assert.equal(reopened.snapshot().sequence, 2);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await new Promise(resolve => child.once('exit', resolve));
+    }
+  }
 }));
