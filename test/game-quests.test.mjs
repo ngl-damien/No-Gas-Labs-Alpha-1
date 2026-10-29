@@ -166,6 +166,30 @@ test('moonshot evidence objective rejects future-in-history and ambiguous public
   assert.equal(duplicate.progress, 0);
 });
 
+test('moonshot quest refuses loose or rolled-over timestamps for retained publication, proposal, and report', () => {
+  const invalidPublication = experimentQuestWorld();
+  const publication = invalidPublication.events.find(event => event.type === 'publish');
+  publication.at = '2026-02-30T17:00:00.000Z';
+  invalidPublication.creations[0].publishedAt = publication.at;
+  const publicationMilestone = getQuestTrail(invalidPublication, founder)
+    .find(item => item.id === 'founder-experiment-evidence');
+  assert.equal(publicationMilestone.complete, false);
+  assert.equal(publicationMilestone.progress, 0);
+
+  const invalidProposal = experimentQuestWorld();
+  invalidProposal.events.find(event => event.type === 'moonshot-proposed').at = '2026-10-28';
+  const proposalTrail = getQuestTrail(invalidProposal, founder);
+  assert.equal(proposalTrail.find(item => item.id === 'founder-moonshot-proposal').complete, false);
+  assert.equal(proposalTrail.find(item => item.id === 'founder-experiment-evidence').complete, false);
+
+  const invalidReport = experimentQuestWorld();
+  invalidReport.events.find(event => event.type === 'experiment-reported').at = '2026-10-29';
+  const reportMilestone = getQuestTrail(invalidReport, founder)
+    .find(item => item.id === 'founder-experiment-evidence');
+  assert.equal(reportMilestone.complete, false);
+  assert.equal(reportMilestone.progress, 0);
+});
+
 function academyQuestWorld(publicationFirst) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const source = {
