@@ -66,7 +66,9 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
       publishedCreation('duplicate-b',[t1]),
       publishedCreation('wrong-time',[t1]),
       publishedCreation('wrong-reward',[t1]),
-      publishedCreation('non-founder',[t1])
+      publishedCreation('non-founder',[t1]),
+      publishedCreation('missing-actor-id',[t1]),
+      publishedCreation('blank-actor-id',[t1])
     ],
     events:[
       publication('good-event',founder,'good',1,t1),
@@ -77,6 +79,8 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
       publication('wrong-time-event',founder,'wrong-time',1,t2),
       publication('wrong-reward-event',founder,'wrong-reward',1,t1,{reward:200}),
       publication('non-founder-event',witness,'non-founder',1,t1),
+      publication('missing-actor-id-event',{role:'founder'},'missing-actor-id',1,t1),
+      publication('blank-actor-id-event',{id:' ',role:'founder'},'blank-actor-id',1,t1),
       publication('stale-version-event',founder,'good',99,t1),
       event('malformed-event','publish',founder,t1,{creationId:'good',version:1,reward:99})
     ]
