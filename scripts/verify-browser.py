@@ -65,10 +65,15 @@ def draft(page,kind,title):
 
 def basic(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    requests=[];page.on('request',lambda request:requests.append(request.url))
     page.goto(url,wait_until='networkidle')
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
-    page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    try:
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    except Exception as error:
+        if errors: raise AssertionError('Browser runtime errors before private mode: '+repr(errors)) from error
+        raise
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     first_objective=page.locator('[data-objective-id="founder-first-place"]')
@@ -124,8 +129,69 @@ def basic(page,url,out,label):
     expect(page.locator('[data-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     close_sheet(page)
     page.locator('#places-button').click()
+    page.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'")
+    page.locator('#moonshot-title').fill('A bounded question for the lab')
+    page.locator('#moonshot-hypothesis').fill('A retained experiment report can be challenged without overwriting it.')
+    page.locator('#moonshot-falsifier').fill('A history replay shows the report or dissent was silently replaced.')
+    page.locator('#moonshot-evidence').fill('A uniquely identified retained event chain and exact source versions.')
+    page.locator('#propose-moonshot').click()
+    expect(page.locator('.moonshot-card').filter(has_text='A bounded question for the lab')).to_be_visible()
+    proposal_moonshot_id=page.locator('.moonshot-card').filter(has_text='A bounded question for the lab').get_attribute('data-moonshot-id')
+    expect(page.locator('#xp-count')).to_have_text('200')
+    # Create one explicitly self-reported failed attempt so all four collaborator
+    # contracts have real, source-bound inputs. The report itself earns no XP.
+    page.get_by_role('button',name='Record an experiment attempt →',exact=True).click()
+    expect(page.locator('#sheet-title')).to_have_text('Record an attempt.')
+    page.locator('#experiment-procedure').fill('Attempted to reproduce the stated behavior in a second run.')
+    page.locator('#experiment-observation').fill('The behavior was not reproduced; retain this failure for review.')
+    page.locator('#experiment-outcome').select_option('failed')
+    page.locator('#report-experiment').click()
+    expect(page.locator('#toast')).to_contain_text('Experiment report retained')
+    expect(page.locator('#xp-count')).to_have_text('200')
+    expect(page.locator('.moonshot-card').filter(has_text='A bounded question for the lab').locator('[data-research-activity-id]')).to_be_visible()
+    close_sheet(page)
+    page.locator('#places-button').click()
     page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    archivist=page.locator('[data-collaborator-role="archivist"]')
+    adversary=page.locator('[data-collaborator-role="adversary"]')
+    synthesizer=page.locator('[data-collaborator-role="synthesizer"]')
+    tutor=page.locator('[data-collaborator-role="tutor"]')
+    expect(archivist).to_contain_text('Inputs: event-')
+    expect(archivist).to_contain_text('Source snapshot marker (not independent evidence)')
+    expect(archivist).to_contain_text('revision')
+    expect(adversary).to_contain_text('Inputs: event-')
+    expect(synthesizer).to_contain_text('Inputs: event-')
+    # This journey is private: read its persisted local world, not the unrelated shared-service API.
+    state_before_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world was not persisted');return JSON.parse(raw)}")
+    proposal_event=next(event for event in state_before_packets['events'] if event.get('type')=='moonshot-proposed' and event.get('moonshotId')==proposal_moonshot_id)
+    report_event=next(event for event in state_before_packets['events'] if event.get('type')=='experiment-reported' and event.get('moonshotId')==proposal_moonshot_id)
+    request_start=len(requests)
+    for role in ('archivist','adversary','synthesizer','tutor'):
+        packet=page.locator(f'[data-collaborator-role="{role}"]')
+        packet.locator('summary').click()
+        prompt=packet.locator('textarea').input_value()
+        assert 'NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF v1' in prompt, role
+        assert '"authority": "advisory-only"' in prompt and '"mayWriteCanonicalState": false' in prompt, role
+        assert 'A model assertion is not evidence.' in prompt, role
+        assert json.dumps(proposal_event['id']) in prompt, (role,proposal_event['id'])
+        if role!='tutor':
+            assert json.dumps(report_event['id']) in prompt, (role,report_event['id'])
+        packet.get_by_role('button',name='Copy hand-off packet',exact=True).click()
+        expect(page.locator('#toast')).to_contain_text(re.compile('Bounded packet copied|Packet selected'))
+        expect(page.locator('#xp-count')).to_have_text('200')
+    state_after_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world disappeared');return JSON.parse(raw)}")
+    before_world=state_before_packets;after_world=state_after_packets
+    assert before_world['revision']==after_world['revision'], 'Inspecting/copying collaborator packets must not append world events'
+    assert before_world['xp']==after_world['xp'], 'Inspecting/copying collaborator packets must not award XP'
+    assert before_world['events']==after_world['events'], 'Collaborator packets must preserve the exact event history'
+    assert len(before_world['creations'])==len(after_world['creations']), 'Collaborator packets must not publish artifacts'
+    packet_requests=requests[request_start:]
+    assert all(request.startswith(url) for request in packet_requests), 'Collaborator packet interaction must not call an external model/provider: '+repr(packet_requests)
+    assert not any('/api/action' in request for request in packet_requests), 'Inspecting/copying collaborator packets must not submit a world action'
+    expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+    expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -394,6 +460,9 @@ def shared(browser,url,data,out):
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+        shared_archivist=b.locator('[data-collaborator-role="archivist"]')
+        expect(shared_archivist).to_contain_text('Source snapshot marker (not independent evidence)')
+        expect(shared_archivist).to_contain_text('revision')
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
         expect(b.locator('#contradiction-form')).to_be_visible()
