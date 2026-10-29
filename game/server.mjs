@@ -266,7 +266,7 @@ function validateHistory(world) {
       } else {
         const source = world.creations.find(creation => creation.id === event.evidenceCreationId);
         const version = source && (source.version === event.evidenceVersion ? source : source.versions.find(item => item.version === event.evidenceVersion));
-        if (!version || !Number.isFinite(Date.parse(version.publishedAt)) || Date.parse(version.publishedAt) > Date.parse(event.at)) {
+        if (!version || !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) {
           throw new Error('Stored experiment challenge evidence version is not retained at the challenge time');
         }
       }
