@@ -85,7 +85,7 @@ test("persisted Founder authorization event survives JSON round-trip and authori
   assert.deepEqual(projection.executions, []);
 });
 
-test("signed authorization cannot be replayed into another audience or projected as authorized", () => {
+test("signed authorization cannot be replayed or relabeled for another audience", () => {
   const { event, quest, publicKeyJwk, expectedFingerprint } = fixture();
   const otherAudience = "ngl-alpha-1-other";
   assert.equal(verifyAuthorizationEvent(event, {
@@ -101,12 +101,23 @@ test("signed authorization cannot be replayed into another audience or projected
   });
   assert.equal(otherVerifier(event), false);
 
-  const questProjection = projectQuest(quest, [event], { verifyAuthorization: otherVerifier });
+  // Simulate an attacker rewriting the persisted event's audience to match the
+  // receiving institution. The unchanged signature and digest must still fail.
+  const relabeledEvent = { ...event, audience: otherAudience };
+  assert.equal(otherVerifier(relabeledEvent), false);
+  assert.equal(verifyAuthorizationEvent(relabeledEvent, {
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: otherAudience,
+    now: 0
+  }), false);
+
+  const questProjection = projectQuest(quest, [relabeledEvent], { verifyAuthorization: otherVerifier });
   assert.equal(questProjection.status, QUEST_STATUS.OPEN);
   assert.equal(questProjection.authorized, false);
   assert.deepEqual(questProjection.executions, []);
 
-  const worldProjection = projectWorld([event], undefined, { verifyAuthorization: otherVerifier });
+  const worldProjection = projectWorld([relabeledEvent], undefined, { verifyAuthorization: otherVerifier });
   assert.equal(worldProjection.history.length, 1, "rejected authorization remains in retained history");
   assert.equal(worldProjection.xp, 0, "rejected authorization cannot mint progress");
   assert.deepEqual(worldProjection.inventory, {});
