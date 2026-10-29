@@ -136,12 +136,15 @@ test('rejects unsafe nested JSON values and unbounded arrays', () => {
   assert.equal(validateCollaboratorResponse(packet, JSON.stringify(tooMany)).reason, 'RESPONSE_VALUE_INVALID');
 });
 
-test('rejects a packet whose serialized authority boundary has been altered', () => {
+test('rejects copied, caller-constructed, or altered packets at the response boundary', () => {
   const packet = packetsForTest().adversary;
+  const responseText = JSON.stringify(validResponses.adversary);
+  assert.equal(validateCollaboratorResponse({ ...packet }, responseText).reason,
+    'PACKET_INVALID_OR_UNAVAILABLE', 'even an unchanged clone is not the module-issued packet object');
   const alteredPayload = JSON.parse(packet.packetJson);
   alteredPayload.mayWriteCanonicalState = true;
   const alteredPacket = { ...packet, packetJson: JSON.stringify(alteredPayload) };
-  assert.equal(validateCollaboratorResponse(alteredPacket, JSON.stringify(validResponses.adversary)).reason,
+  assert.equal(validateCollaboratorResponse(alteredPacket, responseText).reason,
     'PACKET_INVALID_OR_UNAVAILABLE');
 });
 
