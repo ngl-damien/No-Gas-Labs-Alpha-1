@@ -174,3 +174,8 @@ The following current-main comparisons were run after the initial PR inventory. 
 | #26 observation verifier boundary | 15 | 163 | 12 | 424 | Reconcile against current world-projection code. |
 
 Large “ahead” counts do not mean all those commits are unique or desirable; large “behind” counts mean the branch was created from an old base and its diff needs fresh scrutiny. Preserve the branches until unique changes and recovery artifacts are recorded.
+
+
+### Safety action taken after the comparison
+
+After documenting the stale/diverged bases and commenting with the exact comparison results, PRs **#57, #66, and #73 were converted to draft**. They remain open; no source changes were merged or discarded. This is a reversible review-safety measure while their unique changes are reconciled against current main.
