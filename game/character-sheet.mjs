@@ -75,6 +75,9 @@ function matchedPublications(world) {
 
 export function projectCharacter(world, viewer) {
   const allEvents = uniqueEvents(world?.events);
+  // Resolve append positions once. Repeated indexOf scans made challenge and
+  // study-review projections quadratic as the retained world grew.
+  const positionByEvent = new Map(allEvents.map((event, index) => [event, index]));
   const events = mine(allEvents, viewer);
   const proposalCounts = new Map();
   const reportCounts = new Map();
@@ -101,7 +104,7 @@ export function projectCharacter(world, viewer) {
     return event.type === 'experiment-reported' &&
       typeof event.reportId === 'string' && reportCounts.get(event.reportId) === 1 &&
       proposalIds.has(event.moonshotId) && Number.isInteger(proposalIndex) &&
-      allEvents.indexOf(event) > proposalIndex && isStrictTimestamp(event.at) &&
+      (positionByEvent.get(event) ?? -1) > proposalIndex && isStrictTimestamp(event.at) &&
       isStrictTimestamp(proposal.at) && Date.parse(proposal.at) <= Date.parse(event.at) &&
       typeof event.actor?.id === 'string' && event.actor.id.trim() &&
       ['founder', 'witness'].includes(event.actor.role) &&
@@ -118,10 +121,11 @@ export function projectCharacter(world, viewer) {
   }
   const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
+  const canonicalPublications = matchedPublications(world);
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
-    const reportPosition = report ? allEvents.indexOf(report) : -1;
-    const challengePosition = allEvents.indexOf(event);
+    const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
+    const challengePosition = positionByEvent.get(event) ?? -1;
     if (event.type !== 'experiment-challenged' ||
         typeof event.challengeId !== 'string' || challengeCounts.get(event.challengeId) !== 1 ||
         typeof event.reportId !== 'string' || !report ||
@@ -151,7 +155,7 @@ export function projectCharacter(world, viewer) {
   });
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
-  const publishedStudyVersions = new Set(matchedPublications(world).map(event => versionKey(event.creationId, event.version)));
+  const publishedStudyVersions = new Set(canonicalPublications.map(event => versionKey(event.creationId, event.version)));
   const studyEvents = events.filter(event => {
     if (event.type !== 'study' || typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
@@ -170,8 +174,8 @@ export function projectCharacter(world, viewer) {
   const studyById = new Map(studyEvents.map(event => [event.studyId, event]));
   const studyReviews = events.filter(event => {
     const source = studyById.get(event?.studyId);
-    const sourceIndex = source ? allEvents.indexOf(source) : -1;
-    const reviewIndex = allEvents.indexOf(event);
+    const sourceIndex = source ? (positionByEvent.get(source) ?? -1) : -1;
+    const reviewIndex = positionByEvent.get(event) ?? -1;
     if (event.type !== 'study-reviewed' || typeof event.reviewId !== 'string' || reviewIdCounts.get(event.reviewId) !== 1 ||
         typeof event.studyId !== 'string' || reviewedStudyCounts.get(event.studyId) !== 1 || !source ||
         source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
@@ -185,7 +189,7 @@ export function projectCharacter(world, viewer) {
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
-  const publications = mine(matchedPublications(world), viewer);
+  const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
   const worldXp = Number.isSafeInteger(world?.xp) && world.xp >= 0 ? world.xp : 0;
