@@ -7,6 +7,7 @@ const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
+const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -283,6 +284,59 @@ export function authorizationEvent({ signed, payload, verification }) {
     outputs: decision.outputs,
     acceptance: decision.acceptance,
     expires_at: decision.expires_at,
-    key_fingerprint: seal.keyFingerprint
+    key_fingerprint: seal.keyFingerprint,
+    signature: seal.signature
+  });
+}
+
+export function verifyAuthorizationEvent(event, { public_key_jwk, expected_fingerprint, now = Date.now() } = {}) {
+  // The persisted event is an untrusted boundary. Snapshot exact own data fields
+  // before reading anything; accessors, inherited fields, and extras fail closed.
+  const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
+  if (!raw || raw.type !== "QUEST_AUTHORIZED" || raw.actor !== "founder" ||
+      typeof raw.event_id !== "string" || typeof raw.proposal_id !== "string" ||
+      typeof raw.quest_id !== "string" || typeof raw.grant_id !== "string" ||
+      !/^[a-f0-9]{64}$/.test(raw.grant_id) ||
+      typeof raw.key_fingerprint !== "string" || !FINGERPRINT.test(raw.key_fingerprint) ||
+      raw.event_id !== "authorize:" + raw.proposal_id + ":" + raw.grant_id) return false;
+
+  const payload = {
+    schema: "ngl.founder-decision.v1",
+    proposal_id: raw.proposal_id,
+    quest_id: raw.quest_id,
+    capabilities: raw.capabilities,
+    outputs: raw.outputs,
+    acceptance: raw.acceptance,
+    expires_at: raw.expires_at
+  };
+  const signed = {
+    payload_sha256: raw.grant_id,
+    key_fingerprint: raw.key_fingerprint,
+    signature: raw.signature
+  };
+  return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, now }).valid === true;
+}
+
+export function createFounderAuthorizationVerifier({ public_key_jwk, expected_fingerprint } = {}) {
+  const publicKeyJwk = snapshotPublicKeyJwk(public_key_jwk);
+  if (!publicKeyJwk || typeof expected_fingerprint !== "string" || !FINGERPRINT.test(expected_fingerprint)) {
+    throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
+  }
+  let actualFingerprint;
+  try {
+    const key = createPublicKey({ key: publicKeyJwk, format: "jwk" });
+    actualFingerprint = createHash("sha256")
+      .update(key.export({ type: "spki", format: "der" }))
+      .digest("hex");
+  } catch {
+    throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
+  }
+  if (actualFingerprint !== expected_fingerprint) throw new Error("FOUNDER_TRUST_FINGERPRINT_MISMATCH");
+
+  // Close over a detached, immutable public-key snapshot and pin. The host must
+  // obtain expected_fingerprint from trusted startup configuration, not a request.
+  return event => verifyAuthorizationEvent(event, {
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint
   });
 }
