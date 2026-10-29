@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { institutionActivityCount } from '../game/world-view.mjs';
+import { institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
 
 test('institution counters count only uniquely identified matching records', () => {
   const world = { events: [
@@ -160,7 +160,8 @@ test('canonical Alpha 1 events light up the institutions that perform their func
 
 test('world map counts retained institutional kernel stages at their real locations', () => {
   const world = { xp: 0, events: [{ id: 'shared-id', type: 'contribute' }] };
-  const institution = { kernel: {
+  const institution = { schema: 'ngl.shared-institution-summary.v1', kernel: {
+    schema: 'ngl.institution.v1',
     revision: 6,
     eventCount: 6,
     events: [
@@ -189,7 +190,8 @@ test('world map counts retained institutional kernel stages at their real locati
 
 test('incomplete institutional kernel snapshots do not inflate map counters', () => {
   const world = { events: [] };
-  const institution = { kernel: {
+  const institution = { schema: 'ngl.shared-institution-summary.v1', kernel: {
+    schema: 'ngl.institution.v1',
     revision: 3,
     eventCount: 3,
     events: [{ id: 'claim-1', type: 'claim' }, { id: 'execute-1', type: 'execute' }],
@@ -202,7 +204,8 @@ test('incomplete institutional kernel snapshots do not inflate map counters', ()
 
 test('duplicate IDs inside the institutional stream remain ambiguous', () => {
   const world = { events: [] };
-  const institution = { kernel: {
+  const institution = { schema: 'ngl.shared-institution-summary.v1', kernel: {
+    schema: 'ngl.institution.v1',
     revision: 2,
     eventCount: 2,
     events: [{ id: 'duplicate', type: 'execute' }, { id: 'duplicate', type: 'claim' }],
@@ -210,4 +213,59 @@ test('duplicate IDs inside the institutional stream remain ambiguous', () => {
 
   assert.equal(institutionActivityCount('forge', world, institution), 0);
   assert.equal(institutionActivityCount('evidence_archive', world, institution), 0);
+});
+
+
+test('institution map rejects unknown summary and kernel protocol versions', () => {
+  const world = { events: [] };
+  const summary = {
+    schema: 'ngl.shared-institution-summary.v1',
+    kernel: {
+      schema: 'ngl.institution.v1',
+      revision: 1,
+      eventCount: 1,
+      events: [{ id: 'execution-1', type: 'execute' }],
+    },
+  };
+
+  assert.equal(institutionActivityCount('forge', world, summary), 1);
+  assert.equal(institutionActivityCount('forge', world, {
+    ...summary,
+    schema: 'ngl.shared-institution-summary.v2',
+  }), 0);
+  assert.equal(institutionActivityCount('forge', world, {
+    ...summary,
+    kernel: { ...summary.kernel, schema: 'ngl.institution.v2' },
+  }), 0);
+  assert.equal(institutionActivityCount('forge', world, { kernel: summary.kernel }), 0);
+});
+
+test('shared-state normalization returns only a recognized institution summary', () => {
+  const summary = {
+    schema: 'ngl.shared-institution-summary.v1',
+    kernel: {
+      schema: 'ngl.institution.v1',
+      revision: 0,
+      eventCount: 0,
+      events: [],
+    },
+  };
+
+  assert.equal(institutionSummaryFromState({ institution: summary }), summary);
+  assert.equal(institutionSummaryFromState({}), null);
+  assert.equal(institutionSummaryFromState({ institution: null }), null);
+  assert.equal(institutionSummaryFromState({
+    institution: { ...summary, schema: 'ngl.shared-institution-summary.v2' },
+  }), null);
+  assert.equal(institutionSummaryFromState({
+    institution: { ...summary, kernel: { ...summary.kernel, schema: 'ngl.institution.v2' } },
+  }), null);
+
+  let getterCalls = 0;
+  const dto = {};
+  Object.defineProperty(dto, 'institution', {
+    get() { getterCalls += 1; return summary; },
+  });
+  assert.equal(institutionSummaryFromState(dto), null);
+  assert.equal(getterCalls, 0);
 });
