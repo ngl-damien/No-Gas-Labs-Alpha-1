@@ -137,6 +137,7 @@ def basic(page,url,out,label):
     page.locator('#moonshot-evidence').fill('A uniquely identified retained event chain and exact source versions.')
     page.locator('#propose-moonshot').click()
     expect(page.locator('.moonshot-card').filter(has_text='A bounded question for the lab')).to_be_visible()
+    proposal_moonshot_id=page.locator('.moonshot-card').filter(has_text='A bounded question for the lab').get_attribute('data-moonshot-id')
     expect(page.locator('#xp-count')).to_have_text('200')
     # Create one explicitly self-reported failed attempt so all four collaborator
     # contracts have real, source-bound inputs. The report itself earns no XP.
@@ -163,7 +164,6 @@ def basic(page,url,out,label):
     expect(adversary).to_contain_text('Inputs: event-')
     expect(synthesizer).to_contain_text('Inputs: event-')
     state_before_packets=page.evaluate("async()=>await (await fetch('/api/state')).json()")
-    proposal_moonshot_id=page.locator('.moonshot-card').filter(has_text='A bounded question for the lab').get_attribute('data-moonshot-id')
     proposal_event=next(event for event in state_before_packets['world']['events'] if event.get('type')=='moonshot-proposed' and event.get('moonshotId')==proposal_moonshot_id)
     report_event=next(event for event in state_before_packets['world']['events'] if event.get('type')=='experiment-reported' and event.get('moonshotId')==proposal_moonshot_id)
     request_start=len(requests)
