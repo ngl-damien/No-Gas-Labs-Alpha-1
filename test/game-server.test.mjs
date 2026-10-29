@@ -838,6 +838,30 @@ test('server startup rejects a persisted event history that moves backward in re
 });
 
 
+test('server startup rejects persisted date-only timestamps even when parsed chronology is monotonic', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-loose-chronology-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const start = createWorld({ id: 'loose-history-world', now: '2026-10-27T00:00:00.000Z' });
+  const first = await applyAction(start, { type: 'discover', locationId: 'river' }, witness, { now: '2026-10-27T00:00:01.000Z' });
+  const world = structuredClone(first.world);
+  world.events[0].at = '2026-10-28';
+  world.discoveries[0].at = world.events[0].at;
+  world.updatedAt = world.events[0].at;
+  const payload = { world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY }),
+    error => error.code === 'INVALID_WORLD' || /World history authority \/ time mismatch/.test(error.message)
+  );
+});
+
 test('Moonshot report challenges are attributed, replay-safe dissent rather than adjudication', async t => {
   const f = await fixture(t);
   const founder = f.client();
