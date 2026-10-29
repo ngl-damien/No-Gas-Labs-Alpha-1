@@ -385,10 +385,27 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
   let released = false;
   async function release() {
     if (released) return;
-    const releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+    let releaseMutationGuard;
     try {
-      await assertPrivateDecisionDirectory(location, directoryIdentity);
-      await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+    } catch (error) {
+      // The owning application may already have removed its private runtime
+      // directory during teardown. With no directory entry left to mutate,
+      // close the retained descriptor without trying to recreate the guard.
+      if (error.code !== 'ENOENT') throw error;
+      await lease.close();
+      released = true;
+      return;
+    }
+    try {
+      try {
+        await assertPrivateDecisionDirectory(location, directoryIdentity);
+        await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      } catch (error) {
+        // A teardown that removes the directory after guard acquisition also
+        // removes the lock pathname. The open descriptor still must be closed.
+        if (error.code !== 'ENOENT') throw error;
+      }
       await lease.close();
       released = true;
     } finally {
