@@ -1,4 +1,5 @@
-import { isCanonicalUtcTimestamp, isValidMoonshotProposal } from './research-records.mjs';
+import { isStrictTimestamp } from './timestamps.mjs';
+import { isValidMoonshotProposal } from './research-records.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -222,7 +223,7 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
   return events.filter(event => {
     if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
         typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
-        !isCanonicalUtcTimestamp(event.at) || typeof event.actor?.id !== 'string' || event.actor?.role !== 'founder' ||
+        !isStrictTimestamp(event.at) || typeof event.actor?.id !== 'string' || event.actor?.role !== 'founder' ||
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     const matches = versions.filter(version => version?.id === event.creationId &&
       version?.version === event.version && version?.publishedAt === event.at);
@@ -233,7 +234,7 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
 function referencesEarlierRetainedPublication(match, publications, events) {
   const event = match?.event;
   if (!event || typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
-      event.version < 1 || !isCanonicalUtcTimestamp(event.at)) return false;
+      event.version < 1 || !isStrictTimestamp(event.at)) return false;
   const eventPosition = events.indexOf(event);
   if (eventPosition < 0) return false;
   const at = Date.parse(event.at);
@@ -241,7 +242,7 @@ function referencesEarlierRetainedPublication(match, publications, events) {
     const publicationPosition = events.indexOf(publication);
     return publicationPosition >= 0 && publicationPosition < eventPosition &&
       publication.creationId === event.creationId && publication.version === event.version &&
-      isCanonicalUtcTimestamp(publication.at) && Date.parse(publication.at) <= at;
+      isStrictTimestamp(publication.at) && Date.parse(publication.at) <= at;
   });
 }
 
@@ -313,7 +314,7 @@ export function getQuestTrail(world, viewer) {
     });
   }
   const hasUniqueEarlierPublication = (creationId, version, at, eventPosition) => {
-    if (!isCanonicalUtcTimestamp(at) || !Number.isInteger(eventPosition)) return false;
+    if (!isStrictTimestamp(at) || !Number.isInteger(eventPosition)) return false;
     const atMs = Date.parse(at);
     const candidates = publicationCandidatesByVersion.get(JSON.stringify([creationId, version])) || [];
     let timestampMatches = 0;
@@ -359,7 +360,7 @@ export function getQuestTrail(world, viewer) {
         typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
         typeof event.actor?.id !== 'string' || !['founder', 'witness'].includes(event.actor?.role) ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
-        !isCanonicalUtcTimestamp(event.at) ||
+        !isStrictTimestamp(event.at) ||
         typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
         typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500) return false;
@@ -382,7 +383,7 @@ export function getQuestTrail(world, viewer) {
         event.actor?.id !== source.actor.id || event.actor?.role !== source.actor.role ||
         event.creationId !== source.creationId || event.version !== source.version ||
         sourceIndex < 0 || reviewIndex <= sourceIndex ||
-        !isCanonicalUtcTimestamp(event.at) || !isCanonicalUtcTimestamp(source.at) ||
+        !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
         Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
@@ -415,7 +416,7 @@ export function getQuestTrail(world, viewer) {
     uniqueMoonshotEventIds.has(event.id) && typeof event.reportId === 'string' &&
     reportIdCounts.get(event.reportId) === 1 && validMoonshotIds.has(event.moonshotId) &&
     proposalPositionById.get(event.moonshotId) < events.indexOf(event) &&
-    isCanonicalUtcTimestamp(event.at) &&
+    isStrictTimestamp(event.at) &&
     Date.parse(events[proposalPositionById.get(event.moonshotId)]?.at) <= Date.parse(event.at) &&
     typeof event.actor?.id === 'string' && ['founder', 'witness'].includes(event.actor?.role) &&
     typeof event.procedure === 'string' && event.procedure.trim() &&
@@ -459,7 +460,7 @@ export function getQuestTrail(world, viewer) {
     const creation = creationById.get(event.evidenceCreationId);
     const version = creation && [creation, ...trailRows(creation.versions)]
       .find(item => item?.version === event.evidenceVersion);
-    return Boolean(version && isCanonicalUtcTimestamp(version.publishedAt) && isCanonicalUtcTimestamp(event.at) &&
+    return Boolean(version && isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
       Date.parse(version.publishedAt) <= Date.parse(event.at));
   };
   const experimentChallenges = events.filter(event => {
@@ -476,8 +477,8 @@ export function getQuestTrail(world, viewer) {
       typeof event.challengeText === 'string' && Boolean(event.challengeText.trim()) &&
       Array.from(event.challengeText).length <= 1000 &&
       reportPosition >= 0 && challengePosition > reportPosition &&
-      isCanonicalUtcTimestamp(event.at) &&
-      isCanonicalUtcTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
+      isStrictTimestamp(event.at) &&
+      isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
   });
   const researchReports = reports.filter(match =>
