@@ -216,6 +216,45 @@ test('research quest targets the latest appended eligible records even when thei
   }, 'the newest appended other-actor report is the challenge target, not the oldest');
 });
 
+test('quest projection preserves exact evidence joins across a large retained history', () => {
+  const world = experimentQuestWorld();
+  const unrelated = Array.from({ length: 300 }, (_, index) => ({
+    id: 'unrelated-' + index,
+    type: 'unrelated',
+    actor: founder,
+    at: '2026-10-28T16:00:00.000Z'
+  }));
+  world.events = [...unrelated, ...world.events];
+
+  for (let index = 0; index < 300; index += 1) {
+    const at = new Date(Date.parse('2026-10-28T17:04:00.000Z') + index * 1000).toISOString();
+    world.contributions.push({
+      id: 'note-' + index,
+      creationId: 'evidence-1',
+      version: 1,
+      text: 'Retained field note ' + index,
+      actor: founder,
+      at
+    });
+    world.events.push({
+      id: 'note-event-' + index,
+      type: 'contribute',
+      creationId: 'evidence-1',
+      version: 1,
+      actor: founder,
+      at
+    });
+  }
+
+  const trail = getQuestTrail(world, founder);
+  const fieldNote = trail.find(item => item.id === 'founder-field-note');
+  assert.equal(fieldNote.complete, true);
+  assert.equal(fieldNote.evidence.length, 300, 'all unique note/event pairs remain visible');
+  assert.equal(new Set(fieldNote.evidence).size, 300, 'no note event is counted twice');
+  assert.equal(trail.find(item => item.id === 'founder-experiment-evidence').complete, true,
+    'indexed chronology still accepts the one retained publication preceding its report');
+});
+
 test('moonshot evidence objective rejects future-in-history and ambiguous publication references', () => {
   const after = getQuestTrail(experimentQuestWorld({ publicationAfterReport: true }), founder)
     .find(item => item.id === 'founder-experiment-evidence');
