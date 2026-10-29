@@ -10,12 +10,21 @@ export function findStudyReview(note, events) {
   const identifier = value => typeof value === 'string' &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
-  if (!identifier(note?.studyId) || !identifier(note?.creationId) ||
+  if (!identifier(note?.id) || !identifier(note?.studyId) || !identifier(note?.creationId) ||
       !Number.isSafeInteger(note?.version) || note.version < 1 ||
       !isStrictTimestamp(note?.at) ||
       !identifier(note?.actor?.id) || !['founder', 'witness'].includes(note.actor.role)) return null;
 
   const history = rows(events);
+  const sourceMatches = history.filter(event => event?.type === 'study' && event.studyId === note.studyId);
+  if (sourceMatches.length !== 1) return null;
+  const source = sourceMatches[0];
+  if (source.id !== note.id || source.creationId !== note.creationId ||
+      source.version !== note.version || source.at !== note.at ||
+      source.actor?.id !== note.actor.id || source.actor?.role !== note.actor.role) return null;
+  const sourceIndex = history.indexOf(source);
+  if (sourceIndex < 0) return null;
+
   const reviews = history.filter(event => event?.type === 'study-reviewed');
   const counts = { id: new Map(), reviewId: new Map(), studyId: new Map() };
   for (const event of history) {
@@ -29,7 +38,7 @@ export function findStudyReview(note, events) {
   }
   const unique = (field, value) => counts[field].get(value) === 1;
   const candidates = reviews.filter(event =>
-    identifier(event?.id) && unique('id', event.id) &&
+    identifier(event?.id) && unique('id', event.id) && history.indexOf(event) > sourceIndex &&
     identifier(event?.reviewId) && unique('reviewId', event.reviewId) &&
     event.studyId === note.studyId && unique('studyId', note.studyId) &&
     event.creationId === note.creationId && event.version === note.version &&
@@ -42,7 +51,6 @@ export function findStudyReview(note, events) {
   );
   return candidates.length === 1 ? candidates[0] : null;
 }
-
 
 export function getQuest(world, viewer) {
   if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) return {
