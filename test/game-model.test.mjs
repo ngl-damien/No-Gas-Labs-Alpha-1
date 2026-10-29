@@ -106,3 +106,33 @@ test('world validation rejects loose root and event timestamps even when Date.pa
   malformedEvent.updatedAt = malformedEvent.events[0].at;
   await assert.rejects(validateWorld(malformedEvent), error => error.code === 'INVALID_WORLD');
 });
+
+
+test('large interleaved Moonshot history preserves exact proposal/report pairing', async () => {
+  const world = createWorld({ id: 'indexed-history-world', now: '2026-10-01T00:00:00.000Z' });
+  const actor = { id: 'history-witness', name: 'History witness', role: 'witness' };
+  const events = [];
+  const origin = Date.parse(world.createdAt);
+  for (let index = 0; index < 1200; index += 1) {
+    const moonshotId = `moonshot-${index}`;
+    const proposalAt = new Date(origin + index * 2000 + 1).toISOString();
+    const reportAt = new Date(origin + index * 2000 + 1001).toISOString();
+    events.push({
+      id: `proposal-event-${index}`, type: 'moonshot-proposed', actor, at: proposalAt,
+      semantics: 'Research proposal only; not executed.', moonshotId,
+      title: 'Bounded proposal', hypothesis: 'A falsifiable hypothesis',
+      falsifier: 'An observable counterexample', evidenceNeeded: 'A retained source',
+      sourceCreationId: null, sourceVersion: null
+    });
+    events.push({
+      id: `report-event-${index}`, type: 'experiment-reported', actor, at: reportAt,
+      semantics: 'Self-reported attempt; not adjudicated.', reportId: `report-${index}`,
+      moonshotId, procedure: 'Repeat the stated procedure', observation: 'Record what occurred',
+      reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+    });
+  }
+  world.events = events;
+  world.revision = events.length;
+  world.updatedAt = events.at(-1).at;
+  assert.equal(await validateWorld(world).then(() => true), true);
+});
