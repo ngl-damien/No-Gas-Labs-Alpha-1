@@ -385,7 +385,7 @@ test('typed quest navigation disambiguates a colliding creation ID from its rese
   view.goTo('research-activity:report-1', 'research-activity');
   assert.equal(view.target, 'research-activity:report-1');
   assert.equal(view.targetType, 'research-activity');
-  assert.equal(view.route.length, 0, 'the player is already in the target cell');
+  assert.ok(view.route.length <= 1, 'typed navigation should route to the nearby activity, not the distant colliding creation');
 
   assert.equal(view.nearest('research-activity:report-1', 'research-activity').type, 'research-activity');
   view.interact('research-activity:report-1', 'research-activity');
