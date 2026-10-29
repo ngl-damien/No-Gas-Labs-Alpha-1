@@ -1,3 +1,5 @@
+import { isCollaboratorPacket } from './collaborator-contracts.mjs';
+
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_ARRAY_ITEMS = 64;
 const MAX_OBJECT_KEYS = 32;
@@ -87,7 +89,7 @@ function stringIds(value, allowed, { maximum = 64, unique = true } = {}) {
 }
 
 function packetPayload(packet) {
-  if (!packet || packet.available !== true || typeof packet.packetJson !== 'string' ||
+  if (!isCollaboratorPacket(packet) || packet.available !== true || typeof packet.packetJson !== 'string' ||
       new TextEncoder().encode(packet.packetJson).byteLength > MAX_RESPONSE_BYTES) return null;
   let payload;
   try { payload = JSON.parse(packet.packetJson); } catch { return null; }
