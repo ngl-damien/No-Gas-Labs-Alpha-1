@@ -66,6 +66,16 @@ const verify = (receipt = signed, value = payload, key = jwk, pin = fingerprint,
     now
   });
 
+test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () => {
+  assert.equal(payload.schema, "ngl.founder-decision.v2");
+  const legacyPayload = { ...payload, schema: "ngl.founder-decision.v1" };
+  const legacyReceipt = signedReceipt(legacyPayload);
+  assert.deepEqual(verify(legacyReceipt, legacyPayload), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+});
+
 test("the enrolled key authorizes the exact, unexpired decision", () => {
   const verification = verify();
   assert.deepEqual(verification, { valid: true, reason: null });
