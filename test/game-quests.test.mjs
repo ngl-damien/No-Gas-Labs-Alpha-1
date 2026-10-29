@@ -318,6 +318,35 @@ test('challenge quest requires canonical chronology even when report attribution
   assert.equal(rejected.progress, 0);
 });
 
+test('challenge evidence is blocked when retained version identity is ambiguous', () => {
+  const world = experimentQuestWorld();
+  const creation = world.creations[0];
+  creation.versions.push({
+    ...creation,
+    versions: [],
+    publishedAt: '2026-10-28T17:00:30.000Z'
+  });
+  world.events.push({
+    id: 'challenge-ambiguous-version-event',
+    type: 'experiment-challenged',
+    challengeId: 'challenge-ambiguous-version',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-29T12:00:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The cited retained version is ambiguous.',
+    evidenceCreationId: 'evidence-1',
+    evidenceVersion: 1
+  });
+
+  const challenge = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(challenge.complete, false);
+  assert.equal(challenge.progress, 0,
+    'a challenge cannot choose one of multiple retained objects sharing the same version identity');
+});
+
 function academyQuestWorld(publicationFirst) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const source = {
