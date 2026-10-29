@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -7,6 +10,7 @@ const witness = { id: 'witness-1', role: 'witness' };
 const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function researchWorld() {
   return {
@@ -120,4 +124,11 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
   assert.equal(payload.omittedEventIds.length, 100);
   assert.equal(payload.omittedEventIdListTruncated, true);
   assert.equal(payload.inputRecords.length, 7);
+});
+
+test('playable client and bounded packet module pass the JavaScript parser', () => {
+  for (const path of ['game/client.mjs', 'game/collaborator-contracts.mjs']) {
+    const checked = spawnSync(process.execPath, ['--check', resolve(ROOT, path)], { encoding: 'utf8' });
+    assert.equal(checked.status, 0, path + ': ' + (checked.stderr || checked.stdout || 'syntax check failed'));
+  }
 });
