@@ -4,7 +4,7 @@ const hasText = value => typeof value === 'string' && value.trim().length > 0;
 // inputs (date-only strings, locale dates, and rolled-over calendar dates) must
 // not influence append-only chronology or activate evidence links.
 const validTime = value => {
-  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value)) return false;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
   const milliseconds = Date.parse(value);
   return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
 };
