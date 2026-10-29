@@ -303,3 +303,38 @@ test("authorizationEvent rejects accessor-backed replacement payloads", () => {
     /verified Founder decision required/
   );
 });
+
+
+test("decision scope cannot expand capabilities or weaken quest acceptance", () => {
+  assert.throws(
+    () => makePayload({ capabilities: ["repository.admin"] }),
+    /decision capabilities exceed quest scope/
+  );
+  assert.throws(
+    () => makePayload({ acceptance: ["mesh-optional"] }),
+    /decision acceptance must preserve quest acceptance/
+  );
+  assert.throws(
+    () => makePayload({ acceptance: ["mesh", "extra"] }),
+    /decision acceptance must preserve quest acceptance/
+  );
+  assert.doesNotThrow(() => makePayload({
+    capabilities: ["repository.write"],
+    acceptance: ["mesh"]
+  }));
+});
+
+test("decision scope reads only own data properties from the quest contract", () => {
+  const accessorQuest = { ...quest };
+  let getterRuns = 0;
+  Object.defineProperty(accessorQuest, "capabilities", {
+    configurable: true,
+    enumerable: true,
+    get() { getterRuns += 1; return ["repository.write"]; }
+  });
+  assert.throws(
+    () => makePayload({ quest: accessorQuest }),
+    /quest binding mismatch/
+  );
+  assert.equal(getterRuns, 0, "quest scope getters must not execute");
+});
