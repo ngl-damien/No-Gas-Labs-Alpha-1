@@ -84,6 +84,7 @@ test('synthesis reports omitted history instead of silently presenting a partial
   assert.equal(payload.omittedCount, 5);
   assert.equal(payload.inputRefs.length, 7);
   assert.equal(payload.omittedEventIds.length, 5);
+  assert.equal(payload.omittedEventIdListTruncated, false);
   assert.match(synthesis.prompt, /disclose omitted history/i);
 });
 
@@ -97,4 +98,26 @@ test('accessor-backed event data cannot execute getters or enter collaborator pa
   const packets = projectCollaboratorPackets({ events: [hostile], creations: [] });
   assert.equal(getterCalls, 0);
   assert.ok(packets.every(packet => packet.available === false));
+});
+
+test('large synthesis slices explicitly disclose when the omitted-ID list is capped', () => {
+  const world = researchWorld();
+  for (let index = 0; index < 110; index += 1) {
+    world.events.push({
+      id: 'large-report-event-' + index, type: 'experiment-reported',
+      reportId: 'large-report-' + index, moonshotId: 'moonshot-1',
+      actor: index % 2 ? founder : witness,
+      at: new Date(Date.parse(at3) + (index + 1) * 60_000).toISOString(),
+      procedure: 'Bounded procedure ' + index,
+      observation: 'Bounded observation ' + index,
+      reportedOutcome: index % 3 ? 'inconclusive' : 'failed',
+      evidenceCreationId: null, evidenceVersion: null
+    });
+  }
+  const synthesis = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
+  const payload = JSON.parse(synthesis.packetJson);
+  assert.equal(payload.omittedCount, 107);
+  assert.equal(payload.omittedEventIds.length, 100);
+  assert.equal(payload.omittedEventIdListTruncated, true);
+  assert.equal(payload.inputRecords.length, 7);
 });
