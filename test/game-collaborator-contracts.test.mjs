@@ -14,6 +14,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function researchWorld() {
   return {
+    id: 'world-test-1',
+    revision: 3,
     creations: [],
     events: [
       {
@@ -42,6 +44,7 @@ test('empty world exposes bounded roles but does not invent research inputs or p
   const packets = projectCollaboratorPackets({ events: [], creations: [] });
   assert.deepEqual(packets.map(packet => packet.id), ['archivist', 'adversary', 'synthesizer', 'tutor']);
   assert.ok(packets.every(packet => packet.available === false && packet.prompt === null && packet.inputRefs.length === 0));
+  assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'incomplete'));
 });
 
 test('research packets bind to retained event IDs and declare zero authority and zero progress effects', () => {
@@ -63,6 +66,10 @@ test('research packets bind to retained event IDs and declare zero authority and
 
   for (const packet of packets) {
     const payload = JSON.parse(packet.packetJson);
+    assert.deepEqual(payload.sourceSnapshot, {
+      status: 'identified', worldId: 'world-test-1', revision: 3, retainedEventCount: 3
+    });
+    assert.match(packet.prompt, /Snapshot boundary: sourceSnapshot identifies the supplied world snapshot only/);
     assert.equal(payload.mayWriteCanonicalState, false);
     assert.equal(payload.mayGrantAuthority, false);
     assert.equal(payload.mayAwardProgress, false);
@@ -85,6 +92,7 @@ test('synthesis reports omitted history instead of silently presenting a partial
       evidenceCreationId: null, evidenceVersion: null
     });
   }
+  world.revision += 9;
   const synthesis = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
   const payload = JSON.parse(synthesis.packetJson);
   assert.equal(payload.omittedCount, 5);
@@ -101,9 +109,12 @@ test('accessor-backed event data cannot execute getters or enter collaborator pa
     enumerable: true,
     get() { getterCalls += 1; return 'moonshot-proposed'; }
   });
-  const packets = projectCollaboratorPackets({ events: [hostile], creations: [] });
+  const sourceWorld = { events: [hostile], creations: [] };
+  Object.defineProperty(sourceWorld, 'id', { enumerable: true, get() { getterCalls += 1; return 'forged-world'; } });
+  Object.defineProperty(sourceWorld, 'revision', { enumerable: true, get() { getterCalls += 1; return 99; } });
+  const packets = projectCollaboratorPackets(sourceWorld);
   assert.equal(getterCalls, 0);
-  assert.ok(packets.every(packet => packet.available === false));
+  assert.ok(packets.every(packet => packet.available === false && packet.sourceSnapshot.status === 'incomplete'));
 });
 
 test('large synthesis slices explicitly disclose when the omitted-ID list is capped', () => {
@@ -120,6 +131,7 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
       evidenceCreationId: null, evidenceVersion: null
     });
   }
+  world.revision += 110;
   const synthesis = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
   const payload = JSON.parse(synthesis.packetJson);
   assert.equal(payload.omittedCount, 106);
