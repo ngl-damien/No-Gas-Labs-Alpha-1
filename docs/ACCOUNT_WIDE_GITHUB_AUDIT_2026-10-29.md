@@ -7,7 +7,7 @@
 
 ## Executive findings
 
-1. The connected account currently returns **32 repositories**, not the 12 recorded in the older reconciliation plan. Their observed default-branch trees contain **1,237 tracked files** in total. All 32 recursive trees returned without truncation; source content has been sampled selectively, not line-by-line audited.
+1. The connected account currently returns **32 repositories**, not the 12 recorded in the older reconciliation plan. Their observed default-branch trees contain **1,239 tracked files** in total. All 32 recursive trees returned without truncation; source content has been sampled selectively, not line-by-line audited.
 2. Alpha 1 is the canonical integration target and has **622 tracked files** in its default-branch tree. Its current `main` has successful recent `verify`, `world-projection`, and `playable-world` checks. That is evidence for those workflows only, not a complete device/product validation.
 3. Alpha 1 has **409 branches** (four full pages of 100 plus nine on page five) and **20 open pull requests**. This is the largest coordination risk: overlapping and stacked changes need a controlled merge sequence, not indiscriminate branch cleanup.
 4. The playable-world chain is `#160 → #163 → #165`. PR #165 is five commits beyond #163 and changes only `game/model.mjs`, `game/server.mjs`, and their tests. PR #163 is based on #160 and changes 18 files. GitHub compare reports 75 commits between #160 and #163, so inspect its full diff/history before merging; green checks alone do not resolve scope or branch-history risk.
