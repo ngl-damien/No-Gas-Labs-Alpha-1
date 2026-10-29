@@ -461,32 +461,56 @@ export class WorldView {
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world){const next=world||{creations:[]};this.world=next;this.institutionCounts=computeInstitutionActivityCounts(next);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target)this.goTo(this.target);}
+  setWorld(world){const next=world||{creations:[]};this.world=next;this.institutionCounts=computeInstitutionActivityCounts(next);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' unique records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}
-  cancelRoute(){this.route=[];this.target=null;}
+  cancelRoute(){this.route=[];this.target=null;this.targetType=null;}
   focusCreation(id){this.goTo(id);}
-  goTo(id){let target=id;if(typeof id==='string'){const creation=this.world.creations?.find(c=>c.id===id);const place=PLACES.find(p=>p.id===id);const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);if(creation)target={x:creation.position.x,y:creation.position.y+90};else if(place)target={x:place.x,y:place.y+50};else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};else {this.cancelRoute();return}}const route=findRoute(this.player,target,this.world.creations);if(!route.length){this.cancelRoute();return}this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;}
-  nearest(targetId){
+  goTo(id,targetType){
+    let target=id;
+    if(typeof id==='string'){
+      const creation=this.world.creations?.find(c=>c.id===id);
+      const place=PLACES.find(p=>p.id===id);
+      const researchObject=this.researchObjects.find(object=>object.id===id);
+      const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);
+      if(targetType==='research-object'){
+        if(!researchObject){this.cancelRoute();return}
+        target={x:researchObject.x,y:researchObject.y+28};
+      }else if(targetType==='research-activity'){
+        if(!researchActivityObject?.mapVisible){this.cancelRoute();return}
+        target={x:researchActivityObject.x,y:researchActivityObject.y+18};
+      }else if(targetType!==undefined&&targetType!==null){
+        this.cancelRoute();return;
+      }else if(creation)target={x:creation.position.x,y:creation.position.y+90};
+      else if(place)target={x:place.x,y:place.y+50};
+      else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};
+      else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};
+      else {this.cancelRoute();return}
+    }
+    const route=findRoute(this.player,target,this.world.creations);
+    if(!route.length){this.cancelRoute();return}
+    this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;
+  }
+  nearest(targetId,targetType){
     const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];
-    const candidates=targetId===undefined?options:typeof targetId==='string'?options.filter(option=>option.id===targetId):[];
+    const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
-  interact(targetId){
-    const nearest=this.nearest(targetId);
+  interact(targetId,targetType){
+    const nearest=this.nearest(targetId,targetType);
     if(nearest&&nearest.distance<160){
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
       const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
-    }else if(targetId===undefined)this.goTo('workbench');
+    }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
-  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
+  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
     const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(175*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target;this.target=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;const desired={x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}

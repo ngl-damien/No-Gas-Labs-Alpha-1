@@ -88,14 +88,14 @@ async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.
 const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y})})});
 view.setWorld(world);
 function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
-function followResearchTarget(object,fallback){
+function followResearchTarget(object,fallback,targetType){
   if(!object){fallback();return}
   closeSheet();
-  view.goTo(object.id);
+  view.goTo(object.id,targetType);
   if(view.target!==object.id){fallback();return}
   if(!view.route.length){
-    const nearest=view.nearest(object.id);
-    if(nearest?.id===object.id&&nearest.distance<160){view.interact(object.id);return}
+    const nearest=view.nearest(object.id,targetType);
+    if(nearest?.id===object.id&&nearest.distance<160){view.interact(object.id,targetType);return}
     fallback();
   }
 }
@@ -104,11 +104,11 @@ function followQuestAction(action){
   if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}
   if(action.type==='research-object'&&typeof action.id==='string'&&typeof action.moonshotId==='string'){
     const object=(Array.isArray(view.researchObjects)?view.researchObjects:[]).find(item=>item.id===action.id&&item.moonshotId===action.moonshotId);
-    followResearchTarget(object,()=>openMoonshotField(action.moonshotId));return;
+    followResearchTarget(object,()=>openMoonshotField(action.moonshotId),'research-object');return;
   }
   if(action.type==='research-activity'&&typeof action.id==='string'&&typeof action.moonshotId==='string'&&typeof action.activityId==='string'){
     const object=(Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[]).find(item=>item.id===action.id&&item.moonshotId===action.moonshotId&&item.activityId===action.activityId);
-    if(object?.mapVisible){followResearchTarget(object,()=>openMoonshotField(action.moonshotId,action.activityId));return}
+    if(object?.mapVisible){followResearchTarget(object,()=>openMoonshotField(action.moonshotId,action.activityId),'research-activity');return}
     openMoonshotField(action.moonshotId,action.activityId);return;
   }
   if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field','academy'].includes(action.id)){closeSheet();view.goTo(action.id);return}

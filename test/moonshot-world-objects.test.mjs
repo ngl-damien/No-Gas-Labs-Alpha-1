@@ -331,9 +331,9 @@ function interactionView() {
 test('targeted interaction selects the requested research activity over a closer proposal', () => {
   const { view, interactions, routes } = interactionView();
   assert.equal(view.nearest().id, 'moonshot-object:moon-1', 'generic interaction should still choose the closest object');
-  assert.equal(view.nearest('research-activity:report-1').id, 'research-activity:report-1',
+  assert.equal(view.nearest('research-activity:report-1', 'research-activity').id, 'research-activity:report-1',
     'explicit targeting must resolve the requested activity rather than the globally nearest object');
-  view.interact('research-activity:report-1');
+  view.interact('research-activity:report-1', 'research-activity');
   assert.deepEqual(interactions, [{
     type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
   }]);
@@ -342,7 +342,7 @@ test('targeted interaction selects the requested research activity over a closer
 
 test('targeted interaction fails closed for a missing or out-of-range target without workbench fallback', () => {
   const { view, interactions, routes } = interactionView();
-  view.interact('missing-target');
+  view.interact('missing-target', 'research-activity');
   assert.deepEqual(interactions, []);
   assert.deepEqual(routes, []);
 
@@ -364,4 +364,31 @@ test('untargeted interaction keeps the existing nearest-object and workbench fal
   view.interact();
   assert.deepEqual(interactions, []);
   assert.deepEqual(routes, ['workbench']);
+});
+
+
+test('typed quest navigation disambiguates a colliding creation ID from its research activity', () => {
+  const { view, interactions } = interactionView();
+  view.world.creations = [{
+    id: 'research-activity:report-1',
+    position: { x: 500, y: 500 },
+    title: 'A creation with a colliding identifier',
+  }];
+  view.researchActivityObjects[0].x = 100;
+  view.researchActivityObjects[0].y = 90;
+  view.player = { x: 100, y: 100 };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+
+  view.goTo('research-activity:report-1', 'research-activity');
+  assert.equal(view.target, 'research-activity:report-1');
+  assert.equal(view.targetType, 'research-activity');
+  assert.equal(view.route.length, 0, 'the player is already in the target cell');
+
+  assert.equal(view.nearest('research-activity:report-1', 'research-activity').type, 'research-activity');
+  view.interact('research-activity:report-1', 'research-activity');
+  assert.deepEqual(interactions, [{
+    type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
+  }]);
 });
