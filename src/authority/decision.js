@@ -60,7 +60,7 @@ function isDecisionPayload(payload) {
   const keys = Object.keys(payload).sort();
   if (keys.length !== DECISION_KEYS.length ||
       keys.some((key, index) => key !== [...DECISION_KEYS].sort()[index])) return false;
-  return payload.schema === "ngl.founder-decision.v1" &&
+  return payload.schema === "ngl.founder-decision.v2" &&
     isIdentifier(payload.proposal_id) &&
     isIdentifier(payload.quest_id) &&
     isIdentifier(payload.audience) &&
@@ -222,7 +222,7 @@ export function makeDecisionPayload(input) {
   }
 
   const payload = Object.freeze({
-    schema: "ngl.founder-decision.v1",
+    schema: "ngl.founder-decision.v2",
     proposal_id: proposalFields.event_id,
     quest_id: questFields.quest_id,
     audience,
@@ -345,7 +345,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
       raw.event_id !== "authorize:" + raw.proposal_id + ":" + raw.grant_id) return false;
 
   const payload = {
-    schema: "ngl.founder-decision.v1",
+    schema: "ngl.founder-decision.v2",
     proposal_id: raw.proposal_id,
     quest_id: raw.quest_id,
     audience: raw.audience,
