@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -299,3 +299,28 @@ test('Academy study and review objectives require the publication event to prece
   assert.deepEqual(review.evidenceIds, []);
 });
 
+
+
+test('main quest stops repeating the generic task when every current objective has a retained record', () => {
+  const founderWorld = {
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+  };
+  const witnessWorld = {
+    creations: [{ id: 'published' }],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map(locationId => ({ actor: witness, locationId })),
+    contributions: [{ actor: witness, creationId: 'published', version: 1 }],
+    reports: [{ actor: witness, creationId: 'published', version: 1 }]
+  };
+  const allRecorded = [{ id: 'objective-one', complete: true }, { id: 'objective-two', complete: true }];
+
+  for (const [world, actor] of [[founderWorld, founder], [witnessWorld, witness]]) {
+    const quest = getActiveQuest(world, actor, allRecorded);
+    assert.equal(quest.id, actor.role + '-current-trail-recorded');
+    assert.equal(quest.title, 'Current quest trail · all objectives recorded');
+    assert.equal(quest.action, 'trail');
+    assert.equal(quest.button, 'Inspect retained quest trail →');
+    assert.match(quest.copy, /not approval, truth verification, mastery, or proof of external execution/i);
+  }
+});
