@@ -199,3 +199,10 @@ The private recovery vault's manifest is a separate and larger scope than the 32
 - Direct repository lookup for `No-Gas-Labs-Official/AI-BI-Intelligence-node-gate` returned 404 through the current connected GitHub identity, consistent with `PORT_STATUS.md` saying the `ngl-damien` token cannot read Official private repositories.
 
 Therefore, the 32-repository audit is not the complete historical recovery. Continue from the local recovery manifest, archives, and recorded Official commit/blob SHAs. If a missing source file is not in those archives, the next blocker is authorized read access to the Official repository or a supplied source archive—not guessing or recreating code from a manifest. Never describe a provenance stub as a full mirror.
+
+
+## Product-readiness boundary
+
+The repository's own current report states that the world is a bounded 1600×1000 landscape with twelve creation slots, not an endless MMO. The local fixture courier does not establish live external-model-provider integration; external providers require actual enrollment and transport. Browser acceptance workflows have passed on inspected commits, but physical Android-device testing, public phone-accessible hosting, external Witness adoption, and production-scale security/load testing are not established by this audit.
+
+This means Alpha 1 is a substantive playable-world prototype with real event/evidence machinery—not yet a verified production MMORPG. The next product milestone should be one complete, repeatable player journey on a phone-sized viewport: enter the world, interact with the Guild Hall adversary, pursue an evidence-linked quest, create or inspect a retained artifact, see the exact evidence/progression consequence, and safely recover after restart/offline interruption. Each step needs observable evidence, not narrative claims.
