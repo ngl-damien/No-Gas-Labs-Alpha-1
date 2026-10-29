@@ -133,6 +133,19 @@ test("host verifier snapshots its configured public key and rejects a mismatched
   }), /FOUNDER_TRUST_FINGERPRINT_MISMATCH/);
 });
 
+test("host verifier refuses missing or malformed institution audience configuration", () => {
+  const { publicKeyJwk, expectedFingerprint } = fixture();
+  assert.throws(() => createFounderAuthorizationVerifier({
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint
+  }), /FOUNDER_TRUST_CONFIGURATION_INVALID/);
+  assert.throws(() => createFounderAuthorizationVerifier({
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: "x".repeat(129)
+  }), /FOUNDER_TRUST_CONFIGURATION_INVALID/);
+});
+
 test("persisted authorization verifier rejects accessors without executing them", () => {
   const { event, publicKeyJwk, expectedFingerprint } = fixture();
   const verifyAuthorization = createFounderAuthorizationVerifier({
