@@ -1304,5 +1304,20 @@ test('server startup indexes large retained publication, repair-method, and stud
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
 
   const server = await createGameServer({ dataDir, founderKey: KEY });
-  t.after(() => server.closeGame());
+  await server.closeGame();
+
+  // Keep the total binding count unchanged while duplicating one version and
+  // omitting another; the index must still reject ambiguous/missing identities.
+  const duplicatePayload = structuredClone(payload);
+  duplicatePayload.publicationBindings[0] = { ...duplicatePayload.publicationBindings[1] };
+  const duplicateEnvelope = {
+    schema: 'ngl.service-store.v1',
+    payload: duplicatePayload,
+    digest: artifactReceipt(canonicalStringify(duplicatePayload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(duplicateEnvelope), { mode: 0o600 });
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY }),
+    /Duplicate or missing publication binding/
+  );
 });
