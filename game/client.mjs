@@ -249,6 +249,15 @@ function openEvidenceArchive(){
   content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
   if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
 
+  const artifactLinkReason=status=>({
+    invalid:'the artifact reference is incomplete or malformed',
+    unavailable:'no matching publication is retained in this history',
+    ambiguous:'the publication reference is ambiguous',
+    'not-earlier':'the publication appears after this record in retained history',
+    'timestamp-conflict':'publication and record timestamps conflict'
+  }[status]||'the artifact link could not be verified');
+  const hasArtifactReference=entry=>(entry?.evidenceCreationId!==undefined&&entry?.evidenceCreationId!==null)||
+    (entry?.evidenceVersion!==undefined&&entry?.evidenceVersion!==null);
   const appendVersionLink=(card,creationId,version,label,projection)=>{
     if(!projection?.eventIdUnique){
       card.append(paragraph('This event ID is missing or duplicated; no artifact link is activated from this record.','evidence-warning'));
@@ -283,20 +292,13 @@ function openEvidenceArchive(){
         paragraph('Falsification condition: '+(entry.falsifier||'not recorded')),
         paragraph('Evidence required: '+(entry.evidenceNeeded||'not recorded'))
       );
-      if(entry.sourceCreationId){
+      if(entry.sourceCreationId||(entry.sourceVersion!==undefined&&entry.sourceVersion!==null)){
         if(projection?.proposalStatus==='unique'&&projection?.sourceStatus==='linked'){
           appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source',projection);
         }else{
-          const sourceStatusMessages={
-            invalid:'the source reference is incomplete or malformed',
-            unavailable:'no matching publication is retained in this history',
-            ambiguous:'the publication reference is ambiguous',
-            'not-earlier':'the publication appears after this proposal in retained history',
-            'timestamp-conflict':'publication and proposal timestamps conflict'
-          };
           const reason=projection?.proposalStatus!=='unique'
             ?'the proposal identity is ambiguous or invalid'
-            :(sourceStatusMessages[projection?.sourceStatus]||'the source link could not be verified');
+            :artifactLinkReason(projection?.sourceStatus);
           card.append(paragraph('Source link is not activated: '+reason+'.','evidence-warning'));
         }
       }else card.append(paragraph('No source artifact is linked to this proposal.','form-help'));
@@ -308,8 +310,10 @@ function openEvidenceArchive(){
         paragraph('Observation: '+(entry.observation||'not recorded')),
         paragraph('Reported outcome: '+(entry.reportedOutcome||'not supplied'))
       );
-      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence',projection);
-      else card.append(paragraph('No retained artifact is linked to this attempt; the report remains self-reported.','evidence-warning'));
+      if(hasArtifactReference(entry)){
+        if(projection?.eventIdUnique&&projection?.evidenceStatus==='linked')appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence',projection);
+        else card.append(paragraph('Evidence link is not activated: '+artifactLinkReason(projection?.evidenceStatus)+'.','evidence-warning'));
+      }else card.append(paragraph('No retained artifact is linked to this attempt; the report remains self-reported.','evidence-warning'));
     }else{
       const targetReport=projection?.targetReport||null;
       card.append(
@@ -328,8 +332,10 @@ function openEvidenceArchive(){
         paragraph('Challenge category: '+String(entry.challengeType||'other').replaceAll('-',' ')),
         paragraph('Counterargument: '+(entry.challengeText||'not recorded'))
       );
-      if(entry.evidenceCreationId)appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence',projection);
-      else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
+      if(hasArtifactReference(entry)){
+        if(projection?.eventIdUnique&&projection?.evidenceStatus==='linked')appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence',projection);
+        else card.append(paragraph('Challenge evidence link is not activated: '+artifactLinkReason(projection?.evidenceStatus)+'.','evidence-warning'));
+      }else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
     }
     card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
     card.append(node('code',{text:typeof entry.id==='string'&&entry.id?entry.id:'missing event ID'}));
