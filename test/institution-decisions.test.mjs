@@ -2,7 +2,7 @@ import test from 'node:test';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink, open } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink, open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -436,6 +436,9 @@ test('independent Node processes contend for one decision-writer lease and prese
     // The rejected contender must not remove or replace the winner's live lease.
     const liveLock = await lstat(join(directory, '.decisions.lock'));
     assert.equal(liveLock.isFile(), true);
+    const filesAfterRace = await readdir(directory);
+    assert.equal(filesAfterRace.some(name => name.startsWith('.decisions-lock-') && name.endsWith('.tmp')), false,
+      'failed contender must remove its temporary lease file');
 
     owner.child.stdin.write('commit\\n');
     assert.equal(await owner.nextLine(), 'COMMITTED', owner.stderr);
