@@ -207,6 +207,14 @@ def institutional_locations(browser,url,out):
         expect(page.locator('#sheet')).to_contain_text('A reproducible counterexample appears')
         expect(page.locator('[data-objective-id="founder-moonshot-proposal"]')).to_contain_text('RECORDED')
         close_sheet(page)
+        proposal_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
+        proposal_objective.locator('details.quest-evidence summary').click()
+        proposal_link=proposal_objective.get_by_role('button',name='Inspect moonshot proposal →',exact=True)
+        expect(proposal_link).to_be_visible()
+        proposal_link.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can this claim be falsified?')")
+        assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Quest evidence should navigate to and focus the exact retained proposal'
+        close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to moonshot proposal: Can this claim be falsified?',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can this claim be falsified?')")
@@ -225,6 +233,15 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        close_sheet(page)
+        experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
+        experiment_objective.locator('details.quest-evidence summary').click()
+        attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
+        expect(attempt_link).to_be_visible()
+        attempt_link.click()
+        page.wait_for_function("()=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&sheet.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')}")
+        attempt_record=page.locator('[data-research-activity-id]').filter(has_text='The attempt contradicted the prediction.')
+        assert attempt_record.evaluate('(element)=>element===document.activeElement'), 'Quest evidence should navigate to and focus the exact retained attempt'
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Inspect research record: Attempt · contradicts',exact=True).click()
