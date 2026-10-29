@@ -311,7 +311,7 @@ function retainedPublicationEvents(world, actorId = null, actorRole = null) {
   }
   return events.filter(event => {
     if (event?.type !== 'publish' || typeof event.id !== 'string' || !validIds.has(event.id) ||
-        typeof event.creationId !== 'string' || !Number.isInteger(event.version) ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
         !isStrictTimestamp(event.at) || typeof event.actor?.id !== 'string' || event.actor?.role !== 'founder' ||
         ((actorId !== null && event.actor.id !== actorId) || (actorRole !== null && event.actor.role !== actorRole))) return false;
     return versionCounts.get(versionKey(event.creationId, event.version, event.at)) === 1;
@@ -440,7 +440,7 @@ export function getQuestTrail(world, viewer) {
     if (!creation || typeof creation.id !== 'string') continue;
     const priorVersions = trailRows(creation.versions);
     for (const version of priorVersions) {
-      if (!Number.isInteger(version?.version)) continue;
+      if (!Number.isSafeInteger(version?.version) || version.version < 1) continue;
       const currentMinimum = minimumPriorVersionByCreation.get(creation.id);
       if (!Number.isInteger(currentMinimum) || version.version < currentMinimum) {
         minimumPriorVersionByCreation.set(creation.id, version.version);
