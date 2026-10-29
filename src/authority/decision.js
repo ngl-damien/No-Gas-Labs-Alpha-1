@@ -141,6 +141,20 @@ function snapshotSignedReceipt(signed) {
   });
 }
 
+function snapshotPublicKeyJwk(value) {
+  const raw = snapshotDataObject(value, ["kty", "crv", "x", "y"]);
+  if (!raw || raw.kty !== "EC" || raw.crv !== "P-256") return null;
+  for (const coordinate of [raw.x, raw.y]) {
+    if (typeof coordinate !== "string") return null;
+    const bytes = Buffer.from(coordinate, "base64url");
+    if (bytes.length !== 32 || bytes.toString("base64url") !== coordinate) return null;
+  }
+  // This verifier's declared scheme is ECDSA P-256 with SHA-256. Requiring
+  // exactly the four public JWK fields prevents accessors, private-key fields,
+  // and algorithm/curve ambiguity from crossing the crypto boundary.
+  return Object.freeze({ kty: "EC", crv: "P-256", x: raw.x, y: raw.y });
+}
+
 export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
   const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id"]);
   if (!proposalFields || !isIdentifier(proposalFields.event_id) || proposalFields.type !== "PROPOSAL") {
@@ -199,8 +213,11 @@ export function verifyFounderDecision({ signed, payload, public_key_jwk, expecte
   if (!Number.isFinite(now)) return rejected("VERIFICATION_TIME_INVALID");
   if (now >= Date.parse(decision.expires_at)) return rejected("DECISION_EXPIRED");
 
+  const publicKeyJwk = snapshotPublicKeyJwk(public_key_jwk);
+  if (!publicKeyJwk) return rejected("SIGNATURE_INVALID");
+
   try {
-    const key = createPublicKey({ key: public_key_jwk, format: "jwk" });
+    const key = createPublicKey({ key: publicKeyJwk, format: "jwk" });
     const actualFingerprint = createHash("sha256")
       .update(key.export({ type: "spki", format: "der" }))
       .digest("hex");
