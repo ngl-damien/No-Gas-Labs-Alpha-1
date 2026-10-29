@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
-import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -1152,6 +1152,157 @@ test('server startup indexes large interleaved retained proposal/report history'
     digest: artifactReceipt(canonicalStringify(payload)).digest
   };
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+  const server = await createGameServer({ dataDir, founderKey: KEY });
+  t.after(() => server.closeGame());
+});
+
+
+test('server startup indexes large retained publication, repair-method, and study histories', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-publication-history-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+
+  const versionCount = 600;
+  const createdAt = '2026-10-01T00:00:00.000Z';
+  const origin = Date.parse(createdAt);
+  const html = '<!doctype html><html><body>indexed retained history</body></html>';
+  const htmlBytes = Buffer.from(html, 'utf8');
+  const receipt = artifactReceipt(htmlBytes);
+  const creationId = 'creation-indexed-history';
+  const title = 'Indexed retained artifact';
+  const intent = 'Synthetic retained-history fixture for validation indexing.';
+  const position = { x: 200, y: 200 };
+  const checks = [{ id: 'document-structure', passed: true }];
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witness = { id: 'history-witness', name: 'History witness', role: 'witness' };
+  const semantics = 'Synthetic retained history fixture; no external truth claim.';
+  const methodSemantics = 'Earned game method: a retained, checked repair; no external truth or authority claim.';
+  const gameEvents = [];
+  const methods = [];
+  const publishedAt = new Map();
+  let tick = 0;
+
+  for (let version = 1; version <= versionCount; version += 1) {
+    if (version > 1) {
+      const at = new Date(origin + (++tick)).toISOString();
+      gameEvents.push({
+        id: 'event-repair-' + version, type: 'repair', actor: founder, at,
+        creationId, draftId: 'repair-draft-' + version, baseVersion: version - 1, semantics
+      });
+    }
+
+    const publicationTime = new Date(origin + (++tick)).toISOString();
+    publishedAt.set(version, publicationTime);
+    gameEvents.push({
+      id: 'event-publish-' + version, type: 'publish', actor: founder, at: publicationTime,
+      creationId, version, reward: 100, semantics
+    });
+
+    if (version > 1) {
+      methods.push({
+        id: 'method-' + version, creationId, version,
+        title: 'Repair ' + title + ' · v' + version,
+        description: intent, actor: founder, at: publicationTime, semantics: methodSemantics
+      });
+    }
+
+    const studyTime = new Date(origin + (++tick)).toISOString();
+    gameEvents.push({
+      id: 'event-study-' + version, type: 'study', actor: witness, at: studyTime,
+      studyId: 'study-' + version, creationId, version,
+      question: 'What is evidenced?',
+      attempt: 'The retained bytes can be checked.',
+      nextCheck: 'Seek independent evidence.',
+      semantics
+    });
+  }
+
+  const snapshots = [];
+  for (let version = 1; version <= versionCount; version += 1) {
+    snapshots.push({
+      id: creationId, kind: 'custom', title, intent, html, receipt, version,
+      position, checks, publishedAt: publishedAt.get(version)
+    });
+  }
+  const creation = {
+    ...snapshots[versionCount - 1],
+    versions: snapshots.slice(0, -1)
+  };
+  const world = {
+    schema: 'ngl.world.v2',
+    id: 'world-indexed-publication-history',
+    founderName: 'Damien Featherstone',
+    revision: gameEvents.length,
+    xp: versionCount * 100,
+    createdAt,
+    updatedAt: gameEvents.at(-1).at,
+    creations: [creation],
+    drafts: [],
+    events: gameEvents,
+    contributions: [],
+    reports: [],
+    discoveries: [],
+    methods
+  };
+
+  const config = {
+    founderId: 'damien',
+    actors: [
+      { id: 'damien', roles: ['founder'], kind: 'human' },
+      { id: 'local-forge', roles: ['executor'], kind: 'local-process' },
+      { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
+    ]
+  };
+  const artifactMap = new Map([[receipt.digest, htmlBytes]]);
+  let kernel = replayKernel([], config, { artifacts: artifactMap });
+  const publicationBindings = [];
+
+  for (let version = 1; version <= versionCount; version += 1) {
+    const workId = 'history-publication-' + version;
+    const grantId = 'history-grant-' + version;
+    const executionId = 'history-execution-' + version;
+    const at = new Date(origin + versionCount * 10 + version * 10).toISOString();
+    const subject = { id: creationId, version };
+    const outputs = [receipt];
+    const append = (type, actor, fields) => {
+      const event = {
+        id: 'institution-' + version + '-' + type,
+        type, actor, at, expectedRevision: kernel.revision, workId, ...fields
+      };
+      kernel = applyEvent(kernel, event, { artifacts: artifactMap });
+      return event;
+    };
+
+    append('claim', 'local-forge', { subject, action: 'preserve-artifact-bytes' });
+    append('authorize', 'damien', {
+      grantId, executorId: 'local-forge', observerId: 'local-byte-verifier',
+      scope: { subjectId: subject.id, subjectVersion: subject.version, action: 'preserve-artifact-bytes' }
+    });
+    append('execute', 'local-forge', { grantId, executionId, subject, outputs });
+    const observed = append('observe', 'local-byte-verifier', {
+      grantId, executionId, subject, outputs, passed: true,
+      checks: [{ id: 'exact-local-bytes', passed: true, detail: 'Synthetic exact-byte verification.' }]
+    });
+    append('adjudicate', 'damien', {
+      grantId, executionId, subject, outputs, observationId: observed.id, decision: 'accept'
+    });
+    publicationBindings.push({
+      creationId, version, digest: receipt.digest, size: receipt.size, workId
+    });
+  }
+
+  const payload = {
+    world,
+    institutionalEvents: kernel.events,
+    artifacts: { [receipt.digest]: htmlBytes.toString('base64') },
+    publicationBindings
+  };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
 });
