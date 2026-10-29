@@ -571,6 +571,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     return {
       schema: 'ngl.shared-institution-summary.v1',
       kernel: { schema: kernel.schema, revision: kernel.revision, eventCount: kernel.events.length, actors: CONFIG.actors, accepted: Object.values(kernel.works).filter(work => work.stage === 'accepted').map(work => ({ workId: work.id, subject: work.subject, action: work.action, stage: work.stage, outputs: work.outputs, executorId: 'local-forge', observerId: work.observedBy, adjudicatedBy: 'damien' })), events: kernel.events },
+      decisionSummary: decisions.summary(),
       capabilities: { externalProviders: { configured: false, detail: 'No authenticated external AI providers are configured by this service.' }, courier: { available: true, configured: false, detail: 'Signed file courier is available through the CLI; this server does not dispatch external providers.' }, forge: { available: true, transport: 'local-cli', ...forge, detail: 'Bounded local-process Forge CLI is available; no shell commands are accepted by HTTP.' } },
       limitations: ['The executor and byte verifier are distinct local process identities in one service, not independent humans or independent AI providers.', 'Accepted preservation verifies exact published bytes; it does not establish usefulness, truth, demand, revenue or public deployment.']
     };
@@ -758,7 +759,13 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
           fail('STREAM_LIMIT', 'Too many active streams.', 429);
         }
         session = sessionFor(request, response);
-        if (path === '/api/decisions') return json(response, 200, await decisions.snapshot({ id: session.actor.id, role: session.actor.role }));
+        if (path === '/api/decisions') {
+          const before = decisions.summary();
+          const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
+          const after = decisions.summary();
+          if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
+          return json(response, 200, snapshot);
+        }
         if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
@@ -820,7 +827,11 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
             const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
-            return json(response, 200, await decisions[method]({ id: session.actor.id, role: session.actor.role }, input));
+            const before = decisions.summary();
+            const result = await decisions[method]({ id: session.actor.id, role: session.actor.role }, input);
+            const after = decisions.summary();
+            if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
+            return json(response, 200, result);
           } catch (error) {
             if (error.code) {
               error.status = /FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code) ? 403
