@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getActiveQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
+import {getQuest,getActiveQuest,getQuestTrail,getLocationAction,findStudyReview} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -463,4 +463,42 @@ test('a Witness-labelled publish event cannot manufacture canonical published-wo
 
   assert.equal(getQuestTrail(world, witness).find(item => item.id === 'witness-work-available').progress, 0);
   assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').progress, 0);
+});
+
+test('study review lookup requires one later review bound to the exact source version', () => {
+  const study = {
+    id: 'study-event-1', type: 'study', studyId: 'study-1',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: founder, question: 'What changed?', attempt: 'Compare the versions.',
+    nextCheck: 'Reproduce the comparison.'
+  };
+  const valid = {
+    id: 'review-event-1', type: 'study-reviewed', reviewId: 'review-1',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    response: 'The earlier version lacks the measured field.',
+    reflection: 'Repeat the check against the retained bytes.'
+  };
+  assert.equal(findStudyReview(study, [valid]), valid);
+
+  const invalidReviews = [
+    { ...valid, version: 1 },
+    { ...valid, creationId: 'other-source' },
+    { ...valid, actor: witness },
+    { ...valid, at: '2026-10-29T11:59:59.000Z' },
+    { ...valid, at: '2026-02-30T12:01:00.000Z' },
+    { ...valid, response: '   ' },
+    { ...valid, reflection: '   ' }
+  ];
+  for (const invalid of invalidReviews) {
+    assert.equal(findStudyReview(study, [invalid]), null);
+  }
+
+  assert.equal(findStudyReview(study, [
+    valid, { ...valid, id: 'review-event-2', reviewId: 'review-2' }
+  ]), null, 'two reviews for one study are ambiguous');
+  assert.equal(findStudyReview(study, [
+    valid, { ...valid, id: valid.id, reviewId: 'review-2' }
+  ]), null, 'duplicate event IDs are ambiguous');
+  assert.equal(findStudyReview({ ...study, at: '2026-10-29' }, [valid]), null);
 });
