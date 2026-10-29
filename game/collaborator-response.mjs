@@ -176,7 +176,7 @@ function validateRoleResponse(payload, response) {
         !exactKeys(response.scope, ['moonshotId', 'includedEventIds', 'omittedEventIds']) ||
         response.scope.moonshotId !== payload.targetMoonshotId ||
         !exactStringIds(response.scope.includedEventIds, inputIds) ||
-        !exactStringIds(response.scope.omittedEventIds, omittedIds) ||
+        !exactStringIds(response.scope.omittedEventIds, omittedIds, { maximum: omittedIds.size }) ||
         !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
         !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
         !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
