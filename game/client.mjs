@@ -283,8 +283,23 @@ function openEvidenceArchive(){
         paragraph('Falsification condition: '+(entry.falsifier||'not recorded')),
         paragraph('Evidence required: '+(entry.evidenceNeeded||'not recorded'))
       );
-      if(entry.sourceCreationId)appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source',projection);
-      else card.append(paragraph('No source artifact is linked to this proposal.','form-help'));
+      if(entry.sourceCreationId){
+        if(projection?.proposalStatus==='unique'&&projection?.sourceStatus==='linked'){
+          appendVersionLink(card,entry.sourceCreationId,entry.sourceVersion,'source',projection);
+        }else{
+          const sourceStatusMessages={
+            invalid:'the source reference is incomplete or malformed',
+            unavailable:'no matching publication is retained in this history',
+            ambiguous:'the publication reference is ambiguous',
+            'not-earlier':'the publication appears after this proposal in retained history',
+            'timestamp-conflict':'publication and proposal timestamps conflict'
+          };
+          const reason=projection?.proposalStatus!=='unique'
+            ?'the proposal identity is ambiguous or invalid'
+            :(sourceStatusMessages[projection?.sourceStatus]||'the source link could not be verified');
+          card.append(paragraph('Source link is not activated: '+reason+'.','evidence-warning'));
+        }
+      }else card.append(paragraph('No source artifact is linked to this proposal.','form-help'));
     }else if(entry.type==='experiment-reported'){
       card.append(
         node('h3',{text:'Experiment report · '+proposalTitle}),
