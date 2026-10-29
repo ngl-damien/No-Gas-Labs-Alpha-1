@@ -186,6 +186,75 @@ test('research quests target the exact proposal or retained report they need', (
   });
 });
 
+test('research quest targets the latest appended eligible records even when their timestamps are backdated', () => {
+  const proposals = experimentQuestWorld();
+  proposals.events = proposals.events.filter(event => event.type !== 'experiment-reported');
+  proposals.events.push({
+    id: 'proposal-2', type: 'moonshot-proposed', moonshotId: 'moon-2',
+    actor: founder, at: '2026-10-28T17:00:30.000Z', title: 'Second retained question',
+    hypothesis: 'A second bounded hypothesis', falsifier: 'An observable counterexample',
+    evidenceNeeded: 'A retained source or independent observation'
+  });
+  const attempt = getQuestTrail(proposals, founder)
+    .find(item => item.id === 'founder-experiment-report');
+  assert.deepEqual(attempt.action, {
+    type: 'research-object', id: 'moonshot-object:moon-2', moonshotId: 'moon-2'
+  }, 'the latest appended proposal is the target even when its timestamp is earlier');
+
+  const reports = experimentQuestWorld();
+  reports.events.push({
+    id: 'report-event-2', type: 'experiment-reported', reportId: 'report-2',
+    moonshotId: 'moon-1', actor: founder, at: '2026-10-28T17:02:00.000Z',
+    procedure: 'Repeat the bounded procedure', observation: 'The second report remains inconclusive',
+    reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+  });
+  const challenge = getQuestTrail(reports, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.deepEqual(challenge.action, {
+    type: 'research-activity', id: 'research-activity:report-event-2',
+    moonshotId: 'moon-1', activityId: 'report-2'
+  }, 'the newest appended other-actor report is the challenge target, not the oldest');
+});
+
+test('quest projection preserves exact evidence joins across a large retained history', () => {
+  const world = experimentQuestWorld();
+  const unrelated = Array.from({ length: 300 }, (_, index) => ({
+    id: 'unrelated-' + index,
+    type: 'unrelated',
+    actor: founder,
+    at: '2026-10-28T16:00:00.000Z'
+  }));
+  world.events = [...unrelated, ...world.events];
+
+  for (let index = 0; index < 300; index += 1) {
+    const at = new Date(Date.parse('2026-10-28T17:04:00.000Z') + index * 1000).toISOString();
+    world.contributions.push({
+      id: 'note-' + index,
+      creationId: 'evidence-1',
+      version: 1,
+      text: 'Retained field note ' + index,
+      actor: founder,
+      at
+    });
+    world.events.push({
+      id: 'note-event-' + index,
+      type: 'contribute',
+      creationId: 'evidence-1',
+      version: 1,
+      actor: founder,
+      at
+    });
+  }
+
+  const trail = getQuestTrail(world, founder);
+  const fieldNote = trail.find(item => item.id === 'founder-field-note');
+  assert.equal(fieldNote.complete, true);
+  assert.equal(fieldNote.evidence.length, 300, 'all unique note/event pairs remain visible');
+  assert.equal(new Set(fieldNote.evidence).size, 300, 'no note event is counted twice');
+  assert.equal(trail.find(item => item.id === 'founder-experiment-evidence').complete, true,
+    'indexed chronology still accepts the one retained publication preceding its report');
+});
+
 test('moonshot evidence objective rejects future-in-history and ambiguous publication references', () => {
   const after = getQuestTrail(experimentQuestWorld({ publicationAfterReport: true }), founder)
     .find(item => item.id === 'founder-experiment-evidence');
@@ -247,6 +316,154 @@ test('challenge quest requires canonical chronology even when report attribution
     .find(item => item.id === 'witness-challenge-experiment-report');
   assert.equal(rejected.complete, false);
   assert.equal(rejected.progress, 0);
+});
+
+test('challenge evidence is blocked when retained version identity is ambiguous', () => {
+  const world = experimentQuestWorld();
+  const creation = world.creations[0];
+  creation.versions.push({
+    ...creation,
+    versions: [],
+    publishedAt: '2026-10-28T17:00:30.000Z'
+  });
+  world.events.push({
+    id: 'challenge-ambiguous-version-event',
+    type: 'experiment-challenged',
+    challengeId: 'challenge-ambiguous-version',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-29T12:00:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The cited retained version is ambiguous.',
+    evidenceCreationId: 'evidence-1',
+    evidenceVersion: 1
+  });
+
+  const challenge = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(challenge.complete, false);
+  assert.equal(challenge.progress, 0,
+    'a challenge cannot choose one of multiple retained objects sharing the same version identity');
+});
+
+test('quest preserve-version objective requires an actual earlier retained snapshot', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const current = {
+    id: 'creation-without-prior',
+    kind: 'loom',
+    title: 'Current version only',
+    version: 2,
+    publishedAt,
+    receipt: { digest: 'b'.repeat(64), size: 12 },
+    versions: []
+  };
+  const withoutPrior = {
+    creations: [current],
+    events: [{
+      id: 'publish-current-only',
+      type: 'publish',
+      creationId: current.id,
+      version: 2,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const blocked = getQuestTrail(withoutPrior, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(blocked.complete, false);
+  assert.equal(blocked.progress, 0);
+
+  const withPrior = structuredClone(withoutPrior);
+  const creation = withPrior.creations[0];
+  creation.versions.push({
+    ...creation,
+    version: 1,
+    publishedAt: '2026-10-28T16:59:00.000Z',
+    versions: []
+  });
+  withPrior.events.unshift({
+    id: 'publish-retained-prior',
+    type: 'publish',
+    creationId: creation.id,
+    version: 1,
+    at: '2026-10-28T16:59:00.000Z',
+    actor: founder
+  });
+  const preserved = getQuestTrail(withPrior, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(preserved.complete, true);
+  assert.equal(preserved.progress, 1);
+});
+
+test('quest projection rejects a publication with a non-positive retained version', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const world = {
+    creations: [{
+      id: 'invalid-version-source',
+      kind: 'observatory',
+      title: 'Malformed source',
+      version: 0,
+      publishedAt,
+      receipt: { digest: 'c'.repeat(64), size: 12 },
+      versions: []
+    }],
+    events: [{
+      id: 'publish-version-zero',
+      type: 'publish',
+      creationId: 'invalid-version-source',
+      version: 0,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const observatory = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-observatory');
+  assert.equal(observatory.complete, false);
+  assert.equal(observatory.progress, 0);
+});
+
+test('quest preserve-version objective ignores invalid prior version numbers', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const creation = {
+    id: 'creation-with-invalid-prior',
+    kind: 'loom',
+    title: 'Current version',
+    version: 2,
+    publishedAt,
+    receipt: { digest: 'd'.repeat(64), size: 12 },
+    versions: [{
+      id: 'creation-with-invalid-prior',
+      version: -1,
+      publishedAt: '2026-10-28T16:59:00.000Z',
+      receipt: { digest: 'e'.repeat(64), size: 12 },
+      versions: []
+    }]
+  };
+  const world = {
+    creations: [creation],
+    events: [{
+      id: 'publish-current-with-invalid-prior',
+      type: 'publish',
+      creationId: creation.id,
+      version: 2,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const preserve = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(preserve.complete, false);
+  assert.equal(preserve.progress, 0);
 });
 
 function academyQuestWorld(publicationFirst) {
