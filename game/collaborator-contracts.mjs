@@ -63,8 +63,8 @@ const ROLE_SPECS = Object.freeze([
     name: 'Synthesis Clerk',
     objective: 'Compare a proposal with a bounded slice of its attempts and dissent. Preserve contradictions and disclose omitted history.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to synthesize.',
-    outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[],"contradictions":[],"dissentPreserved":[],"unknowns":[],"nextDiscriminatingExperiment":{}}',
-    task: 'Synthesize only the supplied records. Preserve failed and inconclusive attempts, contradictory observations, and dissent as separate items. Do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify omitted event IDs.'
+    outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[],"contradictions":[],"dissentPreserved":["included challenge event IDs only"],"unknowns":[],"nextDiscriminatingExperiment":{}}',
+    task: 'Synthesize only the supplied records. Preserve failed and inconclusive attempts and contradictory observations as separate items. In dissentPreserved, return only exact event IDs of experiment-challenged records included in inputRecords; never invent IDs, use report/proposal IDs, or claim omitted challenges were inspected. Do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify omitted event IDs.'
   },
   {
     id: 'tutor',
