@@ -63,6 +63,36 @@ test('proposal source links require one earlier publication with consistent time
   assert.equal(status([proposal({ sourceCreationId: 'source-1' })]), 'invalid');
 });
 
+test('report and challenge evidence links require unique earlier publications', () => {
+  const evidence = { evidenceCreationId: 'source-1', evidenceVersion: 1 };
+  const byId = events => new Map(projectResearchRecords(events).map(event => [event.id, event]));
+  const linked = byId([publication(), proposal(), report(evidence), challenge(evidence)]);
+  assert.equal(linked.get('report-event-1')._projection.evidenceStatus, 'linked');
+  assert.equal(linked.get('challenge-event-1')._projection.evidenceStatus, 'linked');
+
+  const future = byId([proposal(), report(evidence), publication()]);
+  assert.equal(future.get('report-event-1')._projection.evidenceStatus, 'not-earlier');
+
+  const timestampConflict = byId([
+    publication({ at: '2026-10-28T18:00:00.000Z' }),
+    proposal(),
+    report(evidence),
+    challenge(evidence)
+  ]);
+  assert.equal(timestampConflict.get('report-event-1')._projection.evidenceStatus, 'timestamp-conflict');
+  assert.equal(timestampConflict.get('challenge-event-1')._projection.evidenceStatus, 'timestamp-conflict');
+
+  const duplicate = byId([
+    publication(),
+    publication({ id: 'publish-source-2' }),
+    proposal(),
+    report(evidence),
+    challenge(evidence)
+  ]);
+  assert.equal(duplicate.get('report-event-1')._projection.evidenceStatus, 'ambiguous');
+  assert.equal(duplicate.get('challenge-event-1')._projection.evidenceStatus, 'ambiguous');
+});
+
 test('unique, earlier research records receive only explicit chronological links', () => {
   const projected = projectResearchRecords([proposal(), report(), challenge()]);
   const byId = new Map(projected.map(event => [event.id, event]));
