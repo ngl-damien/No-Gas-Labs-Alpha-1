@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 import assert from 'node:assert/strict';
 import { chmod, lstat, mkdtemp, readFile, writeFile, mkdir, rename, rm, symlink, open } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -357,6 +359,105 @@ test('rejects broken record-chain links and does not leave a lock after failed r
   await writeFile(file, original);
   const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
   await recovered.close();
+});
+
+test('independent Node processes contend for one decision-writer lease and preserve the durable ledger', { timeout: 15000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-cross-process-'));
+  const moduleUrl = new URL('../src/institution/decisions.mjs', import.meta.url).href;
+  const workerScript = `
+    import { openDecisions } from ${JSON.stringify(moduleUrl)};
+    import { createInterface } from 'node:readline';
+    const directory = process.env.NGL_DECISIONS_TEST_DIR;
+    try {
+      const store = await openDecisions({ directory, now: () => ${instant} });
+      console.log('ACQUIRED');
+      for await (const line of createInterface({ input: process.stdin })) {
+        if (line === 'commit') {
+          await store.setPolicy(${JSON.stringify(founder)}, ${JSON.stringify(policy)});
+          console.log('COMMITTED');
+        } else if (line === 'close') {
+          await store.close();
+          console.log('RELEASED');
+          break;
+        }
+      }
+    } catch (error) {
+      console.log('ERROR:' + (error.code || error.name || 'UNKNOWN'));
+      process.exitCode = 0;
+    }
+  `;
+
+  const workers = [];
+  const startWorker = () => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', workerScript], {
+      env: { ...process.env, NGL_DECISIONS_TEST_DIR: directory },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const lines = [];
+    const waiters = [];
+    let stderr = '';
+    const reader = createInterface({ input: child.stdout });
+    reader.on('line', line => {
+      const waiter = waiters.shift();
+      if (waiter) waiter(line);
+      else lines.push(line);
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const exit = new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal, stderr })));
+    const nextLine = () => lines.length
+      ? Promise.resolve(lines.shift())
+      : new Promise((resolve, reject) => {
+          waiters.push(resolve);
+          child.once('error', reject);
+        });
+    const worker = { child, nextLine, exit, get stderr() { return stderr; } };
+    workers.push(worker);
+    return worker;
+  };
+
+  try {
+    // Launch both independently so the filesystem's exclusive hard-link
+    // publication, rather than an in-process queue, decides who owns the lease.
+    const first = startWorker();
+    const second = startWorker();
+    const outcomes = await Promise.all([first.nextLine(), second.nextLine()]);
+    assert.deepEqual(
+      [...outcomes].sort(),
+      ['ACQUIRED', 'ERROR:DECISIONS_LOCKED'].sort(),
+      'exactly one process must acquire the writer lease'
+    );
+
+    const owner = outcomes[0] === 'ACQUIRED' ? first : second;
+    const contender = owner === first ? second : first;
+    const rejected = await contender.exit;
+    assert.equal(rejected.code, 0, rejected.stderr);
+    assert.match(contender.stderr, /^$/);
+
+    owner.child.stdin.write('commit\\n');
+    assert.equal(await owner.nextLine(), 'COMMITTED', owner.stderr);
+    owner.child.stdin.write('close\\n');
+    assert.equal(await owner.nextLine(), 'RELEASED', owner.stderr);
+    const ownerExit = await owner.exit;
+    assert.equal(ownerExit.code, 0, ownerExit.stderr);
+
+    // Reopen in the parent process: the single winning writer's committed
+    // policy must survive process exit and release of the lock.
+    const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
+    try {
+      const state = await recovered.snapshot(founder);
+      assert.equal(state.policy.id, policy.id);
+      assert.equal(state.revision, 1);
+    } finally {
+      await recovered.close();
+    }
+  } finally {
+    for (const worker of workers) {
+      if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill('SIGKILL');
+    }
+    await Promise.allSettled(workers.map(worker => worker.exit));
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('one-writer lock is exclusive and stale locks require explicit manual recovery', async t => {
