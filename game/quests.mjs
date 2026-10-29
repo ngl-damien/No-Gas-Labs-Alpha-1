@@ -432,6 +432,19 @@ export function getQuestTrail(world, viewer) {
   const creationById = new Map(trailRows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string')
     .map(creation => [creation.id, creation]));
+  // Challenge evidence must resolve to one retained version, not whichever
+  // duplicate version happens to appear first in a creation's array.
+  const retainedVersionsByCreationAndVersion = new Map();
+  for (const creation of trailRows(world?.creations)) {
+    if (!creation || typeof creation.id !== 'string') continue;
+    for (const version of [...trailRows(creation.versions), creation]) {
+      if (!Number.isSafeInteger(version?.version) || version.version < 1) continue;
+      const key = JSON.stringify([creation.id, version.version]);
+      const matches = retainedVersionsByCreationAndVersion.get(key) || [];
+      matches.push(version);
+      retainedVersionsByCreationAndVersion.set(key, matches);
+    }
+  }
   const observatoryPublications = distinctCreationEvents(myPublications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   ));
@@ -557,10 +570,13 @@ export function getQuestTrail(world, viewer) {
       (event.evidenceVersion === undefined || event.evidenceVersion === null)
     );
     const creation = creationById.get(event.evidenceCreationId);
-    const version = creation && [creation, ...trailRows(creation.versions)]
-      .find(item => item?.version === event.evidenceVersion);
+    const versions = retainedVersionsByCreationAndVersion.get(
+      JSON.stringify([event.evidenceCreationId, event.evidenceVersion])
+    ) || [];
+    const version = versions.length === 1 ? versions[0] : null;
     const eventPosition = eventPositionByReference.get(event);
-    return Boolean(version && isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
+    return Boolean(creation && version && version.id === creation.id &&
+      isStrictTimestamp(version.publishedAt) && isStrictTimestamp(event.at) &&
       Date.parse(version.publishedAt) <= Date.parse(event.at) &&
       hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
   };
