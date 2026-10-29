@@ -179,6 +179,33 @@ test('records with missing or invalid timestamps stay visible without invented l
   assert.equal(projected.find(event => event.type === 'experiment-challenged')._projection.targetReport, null);
 });
 
+test('chronology accepts only canonical UTC timestamps with real calendar dates', () => {
+  const invalidTimes = [
+    '1',
+    '2026-10-28',
+    '2026-10-28T17:00:00Z',
+    '2026-02-30T17:00:00.000Z',
+    'October 28, 2026'
+  ];
+
+  for (const at of invalidTimes) {
+    const invalidProposal = project([proposal({ at }), report(), challenge()]);
+    assert.equal(invalidProposal.find(event => event.type === 'moonshot-proposed')._projection.proposalStatus, 'ambiguous', at);
+    assert.equal(invalidProposal.find(event => event.type === 'experiment-reported')._projection.proposal, null, at);
+
+    const invalidReport = project([proposal(), report({ at }), challenge()]);
+    assert.equal(invalidReport.find(event => event.type === 'experiment-reported')._projection.proposal, null, at);
+    assert.equal(invalidReport.find(event => event.type === 'experiment-challenged')._projection.targetReport, null, at);
+
+    const invalidChallenge = project([proposal(), report(), challenge({ at })]);
+    assert.equal(invalidChallenge.find(event => event.type === 'experiment-challenged')._projection.targetReport, null, at);
+  }
+
+  const valid = project([proposal(), report(), challenge()]);
+  assert.equal(valid.find(event => event.type === 'experiment-reported')._projection.proposalStatus, 'linked');
+  assert.equal(valid.find(event => event.type === 'experiment-challenged')._projection.targetReportStatus, 'linked');
+});
+
 test('duplicate challenge identity cannot establish a target report', () => {
   const projected = project([
     proposal(),
