@@ -121,7 +121,7 @@ function validOmissionDisclosure(payload) {
   const includedIds = new Set(payload.inputRefs);
   const seen = new Set();
   for (const id of omitted) {
-    if (typeof id !== 'string' || id.length === 0 || id.length > MAX_PACKET_ID_CHARS ||
+    if (typeof id !== 'string' || id.length === 0 || Array.from(id).length > MAX_PACKET_ID_CHARS ||
         id.trim() !== id || includedIds.has(id) || seen.has(id)) return false;
     seen.add(id);
   }
