@@ -164,17 +164,23 @@ test('ambiguous, unlinked, out-of-order and same-actor records cannot inflate mo
   ]);
 });
 
-test('linked attempt evidence must match one retained published version at report time', () => {
-  const events = [
-    proposal('proposal-evidence', 'moon-evidence'),
-    experimentReport('valid-linked-event', 'valid-linked-report', 'moon-evidence', 'witness-1', '2026-10-28T17:02:00.000Z', {
-      evidenceCreationId: 'artifact-1', evidenceVersion: 1,
-    }),
-    experimentReport('missing-linked-event', 'missing-linked-report', 'moon-evidence', 'witness-2', '2026-10-28T17:03:00.000Z', {
-      evidenceCreationId: 'artifact-1', evidenceVersion: 9,
-    }),
-  ];
-  const world = {
+test('linked attempt evidence requires a unique earlier Founder publication event matching the retained version', () => {
+  const proposalEvent = proposal('proposal-evidence', 'moon-evidence');
+  const publicationEvent = {
+    id: 'publish-artifact-1',
+    type: 'publish',
+    creationId: 'artifact-1',
+    version: 1,
+    actor: { id: 'damien', role: 'founder' },
+    at: '2026-10-28T17:00:00.000Z',
+  };
+  const validReport = experimentReport('valid-linked-event', 'valid-linked-report', 'moon-evidence', 'witness-1', '2026-10-28T17:02:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 1,
+  });
+  const missingVersionReport = experimentReport('missing-linked-event', 'missing-linked-report', 'moon-evidence', 'witness-2', '2026-10-28T17:03:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 9,
+  });
+  const world = events => ({
     events,
     creations: [{
       id: 'artifact-1',
@@ -182,10 +188,46 @@ test('linked attempt evidence must match one retained published version at repor
       publishedAt: '2026-10-28T17:00:30.000Z',
       versions: [{ id: 'artifact-1', version: 1, publishedAt: '2026-10-28T17:00:00.000Z' }],
     }],
+  });
+  const valid = projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, validReport, missingVersionReport]))[0];
+  assert.equal(valid.attemptCount, 1);
+  assert.equal(valid.challengeCount, 0);
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, validReport]))[0].attemptCount, 0,
+    'a retained version without a publication event is not an active evidence link');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, { ...publicationEvent, at: '2026-10-28T17:00:01.000Z' }, validReport]))[0].attemptCount, 0,
+    'publication time must match the retained version');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, { ...publicationEvent, actor: { id: 'witness-9', role: 'witness' } }, validReport]))[0].attemptCount, 0,
+    'a Witness-attributed publication cannot activate the link');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, { ...publicationEvent, id: 'publish-artifact-2' }, validReport]))[0].attemptCount, 0,
+    'duplicate publication references are ambiguous');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, validReport, publicationEvent]))[0].attemptCount, 0,
+    'publication must precede the report in append-only history');
+});
+
+test('challenge evidence uses the same publication-event gate as attempt evidence', () => {
+  const proposalEvent = proposal('proposal-challenge-evidence', 'moon-challenge-evidence');
+  const reportEvent = experimentReport('report-event-challenge-evidence', 'report-challenge-evidence', 'moon-challenge-evidence', 'witness-1', '2026-10-28T17:01:00.000Z');
+  const challengeEvent = experimentChallenge('challenge-event-evidence', 'challenge-evidence', 'report-challenge-evidence', 'moon-challenge-evidence', 'witness-2', '2026-10-28T17:02:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 1,
+  });
+  const publicationEvent = {
+    id: 'publish-challenge-evidence',
+    type: 'publish',
+    creationId: 'artifact-1',
+    version: 1,
+    actor: { id: 'damien', role: 'founder' },
+    at: '2026-10-28T17:00:30.000Z',
   };
-  const [object] = projectMoonshotWorldObjects(world);
-  assert.equal(object.attemptCount, 1);
-  assert.equal(object.challengeCount, 0);
+  const world = events => ({
+    events,
+    creations: [{ id: 'artifact-1', version: 1, publishedAt: '2026-10-28T17:00:30.000Z', versions: [] }],
+  });
+  const withoutPublication = projectMoonshotWorldObjects(world([proposalEvent, reportEvent, challengeEvent]))[0];
+  assert.equal(withoutPublication.attemptCount, 1);
+  assert.equal(withoutPublication.challengeCount, 0);
+  const withPublication = projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, reportEvent, challengeEvent]))[0];
+  assert.equal(withPublication.attemptCount, 1);
+  assert.equal(withPublication.challengeCount, 1);
 });
 
 test('adding retained research activity changes only the matching object counts, not its identity or position', () => {
