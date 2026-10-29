@@ -1114,3 +1114,44 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
   assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
 });
+
+
+test('server startup indexes large interleaved retained proposal/report history', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const world = createWorld({ id: 'indexed-server-history', now: '2026-10-01T00:00:00.000Z' });
+  const actor = { id: 'history-witness', name: 'History witness', role: 'witness' };
+  const events = [];
+  const origin = Date.parse(world.createdAt);
+  for (let index = 0; index < 1000; index += 1) {
+    const moonshotId = `server-moonshot-${index}`;
+    events.push({
+      id: `server-proposal-event-${index}`, type: 'moonshot-proposed', actor,
+      at: new Date(origin + index * 2000 + 1).toISOString(),
+      semantics: 'Research proposal only; not executed.', moonshotId,
+      title: 'Bounded proposal', hypothesis: 'A falsifiable hypothesis',
+      falsifier: 'An observable counterexample', evidenceNeeded: 'A retained source',
+      sourceCreationId: null, sourceVersion: null
+    });
+    events.push({
+      id: `server-report-event-${index}`, type: 'experiment-reported', actor,
+      at: new Date(origin + index * 2000 + 1001).toISOString(),
+      semantics: 'Self-reported attempt; not adjudicated.',
+      reportId: `server-report-${index}`, moonshotId,
+      procedure: 'Repeat the stated procedure', observation: 'Record what occurred',
+      reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+    });
+  }
+  world.events = events;
+  world.revision = events.length;
+  world.updatedAt = events.at(-1).at;
+  const payload = { world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+  const server = await createGameServer({ dataDir, founderKey: KEY });
+  t.after(() => server.closeGame());
+});
