@@ -98,6 +98,18 @@ test('indexed replay matches pure transitions and preserves event-id conflict se
     () => replayKernel([...events, { ...events.at(-1), decision: 'reject' }], config, { artifacts }),
     error => error.code === 'EVENT_ID_CONFLICT'
   );
+
+  const secondSubject = { id: subject.id, version: 2 };
+  const secondWorkId = 'work-indexed-replay-2';
+  const secondEvents = [
+    { id: 'replay-claim-2', type: 'claim', actor: 'local-forge', at: '2026-10-01T00:00:00.005Z', expectedRevision: 5, workId: secondWorkId, subject: secondSubject, action: 'preserve-artifact-bytes' },
+    { id: 'replay-authorize-2', type: 'authorize', actor: 'damien', at: '2026-10-01T00:00:00.006Z', expectedRevision: 6, workId: secondWorkId, grantId: 'grant-indexed-replay-2', executorId: 'local-forge', observerId: 'local-byte-verifier', scope: { subjectId: secondSubject.id, subjectVersion: secondSubject.version, action: 'preserve-artifact-bytes' } },
+    { id: 'replay-execute-2', type: 'execute', actor: 'local-forge', at: '2026-10-01T00:00:00.007Z', expectedRevision: 7, workId: secondWorkId, grantId: 'grant-indexed-replay-2', executionId: 'execution-indexed-replay', subject: secondSubject, outputs }
+  ];
+  assert.throws(
+    () => replayKernel([...events, ...secondEvents], config, { artifacts }),
+    error => error.code === 'EXECUTION_EXISTS'
+  );
 });
 
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
