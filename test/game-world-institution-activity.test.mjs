@@ -121,3 +121,39 @@ test('revoked Proxy records are skipped instead of crashing the projection', () 
     events: [revocable.proxy, { id: 'valid-event', type: 'contribute' }],
   }), 1);
 });
+
+test('canonical Alpha 1 events light up the institutions that perform their functions', () => {
+  const world = { xp: 0, events: [
+    { id: 'draft-1', type: 'draft' },
+    { id: 'repair-1', type: 'repair' },
+    { id: 'publish-1', type: 'publish' },
+    { id: 'contribute-1', type: 'contribute' },
+    { id: 'report-1', type: 'report' },
+    { id: 'study-1', type: 'study' },
+    { id: 'review-1', type: 'study-reviewed' },
+    { id: 'moonshot-1', type: 'moonshot-proposed' },
+    { id: 'experiment-1', type: 'experiment-reported' },
+    { id: 'challenge-1', type: 'experiment-challenged' },
+    { id: 'policy-1', type: 'policy-set' },
+    { id: 'proposal-created-1', type: 'proposal-created' },
+    { id: 'decision-attempted-1', type: 'decision-attempted' },
+    { id: 'expiry-1', type: 'expiry-observed' },
+    { id: 'revocation-1', type: 'revocation' },
+    { event_id: 'public-comment-1', event_type: 'PUBLIC_COMMENT' },
+  ] };
+  const before = structuredClone(world);
+
+  // One retained event can serve more than one institution; these are
+  // navigational activity counts, not exclusive ownership or quest rewards.
+  assert.equal(institutionActivityCount('guild_hall', world), 3);
+  assert.equal(institutionActivityCount('forge', world), 3);
+  assert.equal(institutionActivityCount('evidence_archive', world), 7);
+  assert.equal(institutionActivityCount('decision_chamber', world), 5);
+  assert.equal(institutionActivityCount('town-square', world), 6);
+  assert.equal(institutionActivityCount('academy', world), 2);
+  assert.equal(institutionActivityCount('moonshot_field', world), 3);
+  assert.equal(institutionActivityCount('publication_house', world), 1);
+
+  assert.deepEqual(world, before);
+  assert.equal(world.xp, 0);
+});
