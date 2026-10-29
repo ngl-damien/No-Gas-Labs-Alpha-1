@@ -156,7 +156,34 @@ function snapshotPublicKeyJwk(value) {
   return Object.freeze({ kty: "EC", crv: "P-256", x: raw.x, y: raw.y });
 }
 
-export function makeDecisionPayload({ proposal, quest, capabilities, outputs, acceptance, expires_at }) {
+function snapshotCallArguments(value, requiredKeys, optionalKeys = []) {
+  try {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const allowed = new Set([...requiredKeys, ...optionalKeys]);
+    if (keys.some(key => typeof key !== "string" || !allowed.has(key)) ||
+        requiredKeys.some(key => !Object.hasOwn(descriptors, key))) return null;
+
+    const snapshot = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function makeDecisionPayload(input) {
+  const args = snapshotCallArguments(input, ["proposal", "quest", "capabilities", "outputs", "acceptance", "expires_at"]);
+  if (!args) throw new Error("decision arguments must be own data properties");
+  const { proposal, quest, capabilities, outputs, acceptance, expires_at } = args;
   const proposalFields = snapshotSelectedDataFields(proposal, ["event_id", "type", "quest_id", "capability"]);
   if (!proposalFields || !isIdentifier(proposalFields.event_id) ||
       proposalFields.type !== "PROPOSAL" || !isIdentifier(proposalFields.capability)) {
@@ -204,7 +231,11 @@ export function makeDecisionPayload({ proposal, quest, capabilities, outputs, ac
   return payload;
 }
 
-export function verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, now = Date.now() }) {
+export function verifyFounderDecision(input) {
+  const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint"], ["now"]);
+  if (!args) return rejected("VERIFICATION_INPUT_INVALID");
+  const { signed, payload, public_key_jwk, expected_fingerprint } = args;
+  const now = args.now === undefined ? Date.now() : args.now;
   const decision = snapshotDecisionPayload(payload);
   if (!decision || !isDecisionPayload(decision)) return rejected("DECISION_PAYLOAD_INVALID");
 
@@ -253,7 +284,10 @@ export function verifyFounderDecision({ signed, payload, public_key_jwk, expecte
   }
 }
 
-export function authorizationEvent({ signed, payload, verification }) {
+export function authorizationEvent(input) {
+  const args = snapshotCallArguments(input, ["signed", "payload", "verification"]);
+  if (!args) throw new Error("verified Founder decision required");
+  const { signed, payload, verification } = args;
   const seal = verification && typeof verification === "object"
     ? verificationSeals.get(verification)
     : null;
@@ -289,7 +323,11 @@ export function authorizationEvent({ signed, payload, verification }) {
   });
 }
 
-export function verifyAuthorizationEvent(event, { public_key_jwk, expected_fingerprint, now = Date.now() } = {}) {
+export function verifyAuthorizationEvent(event, options = {}) {
+  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint"], ["now"]);
+  if (!args) return false;
+  const { public_key_jwk, expected_fingerprint } = args;
+  const now = args.now === undefined ? Date.now() : args.now;
   // The persisted event is an untrusted boundary. Snapshot exact own data fields
   // before reading anything; accessors, inherited fields, and extras fail closed.
   const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
@@ -317,7 +355,10 @@ export function verifyAuthorizationEvent(event, { public_key_jwk, expected_finge
   return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, now }).valid === true;
 }
 
-export function createFounderAuthorizationVerifier({ public_key_jwk, expected_fingerprint } = {}) {
+export function createFounderAuthorizationVerifier(options = {}) {
+  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint"]);
+  if (!args) throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
+  const { public_key_jwk, expected_fingerprint } = args;
   const publicKeyJwk = snapshotPublicKeyJwk(public_key_jwk);
   if (!publicKeyJwk || typeof expected_fingerprint !== "string" || !FINGERPRINT.test(expected_fingerprint)) {
     throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
