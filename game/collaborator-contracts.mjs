@@ -142,7 +142,8 @@ function ownArrayDataCount(value) {
     let count = 0;
     for (let index = 0; index < length; index += 1) {
       const descriptor = descriptors[String(index)];
-      if (descriptor && Object.hasOwn(descriptor, 'value')) count += 1;
+      if (descriptor && Object.hasOwn(descriptor, 'value') &&
+          descriptor.value !== null && typeof descriptor.value === 'object' && !Array.isArray(descriptor.value)) count += 1;
     }
     return count;
   } catch {
@@ -153,8 +154,8 @@ function ownArrayDataCount(value) {
 function snapshotSource(world, events) {
   const worldId = ownDataValue(world, 'id');
   const revision = ownDataValue(world, 'revision');
-  // Count actual own data records, not array length: sparse slots and accessor-backed
-  // entries are not safe event records and must not inflate the snapshot marker.
+  // Count own data object entries, not array length: sparse slots, primitives,
+  // and accessor-backed entries are not event records for this view.
   const suppliedEventCount = ownArrayDataCount(events);
   const validWorldId = typeof worldId === 'string' && worldId.length > 0 && worldId.length <= 128 && worldId.trim() === worldId;
   const validRevision = Number.isSafeInteger(revision) && revision >= 0;
