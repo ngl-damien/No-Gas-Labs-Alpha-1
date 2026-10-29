@@ -378,3 +378,79 @@ test('study and retrieval skills reject Date.parse-compatible date-only event ti
   assert.equal(record.skills.find(skill => skill.id === 'retriever').count, 0);
   assert.deepEqual(record.recentActivity.map(activity => activity.type), ['publish']);
 });
+
+
+test('character projections preserve challenge and study chronology across a large retained history', () => {
+  const unrelated = Array.from({ length: 6000 }, (_, index) =>
+    event('unrelated-' + index, 'unrelated', founder, t1)
+  );
+  const source = publishedCreation('indexed-source', [t1]);
+  const proposal = event('indexed-proposal', 'moonshot-proposed', witness, t2, {
+    moonshotId: 'indexed-moonshot',
+    title: 'A bounded question',
+    hypothesis: 'The claim holds under stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'A retained source and independent check.'
+  });
+  const report = event('indexed-report-event', 'experiment-reported', witness, t3, {
+    reportId: 'indexed-report',
+    moonshotId: 'indexed-moonshot',
+    procedure: 'Compare the claim with the retained source.',
+    observation: 'The stated result was not reproduced.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const challenge = event('indexed-challenge-event', 'experiment-challenged', founder, '2026-10-25T12:03:00.000Z', {
+    challengeId: 'indexed-challenge',
+    reportId: 'indexed-report',
+    moonshotId: 'indexed-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not control the stated condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const study = event('indexed-study-event', 'study', founder, '2026-10-25T12:04:00.000Z', {
+    studyId: 'indexed-study',
+    creationId: 'indexed-source',
+    version: 1,
+    question: 'What does the retained source establish?',
+    attempt: 'It records a claim but does not independently confirm it.',
+    nextCheck: 'Inspect the exact cited passage.'
+  });
+  const review = event('indexed-review-event', 'study-reviewed', founder, '2026-10-25T12:05:00.000Z', {
+    reviewId: 'indexed-review',
+    studyId: 'indexed-study',
+    creationId: 'indexed-source',
+    version: 1,
+    response: 'The source establishes only the wording it contains.',
+    reflection: 'Independent confirmation remains unknown.'
+  });
+  const world = {
+    xp: 0,
+    creations: [source],
+    events: [
+      ...unrelated,
+      publication('indexed-publication', founder, source.id, 1, t1),
+      proposal, report, challenge, study, review
+    ],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'scholar').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'retriever').count, 1);
+  assert.equal(founderRecord.xp, 100);
+
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'researcher').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'experimenter').count, 1);
+  assert.equal(witnessRecord.xp, 0);
+
+  assert.deepEqual(world, before, 'character projection must remain read-only');
+});
