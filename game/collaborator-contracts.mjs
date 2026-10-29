@@ -4,9 +4,9 @@ const MAX_SYNTHESIS_ACTIVITY = 6;
 const MAX_ADVERSARY_CHALLENGES = 6;
 const MAX_PACKET_BYTES = 64 * 1024;
 const MAX_PACKET_PROMPT_BYTES = 72 * 1024;
-const MAX_PACKET_OMITTED_IDS = 64;
+export const MAX_PACKET_OMITTED_IDS = 64;
 const MAX_PACKET_FIELD_CHARS = 2048;
-const MAX_PACKET_ID_CHARS = 128;
+export const MAX_PACKET_ID_CHARS = 128;
 const boundedIdentifier = value => typeof value === 'string' &&
   value.length > 0 && Array.from(value).length <= MAX_PACKET_ID_CHARS && value.trim() === value;
 function boundedPacketText(value, field, truncatedFields) {
