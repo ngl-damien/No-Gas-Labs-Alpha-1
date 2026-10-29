@@ -347,6 +347,58 @@ test('challenge evidence is blocked when retained version identity is ambiguous'
     'a challenge cannot choose one of multiple retained objects sharing the same version identity');
 });
 
+test('quest preserve-version objective requires an actual earlier retained snapshot', () => {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const current = {
+    id: 'creation-without-prior',
+    kind: 'loom',
+    title: 'Current version only',
+    version: 2,
+    publishedAt,
+    receipt: { digest: 'b'.repeat(64), size: 12 },
+    versions: []
+  };
+  const withoutPrior = {
+    creations: [current],
+    events: [{
+      id: 'publish-current-only',
+      type: 'publish',
+      creationId: current.id,
+      version: 2,
+      at: publishedAt,
+      actor: founder
+    }],
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+  const blocked = getQuestTrail(withoutPrior, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(blocked.complete, false);
+  assert.equal(blocked.progress, 0);
+
+  const withPrior = structuredClone(withoutPrior);
+  const creation = withPrior.creations[0];
+  creation.versions.push({
+    ...creation,
+    version: 1,
+    publishedAt: '2026-10-28T16:59:00.000Z',
+    versions: []
+  });
+  withPrior.events.unshift({
+    id: 'publish-retained-prior',
+    type: 'publish',
+    creationId: creation.id,
+    version: 1,
+    at: '2026-10-28T16:59:00.000Z',
+    actor: founder
+  });
+  const preserved = getQuestTrail(withPrior, founder)
+    .find(item => item.id === 'founder-preserve-version');
+  assert.equal(preserved.complete, true);
+  assert.equal(preserved.progress, 1);
+});
+
 function academyQuestWorld(publicationFirst) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const source = {
