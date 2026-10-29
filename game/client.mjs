@@ -7,6 +7,7 @@ import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
+import {validateCollaboratorResponse} from './collaborator-response.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0;
 async function openInstitution(locationId = null) {
@@ -277,6 +278,24 @@ function appendCollaboratorContracts(content, sourceWorld){
           toast('Packet selected. Use your device’s Copy action.');
         }
       }),{class:'secondary-button','data-copy-collaborator':packet.id}));
+      const responseDetails=node('details',{class:'collaborator-response'},[
+        node('summary',{text:'Validate returned response'})
+      ]);
+      const responseField=node('textarea',{rows:'8','aria-label':packet.name+' response JSON',placeholder:'Paste the external collaborator JSON response.'});
+      responseDetails.append(responseField);
+      const responseStatus=paragraph('External output remains untrusted. Validation checks structure and packet references only.','form-help');
+      responseStatus.setAttribute('data-collaborator-response-status',packet.id);
+      const responsePreview=node('pre',{class:'collaborator-response-preview','data-collaborator-response-preview':packet.id});
+      card.append(responseDetails);
+      card.append(button('Validate response for review',()=>{
+        const result=validateCollaboratorResponse(packet,responseField.value);
+        responseStatus.textContent=result.valid
+          ? 'STRUCTURE VALID · FOR HUMAN REVIEW ONLY. No claim, execution, world change, XP, or authority was verified.'
+          : 'Response rejected: '+result.reason;
+        responseStatus.className=result.valid?'form-help':'empty-note';
+        responsePreview.textContent=result.valid?JSON.stringify(result.response,null,2):'';
+      },{class:'secondary-button','data-validate-collaborator':packet.id}));
+      card.append(responseStatus,responsePreview);
       card.append(button('Open related Moonshot →',()=>openMoonshotField(packet.moonshotId),{class:'list-button'}));
     }else{
       card.append(button('Visit Moonshot Field →',()=>openMoonshotField(),{class:'list-button'}));
