@@ -179,3 +179,10 @@ Large “ahead” counts do not mean all those commits are unique or desirable; 
 ### Safety action taken after the comparison
 
 After documenting the stale/diverged bases and commenting with the exact comparison results, PRs **#57, #66, and #73 were converted to draft**. They remain open; no source changes were merged or discarded. This is a reversible review-safety measure while their unique changes are reconciled against current main.
+
+
+### Additional wallet-source finding
+
+The private recovery vault's `omnichain/` folder contains 18 files. A SHA comparison against the current `Omnichain_Bridge_wallet` repository found nine exact common source-file matches, no source file missing from the recovery folder, and seven recovery-only files; the two README/provenance files differ. This establishes a partial recovery relationship, not a complete historical repository mirror.
+
+**Do not run or publicly deploy the wallet initializer.** The inspected `init-ton-wallet.js` generates a TON keypair and writes the secret key as plaintext into `wallet_keys.json` using a normal filesystem write without an explicit restrictive file mode. The inspected `townsquare/server.js` exposes a `POST /wallet-init` endpoint that invokes this script. The current tracked tree does not contain `wallet_keys.json`, and no wallet was generated during this audit. Before any execution, the wallet-key storage must be redesigned (private ignored data directory, restrictive permissions, no secret logging, backup/recovery plan, and explicit operator consent); the endpoint also needs authentication, rate limiting, and safe process management. Because this is wallet-related code and the source repository has no license file in its observed tree, preserve it in the private recovery vault until security and license/IP review is complete—do not copy it into the public Alpha 1 repository yet.
