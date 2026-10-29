@@ -1,4 +1,4 @@
-import { isCollaboratorPacket, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -121,8 +121,7 @@ function validOmissionDisclosure(payload) {
   const includedIds = new Set(payload.inputRefs);
   const seen = new Set();
   for (const id of omitted) {
-    if (typeof id !== 'string' || id.length === 0 || Array.from(id).length > MAX_PACKET_ID_CHARS ||
-        id.trim() !== id || includedIds.has(id) || seen.has(id)) return false;
+    if (!isBoundedIdentifier(id) || includedIds.has(id) || seen.has(id)) return false;
     seen.add(id);
   }
   return true;
