@@ -69,18 +69,26 @@ test('Long View only promises a version comparison when an earlier version is re
 
 test('Academy review lookup searches the full history beyond the eight reviews shown', () => {
   const actor = { id: 'witness-1', role: 'witness' };
-  const notes = Array.from({ length: 9 }, (_, index) => ({ studyId: 'study-' + index, actor }));
+  const notes = Array.from({ length: 9 }, (_, index) => ({
+    id: 'study-event-' + index, type: 'study', studyId: 'study-' + index,
+    creationId: 'source-' + index, version: 1, at: '2026-10-28T16:00:00.000Z', actor
+  }));
   // The newest note is reviewed first; eight older notes are reviewed later.
   // The UI's recent-eight display therefore omits the newest note's older review.
   const allReviews = [
-    { type: 'study-reviewed', reviewId: 'review-8', studyId: 'study-8', actor },
+    { id: 'review-event-8', type: 'study-reviewed', reviewId: 'review-8', studyId: 'study-8',
+      creationId: 'source-8', version: 1, at: '2026-10-28T16:01:00.000Z', actor,
+      response: 'Rechecked the retained source.', reflection: 'Repeat the check.' },
     ...Array.from({ length: 8 }, (_, index) => ({
-      type: 'study-reviewed', reviewId: 'review-' + index, studyId: 'study-' + index, actor
+      id: 'review-event-' + index, type: 'study-reviewed', reviewId: 'review-' + index,
+      studyId: 'study-' + index, creationId: 'source-' + index, version: 1,
+      at: '2026-10-28T16:0' + (2 + index) + ':00.000Z', actor,
+      response: 'Rechecked the retained source.', reflection: 'Repeat the check.'
     }))
   ];
   const visibleReviews = allReviews.slice().reverse().slice(0, 8);
   assert.equal(visibleReviews.some(review => review.studyId === 'study-8'), false);
-  assert.equal(findStudyReview(notes[8], allReviews)?.reviewId, 'review-8');
+  assert.equal(findStudyReview(notes[8], [notes[8], ...allReviews])?.reviewId, 'review-8');
   assert.equal(findStudyReview(notes[8], visibleReviews), null);
 });
 
