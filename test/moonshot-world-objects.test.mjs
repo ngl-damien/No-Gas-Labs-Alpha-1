@@ -381,6 +381,7 @@ test('typed quest navigation disambiguates a colliding creation ID from its rese
   view.target = null;
   view.targetType = null;
 
+  delete view.goTo; // exercise the real WorldView route resolver, not the interaction spy
   view.goTo('research-activity:report-1', 'research-activity');
   assert.equal(view.target, 'research-activity:report-1');
   assert.equal(view.targetType, 'research-activity');
