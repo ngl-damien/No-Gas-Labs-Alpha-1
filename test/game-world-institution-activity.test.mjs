@@ -215,6 +215,9 @@ test('Decision Chamber includes only a valid aggregate from the separate decisio
       ...institution, decisionSummary: invalid
     }), 1, 'invalid or unavailable gate summaries must not inflate map activity');
   }
+  assert.equal(institutionActivityCount('decision_chamber', world, {
+    ...institution, schema: 'ngl.shared-institution-summary.v2'
+  }), 1, 'a decision aggregate outside the recognized institution envelope must be ignored');
 
   let getterCalls = 0;
   const hostile = { schema: 'ngl.decisions.summary.v1', available: true, revision: 1, decisionCount: 1 };
