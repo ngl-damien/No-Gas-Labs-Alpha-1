@@ -1,7 +1,7 @@
 import { createHash, createPublicKey, randomUUID, sign, verify } from 'node:crypto';
 import { constants } from 'node:fs';
-import { mkdir, chmod, open, rename, unlink, lstat } from 'node:fs/promises';
-import { resolve, join, parse, sep } from 'node:path';
+import { mkdir, chmod, open, rename, unlink, link, lstat } from 'node:fs/promises';
+import { resolve, join, dirname, parse, sep } from 'node:path';
 import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
 
 const MAX_JSON = 131072;
@@ -251,11 +251,14 @@ async function acquireLock(path) {
   const deadline = Date.now() + 5000;
   while (true) {
     try {
-      const lock = await open(path, 'wx', 0o600);
-      let identity;
+      // Write and sync a private sibling first. A hard link publishes the
+      // complete inode at the lock path atomically without replacing a lock
+      // another process may already own.
+      const temporary = join(dirname(path), `.courier-lock-${randomUUID()}.tmp`);
+      const lock = await open(temporary, 'wx', 0o600);
       try {
         const opened = await lock.stat();
-        identity = { dev: opened.dev, ino: opened.ino };
+        const identity = { dev: opened.dev, ino: opened.ino };
         await lock.writeFile(JSON.stringify({
           schema: 'ngl.courier-lock.v1',
           pid: process.pid,
@@ -263,11 +266,14 @@ async function acquireLock(path) {
         }));
         await lock.sync();
         await lock.close();
+        await link(temporary, path);
         return identity;
-      } catch (cause) {
+      } finally {
         await lock.close().catch(() => {});
-        if (identity) await releaseOwnedLock(path, identity).catch(() => {});
-        throw cause;
+        // A failed publication leaves no temporary artifact. If unlink fails
+        // after publication, the extra private hard link is harmless; never
+        // remove the published lock as a cleanup fallback.
+        await unlink(temporary).catch(() => {});
       }
     } catch (cause) {
       if (cause.code !== 'EEXIST') throw cause;
