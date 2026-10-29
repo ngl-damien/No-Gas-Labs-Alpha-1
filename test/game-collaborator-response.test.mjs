@@ -65,7 +65,7 @@ const validResponses = {
       includedEventIds: ['proposal-event-1', 'report-event-1', 'challenge-event-1'],
       omittedEventIds: []
     },
-    recordedSupport: ['The attempt was retained as failed.'],
+    recordedSupport: [{ sourceEventIds: ['report-event-1'], statement: 'The attempt was retained as failed.' }],
     contradictions: [],
     dissentPreserved: ['challenge-event-1'],
     unknowns: ['The report is self-reported.'],
@@ -217,4 +217,30 @@ test('omitted event ID disclosure fits the response array budget and signals tru
     assert.equal(payload.omittedEventIdListTruncated, true, role);
     assert.ok(payload.omittedCount > payload.omittedEventIds.length, role);
   }
+});
+
+test('synthesis support and contradictions must cite exact included source events', () => {
+  const packet = packetsForTest().synthesizer;
+  const valid = structuredClone(validResponses.synthesizer);
+  valid.contradictions = [{
+    sourceEventIds: ['proposal-event-1', 'report-event-1'],
+    statement: 'The proposal and report describe different outcomes.'
+  }];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(valid)).valid, true);
+
+  const inventedSource = structuredClone(valid);
+  inventedSource.recordedSupport[0].sourceEventIds = ['event-from-another-world'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(inventedSource)).valid, false);
+
+  const missingSource = structuredClone(valid);
+  missingSource.recordedSupport[0].sourceEventIds = [];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(missingSource)).valid, false);
+
+  const oneSourceContradiction = structuredClone(valid);
+  oneSourceContradiction.contradictions[0].sourceEventIds = ['report-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(oneSourceContradiction)).valid, false);
+
+  const unstructuredSupport = structuredClone(valid);
+  unstructuredSupport.recordedSupport = ['A claim without an event citation'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(unstructuredSupport)).valid, false);
 });
