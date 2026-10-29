@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { institutionActivityCount, projectMoonshotWorldObjects } from '../game/world-view.mjs';
+import { WorldView, institutionActivityCount, projectMoonshotWorldObjects } from '../game/world-view.mjs';
 
 function proposal(eventId, moonshotId, title = 'A testable question') {
   return {
@@ -304,4 +304,64 @@ test('date-only research timestamps cannot create proposal or activity map objec
   const [object] = projectMoonshotWorldObjects({ events: [validProposal, looseReport] });
   assert.equal(object.attemptCount, 0);
   assert.deepEqual(object.activityObjects, []);
+});
+
+
+function interactionView() {
+  const interactions = [];
+  const routes = [];
+  const view = Object.create(WorldView.prototype);
+  view.player = { x: 100, y: 100 };
+  view.world = { creations: [] };
+  view.researchObjects = [
+    { id: 'moonshot-object:moon-1', moonshotId: 'moon-1', x: 100, y: 80, title: 'Proposal' },
+  ];
+  view.researchActivityObjects = [
+    { id: 'research-activity:report-1', moonshotId: 'moon-1', activityId: 'report-1',
+      recordType: 'experiment-reported', x: 130, y: 90, mapVisible: true, title: 'Attempt' },
+  ];
+  view.callbacks = {
+    onInteract: interaction => interactions.push(interaction),
+    onDiscover: id => interactions.push({ type: 'discovery', id }),
+  };
+  view.goTo = id => routes.push(id);
+  return { view, interactions, routes };
+}
+
+test('targeted interaction selects the requested research activity over a closer proposal', () => {
+  const { view, interactions, routes } = interactionView();
+  assert.equal(view.nearest().id, 'moonshot-object:moon-1', 'generic interaction should still choose the closest object');
+  assert.equal(view.nearest('research-activity:report-1').id, 'research-activity:report-1',
+    'explicit targeting must resolve the requested activity rather than the globally nearest object');
+  view.interact('research-activity:report-1');
+  assert.deepEqual(interactions, [{
+    type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
+  }]);
+  assert.deepEqual(routes, [], 'a successful targeted interaction must not redirect the player');
+});
+
+test('targeted interaction fails closed for a missing or out-of-range target without workbench fallback', () => {
+  const { view, interactions, routes } = interactionView();
+  view.interact('missing-target');
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, []);
+
+  view.player = { x: 1590, y: 990 };
+  view.interact('research-activity:report-1');
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, [], 'an explicit target miss must not silently route to the workbench');
+});
+
+test('untargeted interaction keeps the existing nearest-object and workbench fallback behavior', () => {
+  const { view, interactions, routes } = interactionView();
+  view.interact();
+  assert.deepEqual(interactions, [{ type: 'research-object', id: 'moon-1' }]);
+
+  interactions.length = 0;
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.player = { x: 1590, y: 990 };
+  view.interact();
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, ['workbench']);
 });
