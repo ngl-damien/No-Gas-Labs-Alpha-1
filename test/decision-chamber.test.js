@@ -408,3 +408,47 @@ test("proposal capability is snapshotted as an own data property", () => {
   );
   assert.equal(getterRuns, 0);
 });
+
+
+test("public decision APIs reject accessor-backed call envelopes without running getters", () => {
+  let getterCalls = 0;
+  const decisionArgs = {
+    proposal, quest,
+    capabilities: ["repository.write"],
+    outputs: ["mesh"],
+    acceptance: ["mesh"],
+    expires_at: "2099-01-01T00:00:00.000Z"
+  };
+  Object.defineProperty(decisionArgs, "proposal", {
+    enumerable: true,
+    get() { getterCalls += 1; return proposal; }
+  });
+  assert.throws(() => makeDecisionPayload(decisionArgs), /own data properties/);
+
+  const verificationArgs = {
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, now: 0
+  };
+  Object.defineProperty(verificationArgs, "payload", {
+    enumerable: true,
+    get() { getterCalls += 1; return payload; }
+  });
+  assert.equal(verifyFounderDecision(verificationArgs).valid, false);
+
+  const verification = verify();
+  const eventArgs = { signed, payload, verification };
+  Object.defineProperty(eventArgs, "signed", {
+    enumerable: true,
+    get() { getterCalls += 1; return signed; }
+  });
+  assert.throws(() => authorizationEvent(eventArgs), /verified Founder decision required/);
+
+  const event = authorizationEvent({ signed, payload, verification });
+  const trustOptions = { public_key_jwk: jwk, expected_fingerprint: fingerprint };
+  Object.defineProperty(trustOptions, "public_key_jwk", {
+    enumerable: true,
+    get() { getterCalls += 1; return jwk; }
+  });
+  assert.equal(verifyAuthorizationEvent(event, trustOptions), false);
+  assert.throws(() => createFounderAuthorizationVerifier(trustOptions), /FOUNDER_TRUST_CONFIGURATION_INVALID/);
+  assert.equal(getterCalls, 0, "call-envelope getters must not execute");
+});
