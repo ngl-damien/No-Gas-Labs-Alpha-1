@@ -103,16 +103,16 @@ function compactRecord(record) {
 function snapshotSource(world, events) {
   const worldId = ownDataValue(world, 'id');
   const revision = ownDataValue(world, 'revision');
-  const retainedEventCount = ownDataValue(events, 'length');
+  const suppliedEventCount = ownDataValue(events, 'length');
   const validWorldId = typeof worldId === 'string' && worldId.length > 0 && worldId.length <= 128 && worldId.trim() === worldId;
   const validRevision = Number.isSafeInteger(revision) && revision >= 0;
-  const validEventCount = Number.isSafeInteger(retainedEventCount) && retainedEventCount >= 0 && retainedEventCount <= 100_000;
+  const validEventCount = Number.isSafeInteger(suppliedEventCount) && suppliedEventCount >= 0 && suppliedEventCount <= 100_000;
   const identified = validWorldId && validRevision && validEventCount;
   return Object.freeze({
     status: identified ? 'identified' : 'incomplete',
     worldId: validWorldId ? worldId : null,
     revision: validRevision ? revision : null,
-    retainedEventCount: validEventCount ? retainedEventCount : null
+    suppliedEventCount: validEventCount ? suppliedEventCount : null
   });
 }
 
