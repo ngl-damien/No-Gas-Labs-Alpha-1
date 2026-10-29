@@ -160,7 +160,39 @@ function indexRetainedResearchVersions(world) {
   return index;
 }
 
-function validOptionalResearchEvidence(evidenceIndex, event, atMs) {
+function indexResearchPublications(eventList, eventIdCounts) {
+  const byReference = new Map();
+  let unsafeReferenceSeen = false;
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'publish') continue;
+    if (unsafeOwnAccessor(event, 'creationId') || unsafeOwnAccessor(event, 'version')) {
+      unsafeReferenceSeen = true;
+      continue;
+    }
+    const creationId = ownDataValue(event, 'creationId');
+    const version = ownDataValue(event, 'version');
+    if (typeof creationId !== 'string' || !creationId ||
+        !Number.isSafeInteger(version) || version < 1) continue;
+    const eventId = ownDataValue(event, 'id');
+    const actor = ownDataValue(event, 'actor');
+    const at = ownDataValue(event, 'at');
+    const key = creationId + '\0' + version;
+    const candidates = byReference.get(key) || [];
+    candidates.push({
+      index,
+      eventIdUnique: typeof eventId === 'string' &&
+        WORLD_OBJECT_ID.test(eventId) && eventIdCounts.get(eventId) === 1,
+      actorId: ownDataValue(actor, 'id'),
+      actorRole: ownDataValue(actor, 'role'),
+      atMs: isStrictTimestamp(at) ? Date.parse(at) : NaN,
+    });
+    byReference.set(key, candidates);
+  }
+  return { byReference, unsafeReferenceSeen };
+}
+
+function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, eventIndex, atMs) {
   const creationId = ownDataValue(event, 'evidenceCreationId');
   const version = ownDataValue(event, 'evidenceVersion');
   const hasId = typeof creationId === 'string' && creationId.length > 0;
@@ -169,10 +201,19 @@ function validOptionalResearchEvidence(evidenceIndex, event, atMs) {
     return (creationId === null || creationId === undefined) &&
       (version === null || version === undefined);
   }
-  if (!hasId || !hasVersion || !WORLD_OBJECT_ID.test(creationId)) return false;
-  const retained = evidenceIndex.get(creationId + '\0' + version);
-  return Boolean(retained && retained.count === 1 &&
-    Number.isFinite(retained.publishedAtMs) && retained.publishedAtMs <= atMs);
+  if (!hasId || !hasVersion || !WORLD_OBJECT_ID.test(creationId) ||
+      publicationIndex.unsafeReferenceSeen) return false;
+  const key = creationId + '\0' + version;
+  const retained = evidenceIndex.get(key);
+  if (!retained || retained.count !== 1 ||
+      !Number.isFinite(retained.publishedAtMs) || retained.publishedAtMs > atMs) return false;
+  const publications = publicationIndex.byReference.get(key) || [];
+  if (publications.length !== 1) return false;
+  const publication = publications[0];
+  return publication.eventIdUnique && publication.index < eventIndex &&
+    typeof publication.actorId === 'string' && publication.actorId.trim().length > 0 &&
+    publication.actorRole === 'founder' && Number.isFinite(publication.atMs) &&
+    publication.atMs === retained.publishedAtMs && publication.atMs <= atMs;
 }
 
 /**
@@ -211,6 +252,7 @@ export function projectMoonshotWorldObjects(world) {
     }
   }
 
+  const publicationIndex = indexResearchPublications(eventList, eventIdCounts);
   const retained = [];
   const proposalById = new Map();
   for (let index = 0; index < eventList.length; index += 1) {
@@ -264,7 +306,7 @@ export function projectMoonshotWorldObjects(world) {
         !proposal || index <= proposal.index || !Number.isFinite(atMs) || atMs < proposal.atMs ||
         typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
         !boundedWorldText(procedure, 1000) || !boundedWorldText(observation, 1000) ||
-        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
+        !RESEARCH_OUTCOMES.has(outcome) || !validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, index, atMs)) continue;
     validReports.push({
       eventId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
       procedure, observation, reportedOutcome: outcome,
@@ -300,7 +342,7 @@ export function projectMoonshotWorldObjects(world) {
         index <= report.index || !Number.isFinite(atMs) || atMs < report.atMs ||
         typeof actorId !== 'string' || !actorId.trim() || !RESEARCH_ROLES.has(actorRole) ||
         !RESEARCH_CHALLENGE_TYPES.has(challengeType) || !boundedWorldText(challengeText, 1000) ||
-        !validOptionalResearchEvidence(evidenceIndex, event, atMs)) continue;
+        !validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, index, atMs)) continue;
     challengeCounts.set(moonshotId, challengeCounts.get(moonshotId) + 1);
     validChallenges.push({
       eventId, challengeId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
