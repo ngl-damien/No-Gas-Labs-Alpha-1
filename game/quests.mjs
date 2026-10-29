@@ -255,7 +255,7 @@ function distinctCreationEvents(events) {
   return [...byCreation.values()];
 }
 
-function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null) {
+function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
   const seen = new Set();
@@ -269,9 +269,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       at: typeof event.at === 'string' ? event.at : null,
       actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
       creationId: typeof event.creationId === 'string' ? event.creationId
-        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId : null,
+        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
+        : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
       version: Number.isInteger(event.version) ? event.version
-        : Number.isInteger(event.sourceVersion) ? event.sourceVersion : null,
+        : Number.isInteger(event.sourceVersion) ? event.sourceVersion
+        : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
     }));
   }
@@ -285,6 +287,7 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     evidence: Object.freeze(details),
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
+    ...(typeof interpretation === 'string' ? { interpretation } : {}),
   });
 }
 
@@ -402,6 +405,22 @@ export function getQuestTrail(world, viewer) {
   const experimentReports = allExperimentReports.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
+  // A separate objective requires a report to reference one unambiguous,
+  // retained publication that existed earlier in the append-only event history.
+  // This proves artifact linkage only; it does not verify the reported procedure,
+  // observation, outcome, or truth of the hypothesis.
+  const experimentEvidenceReports = experimentReports.filter(event => {
+    if (typeof event.evidenceCreationId !== 'string' || !event.evidenceCreationId ||
+        !Number.isSafeInteger(event.evidenceVersion) || event.evidenceVersion < 1) return false;
+    const reportPosition = events.indexOf(event);
+    const matchingPublications = publications.filter(publication =>
+      publication.creationId === event.evidenceCreationId &&
+      publication.version === event.evidenceVersion &&
+      events.indexOf(publication) >= 0 && events.indexOf(publication) < reportPosition &&
+      Date.parse(publication.at) <= Date.parse(event.at)
+    );
+    return matchingPublications.length === 1;
+  });
   const challengeIdCounts = new Map();
   for (const event of events) {
     if (event?.type === 'experiment-challenged' && typeof event.challengeId === 'string') {
@@ -470,6 +489,7 @@ export function getQuestTrail(world, viewer) {
   const hasResearchReport = researchReports.length >= 1;
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
+  const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
   const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
   const hasExperimentChallenge = experimentChallenges.length >= 1;
   const hasStudy = studies.length >= 1;
@@ -542,6 +562,14 @@ export function getQuestTrail(world, viewer) {
         !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
       ),
       trailMilestone(
+        'founder-experiment-evidence', 'Link a retained artifact to an experiment attempt', 1,
+        experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
+        hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
+          !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
+        'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
+      ),
+      trailMilestone(
         'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
         experimentChallenges.map(event => event.id), experimentChallenges,
         hasChallengeTarget && !hasExperimentChallenge ? { type: 'location', id: 'moonshot_field' } : null,
@@ -603,6 +631,14 @@ export function getQuestTrail(world, viewer) {
       experimentReports.map(event => event.id), experimentReports,
       hasAnyMoonshotProposal && !hasExperimentReport ? { type: 'location', id: 'moonshot_field' } : null,
       !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' : null
+    ),
+    trailMilestone(
+      'witness-experiment-evidence', 'Link a retained artifact to an experiment attempt', 1,
+      experimentEvidenceReports.map(event => event.id), experimentEvidenceReports,
+      hasExperimentReport && !hasExperimentEvidence ? { type: 'location', id: 'moonshot_field' } : null,
+      !hasAnyMoonshotProposal ? 'Propose a falsifiable moonshot first.' :
+        !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
+        'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
       'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,

@@ -46,7 +46,10 @@ def stop_server(process):
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
-        expect(page.locator('#sheet')).to_be_hidden()
+    # The sheet can be hidden before its backdrop stops intercepting pointer
+    # events. Wait for both layers before starting the next world interaction.
+    expect(page.locator('#sheet')).to_be_hidden()
+    expect(page.locator('#sheet-backdrop')).to_be_hidden()
 
 
 def draft(page,kind,title):
@@ -120,6 +123,30 @@ def basic(page,url,out,label):
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
     expect(page.locator('[data-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     close_sheet(page)
+    page.locator('#places-button').click()
+    page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+    expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+    page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
+    expect(page.locator('#sheet-title')).to_have_text('The real comic lives here')
+    expect(page.locator('#contradiction-form')).to_be_visible()
+    page.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
+    page.locator('#contradiction-source').fill('The retained version bytes and cited source page.')
+    page.locator('#contradiction-falsifier').fill('A reproducible counterexample or contradictory source.')
+    page.locator('#contradiction-unknown').fill('Whether the source supports the exact wording; inspect the passage.')
+    page.locator('#contradiction-submit').click()
+    expect(page.locator('#creation-notes')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+    expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT')
+    expect(page.locator('#xp-count')).to_have_text('200')
+    close_sheet(page)
+    page.locator('#places-button').click()
+    page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+    expect(page.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+    expect(page.locator('#sheet')).to_contain_text('REPORT ONLY — NOT A VERDICT')
+    expect(page.locator('#xp-count')).to_have_text('200')
+    close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
@@ -156,6 +183,15 @@ def institutional_locations(browser,url,out):
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+        expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
+        expect(page.locator('#contradiction-clerk-npc button')).to_have_count(0)
+        assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
+        assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
@@ -283,9 +319,15 @@ def shared(browser,url,data,out):
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
         b.unroute('**/api/action',lose_report_response)
-        # Safe retry closes the Journal; reopen the exact published place before challenging its version.
-        visit(b,'The shared observatory')
-        b.get_by_text('Ask the Contradiction Clerk to challenge this version',exact=True).click()
+        # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+        expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+        b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
+        expect(b.locator('#contradiction-form')).to_be_visible()
         b.locator('#contradiction-claim').fill('The receipt proves the claim is true.')
         b.locator('#contradiction-source').fill('The preserved HTML bytes and the cited source page.')
         b.locator('#contradiction-falsifier').fill('A source that contradicts the claim or a failed reproduction.')
@@ -343,6 +385,20 @@ def shared(browser,url,data,out):
             'requestId':'browser-experiment-report'
         })
         assert experiment_response.status==200, experiment_response.text()
+        # Quest evidence is a deterministic projection: linkage is not truth or XP.
+        # The Witness must inspect and open the exact retained version.
+        evidence_objective=b.locator('[data-objective-id="witness-experiment-evidence"]')
+        expect(evidence_objective).to_contain_text('RECORDED')
+        expect(evidence_objective).to_contain_text('1/1')
+        expect(evidence_objective).to_contain_text('Linkage only: this records a report-to-version reference.')
+        expect(evidence_objective).to_contain_text('It does not verify the procedure, observation, outcome, or hypothesis.')
+        evidence_objective.get_by_text('Inspect retained evidence',exact=True).click()
+        expect(evidence_objective).to_contain_text('creation '+creation_id)
+        expect(evidence_objective).to_contain_text('version 2')
+        evidence_objective.get_by_role('button',name='Open retained version 2 →',exact=True).click()
+        expect(b.locator('#sheet-title')).to_have_text('The shared observatory')
+        expect(b.locator('#version-select')).to_have_value('2')
+        close_sheet(b)
         close_sheet(a);a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
