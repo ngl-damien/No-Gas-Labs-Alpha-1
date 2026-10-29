@@ -367,3 +367,37 @@ test("verification accepts only canonical public P-256 JWK coordinates", () => {
     });
   }
 });
+
+
+test("decision cannot silently expand the capability requested by its proposal", () => {
+  const broaderQuest = defineQuest({
+    quest_id: "q1",
+    title: "Alpha",
+    objective: "Build",
+    acceptance: ["mesh"],
+    capabilities: ["repository.write", "repository.admin"]
+  });
+  assert.throws(
+    () => makePayload({ quest: broaderQuest, capabilities: ["repository.admin"] }),
+    /decision capabilities must match proposal request/
+  );
+  assert.throws(
+    () => makePayload({ capabilities: ["repository.write", "repository.admin"] }),
+    /decision capabilities must match proposal request/
+  );
+});
+
+test("proposal capability is snapshotted as an own data property", () => {
+  const accessorProposal = { ...proposal };
+  let getterRuns = 0;
+  Object.defineProperty(accessorProposal, "capability", {
+    configurable: true,
+    enumerable: true,
+    get() { getterRuns += 1; return "repository.write"; }
+  });
+  assert.throws(
+    () => makePayload({ proposal: accessorProposal }),
+    /proposal required/
+  );
+  assert.equal(getterRuns, 0);
+});
