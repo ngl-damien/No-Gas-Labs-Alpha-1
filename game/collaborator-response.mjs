@@ -74,8 +74,15 @@ function boundedString(value, maximum, { allowEmpty = false } = {}) {
     (allowEmpty || value.trim().length > 0);
 }
 
-function boundedList(value, maximum = 32) {
-  return Array.isArray(value) && value.length <= maximum && value.every(item => safeJsonValue(item));
+function boundedStringList(value, maximum = 32, maxChars = 1000) {
+  return Array.isArray(value) && value.length <= maximum &&
+    value.every(item => boundedString(item, maxChars));
+}
+
+function validNextDiscriminatingExperiment(value) {
+  return exactKeys(value, ['procedure', 'outcome']) &&
+    boundedString(value.procedure, 1000) &&
+    boundedString(value.outcome, 1000);
 }
 
 function stringIds(value, allowed, { maximum = 64, unique = true } = {}) {
@@ -137,7 +144,7 @@ function validateRoleResponse(payload, response) {
 
   if (payload.role === 'archivist') {
     const keys = ['eventChainFindings', 'claims', 'linkageIssues', 'unknowns', 'nextChecks'];
-    return exactKeys(response, keys) && keys.every(key => boundedList(response[key], 32));
+    return exactKeys(response, keys) && keys.every(key => boundedStringList(response[key], 32, 1000));
   }
 
   if (payload.role === 'adversary') {
@@ -152,7 +159,7 @@ function validateRoleResponse(payload, response) {
         !Array.isArray(response.duplicateOfEventIds) ||
         !response.duplicateOfEventIds.every(id => typeof id === 'string' && records.get(id)?.type === 'experiment-challenged') ||
         new Set(response.duplicateOfEventIds).size !== response.duplicateOfEventIds.length ||
-        !boundedList(response.evidenceNeeded, 16) || !boundedList(response.unknowns, 16)) return false;
+        !boundedStringList(response.evidenceNeeded, 16, 1000) || !boundedStringList(response.unknowns, 16, 1000)) return false;
     return true;
   }
 
@@ -172,16 +179,15 @@ function validateRoleResponse(payload, response) {
         !sourceStatementList(response.recordedSupport, inputIds, { minimumSources: 1 }) ||
         !sourceStatementList(response.contradictions, inputIds, { minimumSources: 2 }) ||
         !exactStringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
-        !boundedList(response.unknowns, 32) ||
-        !ownPlainObject(response.nextDiscriminatingExperiment) ||
-        !safeJsonValue(response.nextDiscriminatingExperiment)) return false;
+        !boundedStringList(response.unknowns, 32, 1000) ||
+        !validNextDiscriminatingExperiment(response.nextDiscriminatingExperiment)) return false;
     return true;
   }
 
   if (payload.role === 'tutor') {
     const keys = ['concepts', 'prerequisites', 'explanation', 'questions', 'answerKey', 'whatRemainsUnproven'];
     return exactKeys(response, keys) &&
-      ['concepts', 'prerequisites', 'questions', 'answerKey', 'whatRemainsUnproven'].every(key => boundedList(response[key], 32)) &&
+      ['concepts', 'prerequisites', 'questions', 'answerKey', 'whatRemainsUnproven'].every(key => boundedStringList(response[key], 32, 1000)) &&
       boundedString(response.explanation, 4096);
   }
 
