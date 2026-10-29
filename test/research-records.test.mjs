@@ -278,3 +278,72 @@ test('artifact links require one retained version and a matching Founder publica
     actor: { id: 'witness-1', role: 'witness', name: 'Witness' }
   })), ['invalid', 'invalid']);
 });
+
+
+test('accessor-backed research records are never evaluated and cannot establish links', () => {
+  let getterCalls = 0;
+  const unsafeProposal = proposal();
+  Object.defineProperty(unsafeProposal, 'title', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return 'getter-authored title'; }
+  });
+
+  const projected = project([publication(), unsafeProposal, report()]);
+  const proposalRecord = projected.find(event => event.id === 'proposal-event-1');
+  const reportRecord = projected.find(event => event.id === 'report-event-1');
+
+  assert.equal(getterCalls, 0);
+  assert.equal(proposalRecord._projection.recordSafe, false);
+  assert.equal(proposalRecord._projection.proposalStatus, 'ambiguous');
+  assert.equal(reportRecord._projection.proposal, null);
+});
+
+test('accessor-backed nested actors and retained versions cannot activate research links', () => {
+  let getterCalls = 0;
+  const unsafeReport = report();
+  Object.defineProperty(unsafeReport.actor, 'id', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return 'witness-1'; }
+  });
+
+  const retained = retainedSource();
+  Object.defineProperty(retained, 'publishedAt', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return '2026-10-28T16:59:00.000Z'; }
+  });
+
+  const projected = project([
+    publication(),
+    proposal({ sourceCreationId: 'source-1', sourceVersion: 1 }),
+    unsafeReport
+  ], [retained]);
+  const proposalRecord = projected.find(event => event.id === 'proposal-event-1');
+  const reportRecord = projected.find(event => event.id === 'report-event-1');
+
+  assert.equal(getterCalls, 0);
+  assert.equal(reportRecord._projection.recordSafe, false);
+  assert.equal(proposalRecord._projection.sourceStatus, 'invalid');
+  assert.equal(reportRecord._projection.evidenceStatus, 'invalid');
+});
+
+test('accessor-backed array entries and revoked input proxies fail closed without execution', () => {
+  let getterCalls = 0;
+  const events = [publication(), proposal(), report()];
+  Object.defineProperty(events, '1', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return proposal(); }
+  });
+
+  const projected = projectResearchRecords(events, [retainedSource()]);
+  assert.equal(getterCalls, 0);
+  assert.equal(projected.some(event => event.type === 'moonshot-proposed'), false);
+
+  const revoked = Proxy.revocable([], {});
+  revoked.revoke();
+  assert.doesNotThrow(() => projectResearchRecords(revoked.proxy, [retainedSource()]));
+  assert.deepEqual(projectResearchRecords(revoked.proxy, [retainedSource()]), []);
+});
