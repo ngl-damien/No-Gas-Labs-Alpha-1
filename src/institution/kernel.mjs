@@ -123,13 +123,13 @@ const fields = {
 };
 
 /** Pure deterministic transition. Artifact stages verify supplied actual bytes synchronously. */
-export function applyEvent(state, input, { artifacts } = {}) {
+function transitionEvent(state, input, { artifacts } = {}, indexes = null) {
   const event = copy(input);
   const base = ['id', 'type', 'actor', 'at', 'expectedRevision', 'workId'];
   if (!own(fields, event?.type)) fail('INVALID_EVENT', 'Unknown institutional event type');
   exactKeys(event, [...base, ...fields[event.type]], event.type === 'authorize' ? ['expiresAt'] : event.type === 'observe' ? ['checks'] : []);
   requireId(event.id, 'event ID');
-  const prior = state.events.find(candidate => candidate.id === event.id);
+  const prior = indexes ? indexes.eventsById.get(event.id) : state.events.find(candidate => candidate.id === event.id);
   if (prior) {
     if (!equal(prior, event)) fail('EVENT_ID_CONFLICT', 'An event ID cannot identify different content');
     return state;
@@ -139,7 +139,7 @@ export function applyEvent(state, input, { artifacts } = {}) {
   if (!timestamp(event.at)) fail('INVALID_EVENT', 'Event timestamp must be canonical ISO UTC');
   if (state.events.length && event.at < state.events.at(-1).at) fail('TIME_REGRESSION', 'Event time cannot precede committed history');
   if (!Number.isSafeInteger(event.expectedRevision) || event.expectedRevision !== state.revision) fail('STALE_REVISION', 'Expected revision does not match committed state');
-  const next = copy(state);
+  const next = indexes ? state : copy(state);
   let work = own(next.works, event.workId) ? next.works[event.workId] : undefined;
   if (event.type === 'claim') {
     if (work) fail('WORK_EXISTS', 'Work ID is already claimed');
@@ -186,7 +186,7 @@ export function applyEvent(state, input, { artifacts } = {}) {
         if (event.type === 'execute') {
           if (work.stage !== 'authorized') fail('INVALID_STAGE', 'Execution can follow only authorization');
           if (event.actor !== grant.executorId) fail('EXECUTOR_MISMATCH', 'Execution actor differs from the exact grant');
-          if (Object.values(next.works).some(candidate => candidate.executionId === event.executionId)) fail('EXECUTION_EXISTS', 'Execution IDs are unique across work');
+          if (indexes ? indexes.executionIds.has(event.executionId) : Object.values(next.works).some(candidate => candidate.executionId === event.executionId)) fail('EXECUTION_EXISTS', 'Execution IDs are unique across work');
           nextSubject(state, work.subject);
           verifyOutputs(event.outputs, artifacts);
           work.executionId = event.executionId;
@@ -224,10 +224,23 @@ export function applyEvent(state, input, { artifacts } = {}) {
   }
   next.events.push(event);
   next.revision += 1;
+  if (indexes) {
+    indexes.eventsById.set(event.id, event);
+    if (event.type === 'execute') indexes.executionIds.add(event.executionId);
+  }
   return next;
 }
 
+/** Pure deterministic single-event transition. Artifact stages verify supplied actual bytes synchronously. */
+export function applyEvent(state, input, options = {}) {
+  return transitionEvent(state, input, options);
+}
+
+/** Replay an append-only log with private indexes; returned state is not shared with the caller. */
 export function replayKernel(events, config, options = {}) {
   if (!Array.isArray(events)) fail('INVALID_EVENT', 'Replay requires an event array');
-  return events.reduce((state, event) => applyEvent(state, event, options), createKernel(config));
+  const state = createKernel(config);
+  const indexes = { eventsById: new Map(), executionIds: new Set() };
+  for (const event of events) transitionEvent(state, event, options, indexes);
+  return state;
 }
