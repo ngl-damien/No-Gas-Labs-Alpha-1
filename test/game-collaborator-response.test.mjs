@@ -221,6 +221,20 @@ test('omitted event ID disclosure fits the response array budget and signals tru
     assert.equal(payload.omittedEventIdListTruncated, true, role);
     assert.ok(payload.omittedCount > payload.omittedEventIds.length, role);
   }
+
+  const packet = packets.synthesizer;
+  const payload = JSON.parse(packet.packetJson);
+  const response = structuredClone(validResponses.synthesizer);
+  response.scope.includedEventIds = [...payload.inputRefs];
+  response.scope.omittedEventIds = [...payload.omittedEventIds];
+  response.recordedSupport[0].sourceEventIds = [payload.inputRefs[0]];
+  response.recordedSupport[0].statement = 'The proposal is included in the bounded packet.';
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  assert.equal(payload.omittedEventIds.length, 64);
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(response)).valid, true,
+    'a complete response may enumerate every omission disclosed by the packet');
 });
 
 test('synthesis support and contradictions must cite exact included source events', () => {
