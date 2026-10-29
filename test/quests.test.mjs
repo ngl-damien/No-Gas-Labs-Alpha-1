@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getQuest,getQuestTrail,getLocationAction} from '../game/quests.mjs';
+import {getQuest,getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from '../game/quests.mjs';
 
 const founder={id:'f-1',name:'Founder',role:'founder'};
 const witness={id:'w-1',name:'Witness',role:'witness'};
@@ -47,6 +47,53 @@ test('Founder objectives route to the actual next activity, including the second
   assert.deepEqual([getQuest(world,founder).id,getQuest(world,founder).action],['founder-create-second','workbench']);
   world.creations.push({...creation,id:'c-2'});
   assert.equal(getQuest(world,founder).id,'founder-connect');
+});
+
+test('main quest invitation routes to the next evidence-backed institutional objective', () => {
+  const world = trailFixture();
+  const secondPlace = { ...publishedV1, id: 'c-2', title: 'Second place', publishedAt: at2, versions: [] };
+  world.creations = [
+    { ...publishedV1, kind: 'custom', versions: [] },
+    { ...secondPlace, kind: 'custom' }
+  ];
+  world.events = [
+    { id: 'publish-v1', type: 'publish', actor: founder, at: at1, creationId: 'c-1', version: 1 },
+    { id: 'discover-river', type: 'discover', actor: founder, at: at2, locationId: 'river' },
+    { id: 'field-note', type: 'contribute', actor: founder, at: at2, creationId: 'c-1', version: 1 },
+    { id: 'publish-v1-second', type: 'publish', actor: founder, at: at2, creationId: 'c-2', version: 1 }
+  ];
+  world.discoveries = [{ id: 'd-river', locationId: 'river', actor: founder, at: at2 }];
+  world.contributions = [{
+    id: 'n-founder', creationId: 'c-1', version: 1, actor: founder, at: at2, text: 'A specific field observation'
+  }];
+
+  const before = structuredClone(world);
+  const first = getActiveQuest(world, founder);
+  const second = getActiveQuest(world, founder);
+  assert.equal(first.id, 'founder-preserve-version');
+  assert.equal(first.title, 'Preserve an earlier version');
+  assert.equal(first.action, 'trail');
+  assert.deepEqual(first.nextAction, { type: 'creation', id: 'c-1', version: 1 });
+  assert.equal(first.button, 'Go do this →');
+  assert.deepEqual(second, first);
+  assert.deepEqual(world, before, 'displaying or selecting the next quest must not mutate world state');
+});
+
+test('main quest invitation exposes blocked trail dependencies without inventing progress', () => {
+  const world = trailFixture();
+  const witnessWorld = {
+    ...world,
+    creations: [],
+    discoveries: ['relay', 'river', 'overlook', 'ruins'].map((locationId, index) => ({
+      id: 'd-' + index, locationId, actor: witness, at: at1
+    })),
+    events: []
+  };
+  const quest = getActiveQuest(witnessWorld, witness);
+  assert.equal(quest.id, 'witness-await-work');
+  assert.equal(quest.action, 'places');
+  assert.equal(quest.nextAction, undefined);
+  assert.equal(witnessWorld.xp, undefined);
 });
 
 test('quest projection is deterministic and never mutates canonical world state',()=>{
@@ -416,4 +463,62 @@ test('a Witness-labelled publish event cannot manufacture canonical published-wo
 
   assert.equal(getQuestTrail(world, witness).find(item => item.id === 'witness-work-available').progress, 0);
   assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-first-place').progress, 0);
+});
+
+test('study review lookup requires one later review bound to the exact source version', () => {
+  const study = {
+    id: 'study-event-1', type: 'study', studyId: 'study-1',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z',
+    actor: founder, question: 'What changed?', attempt: 'Compare the versions.',
+    nextCheck: 'Reproduce the comparison.'
+  };
+  const valid = {
+    id: 'review-event-1', type: 'study-reviewed', reviewId: 'review-1',
+    studyId: study.studyId, creationId: study.creationId, version: study.version,
+    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    response: 'The earlier version lacks the measured field.',
+    reflection: 'Repeat the check against the retained bytes.'
+  };
+  assert.equal(findStudyReview(study, [study, valid]), valid);
+
+  const invalidReviews = [
+    { ...valid, version: 1 },
+    { ...valid, creationId: 'other-source' },
+    { ...valid, actor: witness },
+    { ...valid, at: '2026-10-29T11:59:59.000Z' },
+    { ...valid, at: '2026-02-30T12:01:00.000Z' },
+    { ...valid, response: '   ' },
+    { ...valid, reflection: '   ' }
+  ];
+  for (const invalid of invalidReviews) {
+    assert.equal(findStudyReview(study, [study, invalid]), null);
+  }
+
+  assert.equal(findStudyReview(study, [
+    study, valid, { ...valid, id: 'review-event-2', reviewId: 'review-2' }
+  ]), null, 'two reviews for one study are ambiguous');
+  assert.equal(findStudyReview(study, [
+    study, valid, { ...valid, id: valid.id, reviewId: 'review-2' }
+  ]), null, 'duplicate event IDs are ambiguous');
+  assert.equal(findStudyReview({ ...study, at: '2026-10-29' }, [study, valid]), null);
+  assert.equal(findStudyReview(study, [
+    study, valid, { id: valid.id, type: 'discover', actor: witness }
+  ]), null, 'review event IDs must be unique across the full history');
+  assert.equal(findStudyReview(study, [valid, study]), null, 'a review cannot precede its source in append-only history');
+});
+
+test('an unresolved review record is surfaced separately from no review attempt', () => {
+  const study = {
+    id: 'study-event-1', type: 'study', studyId: 'study-1',
+    creationId: 'source-1', version: 2, at: '2026-10-29T12:00:00.000Z', actor: founder
+  };
+  const malformed = {
+    id: 'review-event-1', type: 'study-reviewed', reviewId: 'review-1',
+    studyId: study.studyId, creationId: 'wrong-source', version: 2,
+    at: '2026-10-29T12:01:00.000Z', actor: founder,
+    response: 'A response', reflection: 'A reflection'
+  };
+  assert.equal(hasStudyReviewRecord(study, [study]), false);
+  assert.equal(hasStudyReviewRecord(study, [study, malformed]), true);
+  assert.equal(findStudyReview(study, [study, malformed]), null);
 });

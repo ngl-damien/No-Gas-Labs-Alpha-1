@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { institutionActivityCount, projectMoonshotWorldObjects } from '../game/world-view.mjs';
+import { WorldView, institutionActivityCount, projectMoonshotWorldObjects } from '../game/world-view.mjs';
 
 function proposal(eventId, moonshotId, title = 'A testable question') {
   return {
@@ -164,17 +164,23 @@ test('ambiguous, unlinked, out-of-order and same-actor records cannot inflate mo
   ]);
 });
 
-test('linked attempt evidence must match one retained published version at report time', () => {
-  const events = [
-    proposal('proposal-evidence', 'moon-evidence'),
-    experimentReport('valid-linked-event', 'valid-linked-report', 'moon-evidence', 'witness-1', '2026-10-28T17:02:00.000Z', {
-      evidenceCreationId: 'artifact-1', evidenceVersion: 1,
-    }),
-    experimentReport('missing-linked-event', 'missing-linked-report', 'moon-evidence', 'witness-2', '2026-10-28T17:03:00.000Z', {
-      evidenceCreationId: 'artifact-1', evidenceVersion: 9,
-    }),
-  ];
-  const world = {
+test('linked attempt evidence requires a unique earlier Founder publication event matching the retained version', () => {
+  const proposalEvent = proposal('proposal-evidence', 'moon-evidence');
+  const publicationEvent = {
+    id: 'publish-artifact-1',
+    type: 'publish',
+    creationId: 'artifact-1',
+    version: 1,
+    actor: { id: 'damien', role: 'founder' },
+    at: '2026-10-28T17:00:00.000Z',
+  };
+  const validReport = experimentReport('valid-linked-event', 'valid-linked-report', 'moon-evidence', 'witness-1', '2026-10-28T17:02:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 1,
+  });
+  const missingVersionReport = experimentReport('missing-linked-event', 'missing-linked-report', 'moon-evidence', 'witness-2', '2026-10-28T17:03:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 9,
+  });
+  const world = events => ({
     events,
     creations: [{
       id: 'artifact-1',
@@ -182,10 +188,46 @@ test('linked attempt evidence must match one retained published version at repor
       publishedAt: '2026-10-28T17:00:30.000Z',
       versions: [{ id: 'artifact-1', version: 1, publishedAt: '2026-10-28T17:00:00.000Z' }],
     }],
+  });
+  const valid = projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, validReport, missingVersionReport]))[0];
+  assert.equal(valid.attemptCount, 1);
+  assert.equal(valid.challengeCount, 0);
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, validReport]))[0].attemptCount, 0,
+    'a retained version without a publication event is not an active evidence link');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, { ...publicationEvent, at: '2026-10-28T17:00:01.000Z' }, validReport]))[0].attemptCount, 0,
+    'publication time must match the retained version');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, { ...publicationEvent, actor: { id: 'witness-9', role: 'witness' } }, validReport]))[0].attemptCount, 0,
+    'a Witness-attributed publication cannot activate the link');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, { ...publicationEvent, id: 'publish-artifact-2' }, validReport]))[0].attemptCount, 0,
+    'duplicate publication references are ambiguous');
+  assert.equal(projectMoonshotWorldObjects(world([proposalEvent, validReport, publicationEvent]))[0].attemptCount, 0,
+    'publication must precede the report in append-only history');
+});
+
+test('challenge evidence uses the same publication-event gate as attempt evidence', () => {
+  const proposalEvent = proposal('proposal-challenge-evidence', 'moon-challenge-evidence');
+  const reportEvent = experimentReport('report-event-challenge-evidence', 'report-challenge-evidence', 'moon-challenge-evidence', 'witness-1', '2026-10-28T17:01:00.000Z');
+  const challengeEvent = experimentChallenge('challenge-event-evidence', 'challenge-evidence', 'report-challenge-evidence', 'moon-challenge-evidence', 'witness-2', '2026-10-28T17:02:00.000Z', {
+    evidenceCreationId: 'artifact-1', evidenceVersion: 1,
+  });
+  const publicationEvent = {
+    id: 'publish-challenge-evidence',
+    type: 'publish',
+    creationId: 'artifact-1',
+    version: 1,
+    actor: { id: 'damien', role: 'founder' },
+    at: '2026-10-28T17:00:30.000Z',
   };
-  const [object] = projectMoonshotWorldObjects(world);
-  assert.equal(object.attemptCount, 1);
-  assert.equal(object.challengeCount, 0);
+  const world = events => ({
+    events,
+    creations: [{ id: 'artifact-1', version: 1, publishedAt: '2026-10-28T17:00:30.000Z', versions: [] }],
+  });
+  const withoutPublication = projectMoonshotWorldObjects(world([proposalEvent, reportEvent, challengeEvent]))[0];
+  assert.equal(withoutPublication.attemptCount, 1);
+  assert.equal(withoutPublication.challengeCount, 0);
+  const withPublication = projectMoonshotWorldObjects(world([proposalEvent, publicationEvent, reportEvent, challengeEvent]))[0];
+  assert.equal(withPublication.attemptCount, 1);
+  assert.equal(withPublication.challengeCount, 1);
 });
 
 test('adding retained research activity changes only the matching object counts, not its identity or position', () => {
@@ -227,4 +269,132 @@ test('accessor-backed attempt and challenge fields are ignored without invoking 
   assert.equal(object.attemptCount, 1);
   assert.equal(object.challengeCount, 0);
   assert.equal(reads, 0);
+});
+
+
+test('individual attempt and dissent records become stable navigable world objects', () => {
+  const events = [
+    proposal('proposal-activity', 'moon-activity'),
+    experimentReport('report-event-activity', 'report-activity', 'moon-activity', 'witness-1', '2026-10-28T17:01:00.000Z'),
+    experimentChallenge('challenge-event-activity', 'challenge-activity', 'report-activity', 'moon-activity', 'witness-2', '2026-10-28T17:02:00.000Z'),
+  ];
+  const [before] = projectMoonshotWorldObjects({ events });
+  assert.deepEqual(before.activityObjects.map(object => [object.recordType, object.activityId, object.title]), [
+    ['experiment-reported', 'report-activity', 'Attempt · inconclusive'],
+    ['experiment-challenged', 'challenge-activity', 'Dissent · reproducibility'],
+  ]);
+  assert.ok(Object.isFrozen(before.activityObjects));
+  assert.ok(before.activityObjects.every(Object.isFrozen));
+  assert.ok(before.activityObjects.every(object => object.mapVisible && Number.isFinite(object.x) && Number.isFinite(object.y)));
+  assert.ok(before.activityObjects.every(object => !Object.hasOwn(object, 'verifiedOutcome') && !Object.hasOwn(object, 'xp') && !Object.hasOwn(object, 'authority')));
+
+  const after = projectMoonshotWorldObjects({
+    events: [...events, experimentReport('report-event-later', 'report-later', 'moon-activity', 'witness-3', '2026-10-28T17:03:00.000Z')],
+  })[0].activityObjects;
+  assert.deepEqual(after.slice(0, 2).map(object => [object.id, object.x, object.y]),
+    before.activityObjects.map(object => [object.id, object.x, object.y]));
+});
+
+test('date-only research timestamps cannot create proposal or activity map objects', () => {
+  const looseProposal = { ...proposal('proposal-loose-time', 'moon-loose-time'), at: '2026-10-28' };
+  assert.deepEqual(projectMoonshotWorldObjects({ events: [looseProposal] }), []);
+
+  const validProposal = proposal('proposal-strict-time', 'moon-strict-time');
+  const looseReport = experimentReport('report-event-loose-time', 'report-loose-time', 'moon-strict-time', 'witness-1', '2026-10-28');
+  const [object] = projectMoonshotWorldObjects({ events: [validProposal, looseReport] });
+  assert.equal(object.attemptCount, 0);
+  assert.deepEqual(object.activityObjects, []);
+});
+
+
+function interactionView() {
+  const interactions = [];
+  const routes = [];
+  const view = Object.create(WorldView.prototype);
+  view.player = { x: 100, y: 100 };
+  view.world = { creations: [] };
+  view.researchObjects = [
+    { id: 'moonshot-object:moon-1', moonshotId: 'moon-1', x: 100, y: 80, title: 'Proposal' },
+  ];
+  view.researchActivityObjects = [
+    { id: 'research-activity:report-1', moonshotId: 'moon-1', activityId: 'report-1',
+      recordType: 'experiment-reported', x: 130, y: 90, mapVisible: true, title: 'Attempt' },
+  ];
+  view.callbacks = {
+    onInteract: interaction => interactions.push(interaction),
+    onDiscover: id => interactions.push({ type: 'discovery', id }),
+  };
+  view.goTo = id => routes.push(id);
+  return { view, interactions, routes };
+}
+
+test('targeted interaction selects the requested research activity over a closer proposal', () => {
+  const { view, interactions, routes } = interactionView();
+  assert.equal(view.nearest().id, 'moonshot-object:moon-1', 'generic interaction should still choose the closest object');
+  assert.equal(view.nearest('research-activity:report-1', 'research-activity').id, 'research-activity:report-1',
+    'explicit targeting must resolve the requested activity rather than the globally nearest object');
+  view.target = 'research-activity:report-1';
+  view.targetType = 'research-activity';
+  view.route = [];
+  view.interact('research-activity:report-1', 'research-activity');
+  assert.equal(view.target, null, 'a direct interaction must clear the pending route target');
+  assert.equal(view.targetType, null, 'a direct interaction must clear the pending target type');
+  assert.deepEqual(interactions, [{
+    type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
+  }]);
+  assert.deepEqual(routes, [], 'a successful targeted interaction must not redirect the player');
+});
+
+test('targeted interaction fails closed for a missing or out-of-range target without workbench fallback', () => {
+  const { view, interactions, routes } = interactionView();
+  view.interact('missing-target', 'research-activity');
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, []);
+
+  view.player = { x: 1590, y: 990 };
+  view.interact('research-activity:report-1');
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, [], 'an explicit target miss must not silently route to the workbench');
+});
+
+test('untargeted interaction keeps the existing nearest-object and workbench fallback behavior', () => {
+  const { view, interactions, routes } = interactionView();
+  view.interact();
+  assert.deepEqual(interactions, [{ type: 'research-object', id: 'moon-1' }]);
+
+  interactions.length = 0;
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.player = { x: 1590, y: 990 };
+  view.interact();
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(routes, ['workbench']);
+});
+
+
+test('typed quest navigation disambiguates a colliding creation ID from its research activity', () => {
+  const { view, interactions } = interactionView();
+  view.world.creations = [{
+    id: 'research-activity:report-1',
+    position: { x: 500, y: 500 },
+    title: 'A creation with a colliding identifier',
+  }];
+  view.researchActivityObjects[0].x = 100;
+  view.researchActivityObjects[0].y = 90;
+  view.player = { x: 100, y: 100 };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+
+  delete view.goTo; // exercise the real WorldView route resolver, not the interaction spy
+  view.goTo('research-activity:report-1', 'research-activity');
+  assert.equal(view.target, 'research-activity:report-1');
+  assert.equal(view.targetType, 'research-activity');
+  assert.ok(view.route.length <= 1, 'typed navigation should route to the nearby activity, not the distant colliding creation');
+
+  assert.equal(view.nearest('research-activity:report-1', 'research-activity').type, 'research-activity');
+  view.interact('research-activity:report-1', 'research-activity');
+  assert.deepEqual(interactions, [{
+    type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
+  }]);
 });

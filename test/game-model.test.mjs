@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import {isStrictTimestamp} from '../game/timestamps.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -79,4 +80,29 @@ test('shared request receipts survive validation and repeated discoveries remain
   assert.equal(await validateWorld(repeated.world).then(()=>true),true);
   const duplicate=structuredClone(repeated.world);duplicate.events[1].requestId=duplicate.events[0].requestId;
   await assert.rejects(validateWorld(duplicate),e=>e.code==='INVALID_WORLD');
+});
+
+test('strict timestamp validation rejects loose dates and preserves valid offset timestamps', () => {
+  assert.equal(isStrictTimestamp('2026-10-28T17:00:00.000Z'), true);
+  assert.equal(isStrictTimestamp('2026-10-27T00:30:00-02:00'), true);
+  for (const value of [
+    '1', '2026-10-28', '2026-10-28T17:00:00.000',
+    '2026-02-30T17:00:00.000Z', '2026-13-01T17:00:00.000Z',
+    '2026-10-28T25:00:00Z', 'October 28, 2026'
+  ]) assert.equal(isStrictTimestamp(value), false, value);
+});
+
+test('world validation rejects loose root and event timestamps even when Date.parse orders them', async () => {
+  const start = createWorld({id:'strict-time-world', now});
+  const malformedRoot = structuredClone(start);
+  malformedRoot.createdAt = '2026-10-17';
+  malformedRoot.updatedAt = '2026-10-17';
+  await assert.rejects(validateWorld(malformedRoot), error => error.code === 'INVALID_WORLD');
+
+  const discovered = await applyAction(start, {type:'discover', locationId:'river'}, witness, {now:'2026-10-17T12:00:01.000Z'});
+  const malformedEvent = structuredClone(discovered.world);
+  malformedEvent.events[0].at = '2026-10-18';
+  malformedEvent.discoveries[0].at = malformedEvent.events[0].at;
+  malformedEvent.updatedAt = malformedEvent.events[0].at;
+  await assert.rejects(validateWorld(malformedEvent), error => error.code === 'INVALID_WORLD');
 });

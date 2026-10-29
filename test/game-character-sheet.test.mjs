@@ -66,7 +66,9 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
       publishedCreation('duplicate-b',[t1]),
       publishedCreation('wrong-time',[t1]),
       publishedCreation('wrong-reward',[t1]),
-      publishedCreation('non-founder',[t1])
+      publishedCreation('non-founder',[t1]),
+      publishedCreation('missing-actor-id',[t1]),
+      publishedCreation('blank-actor-id',[t1])
     ],
     events:[
       publication('good-event',founder,'good',1,t1),
@@ -77,6 +79,8 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
       publication('wrong-time-event',founder,'wrong-time',1,t2),
       publication('wrong-reward-event',founder,'wrong-reward',1,t1,{reward:200}),
       publication('non-founder-event',witness,'non-founder',1,t1),
+      publication('missing-actor-id-event',{role:'founder'},'missing-actor-id',1,t1),
+      publication('blank-actor-id-event',{id:' ',role:'founder'},'blank-actor-id',1,t1),
       publication('stale-version-event',founder,'good',99,t1),
       event('malformed-event','publish',founder,t1,{creationId:'good',version:1,reward:99})
     ]
@@ -266,4 +270,111 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   });
   const selfRecord = projectCharacter({ ...world, events: [...world.events, selfChallenge] }, witness);
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+});
+
+test('non-canonical timestamps cannot award publication XP or appear in recent activity', () => {
+  const loose = '2026-10-26';
+  const world = {
+    xp: 0,
+    creations: [publishedCreation('loose-time', [loose])],
+    events: [publication('loose-publication', founder, 'loose-time', 1, loose)]
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.xp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'maker').count, 0);
+  assert.deepEqual(record.recentActivity, []);
+});
+
+test('research and adversarial skills require strict timestamps and unique proposal identity', () => {
+  const proposal = event('proposal-valid', 'moonshot-proposed', witness, t1, {
+    moonshotId: 'moonshot-valid',
+    title: 'A bounded question',
+    hypothesis: 'The claim holds under stated conditions.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'An independent observation.'
+  });
+  const looseProposal = event('proposal-loose', 'moonshot-proposed', founder, '2026-10-26', {
+    moonshotId: 'moonshot-loose',
+    title: 'A loose-time question',
+    hypothesis: 'This must not count.',
+    falsifier: 'A strict observation contradicts it.',
+    evidenceNeeded: 'A retained source.'
+  });
+  const duplicateProposal = event('proposal-duplicate', 'moonshot-proposed', founder, t2, {
+    moonshotId: 'moonshot-duplicate',
+    title: 'Duplicate identity',
+    hypothesis: 'This makes the proposal ambiguous.',
+    falsifier: 'A counterexample.',
+    evidenceNeeded: 'Independent observation.'
+  });
+  const duplicateProposalSecond = { ...duplicateProposal, id: 'proposal-duplicate-second', at: t3 };
+  const looseReport = event('report-loose', 'experiment-reported', witness, '2026-10-27', {
+    reportId: 'report-loose',
+    moonshotId: 'moonshot-valid',
+    procedure: 'Compare a retained claim with a source.',
+    observation: 'The result was not reproduced.',
+    reportedOutcome: 'failed'
+  });
+  const validReport = event('report-valid', 'experiment-reported', witness, t2, {
+    reportId: 'report-valid',
+    moonshotId: 'moonshot-valid',
+    procedure: 'Compare the claim with a retained source.',
+    observation: 'The source contradicts the prediction.',
+    reportedOutcome: 'contradicts'
+  });
+  const looseChallenge = event('challenge-loose', 'experiment-challenged', founder, '2026-10-28', {
+    challengeId: 'challenge-loose',
+    reportId: 'report-valid',
+    moonshotId: 'moonshot-valid',
+    challengeType: 'methodology',
+    challengeText: 'The method does not control the stated condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = { xp: 0, creations: [], events: [proposal, looseProposal, duplicateProposal, duplicateProposalSecond, looseReport, validReport, looseChallenge] };
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 0,
+    'malformed and duplicate proposal identities must not count as research activity');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'researcher').count, 1,
+    'only the unique valid proposal counts');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'experimenter').count, 1,
+    'only the strict-timestamp report counts');
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 0,
+    'a malformed challenge timestamp cannot count as adversarial activity');
+  assert.ok(!founderRecord.recentActivity.some(activity => activity.type === 'moonshot-proposed' && activity.at === '2026-10-26'));
+  assert.ok(!witnessRecord.recentActivity.some(activity => activity.type === 'experiment-reported' && activity.at === '2026-10-27'));
+});
+
+test('study and retrieval skills reject Date.parse-compatible date-only event times', () => {
+  const publicationTime = '2026-10-25T12:00:00.000Z';
+  const looseStudyTime = '2026-10-26';
+  const world = {
+    xp: 0,
+    creations: [publishedCreation('study-source', [publicationTime])],
+    events: [
+      publication('study-source-pub', founder, 'study-source', 1, publicationTime),
+      event('study-note-loose', 'study', founder, looseStudyTime, {
+        studyId: 'study-loose',
+        creationId: 'study-source',
+        version: 1,
+        question: 'What does the source establish?',
+        attempt: 'It establishes only the retained wording.',
+        nextCheck: 'Compare the cited passage.'
+      }),
+      event('study-review-loose', 'study-reviewed', founder, '2026-10-27', {
+        reviewId: 'review-loose',
+        studyId: 'study-loose',
+        creationId: 'study-source',
+        version: 1,
+        response: 'The source supports only a narrow claim.',
+        reflection: 'I need to inspect the exact passage.'
+      })
+    ]
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.skills.find(skill => skill.id === 'scholar').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'retriever').count, 0);
+  assert.deepEqual(record.recentActivity.map(activity => activity.type), ['publish']);
 });
