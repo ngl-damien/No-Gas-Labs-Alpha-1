@@ -259,9 +259,15 @@ export function projectCollaboratorPackets(world) {
   const proposalByMoonshot = new Map(proposals.map(record => [record.moonshotId, record]));
   const activities = eligible.filter(record => record.type !== 'moonshot-proposed' && proposalByMoonshot.has(record.moonshotId));
   const recordsByEventId = new Map(eligible.map(record => [record.id, record]));
-  const latestProposal = proposals[0] || null;
-  const latestActivity = activities[0] || null;
-  const latestReport = activities.find(record => record.type === 'experiment-reported') || null;
+  // projectResearchRecords preserves append-only history order. Select the
+  // newest eligible records explicitly; array position zero is the oldest event.
+  const byAppendOrder = (left, right) => left._projection.index - right._projection.index;
+  const proposalsByAppendOrder = [...proposals].sort(byAppendOrder);
+  const activitiesByAppendOrder = [...activities].sort(byAppendOrder);
+  const latestProposal = proposalsByAppendOrder.at(-1) || null;
+  const latestActivity = activitiesByAppendOrder.at(-1) || null;
+  const latestReport = [...activitiesByAppendOrder].reverse()
+    .find(record => record.type === 'experiment-reported') || null;
   const selectedProposal = latestActivity
     ? proposalByMoonshot.get(latestActivity.moonshotId) || latestProposal
     : latestProposal;
