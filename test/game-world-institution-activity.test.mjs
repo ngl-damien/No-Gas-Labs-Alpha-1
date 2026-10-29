@@ -157,3 +157,57 @@ test('canonical Alpha 1 events light up the institutions that perform their func
   assert.deepEqual(world, before);
   assert.equal(world.xp, 0);
 });
+
+test('world map counts retained institutional kernel stages at their real locations', () => {
+  const world = { xp: 0, events: [{ id: 'shared-id', type: 'contribute' }] };
+  const institution = { kernel: {
+    revision: 6,
+    eventCount: 6,
+    events: [
+      { id: 'shared-id', type: 'claim' },
+      { id: 'grant-1', type: 'authorize' },
+      { id: 'execution-1', type: 'execute' },
+      { id: 'observation-1', type: 'observe', passed: false },
+      { id: 'adjudication-1', type: 'adjudicate', decision: 'reject' },
+      { id: 'revocation-1', type: 'revoke' },
+    ],
+  } };
+  const before = structuredClone({ world, institution });
+
+  // Same IDs in separate retained stores do not collide. A failed observation
+  // and rejected adjudication remain visible as records, never as success.
+  assert.equal(institutionActivityCount('guild_hall', world, institution), 4);
+  assert.equal(institutionActivityCount('forge', world, institution), 1);
+  assert.equal(institutionActivityCount('evidence_archive', world, institution), 7);
+  assert.equal(institutionActivityCount('decision_chamber', world, institution), 3);
+  assert.equal(institutionActivityCount('town-square', world, institution), 7);
+  assert.equal(institutionActivityCount('publication_house', world, institution), 0);
+
+  assert.deepEqual({ world, institution }, before);
+  assert.equal(world.xp, 0);
+});
+
+test('incomplete institutional kernel snapshots do not inflate map counters', () => {
+  const world = { events: [] };
+  const institution = { kernel: {
+    revision: 3,
+    eventCount: 3,
+    events: [{ id: 'claim-1', type: 'claim' }, { id: 'execute-1', type: 'execute' }],
+  } };
+
+  assert.equal(institutionActivityCount('guild_hall', world, institution), 0);
+  assert.equal(institutionActivityCount('forge', world, institution), 0);
+  assert.equal(institutionActivityCount('evidence_archive', world, institution), 0);
+});
+
+test('duplicate IDs inside the institutional stream remain ambiguous', () => {
+  const world = { events: [] };
+  const institution = { kernel: {
+    revision: 2,
+    eventCount: 2,
+    events: [{ id: 'duplicate', type: 'execute' }, { id: 'duplicate', type: 'claim' }],
+  } };
+
+  assert.equal(institutionActivityCount('forge', world, institution), 0);
+  assert.equal(institutionActivityCount('evidence_archive', world, institution), 0);
+});
