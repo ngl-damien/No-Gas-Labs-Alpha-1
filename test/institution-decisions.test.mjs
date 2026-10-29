@@ -381,6 +381,21 @@ test('an interrupted writer-lease mutation guard blocks new writers until explic
   await assert.rejects(lstat(guard), { code: 'ENOENT' });
 });
 
+test('closing a decision store after its runtime directory is removed releases the retained lease handle', async t => {
+  const { store, directory } = await fixture(t);
+  await rm(directory, { recursive: true, force: true });
+
+  await store.close();
+
+  await mkdir(directory, { mode: 0o700 });
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant });
+  try {
+    assert.equal((await reopened.snapshot(founder)).revision, 0);
+  } finally {
+    await reopened.close();
+  }
+});
+
 test('symlinked and non-directory decision guards fail closed without writing through them', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngl-decisions-guard-path-'));
   t.after(() => rm(root, { recursive: true, force: true }));
