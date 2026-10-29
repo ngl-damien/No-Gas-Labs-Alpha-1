@@ -181,6 +181,7 @@ def basic(page,url,out,label):
         packet.get_by_role('button',name='Copy hand-off packet',exact=True).click()
         expect(page.locator('#toast')).to_contain_text(re.compile('Bounded packet copied|Packet selected'))
         if role=='adversary':
+            packet.locator('details.collaborator-response summary').click()
             packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
             target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
             response_field=packet.locator('textarea[aria-label="Adversary response JSON"]')
