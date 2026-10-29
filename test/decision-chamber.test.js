@@ -338,3 +338,32 @@ test("decision scope reads only own data properties from the quest contract", ()
   );
   assert.equal(getterRuns, 0, "quest scope getters must not execute");
 });
+
+
+test("verification rejects accessor-backed public JWKs without executing getters", () => {
+  const accessorJwk = { ...jwk };
+  let getterRuns = 0;
+  Object.defineProperty(accessorJwk, "x", {
+    configurable: true,
+    enumerable: true,
+    get() { getterRuns += 1; return jwk.x; }
+  });
+  assert.deepEqual(verify(signed, payload, accessorJwk), {
+    valid: false,
+    reason: "SIGNATURE_INVALID"
+  });
+  assert.equal(getterRuns, 0);
+});
+
+test("verification accepts only canonical public P-256 JWK coordinates", () => {
+  for (const invalidJwk of [
+    { ...jwk, crv: "P-384" },
+    { ...jwk, d: "private-key-material" },
+    { ...jwk, x: "not-canonical-base64url" }
+  ]) {
+    assert.deepEqual(verify(signed, payload, invalidJwk), {
+      valid: false,
+      reason: "SIGNATURE_INVALID"
+    });
+  }
+});
