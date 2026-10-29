@@ -7,7 +7,9 @@ import {
   makeDecisionPayload,
   decisionDigest,
   verifyFounderDecision,
-  authorizationEvent
+  authorizationEvent,
+  verifyAuthorizationEvent,
+  createFounderAuthorizationVerifier
 } from "../src/authority/decision.js";
 
 const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
