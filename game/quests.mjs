@@ -15,12 +15,16 @@ export function findStudyReview(note, events) {
       !isStrictTimestamp(note?.at) ||
       !identifier(note?.actor?.id) || !['founder', 'witness'].includes(note.actor.role)) return null;
 
-  const reviews = rows(events).filter(event => event?.type === 'study-reviewed');
+  const history = rows(events);
+  const reviews = history.filter(event => event?.type === 'study-reviewed');
   const counts = { id: new Map(), reviewId: new Map(), studyId: new Map() };
-  for (const event of reviews) {
-    for (const field of Object.keys(counts)) {
-      const value = event?.[field];
-      if (typeof value === 'string') counts[field].set(value, (counts[field].get(value) || 0) + 1);
+  for (const event of history) {
+    if (typeof event?.id === 'string') counts.id.set(event.id, (counts.id.get(event.id) || 0) + 1);
+    if (event?.type === 'study-reviewed') {
+      for (const field of ['reviewId', 'studyId']) {
+        const value = event[field];
+        if (typeof value === 'string') counts[field].set(value, (counts[field].get(value) || 0) + 1);
+      }
     }
   }
   const unique = (field, value) => counts[field].get(value) === 1;
