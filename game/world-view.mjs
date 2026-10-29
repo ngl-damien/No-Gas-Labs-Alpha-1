@@ -133,8 +133,9 @@ function computeInstitutionActivityCounts(world,institution=null){
  // Do not present a partial kernel response as a complete institutional count.
  // The server's revision, declared count and delivered array length must agree.
  const kernel=ownDataValue(institution,'kernel');
- if(ownDataValue(institution,'schema')===INSTITUTION_SUMMARY_SCHEMA&&
-    ownDataValue(kernel,'schema')===INSTITUTION_KERNEL_SCHEMA){
+ const validInstitutionSummary=ownDataValue(institution,'schema')===INSTITUTION_SUMMARY_SCHEMA&&
+    ownDataValue(kernel,'schema')===INSTITUTION_KERNEL_SCHEMA;
+ if(validInstitutionSummary){
   const kernelEvents=ownDataValue(kernel,'events');
   const kernelCount=ownDataValue(kernel,'eventCount');
   const kernelRevision=ownDataValue(kernel,'revision');
@@ -143,11 +144,11 @@ function computeInstitutionActivityCounts(world,institution=null){
      Number.isSafeInteger(kernelRevision)&&kernelRevision===kernelCount){
    addIdentifiedActivity(kernelEvents,INSTITUTION_KERNEL_EVENT_MATCHERS,activity);
   }
+  // The separate decision ledger contributes only a validated aggregate count.
+  // It never exposes proposal text or converts a disposition into game success.
+  const decisionSummary=decisionSummaryState(ownDataValue(institution,'decisionSummary'));
+  if(decisionSummary?.available)activity.decision_chamber+=decisionSummary.decisionCount;
  }
- // The separate decision ledger contributes only a validated aggregate count.
- // It never exposes proposal text or converts a disposition into game success.
- const decisionSummary=decisionSummaryState(ownDataValue(institution,'decisionSummary'));
- if(decisionSummary?.available)activity.decision_chamber+=decisionSummary.decisionCount;
  return activity;
 }
 export function institutionActivityCount(id,world,institution=null){
