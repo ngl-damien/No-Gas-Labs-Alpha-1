@@ -115,6 +115,14 @@ test('accessor-backed event data cannot execute getters or enter collaborator pa
   const packets = projectCollaboratorPackets(sourceWorld);
   assert.equal(getterCalls, 0);
   assert.ok(packets.every(packet => packet.available === false && packet.sourceSnapshot.status === 'incomplete'));
+
+  const metadataWorld = researchWorld();
+  Object.defineProperty(metadataWorld, 'id', { enumerable: true, configurable: true, get() { getterCalls += 1; return 'forged-world'; } });
+  Object.defineProperty(metadataWorld, 'revision', { enumerable: true, configurable: true, get() { getterCalls += 1; return 99; } });
+  const metadataPackets = projectCollaboratorPackets(metadataWorld);
+  assert.equal(getterCalls, 0);
+  assert.ok(metadataPackets.every(packet => packet.available && packet.sourceSnapshot.status === 'incomplete'),
+    'valid source records remain usable without executing metadata accessors, but no snapshot identity is asserted');
 });
 
 test('large synthesis slices explicitly disclose when the omitted-ID list is capped', () => {
