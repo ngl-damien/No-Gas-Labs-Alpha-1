@@ -5,13 +5,31 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
 
-/** Find a note's review across the full retained history, not just the UI's recent-review window. */
+/** Find one unambiguous review that follows and remains bound to this exact study note. */
 export function findStudyReview(note, events) {
-  if (typeof note?.studyId !== 'string' || !note.studyId ||
-      typeof note.actor?.id !== 'string' || !['founder', 'witness'].includes(note.actor.role)) return null;
-  return rows(events).find(event => event?.type === 'study-reviewed' &&
-    event.studyId === note.studyId && event.actor?.id === note.actor.id &&
-    event.actor?.role === note.actor.role) || null;
+  const identifier = value => typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+  if (!identifier(note?.studyId) || !identifier(note?.creationId) ||
+      !Number.isSafeInteger(note?.version) || note.version < 1 ||
+      !isStrictTimestamp(note?.at) ||
+      !identifier(note?.actor?.id) || !['founder', 'witness'].includes(note.actor.role)) return null;
+
+  const reviews = rows(events).filter(event => event?.type === 'study-reviewed');
+  const countBy = (field, value) => reviews.filter(event => event?.[field] === value).length;
+  const candidates = reviews.filter(event =>
+    identifier(event?.id) && countBy('id', event.id) === 1 &&
+    identifier(event?.reviewId) && countBy('reviewId', event.reviewId) === 1 &&
+    event.studyId === note.studyId && countBy('studyId', note.studyId) === 1 &&
+    event.creationId === note.creationId && event.version === note.version &&
+    event.actor?.id === note.actor.id && event.actor?.role === note.actor.role &&
+    isStrictTimestamp(event.at) && Date.parse(event.at) > Date.parse(note.at) &&
+    typeof event.response === 'string' && event.response.trim() &&
+    Array.from(event.response).length <= 1000 &&
+    typeof event.reflection === 'string' && event.reflection.trim() &&
+    Array.from(event.reflection).length <= 1000
+  );
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function getQuest(world, viewer) {
