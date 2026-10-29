@@ -142,6 +142,26 @@ test("a decision verified before expiry cannot authorize after its expiry", () =
   );
 });
 
+test("decision identifiers reject prototype-sensitive names", () => {
+  assert.throws(
+    () => makePayload({ proposal: { ...proposal, event_id: "constructor" } }),
+    /proposal required/
+  );
+
+  const reservedQuest = { ...quest, quest_id: "prototype" };
+  const reservedProposal = { ...proposal, quest_id: "prototype" };
+  assert.throws(
+    () => makePayload({ proposal: reservedProposal, quest: reservedQuest }),
+    /quest binding mismatch/
+  );
+
+  const unsafePayload = { ...payload, quest_id: "constructor" };
+  assert.deepEqual(verify(signedReceipt(unsafePayload), unsafePayload), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+});
+
 test("decision creation rejects accessor-backed proposal and quest bindings", () => {
   const accessorProposal = { ...proposal };
   Object.defineProperty(accessorProposal, "event_id", {
