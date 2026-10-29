@@ -24,6 +24,7 @@ export function findStudyReview(note, events) {
       source.actor?.id !== note.actor.id || source.actor?.role !== note.actor.role) return null;
   const sourceIndex = history.indexOf(source);
   if (sourceIndex < 0) return null;
+  const positionByEvent = new Map(history.map((event, index) => [event, index]));
 
   const reviews = history.filter(event => event?.type === 'study-reviewed');
   const counts = { id: new Map(), reviewId: new Map(), studyId: new Map() };
@@ -38,7 +39,7 @@ export function findStudyReview(note, events) {
   }
   const unique = (field, value) => counts[field].get(value) === 1;
   const candidates = reviews.filter(event =>
-    identifier(event?.id) && unique('id', event.id) && history.indexOf(event) > sourceIndex &&
+    identifier(event?.id) && unique('id', event.id) && positionByEvent.get(event) > sourceIndex &&
     identifier(event?.reviewId) && unique('reviewId', event.reviewId) &&
     event.studyId === note.studyId && unique('studyId', note.studyId) &&
     event.creationId === note.creationId && event.version === note.version &&
