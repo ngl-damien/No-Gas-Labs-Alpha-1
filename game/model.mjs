@@ -193,8 +193,15 @@ export async function validateWorld(raw) {
   // Index retained history once. Validation below is intentionally linear in event count:
   // a bounded 32 MiB world must not trigger a full-history scan for every report or study.
   const eventPositions=new Map(),publicationsByVersion=new Map(),proposalsByMoonshot=new Map(),studiesById=new Map();
+  const retainedVersionsByKey=new Map();
   const historyKey=(...parts)=>JSON.stringify(parts);
   const addHistory=(map,key,value)=>{const list=map.get(key)||[];list.push(value);map.set(key,list);};
+  for(const creation of raw.creations)for(const version of [...creation.versions,creation]){
+    const key=historyKey(creation.id,version.version);
+    if(retainedVersionsByKey.has(key))invalid('Duplicate retained publication version.');
+    retainedVersionsByKey.set(key,version);
+  }
+  const retainedVersion=(creationId,version)=>retainedVersionsByKey.get(historyKey(creationId,version));
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(!e||typeof e!=='object')continue;
     eventPositions.set(e,index);
@@ -213,8 +220,7 @@ export async function validateWorld(raw) {
        typeof e.evidenceNeeded!=='string'||!e.evidenceNeeded.trim()||Array.from(e.evidenceNeeded).length>1000)invalid('Malformed moonshot proposal.');
     if(!(e.sourceCreationId===null&&e.sourceVersion===null)){
       if(typeof e.sourceCreationId!=='string'||!e.sourceCreationId.trim()||!Number.isSafeInteger(e.sourceVersion)||e.sourceVersion<1)invalid('Malformed moonshot source reference.');
-      const source=raw.creations.find(c=>c.id===e.sourceCreationId);
-      const version=source&&(source.version===e.sourceVersion?source:source.versions.find(v=>v.version===e.sourceVersion));
+      const version=retainedVersion(e.sourceCreationId,e.sourceVersion);
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Malformed moonshot source reference.');
     }
   }
@@ -240,8 +246,7 @@ export async function validateWorld(raw) {
     if(!hasEvidenceId){
       if(e.evidenceCreationId!==null||e.evidenceVersion!==null)invalid('Unlinked experiment evidence must be explicitly null.');
     }else{
-      const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
-      const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
+      const version=retainedVersion(e.evidenceCreationId,e.evidenceVersion);
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
     }
   }
@@ -261,8 +266,7 @@ export async function validateWorld(raw) {
       if(e.evidenceCreationId!==undefined&&e.evidenceCreationId!==null)invalid('Unlinked challenge evidence must be explicitly null.');
       if(e.evidenceVersion!==undefined&&e.evidenceVersion!==null)invalid('Unlinked challenge evidence version must be explicitly null.');
     }else{
-      const source=raw.creations.find(c=>c.id===e.evidenceCreationId);
-      const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
+      const version=retainedVersion(e.evidenceCreationId,e.evidenceVersion);
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
     }
   }
@@ -275,11 +279,10 @@ export async function validateWorld(raw) {
        typeof e.question!=='string'||!e.question.trim()||Array.from(e.question).length>500||
        typeof e.attempt!=='string'||!e.attempt.trim()||Array.from(e.attempt).length>1000||
        typeof e.nextCheck!=='string'||!e.nextCheck.trim()||Array.from(e.nextCheck).length>500)invalid('Malformed Academy study note.');
-    const source=raw.creations.find(c=>c.id===e.creationId);
-    const versions=source?[...source.versions,source].filter(v=>v.version===e.version):[];
+    const version=retainedVersion(e.creationId,e.version);
     const publicationEvents=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
-    if(versions.length!==1||!isStrictTimestamp(versions[0].publishedAt)||
-       Date.parse(versions[0].publishedAt)>Date.parse(e.at)||publicationEvents.length!==1||
+    if(!version||!isStrictTimestamp(version.publishedAt)||
+       Date.parse(version.publishedAt)>Date.parse(e.at)||publicationEvents.length!==1||
        Date.parse(publicationEvents[0].at)>Date.parse(e.at))invalid('Study note must bind to one earlier retained published version.');
   }
   const allowedStudyReviewKeys=new Set(['id','type','actor','at','semantics','reviewId','studyId','creationId','version','response','reflection','requestId','actionFingerprint','actionResult']);
@@ -299,11 +302,10 @@ export async function validateWorld(raw) {
        source.actor?.id!==e.actor?.id||source.actor?.role!==e.actor?.role||
        source.creationId!==e.creationId||source.version!==e.version||
        !isStrictTimestamp(source.at)||Date.parse(source.at)>=Date.parse(e.at))invalid('Study review must follow its author’s matching source note.');
-    const reviewSource=raw.creations.find(c=>c.id===e.creationId);
-    const reviewVersions=reviewSource?[...reviewSource.versions,reviewSource].filter(v=>v.version===e.version):[];
+    const reviewVersion=retainedVersion(e.creationId,e.version);
     const reviewPublications=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
-    if(reviewVersions.length!==1||!isStrictTimestamp(reviewVersions[0].publishedAt)||
-       Date.parse(reviewVersions[0].publishedAt)>Date.parse(e.at)||reviewPublications.length!==1||
+    if(!reviewVersion||!isStrictTimestamp(reviewVersion.publishedAt)||
+       Date.parse(reviewVersion.publishedAt)>Date.parse(e.at)||reviewPublications.length!==1||
        Date.parse(reviewPublications[0].at)>Date.parse(e.at))invalid('Study review must retain its exact earlier published source version.');
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))invalid('Malformed attributed note.');}
