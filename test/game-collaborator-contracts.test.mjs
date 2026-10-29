@@ -59,7 +59,7 @@ test('research packets bind to retained event IDs and declare zero authority and
   assert.match(byId.adversary.prompt, /not authenticated to Alpha 1/);
   assert.match(byId.adversary.prompt, /challengeDraft/);
   assert.match(byId.adversary.prompt, /The procedure omits a control/);
-  assert.match(byId.adversary.prompt, /do not repeat one verbatim/i);
+  assert.match(byId.adversary.prompt, /do not repeat a supplied challenge verbatim/i);
 
   for (const packet of packets) {
     const payload = JSON.parse(packet.packetJson);
