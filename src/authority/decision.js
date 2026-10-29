@@ -203,29 +203,33 @@ export function authorizationEvent({ signed, payload, verification }) {
   const seal = verification && typeof verification === "object"
     ? verificationSeals.get(verification)
     : null;
-  if (!seal || verification.valid !== true || !isDecisionPayload(payload) ||
-      !signed || typeof signed !== "object") {
+  const candidate = snapshotDecisionPayload(payload);
+  const receipt = snapshotSignedReceipt(signed);
+  if (!seal || verification.valid !== true || !candidate || !isDecisionPayload(candidate) || !receipt) {
     throw new Error("verified Founder decision required");
   }
 
-  const digest = decisionDigest(payload);
-  if (digest !== seal.payloadDigest || signed.payload_sha256 !== seal.payloadDigest ||
-      signed.signature !== seal.signature || signed.key_fingerprint !== seal.keyFingerprint ||
-      Date.now() >= Date.parse(payload.expires_at)) {
+  const digest = decisionDigest(candidate);
+  if (digest !== seal.payloadDigest || receipt.payload_sha256 !== seal.payloadDigest ||
+      receipt.signature !== seal.signature || receipt.key_fingerprint !== seal.keyFingerprint ||
+      Date.now() >= Date.parse(seal.payload.expires_at)) {
     throw new Error("verified Founder decision required");
   }
 
+  // Build the event only from the immutable snapshot that the verifier sealed.
+  // Never reread caller-controlled payload/receipt properties after validation.
+  const decision = seal.payload;
   return Object.freeze({
-    event_id: "authorize:" + payload.proposal_id + ":" + signed.payload_sha256,
+    event_id: "authorize:" + decision.proposal_id + ":" + seal.payloadDigest,
     type: "QUEST_AUTHORIZED",
-    quest_id: payload.quest_id,
-    proposal_id: payload.proposal_id,
-    grant_id: signed.payload_sha256,
+    quest_id: decision.quest_id,
+    proposal_id: decision.proposal_id,
+    grant_id: seal.payloadDigest,
     actor: "founder",
-    capabilities: payload.capabilities,
-    outputs: payload.outputs,
-    acceptance: payload.acceptance,
-    expires_at: payload.expires_at,
-    key_fingerprint: signed.key_fingerprint
+    capabilities: decision.capabilities,
+    outputs: decision.outputs,
+    acceptance: decision.acceptance,
+    expires_at: decision.expires_at,
+    key_fingerprint: seal.keyFingerprint
   });
 }
