@@ -92,12 +92,16 @@ export function verifyFounderDecision({ signed, payload, public_key_jwk, expecte
       .digest("hex");
     if (actualFingerprint !== expected_fingerprint) return rejected("KEY_NOT_ENROLLED");
     if (typeof signed.signature !== "string" || !signed.signature) return rejected("SIGNATURE_INVALID");
+    const signatureBytes = Buffer.from(signed.signature, "base64url");
+    if (signatureBytes.length === 0 || signatureBytes.toString("base64url") !== signed.signature) {
+      return rejected("SIGNATURE_INVALID");
+    }
 
     const valid = verifySignature(
       "sha256",
       Buffer.from(canonical(payload)),
       key,
-      Buffer.from(signed.signature, "base64url")
+      signatureBytes
     );
     if (!valid) return rejected("SIGNATURE_INVALID");
 
