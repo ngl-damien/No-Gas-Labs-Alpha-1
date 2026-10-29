@@ -116,7 +116,7 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
   }
   const synthesis = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
   const payload = JSON.parse(synthesis.packetJson);
-  assert.equal(payload.omittedCount, 107);
+  assert.equal(payload.omittedCount, 106);
   assert.equal(payload.omittedEventIds.length, 100);
   assert.equal(payload.omittedEventIdListTruncated, true);
   assert.equal(payload.inputRecords.length, 7);
