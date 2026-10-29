@@ -186,3 +186,16 @@ After documenting the stale/diverged bases and commenting with the exact compari
 The private recovery vault's `omnichain/` folder contains 18 files. A SHA comparison against the current `Omnichain_Bridge_wallet` repository found nine exact common source-file matches, no source file missing from the recovery folder, and seven recovery-only files; the two README/provenance files differ. This establishes a partial recovery relationship, not a complete historical repository mirror.
 
 **Do not run or publicly deploy the wallet initializer.** The inspected `init-ton-wallet.js` generates a TON keypair and writes the secret key as plaintext into `wallet_keys.json` using a normal filesystem write without an explicit restrictive file mode. The inspected `townsquare/server.js` exposes a `POST /wallet-init` endpoint that invokes this script. The current tracked tree does not contain `wallet_keys.json`, and no wallet was generated during this audit. Before any execution, the wallet-key storage must be redesigned (private ignored data directory, restrictive permissions, no secret logging, backup/recovery plan, and explicit operator consent); the endpoint also needs authentication, rate limiting, and safe process management. Because this is wallet-related code and the source repository has no license file in its observed tree, preserve it in the private recovery vault until security and license/IP review is complete—do not copy it into the public Alpha 1 repository yet.
+
+
+## Historical Official-repository recovery scope
+
+The private recovery vault's manifest is a separate and larger scope than the 32 currently accessible `ngl-damien` repositories:
+
+- `ngl_repo_manifest.csv` records the historical Official inventory (94 repositories in the recovery notes).
+- `archives/OFFICIAL_PRIVATE_INVENTORY.md` reports a search sample of 84 private Official repositories.
+- `archives/OFFICIAL_PRIVATE_COVERAGE.md` describes 49 private non-archived Official repositories as either represented by a `ngl-damien` shell or packed under the recovery vault's `archives/` folder.
+- That same coverage note explicitly says these are **not full bit-for-bit mirrors**; many retain provenance and key files only.
+- Direct repository lookup for `No-Gas-Labs-Official/AI-BI-Intelligence-node-gate` returned 404 through the current connected GitHub identity, consistent with `PORT_STATUS.md` saying the `ngl-damien` token cannot read Official private repositories.
+
+Therefore, the 32-repository audit is not the complete historical recovery. Continue from the local recovery manifest, archives, and recorded Official commit/blob SHAs. If a missing source file is not in those archives, the next blocker is authorized read access to the Official repository or a supplied source archive—not guessing or recreating code from a manifest. Never describe a provenance stub as a full mirror.
