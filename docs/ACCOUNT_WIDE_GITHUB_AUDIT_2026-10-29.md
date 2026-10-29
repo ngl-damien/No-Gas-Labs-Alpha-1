@@ -211,3 +211,21 @@ This means Alpha 1 is a substantive playable-world prototype with real event/evi
 ### Manifest-to-account reconciliation count
 
 A direct parse of the 94-row historical CSV gives 83 rows marked private and 35 marked archived. It has 28 exact repository-name matches in the current account; another 16 historical `featherstone-*` archived mirrors normalize to names that also exist in the current account. Four current repositories are recovery/working additions not listed as exact Official names: Alpha 1, Damien-Featherstone, the recovery vault, and the cooldown probe. Fifty manifest names do not map to a current account repository by exact name or the documented `featherstone-` prefix rule. Some have partial folders/provenance under the recovery vault, so this is a repository-name gap count—not a claim that all 50 have no bytes anywhere. The next pass must map each of those 50 names to archive contents, source SHA, current destination (if any), and recovery status.
+
+
+## Branch count across all 32 repositories
+
+A branch-list query was run for every current repository. The account has **529 branches total**; Alpha 1 alone accounts for 410 of them. All other repositories have the following counts:
+
+| Repository | Branches |
+|---|---:|
+| `TaskAgile` | 38 |
+| `no-gas-labs-command-center` | 30 |
+| `ngl001-def4us28` | 10 |
+| `ngl-mesh` | 11 |
+| `no-gas-labs` | 3 |
+| `Damien-Featherstone` | 2 |
+| `ngl-recovery-2026-10-25` | 1 |
+| Each of the other 24 repositories | 1 each |
+
+This reinforces that branch cleanup should focus first on Alpha 1, then Command Center and TaskAgile. The single-branch shells are not necessarily complete projects; a one-branch count is not a health signal.
