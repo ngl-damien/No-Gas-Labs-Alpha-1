@@ -258,7 +258,7 @@ function appendCollaboratorContracts(content, sourceWorld){
       paragraph(packet.objective),
       paragraph(packet.available?'Inputs: '+packet.inputRefs.join(' · '):packet.reason,packet.available?'form-help':'empty-note'),
       paragraph(packet.sourceSnapshot?.status==='identified'
-        ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.retainedEventCount} retained events.`
+        ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
         : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
     ]);
     if(packet.available){
