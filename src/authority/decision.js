@@ -363,7 +363,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
 }
 
 export function createFounderAuthorizationVerifier(options = {}) {
-  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint"]);
+  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) throw new Error("FOUNDER_TRUST_CONFIGURATION_INVALID");
   const { public_key_jwk, expected_fingerprint, expected_audience } = args;
   const publicKeyJwk = snapshotPublicKeyJwk(public_key_jwk);
