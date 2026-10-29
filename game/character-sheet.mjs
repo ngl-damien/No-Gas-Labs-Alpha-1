@@ -57,7 +57,9 @@ function matchedPublications(world) {
   const versions = retainedVersionIndex(world);
   const candidates = [];
   for (const event of events) {
-    if (event.type !== 'publish' || event.actor?.role !== 'founder' ||
+    if (event.type !== 'publish' ||
+        typeof event.actor?.id !== 'string' || !event.actor.id.trim() ||
+        event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
         !Number.isSafeInteger(event.reward) || event.reward !== XP_PER_PUBLICATION ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
         event.version < 1 || !isStrictTimestamp(event.at)) continue;
