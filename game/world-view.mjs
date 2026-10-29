@@ -31,21 +31,6 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
 });
-/**
- * Count identifiable activity records at an institution without treating a label,
- * duplicate event ID, or accessor-backed object as a canonical progress signal.
- * Supports Alpha 1's `id` and recovered donor events' `event_id` schemas.
- * Counts are navigational context only; they do not verify truth or grant rewards.
- */
-const MAX_WORLD_EVENT_SCAN=100_000;
-function ownDataValue(object,key){
- if(!object||(typeof object!=='object'&&typeof object!=='function'))return undefined;
- try{
-  const descriptor=Object.getOwnPropertyDescriptor(object,key);
-  return descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:undefined;
- }catch{return undefined;}
-}
-function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
 const INSTITUTION_KERNEL_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: claims, scoped grants, adjudications and preserved revocations.
  guild_hall:event=>['claim','authorize','adjudicate','revoke'].includes(event?.type),
