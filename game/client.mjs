@@ -225,7 +225,64 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=renderNotes;renderNotes();
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
-function openGuide(id){const g=guides[id];if(!g)return;const action=getLocationAction(id,world,viewer);const content=showSheet(g.title,g.name);content.append(paragraph(g.voice,'attribution'),paragraph(g.body),node('div',{class:'field-card'},[node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),paragraph(g.practice)]),paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),node('div',{class:'button-row'},[button(action?.label||'Explore another guide →',()=>{if(action?.type==='workbench')openWorkshop(action.recipe);else if(action?.type==='inspect')openCreation(action.creationId);else openPlaces();},{class:'primary-button'})]));}
+function appendRelayRecovery(content){
+  const section=node('section',{class:'field-card',id:'relay-pending-action'},[
+    node('h3',{text:'Courier receipt · shared action recovery'}),
+    paragraph('The Relay can retry an uncertain shared write using its original request ID. This local receipt is not a canonical event and does not prove that the server accepted the action.')
+  ]);
+  let pending;
+  try{pending=readPendingSharedAction()}catch(error){
+    section.append(paragraph(error.message,'evidence-warning'));
+    content.append(section);
+    return;
+  }
+  if(!pending){
+    section.append(paragraph('No unresolved shared-action receipt is saved on this device.','empty-note'));
+    content.append(section);
+    return;
+  }
+  section.append(
+    node('span',{class:'pill',text:'LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN'}),
+    paragraph('Pending action · '+pending.action.type.toUpperCase()),
+    paragraph('Request ID · '+pending.requestId),
+    paragraph('Original actor · '+pending.actorId+' ('+pending.actorRole+')'),
+    paragraph('Retry reuses the exact action and request ID. Do not edit the receipt or replay it under another identity.','form-help')
+  );
+  if(pending.actorId===viewer.id&&pending.actorRole===viewer.role){
+    section.append(button('Retry the exact pending action safely',guarded(async()=>{
+      await submitPendingSharedAction(pending);
+      closeSheet();
+      toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.');
+    }),{class:'primary-button',id:'relay-retry-pending-shared-action'}));
+  }else{
+    section.append(paragraph('This session does not match the original actor. The Relay will not replay this action under a different identity or role. Re-authenticate as the original actor to recover it.','evidence-warning'));
+  }
+  content.append(section);
+}
+function openGuide(id){
+  const g=guides[id];
+  if(!g)return;
+  const action=getLocationAction(id,world,viewer);
+  const content=showSheet(g.title,g.name);
+  content.append(
+    paragraph(g.voice,'attribution'),
+    paragraph(g.body),
+    node('div',{class:'field-card'},[
+      node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),
+      paragraph(g.practice)
+    ]),
+    paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),
+    paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),
+    node('div',{class:'button-row'},[
+      button(action?.label||'Explore another guide →',()=>{
+        if(action?.type==='workbench')openWorkshop(action.recipe);
+        else if(action?.type==='inspect')openCreation(action.creationId);
+        else openPlaces();
+      },{class:'primary-button'})
+    ])
+  );
+  if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
+}
 function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[
