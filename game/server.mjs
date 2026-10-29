@@ -170,6 +170,22 @@ function validateHistory(world) {
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set();
+  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const historyKey = (...parts) => JSON.stringify(parts);
+  const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
+  for (let index = 0; index < world.events.length; index += 1) {
+    const event = world.events[index];
+    if (!event || typeof event !== 'object') continue;
+    eventPositions.set(event, index);
+    if (event.type === 'publish') addHistory(publicationEventsByVersion, historyKey(event.creationId, event.version), event);
+    if (event.type === 'moonshot-proposed') addHistory(proposalsByMoonshot, event.moonshotId, { event, index });
+  }
+  for (const version of published) addHistory(publishedByVersion, historyKey(version.id, version.version), version);
+  for (const discovery of world.discoveries) {
+    const key = historyKey(discovery.locationId, discovery.actor?.id);
+    const at = Date.parse(discovery.at);
+    if (Number.isFinite(at) && (!earliestDiscoveryAt.has(key) || at < earliestDiscoveryAt.get(key))) earliestDiscoveryAt.set(key, at);
+  }
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
@@ -223,7 +239,7 @@ function validateHistory(world) {
       if (!(event.sourceCreationId === null && event.sourceVersion === null)) {
         if (typeof event.sourceCreationId !== 'string' || !event.sourceCreationId.trim() ||
             !Number.isSafeInteger(event.sourceVersion) || event.sourceVersion < 1 ||
-            !published.some(p => p.id === event.sourceCreationId && p.version === event.sourceVersion && Date.parse(p.publishedAt) <= Date.parse(event.at))) {
+            !(publishedByVersion.get(historyKey(event.sourceCreationId, event.sourceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at))) {
           throw new Error('Stored moonshot source reference is invalid');
         }
       }
@@ -238,14 +254,14 @@ function validateHistory(world) {
       }
       reportIds.add(event.reportId);
       experimentReports.set(event.reportId, event);
-      if (world.events.filter(proposal => proposal.type === 'moonshot-proposed' && proposal.moonshotId === event.moonshotId && Date.parse(proposal.at) <= Date.parse(event.at)).length !== 1) {
+      if ((proposalsByMoonshot.get(event.moonshotId) || []).filter(proposal => proposal.index < eventPositions.get(event) && Date.parse(proposal.event.at) <= Date.parse(event.at)).length !== 1) {
         throw new Error('Stored experiment report does not bind to one earlier moonshot proposal');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
       const hasEvidenceVersion = Number.isSafeInteger(event.evidenceVersion) && event.evidenceVersion > 0;
       if (hasEvidenceId !== hasEvidenceVersion ||
           (!hasEvidenceId && (event.evidenceCreationId !== null || event.evidenceVersion !== null)) ||
-          (hasEvidenceId && !published.some(p => p.id === event.evidenceCreationId && p.version === event.evidenceVersion && Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
+          (hasEvidenceId && !(publishedByVersion.get(historyKey(event.evidenceCreationId, event.evidenceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
         throw new Error('Stored experiment evidence reference is invalid');
       }
     }
@@ -295,11 +311,11 @@ function validateHistory(world) {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
       }
-      if (event.type === 'discover' && (typeof result.discovered !== 'boolean' || (event.repeat === true && result.discovered) || (event.repeat === true && !world.discoveries.some(item => item.locationId === event.locationId && item.actor.id === event.actor.id && Date.parse(item.at) <= Date.parse(event.at))) || (event.repeat !== true && !result.discovered))) throw new Error('Stored idempotency discovery result mismatch');
+      if (event.type === 'discover' && (typeof result.discovered !== 'boolean' || (event.repeat === true && result.discovered) || (event.repeat === true && !(earliestDiscoveryAt.has(historyKey(event.locationId, event.actor.id)) && earliestDiscoveryAt.get(historyKey(event.locationId, event.actor.id)) <= Date.parse(event.at))) || (event.repeat !== true && !result.discovered))) throw new Error('Stored idempotency discovery result mismatch');
     }
     if (event.type === 'draft' || event.type === 'repair') {
       if (typeof event.draftId !== 'string' || drafts.has(event.draftId)) throw new Error('Stored draft history mismatch');
-      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !published.some(p => p.id === event.creationId && p.version === event.baseVersion && Date.parse(p.publishedAt) <= Date.parse(event.at)))) throw new Error('Stored repair version history mismatch');
+      if (event.type === 'repair' && (!Number.isInteger(event.baseVersion) || !(publishedByVersion.get(historyKey(event.creationId, event.baseVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) throw new Error('Stored repair version history mismatch');
       drafts.set(event.draftId, event);
     }
     if (event.type === 'publish' && !published.some(p => p.id === event.creationId && p.version === event.version && p.publishedAt === event.at)) throw new Error('Stored publication history mismatch');
@@ -319,7 +335,7 @@ function validateHistory(world) {
   if (revisions.length !== world.methods.length) throw new Error('Earned repair method history mismatch');
   for (const publication of revisions) {
     const matching = world.methods.filter(method => method.creationId === publication.id && method.version === publication.version);
-    const event = world.events.find(event => event.type === 'publish' && event.creationId === publication.id && event.version === publication.version);
+    const event = (publicationEventsByVersion.get(historyKey(publication.id, publication.version)) || [])[0];
     if (matching.length !== 1) throw new Error('Duplicate or missing earned repair method');
     const method = matching[0]; exact(method, ['id', 'creationId', 'version', 'title', 'description', 'actor', 'at', 'semantics']);
     if (!event || method.at !== event.at || canonicalStringify(method.actor) !== canonicalStringify(event.actor) || method.title !== `Repair ${publication.title} · v${publication.version}` || method.description !== (publication.intent || 'Publish a checked revision while preserving the prior version and its exact bytes.') || method.semantics !== 'Earned game method: a retained, checked repair; no external truth or authority claim.') throw new Error('Earned repair method publication binding mismatch');
