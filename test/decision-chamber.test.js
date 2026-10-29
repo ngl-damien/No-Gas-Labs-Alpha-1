@@ -122,6 +122,17 @@ test("a verification result is bound to the exact payload and signed receipt", (
   );
 });
 
+test("a decision verified before expiry cannot authorize after its expiry", () => {
+  const expiringPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
+  const expiringSigned = signedReceipt(expiringPayload);
+  const verification = verify(expiringSigned, expiringPayload, jwk, fingerprint, 0);
+  assert.equal(verification.valid, true);
+  assert.throws(
+    () => authorizationEvent({ signed: expiringSigned, payload: expiringPayload, verification }),
+    /verified Founder decision required/
+  );
+});
+
 test("decision payloads require exact canonical UTC expiry timestamps", () => {
   for (const expires_at of [
     "2099-01-01",
