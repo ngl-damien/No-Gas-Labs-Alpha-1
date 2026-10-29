@@ -294,9 +294,9 @@ export function projectCollaboratorPackets(world) {
       const proposal = proposalByMoonshot.get(selectedReport.moonshotId);
       if (proposal) {
         target = proposal.moonshotId;
-        const priorChallenges = activities.filter(record =>
-          record.type === 'experiment-challenged' && record.reportId === selectedReport.reportId
-        );
+        const priorChallenges = activities
+          .filter(record => record.type === 'experiment-challenged' && record.reportId === selectedReport.reportId)
+          .sort((left, right) => right._projection.index - left._projection.index);
         // Activities are newest-first. Bound packet size while disclosing the
         // exact count and a capped list of omitted challenge event IDs.
         const includedChallenges = priorChallenges.slice(0, MAX_ADVERSARY_CHALLENGES);
