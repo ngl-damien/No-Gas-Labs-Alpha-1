@@ -1198,6 +1198,52 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
 });
 
 
+test('decision snapshot route broadcasts unavailable summary when expiry persistence becomes uncertain', async t => {
+  let failNextSync = false;
+  const decisionSyncDirectory = async directory => {
+    if (failNextSync) {
+      failNextSync = false;
+      throw Object.assign(new Error('injected decision expiry directory sync failure'), { code: 'EIO' });
+    }
+    const handle = await open(directory, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+  };
+  const f = await fixture(t, undefined, { decisionSyncDirectory });
+  const founder = f.client();
+  await founder.login();
+  const policy = await founder.request('/api/decisions/policy', {
+    id: 'policy:expiry-broadcast',
+    reviewWindowMs: 1,
+    basis: 'Synthetic expiry/broadcast fault-injection test only.'
+  });
+  assert.equal(policy.response.status, 200, JSON.stringify(policy.body));
+  const bytes = '{"schema":"test.evaluation.v1","result":"synthetic expiry"}';
+  const created = await founder.request('/api/decisions/proposals', {
+    id: 'decision:expiry-broadcast',
+    title: 'Synthetic expiry broadcast',
+    evaluation: { bytes, receipt: artifactReceipt(bytes) },
+    risks: ['Synthetic test only'],
+    rollback: 'No external effect is executed.',
+    proposedEffect: 'Record a synthetic proposal only.'
+  });
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+
+  const stream = await founder.stream();
+  t.after(() => stream.close());
+  const initialWorld = await stream.next('world');
+  assert.equal(initialWorld.institution.decisionSummary.available, true);
+  await new Promise(resolve => setTimeout(resolve, 10));
+
+  failNextSync = true;
+  const snapshot = await founder.request('/api/decisions');
+  assert.ok(snapshot.response.status >= 500, JSON.stringify(snapshot.body));
+  const unavailableWorld = await nextWithin(stream, 'world');
+  assert.equal(unavailableWorld.institution.decisionSummary.available, false,
+    'expiry persistence uncertainty must invalidate the shared map summary immediately');
+  const state = await founder.request('/api/state');
+  assert.equal(state.body.institution.decisionSummary.available, false);
+});
+
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
   t.after(() => rm(dataDir, { recursive: true, force: true }));
