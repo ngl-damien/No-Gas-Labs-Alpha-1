@@ -76,7 +76,7 @@ function decisionSummaryState(summary){
   normalized[status]=count;
   total+=count;
  }
- if(total!==decisionCount||revision<decisionCount)return {available:false};
+ if(!Number.isSafeInteger(total)||total!==decisionCount||revision<decisionCount)return {available:false};
  return {available:true,revision,decisionCount,counts:normalized};
 }
 const INSTITUTION_SUMMARY_SCHEMA='ngl.shared-institution-summary.v1';
