@@ -26,6 +26,15 @@ const report = (overrides = {}) => ({
   at: '2026-10-28T17:01:00.000Z',
   ...overrides
 });
+const publication = (overrides = {}) => ({
+  id: 'publish-source-1',
+  type: 'publish',
+  creationId: 'source-1',
+  version: 1,
+  actor: { id: 'founder-1', role: 'founder', name: 'Founder' },
+  at: '2026-10-28T16:59:00.000Z',
+  ...overrides
+});
 const challenge = (overrides = {}) => ({
   id: 'challenge-event-1',
   type: 'experiment-challenged',
@@ -37,6 +46,21 @@ const challenge = (overrides = {}) => ({
   actor: { id: 'founder-1', role: 'founder', name: 'Founder' },
   at: '2026-10-28T17:02:00.000Z',
   ...overrides
+});
+
+test('proposal source links require one earlier publication with consistent time', () => {
+  const source = { sourceCreationId: 'source-1', sourceVersion: 1 };
+  const status = events => projectResearchRecords(events)
+    .find(event => event.id === 'proposal-event-1')._projection.sourceStatus;
+
+  assert.equal(status([publication(), proposal(source)]), 'linked');
+  assert.equal(status([proposal(source)]), 'unavailable');
+  assert.equal(status([proposal(source), publication()]), 'not-earlier');
+  assert.equal(status([publication({ at: '2026-10-28T18:00:00.000Z' }), proposal(source)]), 'timestamp-conflict');
+  assert.equal(status([publication(), publication({ id: 'publish-source-2' }), proposal(source)]), 'ambiguous');
+  assert.equal(status([publication(), publication({ creationId: 'other-source', id: 'publish-source-1' }), proposal(source)]), 'ambiguous');
+  assert.equal(status([proposal()]), 'not-provided');
+  assert.equal(status([proposal({ sourceCreationId: 'source-1' })]), 'invalid');
 });
 
 test('unique, earlier research records receive only explicit chronological links', () => {
