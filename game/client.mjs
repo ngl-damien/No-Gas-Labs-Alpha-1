@@ -245,7 +245,7 @@ function openEvidenceArchive(){
 
   const events=Array.isArray(world.events)?world.events:[];
   const creations=Array.isArray(world.creations)?world.creations:[];
-  const researchEvents=projectResearchRecords(events);
+  const researchEvents=projectResearchRecords(events,creations);
   content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
   if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
 
