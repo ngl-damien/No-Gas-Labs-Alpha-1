@@ -92,11 +92,12 @@ export function getQuest(world, viewer) {
  * objective once the introductory journey is complete. This is a read-only view
  * of the trail: opening an objective never records progress or awards XP.
  */
-export function getActiveQuest(world, viewer) {
+export function getActiveQuest(world, viewer, trail = null) {
   const introductory = getQuest(world, viewer);
   if (!['founder-connect', 'witness-return'].includes(introductory.id)) return introductory;
 
-  const next = getQuestTrail(world, viewer).find(item => !item.complete);
+  const objectives = Array.isArray(trail) ? trail : getQuestTrail(world, viewer);
+  const next = objectives.find(item => !item.complete);
   if (!next) return introductory;
 
   const copy = next.blockedReason || next.interpretation ||
