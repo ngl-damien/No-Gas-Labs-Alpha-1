@@ -70,10 +70,10 @@ test('institution activity labels are deterministic projections of uniquely iden
   {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'}
  ]};
  assert.equal(institutionActivityCount('guild_hall',world),1);
- assert.equal(institutionActivityCount('forge',world),2);
- assert.equal(institutionActivityCount('evidence_archive',world),1);
+ assert.equal(institutionActivityCount('forge',world),3,'Forge includes publication as the final artifact-lifecycle step');
+ assert.equal(institutionActivityCount('evidence_archive',world),3,'archive includes contributions, reports and retained publications');
  assert.equal(institutionActivityCount('decision_chamber',world),1);
- assert.equal(institutionActivityCount('town-square',world),1);
+ assert.equal(institutionActivityCount('town-square',world),2,'TownSquare includes contributions and public reports');
  assert.equal(institutionActivityCount('academy',world),1);
  assert.equal(institutionActivityCount('moonshot_field',world),1);
  assert.equal(institutionActivityCount('publication_house',world),1);
@@ -186,8 +186,8 @@ test('world activity counts refresh when a new world projection is supplied', t 
       { id: 'report-1', type: 'report' },
     ],
   });
-  assert.equal(view.institutionCounts['town-square'], 1);
-  assert.equal(view.institutionCounts.evidence_archive, 1);
+  assert.equal(view.institutionCounts['town-square'], 2);
+  assert.equal(view.institutionCounts.evidence_archive, 2);
 
   view.setWorld({
     history: [{ event_id: 'donor-comment-1', event_type: 'PUBLIC_COMMENT' }],

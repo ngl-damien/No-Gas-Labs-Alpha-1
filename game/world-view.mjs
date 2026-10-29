@@ -17,13 +17,18 @@ export const PLACES=[
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
 ];
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
- guild_hall:event=>event?.type==='proposal'||event?.type==='claim'||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
- forge:event=>event?.type==='draft'||event?.type==='repair'||event?.execution==='EXECUTED',
- evidence_archive:event=>event?.type==='report'||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
- decision_chamber:event=>event?.type==='decision'||event?.type==='revocation'||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
- 'town-square':event=>event?.type==='contribute'||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
- academy:event=>event?.type==='study'||event?.type==='study-reviewed'||event?.type==='learning'||event?.type==='skill-evidence'||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
- moonshot_field:event=>event?.type==='experiment'||event?.type==='moonshot'||event?.type==='moonshot-proposed'||event?.type==='experiment-reported'||event?.event_type==='MOONSHOT',
+ // Guild Hall: research proposals, reported attempts, and explicit dissent.
+ guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ // Forge: the artifact lifecycle, including its explicit publication step.
+ forge:event=>['draft','repair','publish'].includes(event?.type)||event?.execution==='EXECUTED',
+ // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
+ evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
+ decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
+ // TownSquare: public contributions, reports, disputes, and scoped decision activity.
+ 'town-square':event=>['contribute','report','experiment-challenged','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
+ moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
 });
 /**
