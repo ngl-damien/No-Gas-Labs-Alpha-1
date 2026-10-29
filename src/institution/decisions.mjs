@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { link, mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
+import { link, mkdir, open, rename, unlink, lstat, rmdir } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { canonicalStringify, artifactReceipt } from './kernel.mjs';
 
@@ -203,6 +203,72 @@ async function assertPrivateDecisionDirectory(path, expectedIdentity) {
   return { dev: stat.dev, ino: stat.ino };
 }
 
+/**
+ * Serialize mutations of the writer-lease pathname across processes.
+ * The short-lived guard is a private directory: mkdir is the acquisition
+ * primitive and rmdir is the release primitive. A crash leaves a visible
+ * guard that blocks new writers until explicit offline recovery.
+ */
+async function acquireDecisionLockMutationGuard(location, directoryIdentity) {
+  await assertPrivateDecisionDirectory(location, directoryIdentity);
+  const guardPath = join(location, '.decisions.lock.guard');
+  try {
+    await mkdir(guardPath, { mode: 0o700 });
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      fail('DECISIONS_LOCKED', 'Another process is changing the decision writer lease; an interrupted guard requires explicit offline recovery');
+    }
+    throw error;
+  }
+
+  const ownerPath = join(guardPath, `.owner-${randomUUID()}.json`);
+  let owner;
+  try {
+    owner = await open(ownerPath, 'wx', 0o600);
+    const ownerIdentity = await owner.stat();
+    await owner.writeFile(canonicalStringify({
+      schema: 'ngl.decisions-lock-guard.v1',
+      pid: process.pid,
+      openedAt: new Date().toISOString(),
+    }));
+    await owner.sync();
+
+    const guardStat = await lstat(guardPath);
+    const ownerPathStat = await lstat(ownerPath);
+    if (guardStat.isSymbolicLink() || !guardStat.isDirectory() ||
+        (guardStat.mode & 0o077) !== 0 ||
+        (typeof process.getuid === 'function' && guardStat.uid !== process.getuid())) {
+      fail('INVALID_CONFIG', 'Decision lock mutation guard must be a private directory owned by the current process user');
+    }
+    if (ownerPathStat.isSymbolicLink() || !ownerPathStat.isFile() ||
+        ownerPathStat.dev !== ownerIdentity.dev || ownerPathStat.ino !== ownerIdentity.ino ||
+        (ownerPathStat.mode & 0o077) !== 0 ||
+        (typeof process.getuid === 'function' && ownerPathStat.uid !== process.getuid())) {
+      fail('INVALID_CONFIG', 'Decision lock mutation guard owner receipt changed while opening');
+    }
+    await assertPrivateDecisionDirectory(location, directoryIdentity);
+  } catch (error) {
+    await owner?.close().catch(() => {});
+    await unlink(ownerPath).catch(() => {});
+    await rmdir(guardPath).catch(() => {});
+    throw error;
+  }
+
+  let released = false;
+  return async function releaseDecisionLockMutationGuard() {
+    if (released) return;
+    await owner.close();
+    await unlink(ownerPath).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    await rmdir(guardPath).catch(error => {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    });
+    released = true;
+  };
+}
+
 async function readBoundedDecisionStore(path) {
   const before = await lstat(path);
   if (before.isSymbolicLink() || !before.isFile()) fail('DECISIONS_TAMPERED', 'Persisted decisions must be a regular, non-symlink file');
@@ -288,28 +354,46 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
     await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lease.sync();
     await assertPrivateDecisionDirectory(location, directoryIdentity);
+    const releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
     try {
-      await link(lockTemporaryPath, lockPath);
-      lockPublished = true;
-    } catch (error) {
-      if (error.code === 'EEXIST') {
-        fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery');
+      try {
+        await link(lockTemporaryPath, lockPath);
+        lockPublished = true;
+      } catch (error) {
+        if (error.code === 'EEXIST') {
+          fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery');
+        }
+        throw error;
       }
-      throw error;
+    } finally {
+      await releaseMutationGuard();
     }
     await unlink(lockTemporaryPath);
   } catch (error) {
     await lease?.close().catch(() => {});
     await unlink(lockTemporaryPath).catch(() => {});
-    if (lockPublished) await unlinkOwnedDecisionLock(lockPath, leaseIdentity).catch(() => {});
+    if (lockPublished) {
+      let releaseMutationGuard;
+      try {
+        releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+        await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      } catch {}
+      finally { await releaseMutationGuard?.().catch(() => {}); }
+    }
     throw error;
   }
   let released = false;
   async function release() {
     if (released) return;
-    released = true;
-    await lease.close();
-    await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+    const releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+    try {
+      await assertPrivateDecisionDirectory(location, directoryIdentity);
+      await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      await lease.close();
+      released = true;
+    } finally {
+      await releaseMutationGuard();
+    }
   }
   try {
     await assertPrivateDecisionDirectory(location, directoryIdentity);
