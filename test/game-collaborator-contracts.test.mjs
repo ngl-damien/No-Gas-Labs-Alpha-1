@@ -54,10 +54,12 @@ test('research packets bind to retained event IDs and declare zero authority and
   assert.ok(byId.adversary.available);
   assert.ok(byId.synthesizer.available);
   assert.ok(byId.tutor.available);
-  assert.deepEqual(byId.adversary.inputRefs, ['proposal-event-1', 'report-event-1']);
+  assert.deepEqual(byId.adversary.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-1']);
   assert.match(byId.adversary.prompt, /A model assertion is not evidence/);
   assert.match(byId.adversary.prompt, /not authenticated to Alpha 1/);
   assert.match(byId.adversary.prompt, /challengeDraft/);
+  assert.match(byId.adversary.prompt, /The procedure omits a control/);
+  assert.match(byId.adversary.prompt, /do not repeat one verbatim/i);
 
   for (const packet of packets) {
     const payload = JSON.parse(packet.packetJson);
