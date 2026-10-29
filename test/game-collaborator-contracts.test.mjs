@@ -148,6 +148,36 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
   assert.equal(payload.inputRecords.length, 7);
 });
 
+test('oversized source text is clipped with explicit field-level disclosure and a hard packet budget', () => {
+  const world = researchWorld();
+  const report = world.events.find(event => event.id === 'report-event-1');
+  report.procedure = 'P'.repeat(90_000);
+  report.observation = 'O'.repeat(90_000);
+  const before = structuredClone(world);
+
+  const packet = projectCollaboratorPackets(world).find(item => item.id === 'adversary');
+  assert.equal(packet.available, true);
+  assert.ok(new TextEncoder().encode(packet.packetJson).byteLength <= 64 * 1024);
+  assert.ok(new TextEncoder().encode(packet.prompt).byteLength <= 72 * 1024);
+
+  const payload = JSON.parse(packet.packetJson);
+  const compactReport = payload.inputRecords.find(record => record.eventId === 'report-event-1');
+  assert.deepEqual(compactReport.truncatedFields, ['procedure', 'observation']);
+  assert.ok(compactReport.procedure.endsWith(' …[truncated]'));
+  assert.ok(compactReport.observation.endsWith(' …[truncated]'));
+  assert.equal(payload.truncatedContentFieldCount, 2);
+  assert.match(packet.prompt, /request the full source before detailed or exhaustive conclusions/i);
+  assert.deepEqual(world, before, 'packet clipping must not mutate retained source data');
+});
+
+test('overlong event identifiers are excluded instead of being truncated into false references', () => {
+  const world = researchWorld();
+  world.events[0].id = 'p'.repeat(129);
+  const packets = projectCollaboratorPackets(world);
+  assert.ok(packets.every(packet => packet.available === false));
+  assert.ok(packets.every(packet => packet.packetJson === null && packet.prompt === null));
+});
+
 test('playable client and bounded packet module pass the JavaScript parser', () => {
   for (const path of ['game/client.mjs', 'game/collaborator-contracts.mjs']) {
     const checked = spawnSync(process.execPath, ['--check', resolve(ROOT, path)], { encoding: 'utf8' });
