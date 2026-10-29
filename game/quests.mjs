@@ -299,6 +299,33 @@ export function getQuestTrail(world, viewer) {
   const events = trailRows(world?.events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
+  // Index the append-only event positions and exact retained versions once. The
+  // Academy must not count a backdated publication that appears after its study
+  // note, and repeated references to one version remain ambiguous.
+  const eventPositionByReference = new Map(events.map((event, index) => [event, index]));
+  const publicationCandidatesByVersion = new Map();
+  for (const publication of publications) {
+    const key = JSON.stringify([publication.creationId, publication.version]);
+    if (!publicationCandidatesByVersion.has(key)) publicationCandidatesByVersion.set(key, []);
+    publicationCandidatesByVersion.get(key).push({
+      index: eventPositionByReference.get(publication),
+      at: Date.parse(publication.at),
+    });
+  }
+  const hasUniqueEarlierPublication = (creationId, version, at, eventPosition) => {
+    const atMs = Date.parse(at);
+    if (!Number.isFinite(atMs) || !Number.isInteger(eventPosition)) return false;
+    const candidates = publicationCandidatesByVersion.get(JSON.stringify([creationId, version])) || [];
+    let timestampMatches = 0;
+    let earlierMatches = 0;
+    for (const candidate of candidates) {
+      if (!Number.isFinite(candidate.at) || candidate.at > atMs) continue;
+      timestampMatches += 1;
+      if (Number.isInteger(candidate.index) && candidate.index < eventPosition) earlierMatches += 1;
+      if (timestampMatches > 1) return false;
+    }
+    return timestampMatches === 1 && earlierMatches === 1;
+  };
   const creationById = new Map(trailRows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string')
     .map(creation => [creation.id, creation]));
@@ -336,8 +363,7 @@ export function getQuestTrail(world, viewer) {
         typeof event.question !== 'string' || !event.question.trim() || Array.from(event.question).length > 500 ||
         typeof event.attempt !== 'string' || !event.attempt.trim() || Array.from(event.attempt).length > 1000 ||
         typeof event.nextCheck !== 'string' || !event.nextCheck.trim() || Array.from(event.nextCheck).length > 500) return false;
-    return publications.filter(publication => publication.creationId === event.creationId &&
-      publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
+    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, eventPositionByReference.get(event));
   });
   const studies = allStudyEvents.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const reviewIdCounts = new Map(), reviewedStudyCounts = new Map();
@@ -348,8 +374,8 @@ export function getQuestTrail(world, viewer) {
   const studyById = new Map(allStudyEvents.map(event => [event.studyId, event]));
   const allStudyReviews = events.filter(event => {
     const source = studyById.get(event?.studyId);
-    const sourceIndex = source ? events.indexOf(source) : -1;
-    const reviewIndex = events.indexOf(event);
+    const sourceIndex = source ? eventPositionByReference.get(source) ?? -1 : -1;
+    const reviewIndex = eventPositionByReference.get(event) ?? -1;
     if (event?.type !== 'study-reviewed' || typeof event.id !== 'string' || !uniqueMoonshotEventIds.has(event.id) ||
         typeof event.reviewId !== 'string' || reviewIdCounts.get(event.reviewId) !== 1 ||
         typeof event.studyId !== 'string' || reviewedStudyCounts.get(event.studyId) !== 1 || !source ||
@@ -360,8 +386,7 @@ export function getQuestTrail(world, viewer) {
         Date.parse(source.at) >= Date.parse(event.at) ||
         typeof event.response !== 'string' || !event.response.trim() || Array.from(event.response).length > 1000 ||
         typeof event.reflection !== 'string' || !event.reflection.trim() || Array.from(event.reflection).length > 1000) return false;
-    return publications.filter(publication => publication.creationId === event.creationId &&
-      publication.version === event.version && Date.parse(publication.at) <= Date.parse(event.at)).length === 1;
+    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, reviewIndex);
   });
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const hasStudyReview = studyReviews.length > 0;
