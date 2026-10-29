@@ -255,3 +255,30 @@ The current `no-gas-labs-command-center/server/index.ts` mounts JSON parsing, ex
 ### Agent wallet seed risk
 
 The current `VoxScriptNGL`, `VeritasShieldNGL`, and `PulseMonitorNGL` entrypoints derive the uAgents `seed` directly from the public agent name in `agent_config.yaml`, and call `fund_agent_if_low` on startup. A public, deterministic seed is not a secret and must not be used for a wallet identity that may receive funds. Do not run, fund, or deploy these agents as-is. If the projects are revived, require a high-entropy secret supplied outside Git, fail closed when it is missing, and make funding an explicit operator action. This is separate from their hard-coded placeholder outputs; both identity security and actual analysis behavior need replacement.
+
+
+## Additional reconciliation findings (continued 2026-10-29)
+
+### Recovery-vault coverage of the 50 unmapped historical repository names
+
+A path-level search of the recovery vault's full tracked tree found archive-folder matches for most of the 50 names, but these are not equivalent to complete source recovery:
+
+- Several entries are **provenance-only**: one `PROVENANCE.md` file and no recovered source.
+- Some have only a README or project summary.
+- Only a small subset of the matched folders contains a source artifact beyond provenance/README material (for example, a single `main.py`, `package.json`, `index.html`, or one client component). These are partial snapshots, not full repositories.
+- Four manifest names marked public—`EvidenceOS-Inference-Engine`, `no-gas-labs-oracle-mvp-v01`, `no-gas-labs-sovereign-forge`, and `No_Gas_Labs_Publibuildsec`—did not have an exact current-account match or a matching archive path in the inspected recovery tree. `recursive-artifact-engine` is also not represented by a current exact-name repository or an archive folder in that tree.
+
+Therefore, the recovery vault currently proves *where some work came from* more often than it proves the work itself was recovered. Do not mark any provenance-only project as assimilated. For each of the 50 gaps, the required next artifact is a per-project manifest row containing source URL/visibility/default branch/commit SHA, archive paths and file counts, file-level SHA matches, Alpha 1 destination paths, and an explicit status: complete, partial, provenance-only, unavailable, or intentionally excluded.
+
+### PR and mainline actions after the initial audit
+
+- PR #167 merged at `1d6d6278934d6668a67973a111fc4e43ae799e68`; the challenge-evidence publication chronology regression is now on main.
+- PRs #157, #158, and #162 were closed as superseded drafts after their functionality and key invariants were verified in the merged #160/#163 work and #167 follow-up. Their branches were preserved.
+- PR #168 is a fresh-mainline transplant of atomic writer-lock publication from stale PRs #159 and #156. It now covers the institutional ledger, decision store, service store, and courier. Its exact-head verification and Genesis Evidence Invariant checks have passed; browser acceptance was still running at the latest status check. It remains a draft until all required checks complete.
+- PR #161 was not merged wholesale because its browser verifier is materially older than current main and would remove current gameplay/research journeys. Its Experiment 001 lock helper and directory-identity guards need a narrow transplant with current browser tests preserved.
+- PR #63 was not merged wholesale for the same reason: its old `game/server.mjs`, verifier, and tests omit many current features. The intended key-file hardening should be transplanted narrowly and revalidated against the current runtime.
+- PR #164 remains draft. Its signed-decision verifier is not yet wired into the active `src/quest/engine.js` authorization path, which still accepts a caller-supplied grant ID and actor. It must not be described as securing live Founder authorization until that path is changed and tested end to end.
+
+### Critical separate-repository signing-key exposure
+
+The `Damien-Featherstone` repository currently tracks `.data/institutional_keypair.json` with a `privateKeyPem` field. The tracked `.gitignore` does not exclude that file. The active `server.ts` loads this file and passes the stored private key to Ed25519 receipt signing. The existing issue #2 correctly requires coordinated replacement-key provisioning, runtime migration, trust labeling for historical receipts, and preservation of append-only receipt bytes. This is a **key-exposure incident**, not a cosmetic cleanup: do not copy the key into any other repository, do not delete the field without migrating runtime signing, and do not silently re-sign historical receipts. Rotation remains unresolved because no secure replacement-key provisioning or deployment configuration was established by this audit.
