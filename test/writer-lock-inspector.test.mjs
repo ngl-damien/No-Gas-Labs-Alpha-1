@@ -53,14 +53,23 @@ test('inspects active service, ledger, and decision locks with owner metadata', 
     now: () => Date.parse('2026-10-28T06:00:00.000Z')
   }));
 
+  // The mutation guard is intentionally transient, not held for the lifetime
+  // of the decision store. Construct a valid private receipt to exercise the
+  // inspector's guard-schema handling without blocking the live store's close.
   const guardDir = join(decisionsDir, '.decisions.lock.guard');
-  const guardOwners = (await readdir(guardDir)).filter(name => name.startsWith('.owner-'));
-  assert.equal(guardOwners.length, 1, 'one active decision guard owner receipt');
+  await mkdir(guardDir, { mode: 0o700 });
+  const guardOwner = join(guardDir, '.owner-test.json');
+  await writeFile(guardOwner, JSON.stringify({
+    schema: 'ngl.decisions-lock-guard.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
   const targets = [
     [join(serviceDir, '.service.lock'), 'ngl.service-lock.v1'],
     [join(ledgerDir, '.writer.lock'), 'ngl.ledger-lock.v1'],
     [join(decisionsDir, '.decisions.lock'), 'ngl.decisions-lock.v1'],
-    [join(guardDir, guardOwners[0]), 'ngl.decisions-lock-guard.v1']
+    [guardOwner, 'ngl.decisions-lock-guard.v1']
   ];
   for (const [path, schema] of targets) {
     const result = await inspectWriterLock(path);
@@ -71,6 +80,7 @@ test('inspects active service, ledger, and decision locks with owner metadata', 
     assert.equal(result.owner.processProbe, 'possibly-alive', path);
     assert.equal(result.safeToRemove, false, path);
   }
+  await rm(guardDir, { recursive: true, force: true });
 });
 
 test('opaque legacy tokens are not echoed into the diagnostic report', async t => {
