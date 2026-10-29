@@ -581,6 +581,11 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
   const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
+  // A transition to unavailable is as important to observers as a new revision:
+  // otherwise clients can keep displaying counts the ledger can no longer vouch for.
+  const decisionSummaryChanged = (before, after) =>
+    before?.available !== after?.available ||
+    (before?.available === true && after?.available === true && before.revision !== after.revision);
   const tokenDigest = token => createHash('sha256').update(token).digest('hex');
   const witness = (token = randomBytes(32).toString('base64url')) => ({ id: `witness-${tokenDigest(token)}`, name: 'Witness', role: 'witness' });
   const presenceIdFor = token => `presence-${tokenDigest(token)}`;
@@ -761,10 +766,13 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         session = sessionFor(request, response);
         if (path === '/api/decisions') {
           const before = decisions.summary();
-          const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
-          const after = decisions.summary();
-          if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
-          return json(response, 200, snapshot);
+          try {
+            const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
+            return json(response, 200, snapshot);
+          } finally {
+            const after = decisions.summary();
+            if (decisionSummaryChanged(before, after)) broadcastWorld();
+          }
         }
         if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
         if (path === '/api/events') {
@@ -825,12 +833,12 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
-        return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
-            const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
-            const before = decisions.summary();
+        return await enqueue(async()=>{
+          if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);
+          const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
+          const before = decisions.summary();
+          try {
             const result = await decisions[method]({ id: session.actor.id, role: session.actor.role }, input);
-            const after = decisions.summary();
-            if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
             return json(response, 200, result);
           } catch (error) {
             if (error.code) {
@@ -840,7 +848,11 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
                 : 400;
             }
             throw error;
-          }});
+          } finally {
+            const after = decisions.summary();
+            if (decisionSummaryChanged(before, after)) broadcastWorld();
+          }
+        });
       }
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {

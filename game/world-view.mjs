@@ -81,6 +81,15 @@ function decisionSummaryState(summary){
 }
 const INSTITUTION_SUMMARY_SCHEMA='ngl.shared-institution-summary.v1';
 const INSTITUTION_KERNEL_SCHEMA='ngl.institution.v1';
+export function decisionChamberMapLabel(institutionSummary, recordCount){
+ const kernel=ownDataValue(institutionSummary,'kernel');
+ if(ownDataValue(institutionSummary,'schema')!==INSTITUTION_SUMMARY_SCHEMA||
+    ownDataValue(kernel,'schema')!==INSTITUTION_KERNEL_SCHEMA||
+    !Number.isSafeInteger(recordCount)||recordCount<0)return 'gate ledger unavailable';
+ const gate=decisionSummaryState(ownDataValue(institutionSummary,'decisionSummary'));
+ if(!gate?.available)return 'gate ledger unavailable';
+ return recordCount+' records · '+gate.counts.PENDING+' pending';
+}
 export function institutionSummaryFromState(dto){
  const summary=ownDataValue(dto,'institution');
  if(!summary||typeof summary!=='object'||isArraySafely(summary)||
@@ -536,7 +545,7 @@ export class WorldView {
   setWorld(world,institutionSummary=this.institutionSummary){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
-  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const label=place.id==='decision_chamber'&&this.institutionSummary?(gate?.available?this.institutionCounts[place.id]+' records · '+gate.counts.PENDING+' pending':'gate ledger unavailable'):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
+  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const label=place.id==='decision_chamber'?decisionChamberMapLabel(this.institutionSummary,this.institutionCounts[place.id]):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}

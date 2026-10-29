@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
+import { decisionChamberMapLabel, institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
 
 test('institution counters count only uniquely identified matching records', () => {
   const world = { events: [
@@ -226,6 +226,26 @@ test('Decision Chamber includes only a valid aggregate from the separate decisio
     ...institution, decisionSummary: hostile
   }), 1);
   assert.equal(getterCalls, 0);
+});
+
+test('Decision Chamber map labels missing or invalid summaries as unavailable, not zero', () => {
+  assert.equal(decisionChamberMapLabel(null, 0), 'gate ledger unavailable');
+  const institution = {
+    schema: 'ngl.shared-institution-summary.v1',
+    kernel: { schema: 'ngl.institution.v1', revision: 0, eventCount: 0, events: [] },
+    decisionSummary: {
+      schema: 'ngl.decisions.summary.v1',
+      available: true,
+      revision: 1,
+      decisionCount: 0,
+      counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+    }
+  };
+  assert.equal(decisionChamberMapLabel(institution, 0), '0 records · 0 pending');
+  assert.equal(decisionChamberMapLabel({ ...institution, decisionSummary: { schema: 'ngl.decisions.summary.v1', available: false } }, 0),
+    'gate ledger unavailable');
+  assert.equal(decisionChamberMapLabel({ ...institution, schema: 'ngl.shared-institution-summary.v2' }, 0),
+    'gate ledger unavailable');
 });
 
 test('incomplete institutional kernel snapshots do not inflate map counters', () => {
