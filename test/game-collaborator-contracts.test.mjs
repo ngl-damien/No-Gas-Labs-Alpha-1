@@ -67,7 +67,7 @@ test('research packets bind to retained event IDs and declare zero authority and
   for (const packet of packets) {
     const payload = JSON.parse(packet.packetJson);
     assert.deepEqual(payload.sourceSnapshot, {
-      status: 'identified', worldId: 'world-test-1', revision: 3, retainedEventCount: 3
+      status: 'identified', worldId: 'world-test-1', revision: 3, suppliedEventCount: 3
     });
     assert.match(packet.prompt, /Snapshot boundary: sourceSnapshot identifies the supplied world snapshot only/);
     assert.equal(payload.mayWriteCanonicalState, false);
