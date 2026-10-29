@@ -92,6 +92,12 @@ test('accepts all four role schemas and labels them review-only', () => {
     assert.ok(result.sourceEventIds.length > 0);
     assert.equal(Object.hasOwn(result, 'authorized'), false);
     assert.equal(Object.hasOwn(result, 'worldEvent'), false);
+    if (role === 'synthesizer') {
+      assert.equal(Object.isFrozen(result.response), true);
+      assert.equal(Object.isFrozen(result.response.scope), true);
+      assert.equal(Object.isFrozen(result.response.scope.includedEventIds), true);
+      assert.throws(() => { result.response.scope.moonshotId = 'changed-after-validation'; }, TypeError);
+    }
   }
 });
 
