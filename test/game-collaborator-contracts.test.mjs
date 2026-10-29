@@ -79,6 +79,62 @@ test('research packets bind to retained event IDs and declare zero authority and
   assert.deepEqual(world, before);
 });
 
+test('collaborator packets select the newest eligible research chain from append-only history', () => {
+  const world = researchWorld();
+  world.events.push({
+    id: 'proposal-event-2', type: 'moonshot-proposed', moonshotId: 'moonshot-2',
+    actor: founder, at: '2026-10-29T04:03:00.000Z',
+    title: 'Newer proposal', hypothesis: 'A newer claim under a stated condition.',
+    falsifier: 'A repeatable counterexample to the newer claim.',
+    evidenceNeeded: 'An independently observed measurement.',
+    sourceCreationId: null, sourceVersion: null
+  });
+  world.events.push({
+    id: 'report-event-2', type: 'experiment-reported', reportId: 'report-2', moonshotId: 'moonshot-2',
+    actor: witness, at: '2026-10-29T04:04:00.000Z',
+    procedure: 'Run the newer procedure once.',
+    observation: 'The newer attempt did not support the prediction.',
+    reportedOutcome: 'failed', evidenceCreationId: null, evidenceVersion: null
+  });
+  for (let index = 1; index <= 8; index += 1) {
+    world.events.push({
+      id: 'challenge-event-' + (index + 1),
+      type: 'experiment-challenged',
+      challengeId: 'challenge-' + (index + 1),
+      reportId: 'report-2',
+      moonshotId: 'moonshot-2',
+      actor: index % 2 ? witness : founder,
+      at: new Date(Date.parse('2026-10-29T04:04:00.000Z') + index * 60_000).toISOString(),
+      challengeType: 'methodology',
+      challengeText: 'Distinct control concern ' + index,
+      evidenceCreationId: null,
+      evidenceVersion: null
+    });
+  }
+  world.revision += 10;
+
+  const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
+  assert.equal(packets.archivist.moonshotId, 'moonshot-2');
+  assert.deepEqual(packets.archivist.inputRefs, ['proposal-event-2', 'report-event-2', 'challenge-event-9']);
+
+  assert.equal(packets.adversary.moonshotId, 'moonshot-2');
+  assert.deepEqual(packets.adversary.inputRefs, [
+    'proposal-event-2', 'report-event-2',
+    'challenge-event-9', 'challenge-event-8', 'challenge-event-7',
+    'challenge-event-6', 'challenge-event-5', 'challenge-event-4'
+  ]);
+  const adversaryPayload = JSON.parse(packets.adversary.packetJson);
+  assert.equal(adversaryPayload.omittedCount, 2);
+
+  assert.equal(packets.synthesizer.moonshotId, 'moonshot-2');
+  assert.deepEqual(packets.synthesizer.inputRefs, [
+    'proposal-event-2', 'challenge-event-4', 'challenge-event-5',
+    'challenge-event-6', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ]);
+  assert.equal(packets.tutor.moonshotId, 'moonshot-2');
+  assert.deepEqual(packets.tutor.inputRefs, ['proposal-event-2']);
+});
+
 test('synthesis reports omitted history instead of silently presenting a partial corpus as complete', () => {
   const world = researchWorld();
   for (let index = 0; index < 9; index += 1) {
