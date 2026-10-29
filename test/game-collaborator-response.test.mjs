@@ -154,3 +154,21 @@ test('unavailable or cross-role packets cannot accept a response', () => {
   assert.equal(validateCollaboratorResponse(unavailable, JSON.stringify(validResponses.tutor)).valid, false);
   assert.equal(validateCollaboratorResponse(packets.tutor, JSON.stringify(validResponses.adversary)).valid, false);
 });
+
+test('synthesis dissent references must name included challenge events only', () => {
+  const packet = packetsForTest().synthesizer;
+  const valid = validateCollaboratorResponse(packet, JSON.stringify(validResponses.synthesizer));
+  assert.equal(valid.valid, true);
+
+  const invented = structuredClone(validResponses.synthesizer);
+  invented.dissentPreserved = ['challenge-from-another-world'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(invented)).valid, false);
+
+  const wrongRecordType = structuredClone(validResponses.synthesizer);
+  wrongRecordType.dissentPreserved = ['report-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(wrongRecordType)).valid, false);
+
+  const duplicate = structuredClone(validResponses.synthesizer);
+  duplicate.dissentPreserved = ['challenge-event-1', 'challenge-event-1'];
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(duplicate)).valid, false);
+});
