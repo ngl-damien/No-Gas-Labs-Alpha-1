@@ -7,7 +7,7 @@ import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -78,7 +78,24 @@ function stableActionJSON(value){if(Array.isArray(value))return value.map(stable
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
 function clearPendingSharedAction(requestId){try{const current=readPendingSharedAction();if(current?.requestId===requestId)localStorage.removeItem(PENDING_SHARED_ACTION);return true}catch{throw new Error('The server result was received, but this device could not clear its retry receipt. Retry only that same action until storage is available.')}}
-async function submitPendingSharedAction(pending){let dto;try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}catch(error){if(error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);throw error}acceptState(dto);clearPendingSharedAction(pending.requestId);return dto.result||{}}
+async function submitPendingSharedAction(pending){
+  if(pendingSharedActionInFlight===pending.requestId)throw new Error('This exact shared action is already being submitted. Wait for its result before retrying.');
+  pendingSharedActionInFlight=pending.requestId;
+  try{
+    let dto;
+    try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}
+    catch(error){
+      if(error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);
+      throw error;
+    }
+    acceptState(dto);
+    clearPendingSharedAction(pending.requestId);
+    return dto.result||{};
+  }finally{
+    if(pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
+    refreshRelayRecovery();
+  }
+}
 function setConnection(connected){$('connection-dot').classList.toggle('online',connected);$('connection-dot').classList.toggle('offline',!connected&&mode==='shared');if(mode==='shared'&&!connected)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;}
 function persist(next){try{const existing=localStorage.getItem(STORAGE);if(existing)localStorage.setItem(BACKUP,existing);localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
@@ -241,6 +258,14 @@ function appendRelayRecovery(content){
     content.append(section);
     return;
   }
+  if(pendingSharedActionInFlight===pending.requestId){
+    section.append(
+      node('span',{class:'pill',text:'SUBMISSION IN FLIGHT'}),
+      paragraph('This exact action is already being sent. Wait for the response; The Relay blocks a concurrent retry.','form-help')
+    );
+    content.append(section);
+    return;
+  }
   section.append(
     node('span',{class:'pill',text:'LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN'}),
     paragraph('Pending action · '+pending.action.type.toUpperCase()),
@@ -258,6 +283,13 @@ function appendRelayRecovery(content){
     section.append(paragraph('This session does not match the original actor. The Relay will not replay this action under a different identity or role. Re-authenticate as the original actor to recover it.','evidence-warning'));
   }
   content.append(section);
+}
+function refreshRelayRecovery(){
+  const section=$('relay-pending-action');
+  if(!section||section.parentElement!==$('sheet-content')||$('sheet').hidden)return;
+  const content=section.parentElement;
+  section.remove();
+  appendRelayRecovery(content);
 }
 function openGuide(id){
   const g=guides[id];
