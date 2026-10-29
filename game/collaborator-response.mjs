@@ -135,6 +135,11 @@ function validateRoleResponse(payload, response) {
 
   if (payload.role === 'synthesizer') {
     const keys = ['scope', 'recordedSupport', 'contradictions', 'dissentPreserved', 'unknowns', 'nextDiscriminatingExperiment'];
+    // "Dissent preserved" is a provenance claim, not free-form praise. It may
+    // name only challenge events actually included in this exact packet slice.
+    const includedChallengeIds = new Set(payload.inputRecords
+      .filter(record => record?.type === 'experiment-challenged' && typeof record.eventId === 'string')
+      .map(record => record.eventId));
     if (!exactKeys(response, keys) ||
         !exactKeys(response.scope, ['moonshotId', 'includedEventIds', 'omittedEventIds']) ||
         response.scope.moonshotId !== payload.targetMoonshotId ||
@@ -142,7 +147,7 @@ function validateRoleResponse(payload, response) {
         !stringIds(response.scope.omittedEventIds, omittedIds) ||
         !boundedList(response.recordedSupport, 32) ||
         !boundedList(response.contradictions, 32) ||
-        !boundedList(response.dissentPreserved, 32) ||
+        !stringIds(response.dissentPreserved, includedChallengeIds, { maximum: 32 }) ||
         !boundedList(response.unknowns, 32) ||
         !ownPlainObject(response.nextDiscriminatingExperiment) ||
         !safeJsonValue(response.nextDiscriminatingExperiment)) return false;
