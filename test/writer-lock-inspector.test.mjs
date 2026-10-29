@@ -242,7 +242,7 @@ test('escaped spellings of duplicate JSON keys are rejected', async t => {
 
 test('recognizes each current writer-lock schema', async t => {
   const directory = await temp(t);
-  for (const schema of ['ngl.service-lock.v1', 'ngl.ledger-lock.v1', 'ngl.decisions-lock.v1', 'ngl.courier-lock.v1']) {
+  for (const schema of ['ngl.service-lock.v1', 'ngl.ledger-lock.v1', 'ngl.decisions-lock.v1', 'ngl.decisions-lock-guard.v1', 'ngl.courier-lock.v1']) {
     const path = join(directory, schema + '.lock');
     await writeFile(path, JSON.stringify({
       schema,
