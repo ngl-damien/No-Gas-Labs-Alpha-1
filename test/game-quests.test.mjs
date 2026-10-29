@@ -165,3 +165,54 @@ test('moonshot evidence objective rejects future-in-history and ambiguous public
   assert.equal(duplicate.complete, false);
   assert.equal(duplicate.progress, 0);
 });
+
+function academyQuestWorld(publicationFirst) {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const source = {
+    id: 'academy-source', kind: 'observatory', title: 'A retained study source',
+    version: 1, publishedAt, receipt: { digest: 'a'.repeat(64), size: 12 }, versions: []
+  };
+  const publication = {
+    id: 'academy-publication-event', type: 'publish',
+    creationId: source.id, version: 1, at: publishedAt, actor: founder
+  };
+  const study = {
+    id: 'academy-study-event', type: 'study', studyId: 'academy-study',
+    creationId: source.id, version: 1, actor: founder,
+    at: '2026-10-28T17:01:00.000Z',
+    question: 'What does this source establish?',
+    attempt: 'It records a claim but not independent confirmation.',
+    nextCheck: 'Inspect the exact cited passage.'
+  };
+  const review = {
+    id: 'academy-review-event', type: 'study-reviewed', reviewId: 'academy-review',
+    studyId: study.studyId, creationId: source.id, version: 1, actor: founder,
+    at: '2026-10-28T17:02:00.000Z',
+    response: 'The source records the claim.',
+    reflection: 'Independent support remains unknown.'
+  };
+  return {
+    creations: [source],
+    events: publicationFirst ? [publication, study, review] : [study, publication, review],
+    discoveries: [], contributions: [], reports: []
+  };
+}
+
+test('Academy study and review objectives require the publication event to precede them in history', () => {
+  const valid = getQuestTrail(academyQuestWorld(true), founder);
+  assert.equal(valid.find(item => item.id === 'founder-academy-study-note').complete, true);
+  assert.equal(valid.find(item => item.id === 'founder-academy-study-review').complete, true);
+
+  // The later publication is deliberately backdated. A timestamp alone must not
+  // make a source available before its publication event exists in append-only history.
+  const outOfOrder = getQuestTrail(academyQuestWorld(false), founder);
+  const study = outOfOrder.find(item => item.id === 'founder-academy-study-note');
+  const review = outOfOrder.find(item => item.id === 'founder-academy-study-review');
+  assert.equal(study.complete, false);
+  assert.equal(study.progress, 0);
+  assert.deepEqual(study.evidenceIds, []);
+  assert.equal(review.complete, false);
+  assert.equal(review.progress, 0);
+  assert.deepEqual(review.evidenceIds, []);
+});
+
