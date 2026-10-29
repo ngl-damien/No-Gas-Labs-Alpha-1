@@ -285,7 +285,7 @@ test('serves every first-party module imported by the playable game client', asy
   }
   const collaboratorResponse = await client.request('/collaborator-response.mjs');
   assert.equal(collaboratorResponse.response.status, 200);
-  assert.match(collaboratorResponse.body, /from ['\"]\\.\\/strict-json\\.mjs['\"]/, 'collaborator response imports the browser-safe strict JSON guard');
+  assert.match(collaboratorResponse.body, /from ['"]\.\/strict-json\.mjs['"]/, 'collaborator response imports the browser-safe strict JSON guard');
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
   for (const module of ['client', 'quests', 'character-sheet', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'collaborator-contracts', 'collaborator-response', 'strict-json', 'timestamps']) {
