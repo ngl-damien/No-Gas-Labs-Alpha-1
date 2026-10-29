@@ -10,6 +10,7 @@ import {
   verifyAuthorizationEvent
 } from "../src/authority/decision.js";
 import { defineQuest, projectQuest, QUEST_STATUS } from "../src/quest/engine.js";
+import { projectWorld } from "../src/world/project.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
 
 function fixture() {
@@ -68,6 +69,11 @@ test("persisted Founder authorization event survives JSON round-trip and authori
     expected_fingerprint: expectedFingerprint
   });
   assert.equal(verifyAuthorization(persistedEvent), true);
+  const worldProjection = projectWorld([persistedEvent], undefined, { verifyAuthorization });
+  assert.equal(worldProjection.history.length, 1);
+  assert.equal(worldProjection.xp, 0, "authorization alone must not mint world progress");
+  assert.deepEqual(worldProjection.inventory, {});
+  assert.deepEqual(worldProjection.world, {});
   const projection = projectQuest(quest, [persistedEvent], { verifyAuthorization });
   assert.equal(projection.status, QUEST_STATUS.AUTHORIZED);
   assert.equal(projection.authorized, true);
