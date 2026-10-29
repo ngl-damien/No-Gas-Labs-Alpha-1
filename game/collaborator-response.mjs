@@ -1,5 +1,5 @@
 import { isCollaboratorPacket } from './collaborator-contracts.mjs';
-import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
+import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_ARRAY_ITEMS = 64;
