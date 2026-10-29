@@ -76,6 +76,22 @@ test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () 
   });
 });
 
+test("verification requires a host-pinned audience and rejects mismatches", () => {
+  assert.deepEqual(verifyFounderDecision({
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, now: 0
+  }), {
+    valid: false,
+    reason: "VERIFICATION_INPUT_INVALID"
+  });
+  assert.deepEqual(verifyFounderDecision({
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint,
+    expected_audience: "ngl-alpha-1-other", now: 0
+  }), {
+    valid: false,
+    reason: "AUDIENCE_MISMATCH"
+  });
+});
+
 test("the enrolled key authorizes the exact, unexpired decision", () => {
   const verification = verify();
   assert.deepEqual(verification, { valid: true, reason: null });
@@ -432,7 +448,8 @@ test("public decision APIs reject accessor-backed call envelopes without running
     capabilities: ["repository.write"],
     outputs: ["mesh"],
     acceptance: ["mesh"],
-    expires_at: "2099-01-01T00:00:00.000Z"
+    expires_at: "2099-01-01T00:00:00.000Z",
+    audience
   };
   Object.defineProperty(decisionArgs, "proposal", {
     enumerable: true,
