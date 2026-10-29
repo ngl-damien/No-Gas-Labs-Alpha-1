@@ -1,14 +1,8 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+
 const rows = value => Array.isArray(value) ? value : [];
 const hasText = value => typeof value === 'string' && value.trim().length > 0;
-// Canonical event timestamps are emitted by Date#toISOString. Loose Date.parse
-// inputs (date-only strings, locale dates, and rolled-over calendar dates) must
-// not influence append-only chronology or activate evidence links.
-export const isCanonicalUtcTimestamp = value => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
-  const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
-};
-const validTime = isCanonicalUtcTimestamp;
+const validTime = isStrictTimestamp;
 const sameActor = (left, right) => left?.id === right?.id;
 
 const RESEARCH_TYPES = new Set([
