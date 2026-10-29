@@ -7,7 +7,7 @@ import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -78,7 +78,24 @@ function stableActionJSON(value){if(Array.isArray(value))return value.map(stable
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
 function clearPendingSharedAction(requestId){try{const current=readPendingSharedAction();if(current?.requestId===requestId)localStorage.removeItem(PENDING_SHARED_ACTION);return true}catch{throw new Error('The server result was received, but this device could not clear its retry receipt. Retry only that same action until storage is available.')}}
-async function submitPendingSharedAction(pending){let dto;try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}catch(error){if(error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);throw error}acceptState(dto);clearPendingSharedAction(pending.requestId);return dto.result||{}}
+async function submitPendingSharedAction(pending){
+  if(pendingSharedActionInFlight===pending.requestId)throw new Error('This exact shared action is already being submitted. Wait for its result before retrying.');
+  pendingSharedActionInFlight=pending.requestId;
+  try{
+    let dto;
+    try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}
+    catch(error){
+      if(error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);
+      throw error;
+    }
+    acceptState(dto);
+    clearPendingSharedAction(pending.requestId);
+    return dto.result||{};
+  }finally{
+    if(pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
+    refreshRelayRecovery();
+  }
+}
 function setConnection(connected){$('connection-dot').classList.toggle('online',connected);$('connection-dot').classList.toggle('offline',!connected&&mode==='shared');if(mode==='shared'&&!connected)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;}
 function persist(next){try{const existing=localStorage.getItem(STORAGE);if(existing)localStorage.setItem(BACKUP,existing);localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
@@ -225,7 +242,79 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=renderNotes;renderNotes();
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
-function openGuide(id){const g=guides[id];if(!g)return;const action=getLocationAction(id,world,viewer);const content=showSheet(g.title,g.name);content.append(paragraph(g.voice,'attribution'),paragraph(g.body),node('div',{class:'field-card'},[node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),paragraph(g.practice)]),paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),node('div',{class:'button-row'},[button(action?.label||'Explore another guide →',()=>{if(action?.type==='workbench')openWorkshop(action.recipe);else if(action?.type==='inspect')openCreation(action.creationId);else openPlaces();},{class:'primary-button'})]));}
+function appendRelayRecovery(content){
+  const section=node('section',{class:'field-card',id:'relay-pending-action'},[
+    node('h3',{text:'Courier receipt · shared action recovery'}),
+    paragraph('The Relay can retry an uncertain shared write using its original request ID. This local receipt is not a canonical event and does not prove that the server accepted the action.')
+  ]);
+  let pending;
+  try{pending=readPendingSharedAction()}catch(error){
+    section.append(paragraph(error.message,'evidence-warning'));
+    content.append(section);
+    return;
+  }
+  if(!pending){
+    section.append(paragraph('No unresolved shared-action receipt is saved on this device.','empty-note'));
+    content.append(section);
+    return;
+  }
+  if(pendingSharedActionInFlight===pending.requestId){
+    section.append(
+      node('span',{class:'pill',text:'SUBMISSION IN FLIGHT'}),
+      paragraph('This exact action is already being sent. Wait for the response; The Relay blocks a concurrent retry.','form-help')
+    );
+    content.append(section);
+    return;
+  }
+  section.append(
+    node('span',{class:'pill',text:'LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN'}),
+    paragraph('Pending action · '+pending.action.type.toUpperCase()),
+    paragraph('Request ID · '+pending.requestId),
+    paragraph('Original actor · '+pending.actorId+' ('+pending.actorRole+')'),
+    paragraph('Retry reuses the exact action and request ID. Do not edit the receipt or replay it under another identity.','form-help')
+  );
+  if(pending.actorId===viewer.id&&pending.actorRole===viewer.role){
+    section.append(button('Retry the exact pending action safely',guarded(async()=>{
+      await submitPendingSharedAction(pending);
+      closeSheet();
+      toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.');
+    }),{class:'primary-button',id:'relay-retry-pending-shared-action'}));
+  }else{
+    section.append(paragraph('This session does not match the original actor. The Relay will not replay this action under a different identity or role. Re-authenticate as the original actor to recover it.','evidence-warning'));
+  }
+  content.append(section);
+}
+function refreshRelayRecovery(){
+  const section=$('relay-pending-action');
+  if(!section||section.parentElement!==$('sheet-content')||$('sheet').hidden)return;
+  const content=section.parentElement;
+  section.remove();
+  appendRelayRecovery(content);
+}
+function openGuide(id){
+  const g=guides[id];
+  if(!g)return;
+  const action=getLocationAction(id,world,viewer);
+  const content=showSheet(g.title,g.name);
+  content.append(
+    paragraph(g.voice,'attribution'),
+    paragraph(g.body),
+    node('div',{class:'field-card'},[
+      node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),
+      paragraph(g.practice)
+    ]),
+    paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),
+    paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),
+    node('div',{class:'button-row'},[
+      button(action?.label||'Explore another guide →',()=>{
+        if(action?.type==='workbench')openWorkshop(action.recipe);
+        else if(action?.type==='inspect')openCreation(action.creationId);
+        else openPlaces();
+      },{class:'primary-button'})
+    ])
+  );
+  if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
+}
 function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[
