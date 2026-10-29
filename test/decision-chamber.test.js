@@ -14,6 +14,7 @@ import {
 
 const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
 const jwk = publicKey.export({ format: "jwk" });
+const audience = "ngl-alpha-1-test";
 const fingerprint = createHash("sha256")
   .update(publicKey.export({ type: "spki", format: "der" }))
   .digest("hex");
@@ -38,6 +39,7 @@ const makePayload = overrides => makeDecisionPayload({
   outputs: ["mesh"],
   acceptance: ["mesh"],
   expires_at: "2099-01-01T00:00:00.000Z",
+  audience,
   ...overrides
 });
 const payload = makePayload();
@@ -60,8 +62,35 @@ const verify = (receipt = signed, value = payload, key = jwk, pin = fingerprint,
     payload: value,
     public_key_jwk: key,
     expected_fingerprint: pin,
+    expected_audience: audience,
     now
   });
+
+test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () => {
+  assert.equal(payload.schema, "ngl.founder-decision.v2");
+  const legacyPayload = { ...payload, schema: "ngl.founder-decision.v1" };
+  const legacyReceipt = signedReceipt(legacyPayload);
+  assert.deepEqual(verify(legacyReceipt, legacyPayload), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+});
+
+test("verification requires a host-pinned audience and rejects mismatches", () => {
+  assert.deepEqual(verifyFounderDecision({
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, now: 0
+  }), {
+    valid: false,
+    reason: "VERIFICATION_INPUT_INVALID"
+  });
+  assert.deepEqual(verifyFounderDecision({
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint,
+    expected_audience: "ngl-alpha-1-other", now: 0
+  }), {
+    valid: false,
+    reason: "AUDIENCE_MISMATCH"
+  });
+});
 
 test("the enrolled key authorizes the exact, unexpired decision", () => {
   const verification = verify();
@@ -419,7 +448,8 @@ test("public decision APIs reject accessor-backed call envelopes without running
     capabilities: ["repository.write"],
     outputs: ["mesh"],
     acceptance: ["mesh"],
-    expires_at: "2099-01-01T00:00:00.000Z"
+    expires_at: "2099-01-01T00:00:00.000Z",
+    audience
   };
   Object.defineProperty(decisionArgs, "proposal", {
     enumerable: true,
@@ -428,7 +458,7 @@ test("public decision APIs reject accessor-backed call envelopes without running
   assert.throws(() => makeDecisionPayload(decisionArgs), /own data properties/);
 
   const verificationArgs = {
-    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, now: 0
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, expected_audience: audience, now: 0
   };
   Object.defineProperty(verificationArgs, "payload", {
     enumerable: true,
@@ -445,7 +475,7 @@ test("public decision APIs reject accessor-backed call envelopes without running
   assert.throws(() => authorizationEvent(eventArgs), /verified Founder decision required/);
 
   const event = authorizationEvent({ signed, payload, verification });
-  const trustOptions = { public_key_jwk: jwk, expected_fingerprint: fingerprint };
+  const trustOptions = { public_key_jwk: jwk, expected_fingerprint: fingerprint, expected_audience: audience };
   Object.defineProperty(trustOptions, "public_key_jwk", {
     enumerable: true,
     get() { getterCalls += 1; return jwk; }
