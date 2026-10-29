@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
-import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { applyEvent, replayKernel, createKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -63,6 +63,42 @@ async function publish(founder, title = 'Observed bytes') {
   return result.body;
 }
 
+
+
+test('indexed replay matches pure transitions and preserves event-id conflict semantics', () => {
+  const config = {
+    founderId: 'damien',
+    actors: [
+      { id: 'damien', roles: ['founder'] },
+      { id: 'local-forge', roles: ['executor'] },
+      { id: 'local-byte-verifier', roles: ['observer'] }
+    ]
+  };
+  const bytes = Buffer.from('indexed replay exact evidence bytes', 'utf8');
+  const receipt = artifactReceipt(bytes);
+  const artifacts = new Map([[receipt.digest, bytes]]);
+  const workId = 'work-indexed-replay';
+  const subject = { id: 'subject-indexed-replay', version: 1 };
+  const outputs = [receipt];
+  const events = [
+    { id: 'replay-claim', type: 'claim', actor: 'local-forge', at: '2026-10-01T00:00:00.000Z', expectedRevision: 0, workId, subject, action: 'preserve-artifact-bytes' },
+    { id: 'replay-authorize', type: 'authorize', actor: 'damien', at: '2026-10-01T00:00:00.001Z', expectedRevision: 1, workId, grantId: 'grant-indexed-replay', executorId: 'local-forge', observerId: 'local-byte-verifier', scope: { subjectId: subject.id, subjectVersion: subject.version, action: 'preserve-artifact-bytes' } },
+    { id: 'replay-execute', type: 'execute', actor: 'local-forge', at: '2026-10-01T00:00:00.002Z', expectedRevision: 2, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs },
+    { id: 'replay-observe', type: 'observe', actor: 'local-byte-verifier', at: '2026-10-01T00:00:00.003Z', expectedRevision: 3, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs, passed: true },
+    { id: 'replay-adjudicate', type: 'adjudicate', actor: 'damien', at: '2026-10-01T00:00:00.004Z', expectedRevision: 4, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs, observationId: 'replay-observe', decision: 'accept' }
+  ];
+  const initial = createKernel(config);
+  applyEvent(initial, events[0], { artifacts });
+  assert.deepEqual(initial, createKernel(config), 'public single-event transition remains pure');
+  const sequential = events.reduce((state, event) => applyEvent(state, event, { artifacts }), initial);
+  const replayed = replayKernel(events, config, { artifacts });
+  assert.deepEqual(replayed, sequential, 'indexed replay must match sequential pure transitions');
+  assert.deepEqual(replayKernel([...events, events.at(-1)], config, { artifacts }), replayed, 'identical duplicate event remains idempotent');
+  assert.throws(
+    () => replayKernel([...events, { ...events.at(-1), decision: 'reject' }], config, { artifacts }),
+    error => error.code === 'EVENT_ID_CONFLICT'
+  );
+});
 
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
   const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
@@ -1252,9 +1288,8 @@ test('server startup indexes large retained publication, repair-method, and stud
       { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
     ]
   };
-  const artifactMap = new Map([[receipt.digest, htmlBytes]]);
-  let kernel = replayKernel([], config, { artifacts: artifactMap });
   const publicationBindings = [];
+  const institutionalEvents = [];
 
   for (let version = 1; version <= versionCount; version += 1) {
     const workId = 'history-publication-' + version;
@@ -1266,9 +1301,9 @@ test('server startup indexes large retained publication, repair-method, and stud
     const append = (type, actor, fields) => {
       const event = {
         id: 'institution-' + version + '-' + type,
-        type, actor, at, expectedRevision: kernel.revision, workId, ...fields
+        type, actor, at, expectedRevision: institutionalEvents.length, workId, ...fields
       };
-      kernel = applyEvent(kernel, event, { artifacts: artifactMap });
+      institutionalEvents.push(event);
       return event;
     };
 
@@ -1292,7 +1327,7 @@ test('server startup indexes large retained publication, repair-method, and stud
 
   const payload = {
     world,
-    institutionalEvents: kernel.events,
+    institutionalEvents,
     artifacts: { [receipt.digest]: htmlBytes.toString('base64') },
     publicationBindings
   };
