@@ -9,7 +9,7 @@ import {
   createFounderAuthorizationVerifier,
   verifyAuthorizationEvent
 } from "../src/authority/decision.js";
-import { defineQuest, projectQuest, QUEST_STATUS } from "../src/quest/engine.js";
+import { defineQuest, projectQuest, QUEST_STATUS, authorizeQuest } from "../src/quest/engine.js";
 import { projectWorld } from "../src/world/project.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
 
@@ -141,4 +141,18 @@ test("persisted authorization verifier rejects altered signatures and expired de
     expected_fingerprint: expectedFingerprint,
     now: Date.parse("2100-01-01T00:00:00.000Z")
   }), false);
+});
+
+
+test("legacy self-asserted authorizeQuest output cannot pass the signed host verifier", () => {
+  const { quest, publicKeyJwk, expectedFingerprint } = fixture();
+  const verifyAuthorization = createFounderAuthorizationVerifier({
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint
+  });
+  const forged = authorizeQuest({ quest, grant_id: "caller-invented-grant", actor: "founder" });
+  assert.equal(verifyAuthorization(forged), false);
+  const projection = projectQuest(quest, [forged], { verifyAuthorization });
+  assert.equal(projection.status, QUEST_STATUS.OPEN);
+  assert.equal(projection.authorized, false);
 });
