@@ -11,7 +11,7 @@ const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
 
-function packetsForTest(challengeCount = 1) {
+function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
   const events = [
     {
       id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
@@ -28,7 +28,8 @@ function packetsForTest(challengeCount = 1) {
   ];
   for (let index = 1; index <= challengeCount; index += 1) {
     events.push({
-      id: 'challenge-event-' + index, type: 'experiment-challenged', challengeId: 'challenge-' + index,
+      id: index === 1 && firstChallengeEventId ? firstChallengeEventId : 'challenge-event-' + index,
+      type: 'experiment-challenged', challengeId: 'challenge-' + index,
       reportId: 'report-1', moonshotId: 'moonshot-1', actor: founder,
       at: new Date(Date.parse(at2) + index * 60_000).toISOString(),
       challengeType: 'methodology', challengeText: 'The procedure omits a control (' + index + ').',
@@ -382,4 +383,47 @@ test('packet omission disclosure is unique, disjoint, bounded, and internally co
     .map(record => record.eventId);
   assert.equal(validateCollaboratorResponse(packet, JSON.stringify(response)).valid, true,
     'the validator accepts the exact capped omission disclosure without treating it as exhaustive history');
+});
+
+
+test('omission ID length uses Unicode code points consistently with producer limits', () => {
+  const atLimit = '🧪'.repeat(MAX_PACKET_ID_CHARS);
+  const packets = packetsForTest(8, atLimit);
+  for (const role of ['adversary', 'synthesizer']) {
+    const payload = JSON.parse(packets[role].packetJson);
+    assert.ok(payload.omittedEventIds.includes(atLimit), role + ': producer keeps the 128-code-point ID in the omission disclosure');
+  }
+
+  const adversaryResponse = {
+    ...validResponses.adversary,
+    duplicateOfEventIds: ['challenge-event-8']
+  };
+  assert.equal(validateCollaboratorResponse(packets.adversary, JSON.stringify(adversaryResponse)).valid, true,
+    'the response validator accepts a producer-valid non-BMP omission ID at the exact character limit');
+
+  const synthesisPayload = JSON.parse(packets.synthesizer.packetJson);
+  const synthesisResponse = structuredClone(validResponses.synthesizer);
+  synthesisResponse.scope = {
+    moonshotId: synthesisPayload.targetMoonshotId,
+    includedEventIds: [...synthesisPayload.inputRefs],
+    omittedEventIds: [...synthesisPayload.omittedEventIds]
+  };
+  synthesisResponse.recordedSupport = [{
+    sourceEventIds: [synthesisPayload.inputRefs[0]],
+    statement: 'The supplied packet includes the proposal record.'
+  }];
+  synthesisResponse.contradictions = [];
+  synthesisResponse.dissentPreserved = synthesisPayload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(synthesisResponse)).valid, true,
+    'synthesis accepts the exact omission list at the producer-defined character boundary');
+
+  const overLimit = '🧪'.repeat(MAX_PACKET_ID_CHARS + 1);
+  const rejectedAtProducer = packetsForTest(8, overLimit);
+  for (const packet of Object.values(rejectedAtProducer)) {
+    const payload = JSON.parse(packet.packetJson);
+    assert.equal(payload.inputRefs.includes(overLimit), false, packet.id);
+    assert.equal(payload.omittedEventIds.includes(overLimit), false, packet.id);
+  }
 });
