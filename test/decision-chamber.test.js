@@ -142,6 +142,24 @@ test("a decision verified before expiry cannot authorize after its expiry", () =
   );
 });
 
+test("decision creation rejects accessor-backed proposal and quest bindings", () => {
+  const accessorProposal = { ...proposal };
+  Object.defineProperty(accessorProposal, "event_id", {
+    configurable: true,
+    enumerable: true,
+    get() { return proposal.event_id; }
+  });
+  assert.throws(() => makePayload({ proposal: accessorProposal }), /proposal required/);
+
+  const accessorQuest = { ...quest };
+  Object.defineProperty(accessorQuest, "quest_id", {
+    configurable: true,
+    enumerable: true,
+    get() { return quest.quest_id; }
+  });
+  assert.throws(() => makePayload({ quest: accessorQuest }), /quest binding mismatch/);
+});
+
 test("verification rejects accessor-backed decision payloads and signed receipts", () => {
   const accessorPayload = { ...payload };
   Object.defineProperty(accessorPayload, "outputs", {
