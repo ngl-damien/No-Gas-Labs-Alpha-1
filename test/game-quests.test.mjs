@@ -190,6 +190,33 @@ test('moonshot quest refuses loose or rolled-over timestamps for retained public
   assert.equal(reportMilestone.progress, 0);
 });
 
+test('challenge quest requires canonical chronology even when report attribution is valid', () => {
+  const world = experimentQuestWorld();
+  world.events.push({
+    id: 'challenge-event-1',
+    type: 'experiment-challenged',
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-29T12:00:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The procedure needs an independent reproduction.'
+  });
+
+  const valid = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(valid.complete, true);
+  assert.equal(valid.progress, 1);
+
+  const malformed = structuredClone(world);
+  malformed.events.find(event => event.type === 'experiment-challenged').at = '2026-10-29';
+  const rejected = getQuestTrail(malformed, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(rejected.complete, false);
+  assert.equal(rejected.progress, 0);
+});
+
 function academyQuestWorld(publicationFirst) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const source = {
