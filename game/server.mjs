@@ -170,7 +170,7 @@ function validateHistory(world) {
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set();
-  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), methodsByVersion = new Map(), earliestDiscoveryAt = new Map();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
@@ -181,6 +181,7 @@ function validateHistory(world) {
     if (event.type === 'moonshot-proposed') addHistory(proposalsByMoonshot, event.moonshotId, { event, index });
   }
   for (const version of published) addHistory(publishedByVersion, historyKey(version.id, version.version), version);
+  for (const method of world.methods) addHistory(methodsByVersion, historyKey(method.creationId, method.version), method);
   for (const discovery of world.discoveries) {
     const key = historyKey(discovery.locationId, discovery.actor?.id);
     const at = Date.parse(discovery.at);
@@ -206,7 +207,7 @@ function validateHistory(world) {
       }
       studyIds.add(event.studyId);
       studyById.set(event.studyId, event);
-      const matches = published.filter(item => item.id === event.creationId && item.version === event.version && Date.parse(item.publishedAt) <= eventAt);
+      const matches = (publishedByVersion.get(historyKey(event.creationId, event.version)) || []).filter(item => Date.parse(item.publishedAt) <= eventAt);
       if (matches.length !== 1) throw new Error('Stored Academy study note does not bind to one earlier retained published version');
     }
     if (event.type === 'study-reviewed') {
@@ -334,7 +335,7 @@ function validateHistory(world) {
   const revisions = published.filter(publication => publication.version > 1);
   if (revisions.length !== world.methods.length) throw new Error('Earned repair method history mismatch');
   for (const publication of revisions) {
-    const matching = world.methods.filter(method => method.creationId === publication.id && method.version === publication.version);
+    const matching = methodsByVersion.get(historyKey(publication.id, publication.version)) || [];
     const event = (publicationEventsByVersion.get(historyKey(publication.id, publication.version)) || [])[0];
     if (matching.length !== 1) throw new Error('Duplicate or missing earned repair method');
     const method = matching[0]; exact(method, ['id', 'creationId', 'version', 'title', 'description', 'actor', 'at', 'semantics']);
