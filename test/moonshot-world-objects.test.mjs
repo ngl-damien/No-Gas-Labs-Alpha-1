@@ -333,7 +333,12 @@ test('targeted interaction selects the requested research activity over a closer
   assert.equal(view.nearest().id, 'moonshot-object:moon-1', 'generic interaction should still choose the closest object');
   assert.equal(view.nearest('research-activity:report-1', 'research-activity').id, 'research-activity:report-1',
     'explicit targeting must resolve the requested activity rather than the globally nearest object');
+  view.target = 'research-activity:report-1';
+  view.targetType = 'research-activity';
+  view.route = [];
   view.interact('research-activity:report-1', 'research-activity');
+  assert.equal(view.target, null, 'a direct interaction must clear the pending route target');
+  assert.equal(view.targetType, null, 'a direct interaction must clear the pending target type');
   assert.deepEqual(interactions, [{
     type: 'research-activity', moonshotId: 'moon-1', activityId: 'report-1', recordType: 'experiment-reported',
   }]);

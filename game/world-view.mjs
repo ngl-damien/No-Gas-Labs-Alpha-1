@@ -503,6 +503,7 @@ export class WorldView {
   interact(targetId,targetType){
     const nearest=this.nearest(targetId,targetType);
     if(nearest&&nearest.distance<160){
+      if(targetId!==undefined)this.cancelRoute();
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
       const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
