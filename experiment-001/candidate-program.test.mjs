@@ -151,3 +151,34 @@ test('changing a candidate program after approval cannot install the altered cap
   await assert.rejects(() => store.commit(altered, signature), /UNAUTHORIZED/);
   assert.equal(store.snapshot().sequence, 0);
 }));
+
+
+test('candidate challenge converts arithmetic overflow into failed cases and rejects installation', async () => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const overflowingProgram = {
+    op: 'multiply',
+    left: { op: 'const', value: 1_000_000 },
+    right: {
+      op: 'multiply',
+      left: { op: 'const', value: 1_000_000 },
+      right: { op: 'const', value: 1_000_000 }
+    }
+  };
+  const proof = lib.challenge('candidate-program-v1', overflowingProgram);
+  assert.equal(proof.passed, 0);
+  assert.equal(proof.failed.length, proof.total);
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-overflow-v1',
+    strategy: 'candidate-program-v1',
+    program: overflowingProgram,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-overflow-01',
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+    maxUses: 1
+  });
+  assert.equal(lib.validateInstallationProposal(draft).valid, false);
+  assert.equal(lib.validateInstallationProposal(draft).reason, 'INSTALL_PROOF_INVALID');
+});

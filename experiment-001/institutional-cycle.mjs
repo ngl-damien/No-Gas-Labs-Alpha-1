@@ -100,7 +100,11 @@ function challengeWithHash(strategy, hashFor, program = undefined) {
   let implementation;
   try { implementation = implementationFor(strategy, program); }
   catch { implementation = null; }
-  const failed = cases.filter(testCase => !implementation || implementation(testCase.n) !== testCase.out).map(testCase => testCase.n);
+  const failed = cases.filter(testCase => {
+    if (!implementation) return true;
+    try { return implementation(testCase.n) !== testCase.out; }
+    catch { return true; }
+  }).map(testCase => testCase.n);
   return { total: cases.length, passed: cases.length - failed.length, failed, implementationHash: implementation ? hashFor(strategy, program) : null };
 }
 export function challenge(strategy, program = undefined) { return challengeWithHash(strategy, implementationHash, program); }
