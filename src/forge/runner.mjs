@@ -66,6 +66,24 @@ function excluded(path) {
     PRIVATE_CONFIG_DIRS.has((parts[index + 1] ?? '').toLowerCase())
   );
 }
+
+const SENSITIVE_CONTENT_RULES = [
+  { id: 'private-key-block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+  { id: 'github-token', pattern: /\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b/ },
+  { id: 'aws-access-key', pattern: /\\bAKIA[0-9A-Z]{16}\\b/ },
+  { id: 'google-api-key', pattern: /\\bAIza[0-9A-Za-z_-]{35}\\b/ },
+  { id: 'slack-token', pattern: /\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b/ },
+  { id: 'stripe-live-secret', pattern: /\\bsk_live_[A-Za-z0-9]{16,}\\b/ },
+  { id: 'npm-token', pattern: /\\bnpm_[A-Za-z0-9]{30,}\\b/ }
+];
+function credentialContentRule(content) {
+  // Latin-1 preserves ASCII signatures even in mixed/binary blobs. The scanner
+  // reports rule IDs and paths only; it never copies a matched value to errors.
+  const text = content.toString('latin1');
+  for (const rule of SENSITIVE_CONTENT_RULES) if (rule.pattern.test(text)) return rule.id;
+  return null;
+}
+
 export function listWorkloads() {
   return [{ id: 'vector-sum-v1', description: 'Sum the same deterministic 10,000-number vector 200 times; verify seven independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
 }
@@ -181,11 +199,13 @@ async function sourceSnapshot(sourceDir, { requiredFiles = [TARGET, BENCHMARK, V
     const content = await readFile(current);
     total += content.length;
     if (total > SOURCE_LIMITS.bytes || content.length > SOURCE_LIMITS.fileBytes) throw new Error('Source byte limit exceeded');
+    const credentialRule = credentialContentRule(content);
+    if (credentialRule) throw new Error(`Credential-like content detected in source file: ${path} (${credentialRule}); remove or exclude it before Forge execution`);
     bytes.set(path, content);
   }
   for (const required of requiredFiles) if (!bytes.has(required)) throw new Error(`Workload source is missing: ${required}`);
   const files = [...bytes].map(([path, content]) => ({ path, size: content.length, sha256: sha256(content) }));
-  return { bytes, manifest: { schema: 'ngl.forge-source.v1', snapshotMode, revision, digest: sha256(stable(files)), files, totalBytes: total, excludedPolicy: snapshotMode === 'git' ? 'Git ignored files, metadata, runtime, dependency/build directories and credential filename patterns; no credential contents inspected.' : 'Fixed public-source roots and file extensions only; metadata, hidden paths, runtime, dependency/build directories and credential filename patterns excluded. No Git history or Git-ignore evaluation is claimed.' } };
+  return { bytes, manifest: { schema: 'ngl.forge-source.v1', snapshotMode, revision, digest: sha256(stable(files)), files, totalBytes: total, excludedPolicy: snapshotMode === 'git' ? 'Git ignored files, metadata, runtime, dependency/build directories and credential filename patterns; recognized high-confidence credential signatures in source bytes are rejected before copying, but scanning is incomplete.' : 'Fixed public-source roots and file extensions only; metadata, hidden paths, runtime, dependency/build directories and credential filename patterns excluded. Recognized high-confidence credential signatures are rejected before copying; no Git history or Git-ignore evaluation is claimed.' } };
 }
 async function writeBytes(root, path, bytes) {
   const destination = join(root, path);
@@ -386,7 +406,7 @@ export async function compareCandidates(options) {
   const eligible = results.filter(result => result.correct);
   const byTime = [...eligible].sort((a, b) => a.timing.runtimeMs - b.timing.runtimeMs);
   const taskId = sha256(stable({ source: snapshot.manifest.digest, workloadId, limits, candidates: results.map(result => result.taskId) }));
-  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and a minimal child environment do not identify secrets embedded in ordinary source files.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
+  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and high-confidence signature scanning reduce accidental exposure but are not a comprehensive secret detector; unknown formats and secrets not matching recognized signatures may remain.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
   await writeJson(join(outDir, 'report.json'), report);
   return report;
 }
