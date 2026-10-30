@@ -107,7 +107,7 @@ test('skills count activity attributed to the active character',()=>{
   };
   const record=projectCharacter(world,founder);
   assert.deepEqual(record.skills.map(skill=>[skill.id,skill.count]),[
-    ['maker',1],['explorer',1],['observer',1],['scholar',0],['retriever',0],['challenger',1],['researcher',0],['experimenter',0],['adversary',0],['restorer',0]
+    ['maker',1],['explorer',1],['observer',1],['scholar',0],['retriever',0],['challenger',1],['researcher',0],['experimenter',0],['adversary',0],['questkeeper',2],['restorer',0]
   ]);
   assert.equal(record.xp,100);
 });
@@ -470,7 +470,7 @@ test('Questkeeper skill mirrors completed source-linked Founder objectives witho
   const skill = record.skills.find(item => item.id === 'questkeeper');
 
   assert.ok(skill);
-  assert.equal(skill.count, 1);
+  assert.equal(skill.count, 2, 'the observatory publication completes both the first-place and source-observatory milestones');
   assert.match(skill.basis, /not truth, mastery, correctness, or approval/i);
   assert.equal(record.xp, 100);
   assert.equal(record.skills.find(item => item.id === 'maker').count, 1);
