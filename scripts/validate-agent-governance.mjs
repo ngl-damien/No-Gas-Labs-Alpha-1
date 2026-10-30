@@ -4,8 +4,8 @@ import { dirname, basename, resolve, relative, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VENDOR_POINTERS = ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md'];
-const ENTRY_MARKERS = ['RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'];
-const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien'];
+const ENTRY_MARKERS = ['RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md', 'First repository operation:', 'Second repository operation:', 'Discard any pre-read observations'];
+const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'];
 
 function insideRoot(root, candidate) {
   const rel = relative(root, candidate);
