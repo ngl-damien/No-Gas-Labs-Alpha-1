@@ -516,3 +516,19 @@ test("decisionDigest rejects sparse arrays, cycles, non-finite numbers, and unbo
   for (let index = 0; index < 66; index += 1) nested = { next: nested };
   assert.throws(() => decisionDigest(nested), /structural limits/);
 });
+
+
+test("decisionDigest rejects hidden properties and enforces the byte budget", () => {
+  const symbolBacked = { visible: true };
+  symbolBacked[Symbol("hidden")] = "not represented by JSON keys";
+  assert.throws(() => decisionDigest(symbolBacked), /own enumerable data properties/);
+
+  const nonEnumerable = {};
+  Object.defineProperty(nonEnumerable, "hidden", { value: "not represented by JSON keys" });
+  assert.throws(() => decisionDigest(nonEnumerable), /own enumerable data properties/);
+
+  assert.throws(
+    () => decisionDigest({ text: "x".repeat(1024 * 1024) }),
+    /byte limit/
+  );
+});
