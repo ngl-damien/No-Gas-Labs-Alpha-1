@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { COLLABORATOR_ROLES, isBoundedIdentifier } from './collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, isBoundedIdentifier, compactCollaboratorSourceRecord } from './collaborator-contracts.mjs';
+import { projectResearchRecords } from './research-records.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_WORLD_EVENT_SCAN = 100_000;
@@ -73,6 +74,18 @@ function exactStrings(left, right) {
     left.every((value, index) => value === right[index]);
 }
 
+function stableJson(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']';
+  const keys = Object.keys(value).sort();
+  return '{' + keys.map(key => JSON.stringify(key) + ':' + stableJson(value[key])).join(',') + '}';
+}
+
+function sameJsonData(left, right) {
+  try { return stableJson(left) === stableJson(right); }
+  catch { return false; }
+}
+
 function receiptEnvelopeMatches(value, receiptValue) {
   const receipt = ownDataRecord(receiptValue);
   if (!receipt || Object.keys(receipt).sort().join(',') !== 'algorithm,digest,size' ||
@@ -122,6 +135,17 @@ export function projectCollaboratorResponseWorldObjects(world) {
   const worldId = ownDataValue(world, 'id');
   const worldRevision = ownDataValue(world, 'revision');
   const events = ownDataArray(ownDataValue(world, 'events'), MAX_WORLD_EVENT_SCAN);
+  const creations = ownDataArray(ownDataValue(world, 'creations'), 20_000) || [];
+  // Recreate the exact compact records from the retained source history. Matching
+  // only IDs and timestamps would let a byte-valid packet substitute different
+  // hypothesis/observation text while still earning a Relay folio and quest credit.
+  const compactSourceById = new Map();
+  for (const record of projectResearchRecords(events || [], creations)) {
+    const projection = record?._projection;
+    if (projection?.recordSafe && projection.eventIdUnique && typeof record.id === 'string') {
+      compactSourceById.set(record.id, compactCollaboratorSourceRecord(record));
+    }
+  }
   if (!isBoundedIdentifier(worldId) || !Number.isSafeInteger(worldRevision) ||
       worldRevision < 0 || !events) return Object.freeze([]);
 
@@ -207,6 +231,17 @@ export function projectCollaboratorResponseWorldObjects(world) {
         omittedIds.some(id => !isBoundedIdentifier(id) || sourceIds.includes(id)) ||
         new Set(omittedIds).size !== omittedIds.length) continue;
 
+    const inputTypes = inputRecords.map(record => ownDataValue(record, 'type'));
+    if (inputTypes[0] !== 'moonshot-proposed' ||
+        (roleId === 'tutor' && inputRecords.length !== 1) ||
+        (roleId === 'adversary' && (
+          inputTypes[1] !== 'experiment-reported' ||
+          inputRecords.slice(2).some(record =>
+            ownDataValue(record, 'type') !== 'experiment-challenged' ||
+            ownDataValue(record, 'reportId') !== ownDataValue(inputRecords[1], 'reportId')
+          )
+        ))) continue;
+
     let proposalFound = false;
     let sourceChainValid = true;
     for (let sourceIndex = 0; sourceIndex < sourceIds.length; sourceIndex += 1) {
@@ -216,8 +251,10 @@ export function projectCollaboratorResponseWorldObjects(world) {
       const input = ownDataRecord(inputRecords[sourceIndex]);
       const sourceActor = source && validActor(source.actor);
       const inputActor = input && ownDataRecord(input.actor);
+      const expectedInput = compactSourceById.get(sourceId);
       if (!sourceEntry || eventIdCounts.get(sourceId) !== 1 ||
           sourceEntry.index >= entry.index || !source || !input || !sourceActor || !inputActor ||
+          !expectedInput || !sameJsonData(input, expectedInput) ||
           source.moonshotId !== moonshotId || !isStrictTimestamp(source.at) ||
           Date.parse(source.at) > atMs ||
           input.eventId !== source.id || input.type !== source.type || input.at !== source.at ||
