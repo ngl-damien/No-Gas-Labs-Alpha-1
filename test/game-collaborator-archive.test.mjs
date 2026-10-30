@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
@@ -141,6 +142,12 @@ test('archive integrity rejects changed packet or response bytes and fabricated 
   const changedPacket = structuredClone(outcome.world);
   const payload = JSON.parse(changedPacket.events.at(-1).packetJson);
   payload.mayAwardProgress = true;
-  changedPacket.events.at(-1).packetJson = JSON.stringify(payload);
+  const packetJson = JSON.stringify(payload);
+  changedPacket.events.at(-1).packetJson = packetJson;
+  changedPacket.events.at(-1).packetReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(packetJson, 'utf8').digest('hex'),
+    size: Buffer.byteLength(packetJson)
+  };
   await assert.rejects(validateWorld(changedPacket), error => error.code === 'INVALID_WORLD');
 });
