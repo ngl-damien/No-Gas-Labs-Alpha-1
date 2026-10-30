@@ -454,3 +454,21 @@ The Actions history is paginated while new runs are arriving, so page 2/page 3 a
 3. Inspect TaskAgile's reusable workflow target repository visibility and current branch/run evidence; do not modify shared governance or permissions.
 4. Continue source/test/workflow inspection of the 32-repository inventory; prioritize evidenceos, TaskAgile, Command Center, ngl-mesh, and the AI-BI recovery vessel.
 5. Revisit Alpha 1 historical failures only with exact failed run IDs and logs; keep cancelled/superseded runs out of the failure count.
+
+
+### Follow-through verification and TaskAgile repair — 2026-10-30 UTC
+
+- The four recent `ngl-mesh` failures are two commits each run by both push and pull-request events. All four logs show the same shell exit 126 at `RevocationAuthorization.java`; they are **one root-cause family**, not four independent defects. The later correction commit and successful run already recorded above close this incident.
+- AI-BI PR #1 now has a fresh run on corrected head `dfc83e56ddb6e9a537afb81e04c88ed5c26c214b`: run `40982088059`, job `123824313778`, conclusion **success**. Job log confirms **3 tests passed, 0 failed**. The three tests cover deterministic mode, unreachable-provider fallback provenance, and successful local provider-fixture inference. The PR remains open and draft; no merge performed.
+- TaskAgile metadata confirms the repository is **public**. Its `org-ci.yml` calls three reusable workflows from `No-Gas-Labs-Official/no-gas-labs-governance`; fetching that target's repository metadata returned 404 to this integration. This establishes an unavailable external workflow dependency, but does not prove whether the target is private, renamed, deleted, or otherwise inaccessible. Public-caller/private-reusable-workflow incompatibility is a plausible explanation, not the only possible explanation.
+- TaskAgile package manifest has `check` and `build`, no `test` script; the repository has `package-lock.json`, `tsconfig.json`, `LICENSE.md`, `IP-METADATA.json`, and `.repo-classification.json`. No test files were found in its complete recursive tree.
+- Opened draft PR **TaskAgile #1** with a local read-only replacement for the inaccessible reusable workflow calls: npm install from lockfile, TypeScript check, explicit test-suite absence reporting, build, pinned TruffleHog scan, and classification validation. Commit: `5a427c14032e976a7b1dafa76e153bc4d9108769`. The PR is source-reviewed and the changed workflow re-read, but TaskAgile Actions still returned zero runs after PR creation; hosted verification is pending. Do not claim the proposed CI passes.
+- The existing separate TaskAgile `ip-protection.yml` and `ralph-validation.yml` were not changed. Their conditions and assumptions require a separate review.
+
+### Current open implementation PRs from this cycle
+
+- Alpha 1 **#191** — durable repository checkpoint, draft; no merge.
+- AI-BI-Intelligence-node-gate **#1** — deliberation provenance correction plus test-script fix; draft; corrected head has 3/3 passing tests.
+- TaskAgile **#1** — local CI replacement for inaccessible external workflow dependencies; draft; hosted run not yet observed.
+
+No PR was merged, no branch deleted, and no secrets/permissions/releases/deployments changed.
