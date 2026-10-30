@@ -13,7 +13,7 @@ export function normalizeFix(position, options = {}) {
   if (precision !== "coarse" && precision !== "precise") {
     throw new Error("invalid precision");
   }
-  if (Number.isFinite(accuracy) && accuracy < 0) {
+  if (typeof accuracy === "number" && accuracy < 0) {
     throw new Error("invalid accuracy");
   }
 
