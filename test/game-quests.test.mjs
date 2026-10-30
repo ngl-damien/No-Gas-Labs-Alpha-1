@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES } from '../game/collaborator-contracts.mjs';
+import { createHash } from 'node:crypto';
+import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -127,6 +129,8 @@ function experimentQuestWorld({ reportActor = founder, evidence = true, publicat
     ...publication, id: 'publish-evidence-duplicate'
   });
   return {
+    id: 'quest-world',
+    revision: events.length,
     creations: [artifact],
     events,
     discoveries: [],
@@ -640,15 +644,54 @@ test('quest trail does not unlock research progress from incomplete or unattribu
 
 
 function collaboratorArchiveEvent({
-  id, role, actor = founder, responseId = 'response-' + id,
+  world, id, role, actor = founder, responseId = 'response-' + id,
   validationStatus = 'valid-for-human-review', at = '2026-10-28T17:04:00.000Z',
   sourceEventIds = ['proposal-1']
 }) {
-  const packetJson = JSON.stringify({ protocol: 'ngl.bounded-collaborator-packet.v1', role });
+  const inputRecords = sourceEventIds.map(sourceId => {
+    const source = world.events.find(event => event?.id === sourceId);
+    return source ? {
+      eventId: source.id,
+      type: source.type,
+      at: source.at,
+      actor: { id: source.actor?.id, role: source.actor?.role },
+      moonshotId: source.moonshotId
+    } : {
+      eventId: sourceId,
+      type: 'missing',
+      at,
+      actor: { id: 'missing-actor', role: 'founder' },
+      moonshotId: 'moon-1'
+    };
+  });
+  const payload = {
+    protocol: 'ngl.bounded-collaborator-packet.v1',
+    sourceSnapshot: {
+      status: 'identified',
+      worldId: world.id,
+      revision: world.revision,
+      suppliedEventCount: world.events.length
+    },
+    role,
+    objective: 'Test fixture only',
+    targetMoonshotId: 'moon-1',
+    authority: 'advisory-only',
+    mayWriteCanonicalState: false,
+    mayGrantAuthority: false,
+    mayAwardProgress: false,
+    mayCertifyTruthOrExecution: false,
+    inputRefs: [...sourceEventIds],
+    omittedEventIds: [],
+    omittedCount: 0,
+    omittedEventIdListTruncated: false,
+    truncatedContentFieldCount: 0,
+    inputRecords
+  };
+  const packetJson = JSON.stringify(payload);
   const responseText = JSON.stringify({ externalText: 'Untrusted response retained for human review.' });
   const receipt = value => ({
     algorithm: 'sha256',
-    digest: 'a'.repeat(64),
+    digest: createHash('sha256').update(value, 'utf8').digest('hex'),
     size: new TextEncoder().encode(value).length
   });
   return {
@@ -663,7 +706,14 @@ function collaboratorArchiveEvent({
   };
 }
 
-test('Guild Hall role-coverage quest counts one preserved response per role and routes to the next NPC', () => {
+function appendCollaboratorArchive(world, options) {
+  const event = collaboratorArchiveEvent({ world, ...options });
+  world.events.push(event);
+  world.revision = world.events.length;
+  return event;
+}
+
+test('Guild Hall role-coverage quest counts only source-bound folios and routes to the next NPC', () => {
   const world = experimentQuestWorld();
   const coverage = () => getQuestTrail(world, founder)
     .find(item => item.id === 'founder-guild-council-coverage');
@@ -671,29 +721,29 @@ test('Guild Hall role-coverage quest counts one preserved response per role and 
   assert.deepEqual([initial.progress, initial.target, initial.complete], [0, COLLABORATOR_ROLES.length, false]);
   assert.deepEqual(initial.action, { type: 'location', id: 'guild-npc-' + COLLABORATOR_ROLES[0].id });
 
-  world.events.push(collaboratorArchiveEvent({
+  appendCollaboratorArchive(world, {
     id: 'archivist-rejected', role: 'archivist', validationStatus: 'rejected'
-  }));
+  });
   let current = coverage();
-  assert.equal(current.progress, 1, 'a rejected response is still a preserved attempt');
+  assert.equal(current.progress, 1, 'a rejected but properly source-bound response remains a preserved attempt');
   assert.equal(current.evidence[0].collaboratorRole, 'archivist');
   assert.equal(current.evidence[0].validationStatus, 'rejected');
   assert.deepEqual(current.action, { type: 'location', id: 'guild-npc-adversary' });
 
-  world.events.push(collaboratorArchiveEvent({
+  appendCollaboratorArchive(world, {
     id: 'archivist-repeat', role: 'archivist', at: '2026-10-28T17:05:00.000Z'
-  }));
+  });
   current = coverage();
   assert.equal(current.progress, 1, 'repeated responses from one role cannot fill another role slot');
   assert.equal(current.evidenceIds.length, 1);
   assert.deepEqual(current.action, { type: 'location', id: 'guild-npc-adversary' });
 
   for (const [index, role] of COLLABORATOR_ROLES.slice(1).entries()) {
-    world.events.push(collaboratorArchiveEvent({
+    appendCollaboratorArchive(world, {
       id: role.id + '-response',
       role: role.id,
       at: new Date(Date.parse('2026-10-28T17:06:00.000Z') + index * 60_000).toISOString()
-    }));
+    });
   }
   current = coverage();
   assert.equal(current.progress, COLLABORATOR_ROLES.length);
@@ -704,24 +754,21 @@ test('Guild Hall role-coverage quest counts one preserved response per role and 
 
 test('Guild Hall role coverage rejects unknown roles, other actors, malformed receipts, invalid statuses and ambiguous IDs', () => {
   const world = experimentQuestWorld();
-  const duplicateA = collaboratorArchiveEvent({
+  appendCollaboratorArchive(world, { id: 'unknown-role', role: 'oracle' });
+  appendCollaboratorArchive(world, { id: 'other-actor', role: 'tutor', actor: witness });
+  appendCollaboratorArchive(world, { id: 'invalid-status', role: 'synthesizer', validationStatus: 'accepted' });
+  appendCollaboratorArchive(world, { id: 'missing-source', role: 'adversary', sourceEventIds: ['not-in-history'] });
+  appendCollaboratorArchive(world, { id: 'no-proposal-reference', role: 'tutor', sourceEventIds: ['report-event-1'] });
+  appendCollaboratorArchive(world, { id: 'backdated-response', role: 'archivist', at: '2026-10-28T17:00:30.000Z' });
+  appendCollaboratorArchive(world, {
     id: 'duplicate-a', role: 'archivist', responseId: 'same-response'
   });
-  const duplicateB = collaboratorArchiveEvent({
+  appendCollaboratorArchive(world, {
     id: 'duplicate-b', role: 'adversary', responseId: 'same-response',
     at: '2026-10-28T17:05:00.000Z'
   });
-  const badReceipt = collaboratorArchiveEvent({ id: 'bad-receipt', role: 'synthesizer' });
+  const badReceipt = appendCollaboratorArchive(world, { id: 'bad-receipt', role: 'synthesizer' });
   badReceipt.packetReceipt.digest = 'not-a-sha256-digest';
-  world.events.push(
-    collaboratorArchiveEvent({ id: 'unknown-role', role: 'oracle' }),
-    collaboratorArchiveEvent({ id: 'other-actor', role: 'tutor', actor: witness }),
-    collaboratorArchiveEvent({ id: 'invalid-status', role: 'synthesizer', validationStatus: 'accepted' }),
-    collaboratorArchiveEvent({ id: 'missing-source', role: 'adversary', sourceEventIds: ['not-in-history'] }),
-    collaboratorArchiveEvent({ id: 'no-proposal-reference', role: 'tutor', sourceEventIds: ['report-event-1'] }),
-    collaboratorArchiveEvent({ id: 'backdated-response', role: 'archivist', at: '2026-10-28T17:00:30.000Z' }),
-    duplicateA, duplicateB, badReceipt
-  );
   const coverage = getQuestTrail(world, founder)
     .find(item => item.id === 'founder-guild-council-coverage');
   assert.equal(coverage.progress, 0);
@@ -729,11 +776,30 @@ test('Guild Hall role coverage rejects unknown roles, other actors, malformed re
   assert.deepEqual(coverage.action, { type: 'location', id: 'guild-npc-archivist' });
 });
 
+test('Guild Hall quest progress and Relay folio navigation share the same strict packet/source checks', () => {
+  const world = experimentQuestWorld();
+  const event = appendCollaboratorArchive(world, { id: 'mismatched-snapshot', role: 'archivist' });
+  const payload = JSON.parse(event.packetJson);
+  payload.sourceSnapshot.worldId = 'another-world';
+  event.packetJson = JSON.stringify(payload);
+  event.packetReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(event.packetJson, 'utf8').digest('hex'),
+    size: new TextEncoder().encode(event.packetJson).length
+  };
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(world), [],
+    'the mismatched source snapshot must not become a navigable folio');
+  const coverage = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(coverage.progress, 0,
+    'the same mismatched archive must not advance the quest');
+});
+
 test('Witness Guild Hall role coverage counts only the Witness own preserved role response', () => {
   const world = experimentQuestWorld({ reportActor: witness });
-  world.events.push(collaboratorArchiveEvent({
+  appendCollaboratorArchive(world, {
     id: 'witness-tutor-response', role: 'tutor', actor: witness
-  }));
+  });
   const coverage = getQuestTrail(world, witness)
     .find(item => item.id === 'witness-guild-council-coverage');
   assert.equal(coverage.progress, 1);
