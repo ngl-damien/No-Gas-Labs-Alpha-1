@@ -74,6 +74,58 @@ function matchedPublications(world) {
   return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
 }
 
+
+const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+
+// Summary arrays are convenient indexes, not independent proof of activity.
+// Count a skill only when one uniquely identified summary row joins to one
+// retained event for the same actor, timestamp and source fields.
+function matchedActivityRecords(type, records, events, fields, viewer, eventPredicate = () => true) {
+  if (typeof viewer?.id !== 'string' || !viewer.id.trim() || viewer.id.trim() !== viewer.id ||
+      !['founder', 'witness'].includes(viewer.role)) return [];
+
+  const source = rows(records);
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+  const owned = source.filter(record =>
+    typeof record?.id === 'string' && record.id.length > 0 && recordIdCounts.get(record.id) === 1 &&
+    record.actor?.id === viewer.id && record.actor?.role === viewer.role &&
+    isStrictTimestamp(record.at)
+  );
+  const candidates = uniqueEvents(events).filter(event => {
+    if (event?.type !== type || event.actor?.id !== viewer.id || event.actor?.role !== viewer.role ||
+        !isStrictTimestamp(event.at)) return false;
+    try {
+      return eventPredicate(event) === true;
+    } catch {
+      return false;
+    }
+  });
+  const fingerprint = entry => JSON.stringify([
+    entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])
+  ]);
+  const recordCounts = new Map(), eventCounts = new Map(), eventByFingerprint = new Map();
+  for (const record of owned) {
+    const key = fingerprint(record);
+    recordCounts.set(key, (recordCounts.get(key) || 0) + 1);
+  }
+  for (const event of candidates) {
+    const key = fingerprint(event);
+    eventCounts.set(key, (eventCounts.get(key) || 0) + 1);
+    if (!eventByFingerprint.has(key)) eventByFingerprint.set(key, event);
+  }
+  return owned.flatMap(record => {
+    const key = fingerprint(record);
+    return recordCounts.get(key) === 1 && eventCounts.get(key) === 1
+      ? [{ record, event: eventByFingerprint.get(key) }]
+      : [];
+  });
+}
+
 export function projectCharacter(world, viewer) {
   const allEvents = uniqueEvents(world?.events);
   // Resolve append positions once. Repeated indexOf scans made challenge and
@@ -123,6 +175,34 @@ export function projectCharacter(world, viewer) {
   const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
   const canonicalPublications = matchedPublications(world);
+  const canonicalPublicationByVersion = new Map(canonicalPublications.map(event => [
+    versionKey(event.creationId, event.version), event
+  ]));
+  const canonicalPublicationIds = new Set(canonicalPublications.map(event => event.id));
+  const hasEarlierPublication = event => {
+    const publication = canonicalPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    return publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
+      Date.parse(publication.at) <= Date.parse(event.at);
+  };
+  const matchedDiscoveries = matchedActivityRecords(
+    'discover', world?.discoveries, allEvents, ['locationId'], viewer,
+    event => GUIDE_LOCATIONS.has(event.locationId)
+  );
+  const matchedContributions = matchedActivityRecords(
+    'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const matchedReports = matchedActivityRecords(
+    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const matchedMethods = matchedActivityRecords(
+    'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
+    event => event.version > 1 && canonicalPublicationIds.has(event.id)
+  );
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
@@ -193,7 +273,8 @@ export function projectCharacter(world, viewer) {
   const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
-  const worldXp = Number.isSafeInteger(world?.xp) && world.xp >= 0 ? world.xp : 0;
+  const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION;
+  const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
   const completedQuestObjectives = getQuestTrail(world, viewer)
@@ -211,14 +292,14 @@ export function projectCharacter(world, viewer) {
     {
       id: 'explorer',
       label: 'Explorer',
-      count: mine(world?.discoveries, viewer).length,
+      count: matchedDiscoveries.length,
       record: 'guide discoveries',
       basis: 'Recorded visits to the four authored guide locations.'
     },
     {
       id: 'observer',
       label: 'Observer',
-      count: mine(world?.contributions, viewer).length,
+      count: matchedContributions.length,
       record: 'field notes',
       basis: 'Attributed notes attached to a published version.'
     },
@@ -239,7 +320,7 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: mine(world?.reports, viewer).length,
+      count: matchedReports.length,
       record: 'reports',
       basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
     },
@@ -274,19 +355,24 @@ export function projectCharacter(world, viewer) {
     {
       id: 'restorer',
       label: 'Restorer',
-      count: mine(world?.methods, viewer).length,
+      count: matchedMethods.length,
       record: 'checked repairs',
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
 
+  const publishedVersionKeys = new Set(canonicalPublications.map(event =>
+    versionKey(event.creationId, event.version)
+  ));
   const inventory = rows(world?.creations)
-    .filter(creation => creation && typeof creation.id === 'string')
+    .filter(creation => creation && typeof creation.id === 'string' &&
+      Number.isSafeInteger(creation.version) && creation.version > 0 &&
+      publishedVersionKeys.has(versionKey(creation.id, creation.version)))
     .map(creation => Object.freeze({
       id: creation.id,
       title: typeof creation.title === 'string' && creation.title ? creation.title : 'Untitled place',
       kind: typeof creation.kind === 'string' ? creation.kind : 'unknown',
-      version: Number.isInteger(creation.version) && creation.version > 0 ? creation.version : 1,
+      version: creation.version,
       receipt: creation.receipt && typeof creation.receipt.digest === 'string'
         ? Object.freeze({ digest: creation.receipt.digest, size: creation.receipt.size })
         : null
