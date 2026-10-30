@@ -95,13 +95,77 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
  });
 }
 
-export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact}={}){
+function validProjectSnapshot(projects) {
+ return Boolean(projects && typeof projects === 'object' &&
+  ['projects','accomplishments','disputes','decisions'].every(key => Array.isArray(projects[key])) &&
+  Number.isSafeInteger(projects.witnessParticipation) && projects.witnessParticipation >= 0);
+}
+
+function validDecisionSnapshot(gate) {
+ return Boolean(gate && typeof gate === 'object' && Array.isArray(gate.decisions) &&
+  Object.hasOwn(gate, 'policy') &&
+  (gate.policy === null || (typeof gate.policy === 'object' && !Array.isArray(gate.policy))));
+}
+
+function warning(container, message) {
+ const item = el('p', message);
+ item.className = 'evidence-warning';
+ container.append(item);
+}
+
+export function renderInstitution(container,projects,gate,{
+ founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,
+ projectsUnavailable=false,decisionsUnavailable=false,worldSnapshotStale=false,worldUnavailable=false
+}={}) {
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
- renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
- if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
- for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
- container.append(el('h3','FOUNDER GATE'),el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
+ if(worldSnapshotStale)warning(container,'Live world state could not be refreshed. The Chronicle below is the last snapshot received by this session; it may be stale. It is read-only and does not authorize decisions.');
+ if(worldUnavailable)warning(container,'No world snapshot is available. The missing history is not being treated as an empty world.');
+ else renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
+ if(kernelUnavailable){
+  container.append(el('h3','CANONICAL WORK RECEIPTS'));
+  warning(container,'Canonical work receipts could not be loaded from the shared service. Other available records remain inspectable; the missing kernel history is not being treated as empty.');
+ }else renderKernelHistory(container,kernel);
+
+ const hasProjects=!projectsUnavailable&&validProjectSnapshot(projects);
+ if(!hasProjects){
+  container.append(el('h3','PROJECT REGISTERS'));
+  warning(container,'Project, accomplishment, dispute and decision-status registers are unavailable or malformed. No empty register is inferred from missing data.');
+  for(const name of ['PROJECTS','ACCOMPLISHMENTS','DISPUTES','DECISION STATUS']){
+   container.append(el('h3',name),el('p','Unavailable · reconnect to inspect this register.'));
+  }
+  container.append(el('p','External Witness participation: unavailable · the project service did not provide a complete snapshot.'));
+ }else{
+  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){
+   container.append(el('h3',name));
+   if(!rows.length)container.append(el('p','No retained record is installed.'));
+   for(const row of rows){
+    const card=el('article');card.className='field-card';card.dataset.recordType=name;
+    card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?\`Evidence SHA-256 · \${row.evidenceDigest}\`:'')); 
+    if(row.limitation)card.append(el('p',row.limitation));
+    container.append(card);
+   }
+  }
+  container.append(el('p',\`External Witness participation: \${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.\`));
+ }
+
+ container.append(el('h3','FOUNDER GATE'));
+ if(decisionsUnavailable||!validDecisionSnapshot(gate)){
+  warning(container,'Decision ledger unavailable or malformed. No policy, decision count, disposition or approval is inferred; reconnect before taking a consequential action.');
+  return;
+ }
+ container.append(el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
- for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
- container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
+ for(const d of gate.decisions){
+  const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;
+  card.append(el('h3',d.title),el('p',\`Status: \${d.status} · Expires: \${d.expiresAt}\`));
+  if(founder){
+   card.append(el('p',d.proposedEffect),el('p',\`Rollback: \${d.rollback}\`));
+   for(const risk of d.risks||[])card.append(el('p',\`Risk: \${risk}\`));
+   if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}
+   if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){
+    const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice?.(d,action);card.append(b);
+   }
+  }
+  container.append(card);
+ }
 }
