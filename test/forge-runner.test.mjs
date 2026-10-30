@@ -352,6 +352,9 @@ test('Repository Forge supports bounded public-source packages without fabricati
     'private/credential.json': '{"must":"not be copied"}',
     '.runtime/session.json': '{"must":"not be copied"}',
     'game/operator.key': 'must not be copied',
+    'service-account-production.json': '{"private_key":"must not be copied"}',
+    'application_default_credentials.json': '{"refresh_token":"must not be copied"}',
+    'google_application_credentials.json': '{"private_key":"must not be copied"}',
     'docs/meteor/notes.md': 'Public build notes'
   });
   const { verifyRepository } = await api();
@@ -363,7 +366,7 @@ test('Repository Forge supports bounded public-source packages without fabricati
   assert.equal(report.source.revision.dirty, null);
   const paths = report.source.files.map(file => file.path);
   assert.ok(paths.includes('docs/meteor/notes.md'));
-  assert.ok(!paths.some(path => /private|runtime|operator\.key/.test(path)));
+  assert.ok(!paths.some(path => /private|runtime|operator\.key|service-account|application_default_credentials|google_application_credentials/.test(path)));
 });
 
 test('Repository Forge CLI verifies only a disposable repository fixture and preserves failure exit status', async t => {
