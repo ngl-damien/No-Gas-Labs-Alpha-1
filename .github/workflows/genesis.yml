@@ -1,6 +1,8 @@
 name: Genesis Evidence Invariant
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 concurrency:
