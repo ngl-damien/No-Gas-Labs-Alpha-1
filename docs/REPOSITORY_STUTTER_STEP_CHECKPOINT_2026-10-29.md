@@ -327,3 +327,62 @@ These failures are on experimental feature branches, not evidence that the curre
 5. Inspect TaskAgile and Command Center's full UI/server architecture and licenses; do not treat no-run repositories as failed.
 6. Inspect wallet and private-key exposure paths in Damien-Featherstone and Omnichain_Bridge_wallet without reading or reproducing secret contents.
 7. Continue the remaining donor audit and cross-repository reconciliation; no integration decision is yet justified by root listings alone.
+
+
+## Third execution cycle — independent module audit and source corrections (2026-10-29)
+
+### AI-BI Intelligence Node-Gate: additional source finding
+
+Recursive source review found a meaningful provenance defect in `core/deliberation-engine.js`:
+
+- If provider configuration existed, the top-level mode was always labeled `PROVIDER_COUNCIL`.
+- When an API call failed or returned invalid JSON, each failed perspective was silently replaced by `DETERMINISTIC_SIMULATION`.
+- Therefore a run could claim provider-backed deliberation while every perspective was actually deterministic simulation. This violated the evidence invariant.
+
+Created draft PR #1 in `ngl-damien/AI-BI-Intelligence-node-gate`:
+[fix: preserve truthful deliberation provenance on provider fallback](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/pull/1)
+
+Head commit: `1600cb375163294f04663ab22ee411f58f2b1d50`.
+
+Changes:
+- Derive the top-level deliberation mode from the actual perspective provenance.
+- Distinguish `PROVIDER_COUNCIL`, `MIXED_PROVIDER_FALLBACK`, `PROVIDER_FALLBACK_SIMULATION`, and `DETERMINISTIC_SIMULATION`.
+- Retain the provider failure code on deterministic fallback perspectives.
+- Add three tests using local fixtures only: no provider, unreachable provider, and successful local mock provider.
+- Add a minimal read-only Node 22 CI workflow to run the existing package test command.
+
+Hosted Actions returned zero runs for this exact head at inspection time. These tests are **not yet verified** by an actual runner. The PR is draft and unmerged.
+
+Further completeness blockers in this repository:
+- Package `start` points to root `index.js`, but no root `index.js` exists in the current tree.
+- `guild-personas.js` explicitly identifies itself as a minimal stub; the full 25-persona roster and other major modules remain Official-only.
+- `core/intelligence-router.js` assigns the “Verified” class from keyword matches such as “citation”, “hash”, or “empirical”; it does not validate evidence. Treat these tags as heuristic labels only, never as verified facts.
+- Deliberation can fall back to simulation. The new PR improves truthful labeling but does not make the router a complete or production-ready system.
+- Recommendation remains independent retention and selective recovery, not wholesale integration.
+
+### PR #191 checkpoint verification
+
+At exact head `18a25171e916f03ccd33e969b6b9b3eafed5035c`:
+- Verify run 40981782469: **success**.
+- Genesis Evidence Invariant run 40981782524: **success**.
+- Browser Acceptance run 40981782615: **in progress** at last observation.
+- Earlier exact-head run attempts were cancelled by the configured concurrency group when newer attempts superseded them. They are not test failures.
+- PR #191 remains open, draft, and unmerged.
+
+### New PR inventory from this execution
+
+| Repository | PR | Change | Exact head | Verification |
+|---|---:|---|---|---|
+| Alpha 1 | #191 | Durable repository checkpoint | `18a25171e916f03ccd33e969b6b9b3eafed5035c` | Verify + Genesis success; Browser Acceptance in progress |
+| ngl001-def4us28 | #1 | Node 22 for Vite 8 Pages build | `63772fb97377fecf5f272fcb372a5f563f89ac1a` | No Actions runs returned; unverified |
+| AI-BI-Intelligence-node-gate | #1 | Honest provider-fallback provenance + tests + minimal CI | `1600cb375163294f04663ab22ee411f58f2b1d50` | No Actions runs returned; unverified |
+| ngl-mesh | #1 | Existing operator trust and replay marker hardening | `839f553f5255f47b3d7fcbd1272efbdeb5ac73af` | Exact-head push and PR checks passed (runs 40381701298 and 40381710261) |
+
+All listed PRs remain unmerged. No deployment, release, branch deletion, secret alteration, or permission change was performed.
+
+### Additional risks retained
+
+- `Damien-Featherstone/.data/institutional_keypair.json` is present in the private repository tree. Its content was intentionally not retrieved. Investigate whether this is a live private key, a public-only keypair fixture, or obsolete secret material using a secure owner-controlled process.
+- `ngl001-def4us28` contains a five-minute scheduled autonomous workflow with write permission and a self-push step. Do not enable or merge changes to it without a bounded transition, rate/cost review and proof that the workflow cannot create runaway commits.
+- Command Center's legacy dependency-audit step suppresses failures with `|| true`; the separate pinned TruffleHog workflow is stronger, but dependency-audit policy remains unresolved.
+- TaskAgile and Command Center have workflow definitions but Actions API returned zero runs. This is unknown status, not a diagnosis of broken CI.
