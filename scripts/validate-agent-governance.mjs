@@ -86,6 +86,21 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     }
     normalizedTargets.push(target);
     const parts = target.split('/');
+    for (let index = 1; index <= parts.length; index += 1) {
+      const prefix = parts.slice(0, index).join('/');
+      try {
+        const resolvedPrefix = await realpath(resolve(rootPath, prefix));
+        if (!insideRoot(rootPath, resolvedPrefix)) {
+          failures.push({ path: prefix, reason: 'target path escapes repository root through a symlink' });
+          break;
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') {
+          failures.push({ path: prefix, reason: 'cannot resolve target path (' + (error.code ?? error.message) + ')' });
+          break;
+        }
+      }
+    }
     const directories = [];
     for (let index = 1; index < parts.length; index += 1) directories.push(parts.slice(0, index).join('/'));
     try {
