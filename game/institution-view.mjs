@@ -140,12 +140,12 @@ export function renderInstitution(container,projects,gate,{
    if(!rows.length)container.append(el('p','No retained record is installed.'));
    for(const row of rows){
     const card=el('article');card.className='field-card';card.dataset.recordType=name;
-    card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?\`Evidence SHA-256 · \${row.evidenceDigest}\`:'')); 
+    card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:'')); 
     if(row.limitation)card.append(el('p',row.limitation));
     container.append(card);
    }
   }
-  container.append(el('p',\`External Witness participation: \${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.\`));
+  container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
  }
 
  container.append(el('h3','FOUNDER GATE'));
@@ -157,10 +157,10 @@ export function renderInstitution(container,projects,gate,{
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
  for(const d of gate.decisions){
   const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;
-  card.append(el('h3',d.title),el('p',\`Status: \${d.status} · Expires: \${d.expiresAt}\`));
+  card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));
   if(founder){
-   card.append(el('p',d.proposedEffect),el('p',\`Rollback: \${d.rollback}\`));
-   for(const risk of d.risks||[])card.append(el('p',\`Risk: \${risk}\`));
+   card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));
+   for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));
    if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}
    if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){
     const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice?.(d,action);card.append(b);
