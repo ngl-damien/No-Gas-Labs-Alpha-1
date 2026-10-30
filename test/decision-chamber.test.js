@@ -193,6 +193,18 @@ test("decision identifiers reject prototype-sensitive names", () => {
   });
 });
 
+test("verification bounds canonical P-256 DER signature receipts", () => {
+  // A valid P-256 DER signature is at most 72 bytes / 96 unpadded base64url chars.
+  assert.ok(signed.signature.length <= 96);
+  assert.ok(Buffer.from(signed.signature, "base64url").length <= 72);
+  assert.equal(verify().valid, true);
+
+  assert.deepEqual(verify({ ...signed, signature: "A".repeat(97) }), {
+    valid: false,
+    reason: "SIGNATURE_INVALID"
+  });
+});
+
 test("decision creation rejects accessor-backed proposal and quest bindings", () => {
   const accessorProposal = { ...proposal };
   Object.defineProperty(accessorProposal, "event_id", {
