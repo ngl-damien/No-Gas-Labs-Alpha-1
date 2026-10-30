@@ -275,13 +275,46 @@ function uniqueEventIds(events) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
 }
 
+function validTrailRecordId(value) {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+function validTrailActor(actor) {
+  return actor && typeof actor.id === 'string' && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
+}
+
+function validTrailActivityField(field, value) {
+  if (field === 'version') return Number.isSafeInteger(value) && value > 0;
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
 function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
+  const source = trailRows(records);
   const validIds = uniqueEventIds(events);
-  const owned = trailRows(records).filter(record => record?.actor?.id === actorId && record.actor.role === actorRole);
-  const candidates = trailRows(events).filter(event =>
-    event?.type === type && event?.actor?.id === actorId && event?.actor?.role === actorRole && validIds.has(event.id)
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+
+  // Keep quest progress aligned with the character-sheet projection: a record
+  // must have one unique ID, a valid actor, a strict timestamp and valid join
+  // fields before it can be paired with one unique retained event.
+  const owned = source.filter(record =>
+    validTrailRecordId(record?.id) && recordIdCounts.get(record.id) === 1 &&
+    validTrailActor(record?.actor) && record.actor.id === actorId && record.actor.role === actorRole &&
+    isStrictTimestamp(record.at) &&
+    fields.every(field => validTrailActivityField(field, record[field]))
   );
-  const key = entry => JSON.stringify([entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])]);
+  const candidates = trailRows(events).filter(event =>
+    event?.type === type && validTrailRecordId(event?.id) && validIds.has(event.id) &&
+    validTrailActor(event?.actor) && event.actor.id === actorId && event.actor.role === actorRole &&
+    isStrictTimestamp(event.at) &&
+    fields.every(field => validTrailActivityField(field, event[field]))
+  );
+  const key = entry => JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...fields.map(field => entry[field])]);
   const recordCounts = new Map(), eventCounts = new Map(), eventByFingerprint = new Map();
   for (const record of owned) {
     const fingerprint = key(record);
@@ -293,7 +326,7 @@ function matchingTrailRecords(type, records, events, fields, actorId, actorRole)
     if (!eventByFingerprint.has(fingerprint)) eventByFingerprint.set(fingerprint, event);
   }
   // Resolve the one-to-one join from indexes instead of rescanning every candidate
-  // for each record. Duplicate fingerprints remain deliberately unusable.
+  // for each record. Duplicate fingerprints and duplicate record IDs remain unusable.
   return owned.flatMap(record => {
     const fingerprint = key(record);
     return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1
