@@ -550,4 +550,12 @@ No PR was merged, no branch deleted, and no secrets/permissions/releases/deploym
 
 ### Authority and safety
 
-No Alpha 1 code was changed in this run. No merge, branch deletion, release, deployment, Render workspace selection, secret/permission change, Founder key operation, paid service, or external publication was performed. EvidenceOS changes are confined to its private draft PR #1. This checkpoint update is confined to the existing draft PR #191 branch.
+No Alpha 1 runtime code was changed in this run. No merge, branch deletion, release, deployment, Render workspace selection, secret/permission change, Founder key operation, paid service, or public release/announcement was performed. The only public GitHub write was this explicitly requested update to the existing draft PR #191; EvidenceOS changes are confined to its private draft PR #1.
+
+
+### Guild Hall PR consolidation review — 2026-10-30 UTC
+
+- Compared the older stacked Guild PR sequence (#174 → #177 → #178 → #179) against the newer main-based PR #195 before recommending any further work.
+- Exact Git blob identities show that PR #179 and PR #195 contain byte-identical core files: `game/collaborator-contracts.mjs` (`f88de3e4dfeeac320aa7cc771f2e93c5420bbcae`), `game/collaborator-response.mjs` (`586366f16e5246ff0413adfea78653779fb28d8c`), `game/strict-json.mjs` (`cd0607b05f776935257f0b2621c314d5f996dd73`), `test/game-collaborator-contracts.test.mjs` (`21b657ee28dcac1ae3b7eb94a6d58d1f8e533205`), and `test/game-collaborator-response.test.mjs` (`29dcb7d56a6f8048b8b833b5ce1ea3c770b535d2`). `game/server.mjs` is also byte-identical between #179 and #195.
+- They are not identical PRs: `game/client.mjs`, `scripts/verify-browser.py`, and `test/game-server.test.mjs` differ. PR #195 therefore carries additional integration work while reusing the exact core collaborator modules from the older stack.
+- This is evidence of shared implementation, not proof that #195 fully supersedes every staged PR. All four older PRs remain open. Do not merge/close them automatically. Worker B should choose one canonical integration path, reconcile its base with current main, and prevent the identical core files from being merged twice.
