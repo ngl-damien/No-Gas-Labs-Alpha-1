@@ -244,7 +244,7 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
   const file = 'src/embedded-credential.mjs';
   const { compareCandidates, verifyRepository } = await api();
   const githubToken = 'ghp_' + 'A'.repeat(36);
-  await repositoryTestFiles(options.sourceDir, { [file]: `export const token = '${githubToken}';\\n` });
+  await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(githubToken) + ';\\n' });
   let failure;
   try {
     await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
@@ -257,15 +257,14 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
   await assert.rejects(access(options.outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
 
   await rm(join(options.sourceDir, file));
-  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('\\n') + '\\nredacted-test-fixture\\n';
-  await repositoryTestFiles(options.sourceDir, { [file]: `export const key = ${JSON.stringify(privateKeyBlock)};\\n` });
+  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + '\\nredacted-test-fixture\\n';
+  await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(privateKeyBlock) + ';\\n' });
   const report = await verifyRepository({ ...options, outDir: options.outDir + '-verify' });
   assert.equal(report.outcome, 'source_failed');
   assert.equal(report.correct, false);
   assert.match(report.reason, /Credential-like content detected.*private-key-block/);
   await assert.rejects(access(join(options.outDir + '-verify', 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
 });
-
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
