@@ -30,12 +30,6 @@ Then, before implementation work:
 9. Run the portable preflight when available, supplying every intended target path and the checkpoint path. Preserve its JSON receipt in the run record.
 
 
-3. Read vendor-specific instructions applicable to the agent (Codex, Claude, Gemini, Copilot, or another tool).
-4. Identify the agent's role and read all applicable nested AGENTS.md files for intended work paths.
-5. Read the latest durable checkpoint and latest handoff from other workers.
-6. Inspect active branches, open PRs, issues, and exact-head checks relevant to candidate work.
-7. Run the portable preflight when available, supplying every intended target path and the checkpoint path. Preserve its JSON receipt in the run record.
-
 If an instruction, checkpoint, handoff, or relevant source cannot be read, record the exact limitation. Do not fabricate that it was read. Do not edit a path whose applicable instructions cannot be established.
 
 ## Compute-bounded continuous loop
