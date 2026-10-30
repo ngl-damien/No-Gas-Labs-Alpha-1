@@ -449,3 +449,50 @@ No merge, deployment, release, branch deletion, workflow dispatch, spending, ext
 - Added three service-account / cloud credential JSON fixtures to the Gitless public-source snapshot regression. The same exclusion function is exercised for Git-backed and Gitless snapshots.
 - Exact-head Verify `124012244500` and world-projection `124012376231` passed. Playable-world `124012823662` was still in progress at this checkpoint; do not count the earlier cancelled run as a failure or a pass.
 - The previous Forge head `e66114a5e857d9cdc3b146e2bc160d150c73eb26` had all three checks pass. The new head's Playable-world check remains pending.
+
+
+## Repository Stutter-Step run — 2026-10-30 10:44 UTC
+
+### Fresh state and coordination
+- Alpha 1 `main` is still `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; no mainline write.
+- Fresh open-PR search returned **47** PRs; issue search returned **2** open issues (#17 authority/concurrency/recovery; #22 hybrid-cognition falsification challenge).
+- Full branch pagination: pages 1–4 each 100 refs, page 5 has 64, page 6 empty = **464 refs**. No branch ref was marked protected by the API. This is inventory evidence only; no deletion or protection change.
+- Re-read `AGENTS.md`, the complete shared protocol, and this checkpoint before edits. No nested AGENTS.md exists under `src/forge` or `test`.
+- Worker B's latest draft is PR #219, head `c5c67d9010a5cbfec8f6ec00c3d19f349a04e233`, stacked on #218 → #217 → #204. No Worker B gameplay/browser files were edited.
+
+### Implemented — Forge rejects recognizable embedded credentials before snapshot copying
+**Existing draft PR #216:** [fix(forge): verify candidates in an independent clean workspace](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/216)  
+Branch `fix/forge-independent-verification-workspace-20261030`; final head `f6caf4c36ac177edcbea58e54da1dcd6ba0f5dcc`.
+
+- Changed `src/forge/runner.mjs` and `test/forge-runner.test.mjs`.
+- Source snapshot now checks high-confidence signatures for private-key PEM blocks, GitHub classic/fine-grained tokens, AWS access-key IDs, Google API keys, Slack tokens, Stripe live secret keys, npm tokens, and GitLab personal-access tokens. It fails closed before candidate copying; error messages contain only the file path and rule ID, not the matched bytes.
+- `verifyRepository` converts the same detection into `source_failed` and does not create a copied test workspace.
+- Regression test generates synthetic token strings at runtime (so the test source does not itself contain live-looking token literals) and checks all recognized token signatures plus a private-key block. It asserts candidate output is not created and error messages do not echo the secret bytes.
+- This is a **high-confidence tripwire, not a comprehensive secret detector**. Unknown token formats, secrets that do not match the known signatures, or data available outside the copied source remain possible. Forge still runs trusted local processes and is not an OS sandbox.
+
+Commits that establish the final scanner/tests include `66d33b98396c3246e10125748b49829bfa3b57a3` (correct scanner expressions), `dc98bf4406ee31e6d22387d1ba4de27c440b2134` (GitLab token signature), and `f6caf4c36ac177edcbea58e54da1dcd6ba0f5dcc` (table-driven regression coverage). Earlier in-branch escaping mistakes were corrected before final-head verification; do not treat intermediate commits as the verified result.
+
+### Exact-head verification for PR #216
+- Verify workflow [41042763165](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763165): **success** on `f6caf4c36ac177edcbea58e54da1dcd6ba0f5dcc`. Logs show Node tests exit 0, game package build exit 0, and bounded institutional exercise `passed: true`.
+- Genesis Evidence Invariant [41042763120](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763120): **success** on the same exact head.
+- Browser Acceptance [41042763257](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763257): **in progress at checkpoint time**. Do not call all three checks green until this exact-head run completes. Push-trigger counterparts were cancelled when PR-trigger runs superseded them; cancellations are not failures.
+- No local full test run is claimed; the container still cannot provide a usable repository clone. Verification evidence here is hosted CI.
+
+### Worker B handoff — current PR #219 browser failure
+- Exact head `c5c67d9010a5cbfec8f6ec00c3d19f349a04e233`: Verify [41042149805](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042149805) and world-projection [41042149895](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042149895) succeeded; Playable-world / Browser Acceptance [41042149812](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042149812) **failed**.
+- The failed journey timed out in `scripts/verify-browser.py:71` waiting for `#mode-label` to include `private`, after clicking `#start-private` and waiting for `#world` to become visible. The same `basic()` lines 55–90 are identical on `main`; that weakens the hypothesis of a direct script-only regression but does not rule out a runtime/startup interaction. Artifact: [browser receipts and screenshots](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042149812/artifacts/12970622408).
+- This is Worker B's active game/browser stack; no overlapping edits were made. Next diagnostic: inspect the failed journey's screenshot/console/network evidence and determine why private mode never becomes visible before changing its owned paths.
+
+### Other exact-head checks re-observed
+- PR #203 Founder decision seal/audience binding, head `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901`: Verify, world-projection and Playable-world checks all succeeded. It remains unmerged and does not yet wire its verifier into live `game/server.mjs`.
+- PR #205 writer lease, head `54c54a5660ab799476d48871dc9d0fbb5c59f93c`: Verify, world-projection and Playable-world successful exact-head runs exist; PR #215 adds the separate pre-rename process-death test and remains stacked.
+- PR #212 receipt-resolver mutation boundary, head `2fdd4b808fea1da01083a237fced13f84f1e1640`: Verify, world-projection and Playable-world successful.
+- `ngl-mesh` PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d`: operator-key-trust and required-agent-instructions checks succeeded.
+- `evidenceos` PR #2 head `7335e83afba294c04ea721fd24797fd8b6affaac`: hosted test check succeeded; PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b` also has a successful hosted test. Neither stack is merged.
+
+### Founder authority and next priorities
+- Issue #17 remains open. PR #16's original self-signing finding is superseded by the merged PR #18 offline Ed25519 INSTALL signer. Separate unmerged PR #203 hardens a P-256 decision helper; current `main` still accepts a caller-supplied `{valid:true}` object at `src/authority/decision.js`, and live `game/server.mjs` does not yet import PR #203's verifier.
+- Do not revive PR #16, choose a canonical signer scheme by inference, create/read/rotate Founder keys, or edit `game/server.mjs` while PRs #205/#213/#214 own overlapping work.
+- Next: (1) recheck PR #216 Browser Acceptance and fix any attributable failure; (2) hand off PR #219's exact browser failure to Worker B with artifact evidence; (3) after server work settles, design the narrow verifier-to-canonical-mutation integration with an explicit signer/trust-anchor decision; (4) continue issue #17 crash/concurrency acceptance without automatic stale-lock deletion; (5) preserve the missing APK/RAE inputs as a blocker rather than claim complete Relay integration.
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. PR #216 and checkpoint PR #210 remain draft/open/unmerged.
