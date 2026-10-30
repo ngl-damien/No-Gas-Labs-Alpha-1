@@ -883,21 +883,21 @@ test('process death before atomic rename leaves the canonical envelope unchanged
 
   try {
     assert.equal(await bounded(nextMessage(), 'pre-rename worker did not open the decision store'), 'READY');
-    child.stdin.end('commit\\n');
+    child.stdin.end('commit\n');
     assert.equal(
       await bounded(nextMessage(), 'pre-rename worker did not reach the durable temporary-file boundary'),
       'BEFORE_RENAME'
     );
-    const stopped = await bounded(exit.then(value => value), 'pre-rename worker did not terminate').catch(async error => {
-      child.kill('SIGKILL');
-      throw error;
-    });
+    child.kill('SIGKILL');
+    const stopped = await bounded(exit, 'pre-rename worker did not terminate');
     assert.equal(stopped.signal, 'SIGKILL');
 
     const lockPath = join(directory, '.decisions.lock');
     assert.equal((await lstat(lockPath)).isFile(), true, 'process death must leave the writer lease visible');
-    const pendingFiles = (await readdir(directory)).filter(name => /^\\.decisions-[a-f0-9-]+\\.tmp$/.test(name));
+    const pendingFiles = (await readdir(directory)).filter(name => /^\.decisions-[a-f0-9-]+\.tmp$/.test(name));
     assert.equal(pendingFiles.length, 1, 'the fully written temporary envelope must remain visible after SIGKILL');
+    const pending = JSON.parse(await readFile(join(directory, pendingFiles[0]), 'utf8'));
+    assert.equal(pending.payload.projection.policy.id, policy.id, 'the fully written candidate remains in the orphaned temporary file');
     const retained = JSON.parse(await readFile(join(directory, 'decisions.json'), 'utf8'));
     assert.deepEqual(retained.payload.records, [], 'the canonical envelope must remain at its previous revision');
     await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_LOCKED');
