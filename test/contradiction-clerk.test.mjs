@@ -139,3 +139,90 @@ test("oversized structured report is rejected before it can be submitted", () =>
     /report limit/,
   );
 });
+
+test("retained version arrays are dense, bounded and never invoke a custom iterator", () => {
+  let iteratorCalls = 0;
+  const customIterator = [...creation.versions];
+  Object.defineProperty(customIterator, Symbol.iterator, {
+    configurable: true,
+    value() {
+      iteratorCalls += 1;
+      return [creation.versions[0]][Symbol.iterator]();
+    },
+  });
+  assert.throws(
+    () => prepareContradictionReview({ ...creation, versions: customIterator }, 1),
+    /retained version history/,
+  );
+  assert.equal(iteratorCalls, 0);
+
+  const sparse = [];
+  sparse.length = 1;
+  assert.throws(
+    () => prepareContradictionReview({ ...creation, versions: sparse }, 1),
+    /retained version history/,
+  );
+
+  const extra = [...creation.versions];
+  extra.hidden = creation.versions[0];
+  assert.throws(
+    () => prepareContradictionReview({ ...creation, versions: extra }, 1),
+    /retained version history/,
+  );
+
+  const alteredPrototype = [...creation.versions];
+  Object.setPrototypeOf(alteredPrototype, {});
+  assert.throws(
+    () => prepareContradictionReview({ ...creation, versions: alteredPrototype }, 1),
+    /retained version history/,
+  );
+});
+
+test("accessor-backed retained history and challenge answers fail without running getters", () => {
+  let getterCalls = 0;
+  const accessorCreation = { ...creation };
+  Object.defineProperty(accessorCreation, "versions", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return creation.versions;
+    },
+  });
+  assert.throws(
+    () => prepareContradictionReview(accessorCreation, 1),
+    /retained version history/,
+  );
+
+  const accessorAnswers = { ...answers };
+  Object.defineProperty(accessorAnswers, "claim", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return answers.claim;
+    },
+  });
+  assert.throws(
+    () => formatContradictionReport(creation, 1, accessorAnswers),
+    /own data fields/,
+  );
+  assert.equal(getterCalls, 0);
+});
+
+test("challenge answers require exactly the four own fields", () => {
+  assert.throws(
+    () => formatContradictionReport(creation, 1, { ...answers, verdict: "APPROVED" }),
+    /exactly the required fields/,
+  );
+
+  const inheritedClaim = Object.assign(Object.create({ claim: answers.claim }), {
+    source: answers.source,
+    falsifier: answers.falsifier,
+    unknown: answers.unknown,
+  });
+  assert.throws(
+    () => formatContradictionReport(creation, 1, inheritedClaim),
+    /plain object/,
+  );
+});
