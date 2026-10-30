@@ -71,7 +71,7 @@ The canonical Alpha 1 implementation is the Node.js script scripts/validate-agen
 
 The script verifies the root entry contract, canonical protocol, all four standard vendor entry points (Claude, Gemini, Codex, and Copilot), scoped nested instructions, and checkpoint readability. Each vendor pointer must lead back to AGENTS.md and the shared protocol. It hashes the exact bytes read and emits a JSON receipt. A receipt establishes which bytes the preflight process read; it does not prove that an agent understood them or that a proposed change is correct.
 
-When adopting this contract in another repository, copy the portable preflight script and its tests, set the local root instruction file to point to the canonical shared protocol, and wire preflight into the repository's verification workflow. If the root AGENTS.md points to a remote protocol URL, fetch the protocol from an immutable commit into a local workspace path and pass that path with --protocol. The preflight deliberately does not fetch mutable remote URLs itself. Never silently substitute a stale local copy.
+When adopting this contract in another repository, copy the portable preflight script and its tests, add the four standard vendor pointer files (Claude, Gemini, Codex, and Copilot) so each points back to root AGENTS.md and the shared protocol, set the local root instruction file to point to the canonical shared protocol, and wire preflight into the repository's verification workflow. If the root AGENTS.md points to a remote protocol URL, fetch the protocol from an immutable commit into a local workspace path and pass that path with --protocol. The preflight deliberately does not fetch mutable remote URLs itself. Never silently substitute a stale local copy.
 
 ## Required run record
 
