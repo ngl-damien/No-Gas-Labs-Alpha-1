@@ -52,7 +52,7 @@ function retainedVersionIndex(world) {
 // A retained publication binds an event to one exact artifact version and
 // timestamp. It establishes that a place was published, not that its contents
 // are true or that it deserves game XP.
-function retainedPublicationEvents(world) {
+function retainedPublicationEvents(world, accept = () => true) {
   const events = uniqueEvents(world?.events);
   const versions = retainedVersionIndex(world);
   const candidates = [];
@@ -62,6 +62,7 @@ function retainedPublicationEvents(world) {
         event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
         event.version < 1 || !isStrictTimestamp(event.at)) continue;
+    if (!accept(event)) continue;
     const key = versionKey(event.creationId, event.version);
     const version = versions.get(key);
     if (!version || version.publishedAt !== event.at) continue;
@@ -75,7 +76,9 @@ function retainedPublicationEvents(world) {
 // A publication is an XP receipt only when the exact fixed reward is present.
 // Invalid reward metadata does not erase a retained artifact from the world.
 function matchedPublications(world) {
-  return retainedPublicationEvents(world).filter(event =>
+  // Invalid reward metadata must not make a valid publication ambiguous. Apply
+  // the XP receipt predicate before counting competing claims for this version.
+  return retainedPublicationEvents(world, event =>
     Number.isSafeInteger(event.reward) && event.reward === XP_PER_PUBLICATION
   );
 }
