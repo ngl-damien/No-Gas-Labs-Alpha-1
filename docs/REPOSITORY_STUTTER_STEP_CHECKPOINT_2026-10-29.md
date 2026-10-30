@@ -61,7 +61,7 @@ Current connected-account search results (repository names are exact; the follow
 - `no-gas-labs-monorepo`: private recovery vessel; root has src/todo/provenance/README; very small reported repository size (4 KB).
 - `No_Gas_Labs-Omnichain_TownSquare`: private recovery vessel; root has only README and PROVENANCE; tiny reported size (2 KB). Do not label it broken solely on this basis; likely a provenance placeholder requiring original-source recovery.
 
-The other 24 repositories are confirmed present in the connected-account inventory but their root trees, package manifests, workflow definitions, and source files have not yet been inspected in this run. Continue with them before claiming a complete audit.
+The remaining 24 repositories' root trees were subsequently inspected in this run (see the root-inventory addendum below). Recursive source, dependency, workflow, test, history, and runtime audits remain incomplete for most repositories.
 
 ## Existing audit records found in Alpha 1
 
@@ -135,7 +135,7 @@ The branch endpoint returned 100 branch entries, so pagination is not yet comple
 ## Next prioritized actions
 
 1. Enumerate all genuine failed workflow runs using a reliable query and inspect each relevant job/log; separate failure, cancellation, skipped, and stale/superseded records.
-2. Inspect all 24 not-yet-reviewed repository roots, then recursively inspect the highest-value candidates: TaskAgile, Damien-Featherstone, ngl001-def4us28, ngl-mesh, Command Center, evidenceos, recovery vessel, TownSquare/Omnichain, Guild, and integration projects.
+2. Recursively inspect the highest-value candidates: TaskAgile, Damien-Featherstone, ngl001-def4us28, ngl-mesh, Command Center, evidenceos, recovery vessel, TownSquare/Omnichain, Guild, and integration projects.
 3. Refresh the full branch inventory with pagination and the full open-PR set; inspect PR files, checks, commits, base/head ancestry, review state, and duplicate/stale stacked branches. Do not merge or delete.
 4. Reconcile current donor source commits against the Alpha 1 snapshots and ledger. Prioritize missing large source blobs, security-sensitive files, and genuinely reusable modules.
 5. Review the branch-cleanup workflow and its 80-name manifest as a destructive automation risk; preserve the no-delete-without-authorization rule.
@@ -144,3 +144,27 @@ The branch endpoint returned 100 branch entries, so pagination is not yet comple
 ## Authority
 
 Damien Featherstone is final authority. This checkpoint does not authorize merging, deletion, release publication, secret changes, permission changes, spending, or deployment.
+
+
+## Root-inventory addendum — 2026-10-29
+
+After the initial checkpoint was drafted, root directory listings were retrieved for all remaining repositories. **All 32 of 32 connected-account repositories now have a root-level inventory.** This is still not a complete repository audit: only root names were read for many repositories; nested source, tests, workflows, dependency manifests, commit history, Actions runs, and execution were not all inspected.
+
+Root-level content groups observed:
+
+- **Substantial code/application candidates:** `TaskAgile` (client/server/shared/modules/assets/RPG/shrine plus package/configuration); `Damien-Featherstone` (src/tests/server.ts/Vite/package plus .data); `ngl001-def4us28` (src/contact/.github/package); `Omnichain_Bridge_wallet` (src/townsquare/public/index.html and Python/JS scripts); `AI-BI-Intelligence-node-gate` (core, Dockerfile, package, progress/inventory docs); `dia-p2e-cockpit` (React-style app entry points, src, package); `omnichain-faucet-townsquare` (HTML/CSS/JS/package); `VoxScriptNGL`, `VeritasShieldNGL`, `SonicForgeNGL`, and `PulseMonitorNGL` (Python entrypoint plus agent config and provenance).
+- **Focused or likely modular repositories:** `ngl-mesh` (docs/forensics/integration); `evidenceos` (src/package/security/provenance/inventory); `no-gas-labs-command-center` (client/components/server/shared and Vite/TypeScript config); `no-gas-labs` (HTML entrypoints and operational/project docs); `AI-orchestrator-test` (delivery summary, agents instructions, provenance); `ai-guild-hardened-v0.2` (manifesto/package/provenance).
+- **Recovery/provenance or very small roots:** `no_gas_labs_sui_flashloan`, `no-gas-slaps`, `no-gas-labs-system-integration`, `No_Gas_Labs-Omnichain_TownSquare`, `nogas-matrix-2026`, `Vibe-_Coding_Protocol`, `audit-vault`, `ngl-probe-cooldown-20261029`, `no-gas-labs-monorepo`, `app`, `believe-in-me`, `nextjs-ai-chatbot`, `multi-chain-flash-loan-dapp`, and `ngl-recovery-2026-10-25`. Root structures range from README/PROVENANCE-only stubs to manifests, TODO/status files, and archives. A minimal root is not proof of a broken repository; these require provenance/source recovery triage.
+- `no-gas-labs` is distinct from `No-Gas-Labs-Alpha-1`; do not conflate the static/browser-facing project with the canonical integration target.
+- `No_Gas_Labs-Omnichain_TownSquare` and `omnichain-faucet-townsquare` are separate repositories and should not be collapsed based on similar names.
+- `Omnichain_Bridge_wallet` has wallet-related naming and must receive a secrets/key-material review before any archive import or integration. Existing historical audit notes already flag wallet key files in recovery material; do not copy credentials or private keys.
+- `Damien-Featherstone` root exposes a `.data` directory; previous audit notes flag a possible private-key file in its data tree. Treat as a security blocker pending fresh verification and remediation, not as a reason to discard the useful source code.
+
+### Revised audit coverage
+
+- Connected-account repository inventory: **32/32**.
+- Root listings: **32/32**.
+- Metadata freshness and package/dependency status: partial; only eight repositories had full repository metadata/root inspected in the initial pass, and manifests have not been comprehensively reviewed.
+- Recursive source/test/workflow/history inspection: partial; the existing donor audit covers a prior 12-repository snapshot, not today's full 32.
+- Workflow failure root-cause analysis across the account: not complete.
+- Current Alpha 1 Actions and open-PR state: inspected as described above.
