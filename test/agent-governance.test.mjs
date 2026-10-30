@@ -1,0 +1,88 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { runPreflight } from '../scripts/validate-agent-governance.mjs';
+
+const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
+const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien'].join('\n');
+
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
+  await mkdir(join(root, 'docs/operations'), { recursive: true });
+  await mkdir(join(root, '.github'), { recursive: true });
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
+  await writeFile(join(root, protocolPath), protocolText);
+  for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
+    await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
+  }
+  await writeFile(join(root, 'CHECKPOINT.md'), '# Latest checkpoint\n');
+  return root;
+}
+
+test('preflight hashes root contract, protocol, scoped nested instructions and checkpoint', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/AGENTS.md'), 'Scripts-specific instructions.');
+    const result = await runPreflight({ root, paths: ['scripts/worker.mjs'], checkpoint: 'CHECKPOINT.md' });
+    assert.equal(result.status, 'ready');
+    assert.equal(result.protocol, protocolPath);
+    assert.ok(result.files.some(file => file.path === 'scripts/AGENTS.md' && file.kind === 'nested-instructions'));
+    assert.ok(result.files.some(file => file.path === 'CHECKPOINT.md' && file.kind === 'durable-checkpoint'));
+    assert.ok(result.files.every(file => /^[a-f0-9]{64}$/.test(file.sha256)));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('targeted work is blocked unless a durable checkpoint is supplied', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({ root, paths: ['scripts/worker.mjs'] });
+    assert.equal(result.status, 'blocked');
+    assert.match(result.failures.map(item => item.reason).join(' '), /requires --checkpoint/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects traversal paths instead of reading outside the repository', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({ root, paths: ['../outside.mjs'], checkpoint: 'CHECKPOINT.md' });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.reason.includes('safe repository-relative path')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight fails closed when the canonical protocol is missing', async () => {
+  const root = await fixture();
+  try {
+    await rm(join(root, protocolPath));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === protocolPath));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects vendor instructions that bypass the shared contract', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'CODEX.md'), 'Do work without reading repository instructions.');
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === 'CODEX.md'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight writes a durable JSON receipt without overwriting an existing one', async () => {
+  const root = await fixture();
+  try {
+    const options = { root, receiptPath: 'artifacts/preflight.json' };
+    const first = await runPreflight(options);
+    assert.equal(first.status, 'ready');
+    const saved = JSON.parse(await readFile(join(root, options.receiptPath), 'utf8'));
+    assert.equal(saved.schema, 'ngl.agent-preflight.v1');
+    const second = await runPreflight(options);
+    assert.equal(second.status, 'blocked');
+    assert.ok(second.failures.some(item => item.path === options.receiptPath));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
