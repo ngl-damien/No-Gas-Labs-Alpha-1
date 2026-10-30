@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { findRoute, WorldView } from '../game/world-view.mjs';
 
 const proposal = Object.freeze({
@@ -32,56 +33,25 @@ function responseEvent({
   actor = { id: 'witness-1', role: 'witness' },
   at = '2026-10-30T05:01:00.000Z',
   snapshotRevision = 1,
-  suppliedEventCount = 1,
+  priorEvents = [proposal],
   validationStatus = 'valid-for-human-review',
   validationReason = null,
-  sourceEventIds = ['proposal-1'],
   packetChanges = null,
   responseText = '{"draft":"review only"}'
 } = {}) {
-  const payload = {
-    protocol: 'ngl.bounded-collaborator-packet.v1',
-    sourceSnapshot: {
-      status: 'identified',
-      worldId: 'world-1',
-      revision: snapshotRevision,
-      suppliedEventCount
-    },
-    role,
-    targetMoonshotId: 'moonshot-1',
-    authority: 'advisory-only',
-    mayWriteCanonicalState: false,
-    mayGrantAuthority: false,
-    mayAwardProgress: false,
-    mayCertifyTruthOrExecution: false,
-    inputRefs: [...sourceEventIds],
-    omittedEventIds: [],
-    omittedCount: 0,
-    omittedEventIdListTruncated: false,
-    truncatedContentFieldCount: 0,
-    inputRecords: sourceEventIds.map(id => id === proposal.id ? ({
-      eventId: proposal.id,
-      type: proposal.type,
-      at: proposal.at,
-      actor: { id: proposal.actor.id, role: proposal.actor.role },
-      moonshotId: proposal.moonshotId,
-      title: proposal.title,
-      hypothesis: proposal.hypothesis,
-      falsifier: proposal.falsifier,
-      evidenceNeeded: proposal.evidenceNeeded,
-      source: { creationId: null, version: null, linkStatus: 'not-provided' },
-      truncatedFields: []
-    }) : ({
-      eventId: id,
-      type: 'missing',
-      at: proposal.at,
-      actor: { id: 'missing-actor', role: 'founder' },
-      moonshotId: proposal.moonshotId,
-      truncatedFields: []
-    }))
-  };
+  // The archived packet must be one the runtime itself could have issued for
+  // this exact earlier event slice. Tests may mutate its payload deliberately,
+  // but ordinary fixtures retain the builder's original bytes.
+  const packet = projectCollaboratorPackets({
+    id: 'world-1',
+    revision: snapshotRevision,
+    creations: [],
+    events: priorEvents
+  }).find(candidate => candidate.id === role && candidate.available);
+  assert.ok(packet, 'the prior event slice must provide the requested role packet');
+  const payload = JSON.parse(packet.packetJson);
   packetChanges?.(payload);
-  const packetJson = JSON.stringify(payload);
+  const packetJson = packetChanges ? JSON.stringify(payload) : packet.packetJson;
   return {
     id: eventId,
     type: 'collaborator-response-recorded',
@@ -90,7 +60,7 @@ function responseEvent({
     responseId,
     role,
     moonshotId: 'moonshot-1',
-    sourceEventIds: [...sourceEventIds],
+    sourceEventIds: [...payload.inputRefs],
     packetJson,
     packetReceipt: receipt(packetJson),
     responseText,
@@ -166,7 +136,7 @@ test('the map exposes only the 24 newest folios while every retained folio remai
       responseId: 'response-' + index,
       at: new Date(Date.parse(proposal.at) + index * 1000).toISOString(),
       snapshotRevision: index,
-      suppliedEventCount: index
+      priorEvents: events
     }));
   }
   const objects = projectCollaboratorResponseWorldObjects(
@@ -187,7 +157,7 @@ test('Relay folio map positions are reachable without crossing the river or a cr
       responseId: 'response-' + index,
       at: new Date(Date.parse(proposal.at) + index * 1000).toISOString(),
       snapshotRevision: index,
-      suppliedEventCount: index
+      priorEvents: events
     }));
   }
   const objects = projectCollaboratorResponseWorldObjects(
@@ -265,7 +235,7 @@ test('malformed packet scope, receipt size, chronology, and duplicate identities
     eventId: 'response-event-2',
     responseId: 'duplicate-response',
     snapshotRevision: 2,
-    suppliedEventCount: 2,
+    priorEvents: [proposal, duplicateResponseA],
     at: '2026-10-30T05:02:00.000Z'
   });
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(badAuthority)), []);
@@ -279,7 +249,7 @@ test('malformed packet scope, receipt size, chronology, and duplicate identities
 
 test('duplicate packet keys are not projected as a trustworthy source-bound folio', () => {
   const event = responseEvent();
-  event.packetJson = event.packetJson.replace('"role":"tutor"', '"role":"tutor","role":"adversary"');
+  event.packetJson = event.packetJson.replace('"role": "tutor"', '"role": "tutor", "role": "adversary"');
   event.packetReceipt = receipt(event.packetJson);
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(event)), []);
 });
