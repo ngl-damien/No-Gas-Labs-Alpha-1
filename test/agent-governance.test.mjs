@@ -117,3 +117,23 @@ test('preflight rejects a target path whose existing parent escapes through a sy
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('preflight supports NGL repositories with a remote protocol link when given a local pinned copy', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read this file and the canonical [shared protocol](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).\n');
+    const result = await runPreflight({ root, protocol: protocolPath });
+    assert.equal(result.status, 'ready');
+    assert.equal(result.protocol, protocolPath);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight refuses to fetch an unpinned remote protocol implicitly', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read [the shared protocol](https://example.invalid/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).');
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.reason.includes('locally pinned copy')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
