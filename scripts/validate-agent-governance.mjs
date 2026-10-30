@@ -76,7 +76,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   }
 
   for (const vendorPath of VENDOR_POINTERS) {
-    const vendorText = await inspect(vendorPath, 'vendor-pointer', false);
+    const vendorText = await inspect(vendorPath, 'vendor-pointer', true);
     if (vendorText && (!vendorText.includes('AGENTS.md') || !vendorText.includes('RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'))) {
       failures.push({ path: vendorPath, reason: 'vendor instructions must point to root AGENTS.md and the shared protocol' });
     }
