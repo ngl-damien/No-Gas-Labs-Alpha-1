@@ -649,7 +649,7 @@ test("collaborator responses and experiment challenges remain visible as untrust
       packetJson: "{}",
       packetReceipt: { algorithm: "sha256", digest: "a".repeat(64), size: 2 },
       responseText: "{\"challengeDraft\":\"Preserved dissent\"}",
-      responseReceipt: { algorithm: "sha256", digest: "b".repeat(64), size: 34 },
+      responseReceipt: { algorithm: "sha256", digest: "b".repeat(64), size: 38 },
       validationStatus: "rejected",
       validationReason: "RESPONSE_SCHEMA_OR_SCOPE_INVALID",
       validator: "ngl.collaborator-response.v1",
