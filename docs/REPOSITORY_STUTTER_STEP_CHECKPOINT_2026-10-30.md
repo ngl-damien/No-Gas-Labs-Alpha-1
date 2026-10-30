@@ -314,3 +314,14 @@ A further source review found that `src/forge/runner.mjs` always creates `.tmp` 
 ### Final code PR head after cycle 4
 
 PR #216 remains draft/open/unmerged at `43e05b657ff71467a74002eab9bb4bfd4a348a66`, base `main` at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. Exact-head Genesis Evidence Invariant run `41029826202` passed. Verify check `123976641376` passed; logs show Node tests, Python inspector, package build and institutional exercise completed with exit code 0. Latest world-projection check `123976827824` and Playable-world check `123976578118` were in progress at this checkpoint update; earlier superseded world-projection check `123976578833` was cancelled. Recheck exact-head statuses before claiming all three workflows passed.
+
+
+### Verification follow-up — final Forge branch head
+
+- PR #216 final head: `43e05b657ff71467a74002eab9bb4bfd4a348a66`.
+- Verify workflow [41029826208](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029826208) — **success**. Logs on this exact head show Node tests exit code 0, Python inspector tests exit code 0, game package build exit code 0, and bounded institutional exercise exit code 0.
+- Genesis Evidence Invariant [41029826202](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029826202) — **success** on the exact head.
+- World-projection job `123976827824` — **success** on the exact head.
+- Playable-world check `123976578118` — **in progress**; Browser Acceptance workflow [41029826281](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029826281) — **pending** at final inspection. Do not call the final head fully verified until those finish.
+- The immediately preceding head `c6f9536f909bd6606980357a6a3448cd816f22ff` had Browser Acceptance run [41029214315](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214315) **success**, with 12/12 desktop, phone, institutional-location, shared-world, toolbar, one-button, standalone-file and restart journeys passing; artifact [12964644237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214315/artifacts/12964644237). That browser result predates the final `.tmp` exclusion commit and is not a substitute for current-head acceptance.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #216 remains draft/open/unmerged.
