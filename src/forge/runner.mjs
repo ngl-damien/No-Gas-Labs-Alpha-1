@@ -68,7 +68,7 @@ function excluded(path) {
 }
 
 const SENSITIVE_CONTENT_RULES = [
-  { id: 'private-key-block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+  { id: 'private-key-block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----/ },
   { id: 'github-token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/ },
   { id: 'aws-access-key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
   { id: 'google-api-key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
