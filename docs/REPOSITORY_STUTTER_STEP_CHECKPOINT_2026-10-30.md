@@ -608,3 +608,15 @@ The highest-value safe source-backed defect within the active Founder-authentica
 - PRs #205, #213, and #214 continue to overlap on `game/server.mjs`. Do not edit the shared server concurrently or select between the existing Ed25519 INSTALL and P-256 decision paths by inference.
 - Issue #17 remains open for independently controlled key custody, canonical verifier/server integration, concurrent-writer acceptance, and crash/stale-lock recovery. No key material was created, read, provisioned, or rotated.
 - Next: recheck PR #203's Browser Acceptance on the exact head; then resume a narrow verifier-to-server integration design after the shared server stack settles, with a regression that proves forged caller-supplied verification objects cannot authorize a persisted or live action.
+
+
+## Follow-up — object structural byte-budget regression, 2026-10-30 12:47 UTC
+
+- Latest Founder-helper PR #203 code head: `ac3fac9406b1f2ab303fa7b22363b0fb49fb80f6`.
+- Third implementation cycle adds a separate object-shaped adversarial regression to `test/decision-chamber.test.js`, complementing the array-shaped case. For 9,999 keys of the form `k0000`…`k9998` with 95-character ASCII values, the old counter accounted for 1,039,896 bytes, while the complete canonical object is 1,059,895 bytes. The new implementation must reject it above the 1 MiB limit.
+- Exact-head Verify [41057772403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772403): **success**. Hosted log confirms `npm run verify`, Node `--test` exit 0, Python inspector tests exit 0, package build exit 0, and bounded institutional exercise exit 0. The test workflow emits no total Node test count.
+- Exact-head Genesis Evidence Invariant [41057772336](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772336): **success**.
+- Exact-head Browser Acceptance [41057772346](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772346): **in progress** at this update. Earlier attempts were cancelled during replacement runs; cancellations are not counted as failures. Recheck this exact head's final browser status.
+- Checkpoint PR #210's current head before this update was `17a8d7049df3cd948ab6b5df89f534dc82adeb95`; its Verify and Genesis checks passed, Browser Acceptance was still in progress. This new addendum is the continuity point for the latest code head.
+- Main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; PR #203 and PR #210 remain draft/unmerged. Fresh inventory remains 48 open PRs, 465 branch refs, and issues #17 and #22 open.
+- Next: recheck Browser Acceptance for PR #203 head `ac3fac9406b1f2ab303fa7b22363b0fb49fb80f6` and checkpoint CI. Then pursue verifier-to-server integration only after the active PR #205/#213/#214 server stack is reconciled. Do not generate or handle real Founder key material.
