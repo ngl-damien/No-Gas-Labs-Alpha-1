@@ -286,3 +286,37 @@ test('does not interpret an unknown writer-lock schema as owner metadata', async
   assert.equal(result.owner, undefined);
   assert.equal(result.safeToRemove, false);
 });
+
+
+test('inspects an empty interrupted decision guard directory without authorizing removal', async t => {
+  const directory = await temp(t);
+  const guard = join(directory, '.decisions.lock.guard');
+  await mkdir(guard, { mode: 0o700 });
+
+  const result = await inspectWriterLock(guard);
+
+  assert.equal(result.status, 'present');
+  assert.equal(result.format, 'guard-directory');
+  assert.equal(result.reason, 'owner-receipt-missing');
+  assert.equal(result.safeToRemove, false);
+});
+
+test('inspects a decision guard directory through its stable owner receipt', async t => {
+  const directory = await temp(t);
+  const guard = join(directory, '.decisions.lock.guard');
+  await mkdir(guard, { mode: 0o700 });
+  await writeFile(join(guard, '.owner-123e4567-e89b-42d3-a456-426614174000.json'), JSON.stringify({
+    schema: 'ngl.decisions-lock-guard.v1',
+    pid: process.pid,
+    openedAt: '2026-10-30T07:00:00.000Z'
+  }), { mode: 0o600 });
+
+  const result = await inspectWriterLock(guard);
+
+  assert.equal(result.status, 'present');
+  assert.equal(result.format, 'guard-directory');
+  assert.equal(result.owner.schema, 'ngl.decisions-lock-guard.v1');
+  assert.equal(result.owner.pid, process.pid);
+  assert.equal(result.owner.processProbe, 'possibly-alive');
+  assert.equal(result.safeToRemove, false);
+});
