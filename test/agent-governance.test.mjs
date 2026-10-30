@@ -147,3 +147,18 @@ test('preflight requires the standard vendor entry points to remain present', as
     assert.ok(result.failures.some(item => item.path === 'GEMINI.md' && item.reason.includes('cannot read')));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('preflight refuses receipt creation through an escaping directory symlink', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-outside-'));
+  try {
+    await symlink(outside, join(root, 'artifacts'), 'dir');
+    const result = await runPreflight({ root, receiptPath: 'artifacts/preflight.json' });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.reason.includes('receipt directory escapes repository root')));
+    await assert.rejects(readFile(join(outside, 'preflight.json'), 'utf8'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
