@@ -358,7 +358,7 @@ export async function validateWorld(raw) {
        sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||!['draft','repair'].includes(source.type)).length||
        !Array.isArray(payload.inputRefs)||JSON.stringify(payload.inputRefs)!==JSON.stringify(e.sourceEventIds)||
        !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length||
-       !Array.isArray(payload.omittedEventIds)||payload.omittedEventIds.length>64||!Number.isSafeInteger(payload.omittedCount)||payload.omittedCount<0||payload.omittedCount<payload.omittedEventIds.length||
+       !Array.isArray(payload.omittedEventIds)||payload.omittedEventIds.length>64||payload.omittedEventIds.some(id=>typeof id!=='string'||!id||Array.from(id).length>128||e.sourceEventIds.includes(id))||new Set(payload.omittedEventIds).size!==payload.omittedEventIds.length||!Number.isSafeInteger(payload.omittedCount)||payload.omittedCount<0||payload.omittedCount<payload.omittedEventIds.length||
        payload.omittedEventIdListTruncated!==(payload.omittedCount>payload.omittedEventIds.length))invalid('Collaborator packet identity or authority boundary mismatch.');
     for(let sourceIndex=0;sourceIndex<e.sourceEventIds.length;sourceIndex++){
       const source=eventById.get(e.sourceEventIds[sourceIndex]),record=payload.inputRecords[sourceIndex];
