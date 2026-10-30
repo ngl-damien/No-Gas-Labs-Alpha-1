@@ -294,7 +294,10 @@ def institutional_locations(browser,url,out):
             'unknowns':['No independent measurement is supplied.']
         }
         valid_response_text=json.dumps(response)
-        response_field=packet.locator('textarea[aria-label="Adversary response JSON"]')
+        response_details=packet.locator('details.collaborator-response')
+        response_details.locator('summary').click()
+        response_field=response_details.locator('textarea[aria-label="Adversary response JSON"]')
+        expect(response_field).to_be_visible()
         response_field.fill(valid_response_text)
         packet.get_by_role('button',name='Validate response for review',exact=True).click()
         expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
