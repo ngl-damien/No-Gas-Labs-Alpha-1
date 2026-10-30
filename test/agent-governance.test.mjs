@@ -137,3 +137,13 @@ test('preflight refuses to fetch an unpinned remote protocol implicitly', async 
     assert.ok(result.failures.some(item => item.reason.includes('locally pinned copy')));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('preflight requires the standard vendor entry points to remain present', async () => {
+  const root = await fixture();
+  try {
+    await rm(join(root, 'GEMINI.md'));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === 'GEMINI.md' && item.reason.includes('cannot read')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
