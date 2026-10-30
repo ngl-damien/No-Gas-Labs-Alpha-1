@@ -63,7 +63,7 @@ Use these stage labels accurately:
 - The declared supported Android devices can install, launch, resume, navigate, and complete the core loop with touch controls.
 - Layout, accessibility, performance, lifecycle interruptions, storage, connectivity loss, and update behavior are tested on actual supported devices.
 - A responsive website or installable PWA may be a useful interim client, but it must be labeled as such. Do not call it a native Android application or claim Android device acceptance without a built package and device evidence.
-- If the final target remains Android-native, a native package and its integration boundary are mandatory release evidence.
+- NGL's current product target is Android-native. Unless Damien explicitly changes that decision, a native package and its integration boundary are mandatory release evidence; a responsive website or PWA remains an interim client, not the final Android deliverable.
 
 ### G8 — Operational readiness
 - Authentication/session boundaries, authorization, input validation, rate/abuse controls, and data isolation are tested.
