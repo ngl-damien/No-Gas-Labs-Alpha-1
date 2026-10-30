@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPreflight } from '../scripts/validate-agent-governance.mjs';
@@ -85,4 +85,20 @@ test('preflight writes a durable JSON receipt without overwriting an existing on
     assert.equal(second.status, 'blocked');
     assert.ok(second.failures.some(item => item.path === options.receiptPath));
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects nested instruction files reached through an escaping symlink', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-outside-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(outside, 'AGENTS.md'), 'External instructions must not be read.');
+    await symlink(outside, join(root, 'scripts/vendor'), 'dir');
+    const result = await runPreflight({ root, paths: ['scripts/vendor/worker.mjs'], checkpoint: 'CHECKPOINT.md' });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.reason.includes('escapes repository root through a symlink')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
