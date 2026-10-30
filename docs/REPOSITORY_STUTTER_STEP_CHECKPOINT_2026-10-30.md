@@ -180,3 +180,78 @@ No merge, release, deployment, branch deletion, workflow dispatch, secret/key/cr
 - The `game/server.mjs` overlap between PR #205 and #213 remains a combined-head validation requirement before either merges.
 
 Next: recheck run 41023860864 on exact head `8040c31...`; if it passes, record all journeys and then plan a combined validation head for the two server-file changes.
+
+## Run addendum — 2026-10-30 08:34 UTC (Worker A)
+
+### Fresh rehydration and current inventory
+
+- Re-read root `AGENTS.md`, the complete shared Ralph protocol, and this latest durable checkpoint before editing.
+- Current Alpha 1 `main`: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d` (unchanged).
+- Fresh inventory: **43 open Alpha 1 PRs**, **2 open issues**, **460 branch refs** (pages 1–4: 100 each, page 5: 60, page 6: 0), and **0 refs marked protected** by the GitHub branch-list API. The inventory includes this run's new integration/test branches. No branch was deleted.
+- Current issue #17 remains open: founder key custody, concurrency, and stale-lock recovery.
+- The other worker's current PR #213 was rechecked at exact head `797f3e50480ccc6e161ddcdb6889e736351afa04`; it now includes 12 changed paths, including the later institution-view module/test. Verify, world-projection, and Playable-world all passed on that exact head (runs 41026371399, 41026371408, 41026371281). No Worker B branch was edited.
+
+### Cycle 1 — EvidenceOS HTTP exposure boundary
+
+**Linked repo:** `ngl-damien/evidenceos`  
+**Draft PR #2:** [security(evidenceos): refuse unauthenticated non-loopback HTTP binds](https://github.com/ngl-damien/evidenceos/pull/2)
+
+- Branch: `security/evidenceos-http-bearer-20261030`.
+- Exact head: `fcafd7b4a39a1e59f8cc0bbe2388191e07877d83`.
+- Stacked base: EvidenceOS PR #1 branch at `7fbb4c83412e83882ea43df92532a346d524e00b`; PR #1 remains open/draft/unmerged.
+- Source defect: `src/server.js` accepted arbitrary `HOST` values, although its HTTP routes have no authentication or TLS. A non-loopback bind could expose job metadata, retained analysis results, and the analysis endpoint that accepts a GitHub token.
+- Fix: only `127.0.0.1`, `::1`, and `localhost` are allowed; other binds fail before `server.listen`. The service banner, health response, README, and SECURITY policy disclose loopback-only scope. The listener logs the actual assigned port for `PORT=0`. Added real child-process tests for wildcard IPv4/IPv6 refusal and loopback health access.
+- First hosted attempt failed because the workflow did not install declared `octokit` before spawning the real server; logs showed `ERR_MODULE_NOT_FOUND`, not a policy assertion failure. Added `npm install --ignore-scripts --no-audit --no-fund` to the test workflow. Final exact-head run [41026044158](https://github.com/ngl-damien/evidenceos/actions/runs/41026044158) **success**; syntax checks passed and Node test runner reported **12 passed, 0 failed** (8 ingestion, 2 aggregation, 2 HTTP-boundary tests).
+- This server intentionally remains local-only. No bearer token over plaintext HTTP was added. Remote access requires a separately reviewed authenticated TLS adapter. PR #2 is draft/open/unmerged and stacked on PR #1.
+
+### Cycle 2 — Combined Alpha 1 writer-lease / offline-world validation
+
+**Draft PR #214:** [integration: validate decision writer lease with offline mobile shell](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/214)
+
+- Branch: `integration/decision-lock-offline-shell-20261030`.
+- Exact head: `6e33dcf8e656c2d59470ec84592eeee2b9463565`.
+- Base: PR #205 branch `fix/decision-lock-guard-main-20261030` at `54c54a5660ab799476d48871dc9d0fbb5c59f93c`.
+- Source: PR #213 branch at `797f3e50480ccc6e161ddcdb6889e736351afa04`.
+- The only overlapping path is `game/server.mjs`. A three-way line diff against shared main found two non-overlapping hunks: the three static PWA routes near the top and PR #205's shutdown-ordering block near the end. The combined file retains both. The other 11 PR #213 paths were synchronized, including `game/institution-view.mjs` and `test/institution-view.test.mjs`.
+- Exact combined-head checks: Verify [41026432465](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432465) **success**; world-projection [41026432328](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432328) **success**; Playable-world / Browser Acceptance [41026432371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432371) **success**.
+- Browser Acceptance recorded **13/13 passing journeys**, including `offline-pwa-private-recovery` (one retained private publication; shared API remained network-only), desktop, phone, institutional-location actions, two-session shared world, three phone widths, two one-button layouts, standalone file/exact bytes, and shared restart. The institutional journey recorded five locations, one moonshot proposal/world object, two experiment reports, two research activity objects, one creation, and 100 XP.
+- This is compatibility evidence on a combined test branch, not a merge or deployment. PRs #205 and #213 remain separate and unmerged. No Worker B files were changed on their owning branch.
+
+### Cycle 3 — Pre-rename process-death acceptance
+
+**Draft PR #215:** [test(storage): cover process death before atomic decision rename](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/215)
+
+- Branch: `test/decision-store-pre-rename-crash-20261030`.
+- Exact head: `98c9354ce8f7ee0b8957b9f4c092e457edb71b07`.
+- Base: PR #205 branch at `54c54a5660ab799476d48871dc9d0fbb5c59f93c`.
+- PR #205 already tested process death after atomic rename but before directory sync. This follow-up adds a narrow `renameFile` injection point defaulting to Node's original `rename`, then a child-process regression that pauses after the candidate envelope is written/fsynced but before rename. The parent sends `SIGKILL` at that exact boundary.
+- The test asserts the canonical envelope remains at its previous revision, the fully written candidate remains only in the orphaned temporary file, and the writer lease prevents reopening. It then performs explicit fixture-only offline cleanup after child exit and verifies revision 0 reopens. No production stale-lock cleanup is added.
+- Exact-head Verify [41026798297](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026798297) **success**; world-projection [41026798329](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026798329) **success**; Playable-world [41026798362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026798362) **success**. The repository verifier's Node test suite, Python inspector tests, package build, and institutional exercise exited 0.
+- This covers a deterministic pre-rename process-kill boundary, not power loss, hardware/filesystem failure, automatic stale-lock recovery, or proof of durability across all filesystems. PR #215 remains draft/open/unmerged.
+
+### Founder authorization — rechecked, not yet integrated
+
+- PR #16's original self-signing finding remains superseded by the PR #8 prototype / PR #18 integration history recorded in issue #17.
+- Current main still has the caller-supplied `{ valid: true }` trust boundary in `src/authority/decision.js`.
+- PR #203 remains at `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901`; exact-head Verify, world-projection, and Playable-world all succeeded (40999308640, 40999308626, 40999308607). It seals verifier results and binds audience, but live `game/server.mjs` does not import it.
+- PR #205 and #213 both own changes to `game/server.mjs`; PR #214 proves those current changes coexist, but it does not add Founder verifier integration. The actual relationship between signed Founder decisions, host-key sessions, and the institutional decision store still needs a narrow design. Real independent key custody and proof Damien controls a signing key remain unresolved. No key material was created, read, provisioned, or rotated.
+
+### Linked NGL repository status
+
+- **ngl-mesh PR #1** remains draft/open at `d10fe10fee8924d085afbd513f162dae8e4fb734`; operator-key trust and required-agent-instructions checks passed (40996304779 and 40996304479). A fresh branch-tree scan found only `integration/relay/RaeEvidenceBridge.java` and its test among RAE-named candidates, and no APK/AAB/ZIP/AAR artifact. Full APK/RAE integration remains unverified until the recovered source archive, reference APK, and RAE report are supplied or found in another repository.
+- **evidenceos PR #1** remains draft/open at `7fbb4c83412e83882ea43df92532a346d524e00b`; PR #2 is stacked on it. Neither was merged.
+
+### Next ranked actions
+
+1. Review PR #203's verifier-to-server integration boundary after PR #205/#213 review settles. Keep Founder signing-key creation/custody separate and explicitly Founder-controlled; do not infer identity from a session token.
+2. Use PR #214's green combined-head evidence to plan a safe rebase/review sequence for #205 and #213. Do not merge either or the validation PR without Founder authorization.
+3. Continue issue #17 with explicit stale-lock recovery and cross-process concurrency policy. Never automatically remove a lock after process death; retain evidence and require an authorized offline recovery procedure.
+4. Review EvidenceOS PR #1, then PR #2; preserve loopback-only binding until an authenticated TLS adapter is independently reviewed.
+5. Recover or locate the missing ngl-mesh source archive, reference APK, and RAE report before claiming device/RAE integration.
+6. Reconcile stale-base PRs #191/#192 and classify branch refs read-only. No branch deletion or permission changes without Founder authorization.
+
+### Authority and result
+
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred.
+- PRs #214 and #215 are draft validation/follow-up proposals, not merged capability. EvidenceOS PR #2 is also draft and stacked on PR #1.
