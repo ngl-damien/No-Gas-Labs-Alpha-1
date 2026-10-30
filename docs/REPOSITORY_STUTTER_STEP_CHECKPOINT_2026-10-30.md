@@ -1202,3 +1202,26 @@ No merge, release, deployment, branch deletion, permission/credential/key operat
 6. Keep Issue #22's pre-registered benchmark separate from any claim that the hybrid-cognition experiment has actually run.
 
 No merge, release, deployment, branch deletion, permission/credential/key change, spending, provider call, or external publication occurred in this run.
+
+
+## Linked-repository follow-up — CONTACT Founder Gate (2026-10-30 23:12 UTC)
+
+### ngl001-def4us28: CONTACT publication safety
+- Re-inspected `ngl-damien/ngl001-def4us28` main `792b7ebe17dcb92fbbb2223d9cd8fee98d2f78c3`. No root or nested AGENTS instructions were present in the touched paths.
+- Source mismatch: `.github/workflows/contact-autonomy.yml` ran every five minutes with `contents: write` and an unconditional commit/push step, while `contact/state.json` declared `founder_gate.external_mutation = DENY_WITHOUT_EXPLICIT_AUTHORIZATION`. `contact/runtime.py` did not enforce the gate. The workflow API currently reports zero runs; this is a configured risk, not a claim of active execution.
+- Draft PR #2 [CONTACT Founder publication gate](https://github.com/ngl-damien/ngl001-def4us28/pull/2), head `3a5ac46b6ff4555a8a62c6718854989cf2e23002`: observation job has read-only contents permission; publication is split into a separate write job and requires both manual `workflow_dispatch` confirmation and an explicit `ALLOW_WITH_EXPLICIT_AUTHORIZATION` state value, on `main` only. Existing state remains DENY. No state file or main branch was changed.
+- Local standard-library unit tests **6/6 passed**; workflow YAML parsed successfully with PyYAML BaseLoader. The repo's Actions API reports `total_count: 0`, so no hosted workflow execution is claimed. This is a procedural two-key gate, not cryptographic identity proof or key custody.
+
+### ngl001-def4us28: Pages build compatibility
+- Draft PR #1 [Node 22 Pages build](https://github.com/ngl-damien/ngl001-def4us28/pull/1), head `63772fb97377fecf5f272fcb372a5f563f89ac1a`, changes Pages build Node from 18 to 22 to match Vite 8's declared engine requirement. It has no pull-request build workflow; Actions API reports zero runs. No build or deployment was performed.
+
+### TaskAgile
+- Draft PR #1 [local CI replacement](https://github.com/ngl-damien/TaskAgile/pull/1), head `a44660f8d5fe49abef3df28cb0237cd274847b54`, replaces inaccessible organization reusable workflows with local npm/typecheck/build, secret-scan, and classification jobs. Actions API reports zero runs; no hosted verification is available.
+- Root `AGENTS.md` still claims “Zero dependencies (verified)” and records missing Node/Vite type definitions, while current `package.json` and `package-lock.json` contain a substantial dependency set including `@types/node` and Vite. This is stale repository state requiring a later evidence-based correction; no TaskAgile files were changed.
+
+### New next actions
+7. Review and, if accepted, merge CONTACT PR #2 before any further scheduled CONTACT persistence is considered. Do not change its checked-in DENY state or manually dispatch an authorized publish.
+8. Add a non-deploying pull-request build workflow to ngl001 only after verifying whether Actions are enabled; otherwise run an actual local Node 22 build and preserve its exit code.
+9. Reconcile TaskAgile's stale Ralph-loop state and verify why its Actions API returns zero runs before making feature changes.
+
+No merge, release, deployment, CONTACT dispatch, state change, credential/permission setting change, spending, or external publication occurred.
