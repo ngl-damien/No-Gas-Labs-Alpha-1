@@ -20,8 +20,10 @@ test("preserves a valid epoch-zero device timestamp instead of replacing it with
   const x=normalizeFix({...position,timestamp:0});
   assert.equal(x.observed_at,"1970-01-01T00:00:00.000Z");
 });
-test("rejects negative sensor accuracy instead of exporting an impossible measurement",()=>{
-  assert.throws(()=>normalizeFix({...position,coords:{...position.coords,accuracy:-1}}),/invalid accuracy/);
+test("rejects negative sensor accuracy, including negative infinity",()=>{
+  for(const accuracy of [-1,-Infinity]){
+    assert.throws(()=>normalizeFix({...position,coords:{...position.coords,accuracy}}),/invalid accuracy/);
+  }
 });
 test("rejects non-finite, negative, or non-numeric device timestamps",()=>{
   for(const timestamp of [NaN,Infinity,-1,"2026-10-08T12:00:00Z"]){
