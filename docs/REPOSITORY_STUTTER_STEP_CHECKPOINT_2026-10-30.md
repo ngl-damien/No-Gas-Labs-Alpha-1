@@ -1076,3 +1076,48 @@ Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, dep
 5. Keep issue #22's benchmark pre-registration distinct from actual experiment execution and results.
 
 No merges, releases, deployments, branch deletions, permission/credential/key changes, spending, provider calls, or external publication occurred in this run.
+
+
+## Worker A stutter-step handoff — 2026-10-30 (Questkeeper projection blocker repaired)
+
+### Rehydration and coordination
+- Re-read root `AGENTS.md` and the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`.
+- Rechecked Alpha 1 main, open PRs/issues, checkpoint PR #210, PR #203, PR #224, shared server stack #222/#223, and Worker B's current gameplay PR #207 before editing.
+- Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Current open-PR search returned 54 PRs; issues #17 and #22 remain open.
+
+### Cycle 1 — repair Questkeeper's missing activity join
+- Worker B's ready-for-review PR #207 head `efda1fadaa150bba2db572ea9bfdcbb4b5ea1494` introduced calls to `matchedActivityRecords` and `GUIDE_LOCATIONS` from `projectCharacter` without defining/importing either symbol.
+- Exact-head Verify run **41116607033** failed with `ReferenceError: matchedActivityRecords is not defined` at `game/character-sheet.mjs:148`; multiple character-sheet and moonshot tests failed because character projection throws. Browser Acceptance run **41116607282** failed at a Playwright wait; its log reports a timeout, not a direct JS exception, so the exact browser-side exception was not independently captured.
+- Avoided writing into Worker B's active PR branch. Created stacked draft follow-up PR [#226](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/226), branch `fix/questkeeper-activity-matcher-20261030`, based on PR #207 head and targeting `game/questkeeper-skill-20261030`.
+- Commits:
+  - `4a1a2e47ac991d3c8e54d96bc17ca6c0cb6d80f9` — add `GUIDE_LOCATIONS` and indexed one-to-one activity/event fingerprint matching.
+  - `5831e86b826ab467c3b872c262325e14259b570f` — add regression test rejecting duplicate discovery/contribution/report record fingerprints.
+- Changed `game/character-sheet.mjs` and `test/game-character-sheet.test.mjs`.
+
+### Cycle 2 — repair valid XP receipt being poisoned by malformed duplicate
+- The first PR #226 exact-head Verify run **41117266134** exposed a second defect after the missing helper was supplied: 679 tests passed and one failed. In the test "ambiguous, duplicated, stale, non-Founder, and malformed publication claims earn no XP", expected XP was 100 but actual XP was 0.
+- Source review found `retainedPublicationEvents` counted every otherwise version-matched publish event as a competing claim before `matchedPublications` filtered for the exact 100-XP reward. A malformed reward event for the same retained version therefore poisoned the valid 100-XP event.
+- Commit `9fd04fe1cf6702d71b1d11594458e0d3bbab141c` adds an acceptance predicate to the retained-publication candidate builder and applies the exact XP-reward predicate before version-ambiguity counting. Invalid reward metadata remains excluded from XP without erasing the valid publication.
+- PR #226 final observed head: `9fd04fe1cf6702d71b1d11594458e0d3bbab141c`; mergeable=true; draft=true; base remains PR #207's branch.
+- Exact-head Verify **41117507541 success**: hosted log confirms Node test suite exit 0, Python inspector exit 0, package build exit 0, institutional exercise exit 0, and report `passed: true`. The wrapper log does not expose a total test count.
+- Exact-head Genesis Evidence Invariant **41117507600 success**.
+- Exact-head Browser Acceptance **41117507548 in progress** at last inspection. Do not count it as passed until completion.
+- PR #207's failed head remains unchanged and unmerged; PR #226 is a proposed stacked correction, not a merged repair.
+
+### Cross-workstream recheck
+- PR #203 P-256 Founder helper head `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932`: Verify **41101129249**, Genesis **41101111073**, Browser Acceptance **41101111004** all success. It is still not wired into `game/server.mjs`.
+- PR #224 clean CI-trigger proposal head `1c30e1ba8cf6e0055e5a1b1bcd306c8d3d60ba44`: Verify **41101499763**, Genesis **41101499822**, Browser Acceptance **41101499761** all success; remains unmerged.
+- Shared integration PR #222 head `609f676e482c1a3151b64f4f44c32fc30f1ca5d9`: all three exact-head checks success. PR #223 head `bd05f66507dc7aee031058b7a4c1ca0ca57561df`: all three success. PR #225 head `42a5832a93671974ad330a2d3fda24b5fbf5caaa`: all three success. All remain proposals; #223/#225 are stacked on #222.
+- PR #225's new `nextAction: { type: 'location', id: 'moonshot_field' }` was checked against the live client `followQuestAction`; the client explicitly supports `location` and `moonshot_field`. No defect found there.
+- EvidenceOS PR #1 head `602a1041458375b529c1af844656089530a11a1c`: hosted verification **41111264199 success**. PR #2 remains stacked on #1.
+- ngl-mesh PR #3 head `7847c0fd7eb334d4bed726f12703567bdff9de42`: Relay bridge input-contract **41110544604 success** and agent-governance **41110544499 success**. Full Android/RAE bridge remains blocked by missing recovered source archive, reference APK and RAE report.
+
+### Authority boundaries and next ranked actions
+1. Recheck PR #226 Browser Acceptance **41117507548**; if it fails, inspect its exact job log/artifact and fix only an attributable defect. If it passes, re-run/check PR #207 on the stacked base and preserve exact-head evidence.
+2. Hand Worker B the exact PR #207 failure and PR #226 stacked repair; avoid concurrent edits to `game/character-sheet.mjs` after this handoff.
+3. Revisit canonical Founder verifier/server integration only after #222/#223 shared server work settles and the Ed25519 INSTALL versus P-256 decision-helper trust-anchor choice is explicitly resolved. Issue #17 remains open; no real Founder key material was handled.
+4. Keep `main` protection/ruleset review separate from code changes. The prior branch API observation said protection was disabled; no settings were changed.
+5. Recover missing Relay artifacts before claiming full Android/RAE integration. Issue #22 remains a falsifiable experiment proposal, not an executed benchmark.
+
+No merge, release, deployment, branch deletion, permission/credential/key operation, spending, provider call, workflow dispatch, or external publication occurred in this run.
