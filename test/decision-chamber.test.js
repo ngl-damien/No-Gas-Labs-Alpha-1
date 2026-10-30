@@ -191,6 +191,23 @@ test("decision identifiers reject prototype-sensitive names", () => {
     valid: false,
     reason: "DECISION_PAYLOAD_INVALID"
   });
+
+  // Every inherited Object.prototype name is unsafe as a projection key,
+  // including methods beyond constructor/prototype.
+  for (const inheritedName of Object.getOwnPropertyNames(Object.prototype)) {
+    assert.throws(
+      () => makePayload({ proposal: { ...proposal, event_id: inheritedName } }),
+      /proposal required/,
+      "proposal IDs must reject inherited property name " + inheritedName
+    );
+    const inheritedQuest = { ...quest, quest_id: inheritedName };
+    const inheritedProposal = { ...proposal, quest_id: inheritedName };
+    assert.throws(
+      () => makePayload({ proposal: inheritedProposal, quest: inheritedQuest }),
+      /quest binding mismatch/,
+      "quest IDs must reject inherited property name " + inheritedName
+    );
+  }
 });
 
 test("verification bounds canonical P-256 DER signature receipts", () => {
