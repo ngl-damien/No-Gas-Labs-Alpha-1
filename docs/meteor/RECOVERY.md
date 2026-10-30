@@ -19,7 +19,7 @@ Gitless extracted source uses Forge's bounded public-source snapshot mode and re
 
 ## Preserve a private workshop
 
-Use Journal → Export world JSON before clearing browser data, moving devices or changing browser policies. The game keeps the immediately previous private save as a backup. Journal → Import validates schema, exact current and retained artifact bytes, version structure and defined game rewards, then opens the save privately. It cannot grant shared authority. A failed import leaves the shared mode and stream intact. Source-generated comic documents retain their original bytes; standalone presentation can resolve their known image paths from the embedded artwork.
+Use Journal → Export world JSON before clearing browser data, moving devices or changing browser policies. Private exports include the complete private world and the character's last map coordinates. The game keeps the immediately previous private save as a backup. Journal → Import validates schema, exact current and retained artifact bytes, version structure, defined game rewards and any included map coordinates, then opens the save privately. It cannot grant shared authority. A failed import leaves the shared mode and stream intact. Source-generated comic documents retain their original bytes; standalone presentation can resolve their known image paths from the embedded artwork.
 
 Private imports may contain code. They execute only inside opaque sandbox frames with a host-supplied network-denying policy. Receipt verification alone does not make imported content useful or its claims true. The launch exhibition retains original receipts and separately identifies transformed portable-package bytes.
 
