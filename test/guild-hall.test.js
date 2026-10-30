@@ -92,6 +92,17 @@ test("capability roster reports fit but grants no authority", () => {
   assert.equal(room.roster[1].can_contribute, false);
   assert.equal(room.quest.status, "OPEN");
 });
+test("unknown inherited object properties are not treated as projected quests", () => {
+  for (const questId of ["toString", "constructor", "hasOwnProperty", "valueOf", "__proto__"]) {
+    assert.throws(() => projectGuildHall({
+      institution: empty, quest_id: questId, events: [], agents: []
+    }), /quest not projected/, "unknown quest " + questId + " must fail as not projected");
+  }
+  assert.throws(() => projectGuildHall({
+    institution: empty, quest_id: "", events: [], agents: []
+  }), /quest_id required/);
+});
+
 test("malformed Guild Hall events are rejected before filtering can execute getters", () => {
   let getterCalls = 0;
   const hostile = { event_id: "hostile", quest_id: "q1", actor: "unknown", summary: "" };
