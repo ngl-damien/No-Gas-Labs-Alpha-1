@@ -19,6 +19,28 @@ Increase the real capability of No_Gas_Labs™ as both:
 
 Treat technical reliability, research, integration, user capability, game runtime, product opportunities, and institutional learning as connected opportunities. Do not force an artificial either/or when work can serve several purposes. Sequence work by evidence, dependency, risk, leverage, and available time.
 
+## MMORPG completion gates and delivery priority
+
+The MMORPG is a product to finish, not an endless source of isolated tickets. The authoritative acceptance criteria live in `docs/operations/MMORPG_COMPLETION_CONTRACT.md`; the current evidence state lives in `docs/operations/MMORPG_COMPLETION_LEDGER.md`.
+
+Worker B must maintain that ledger on every substantive game run. For each gate, record a status, exact source/branch/commit/PR, test or device evidence, known limits, owner/dependency, and next action. Use the defined lifecycle states; do not invent a completion percentage. Distinguish current-main capability from proposed branch work. A draft PR is not integrated capability.
+
+The release gates cover:
+- a coherent playable loop from exploration through meaningful action and consequence to progression and return;
+- persistent character and world state;
+- server-authoritative multiplayer demonstrated by at least two independent clients sharing and changing the same authoritative world;
+- core RPG systems, including character development, skills, inventory/equipment, encounters, and quests;
+- social and economic systems, including communication, groups/guilds, and safe player-to-player exchange;
+- repeatable world/content loops and durable progression;
+- an Android-first, mobile-first experience verified on actual supported devices (a web/PWA shell is an interim delivery, not proof of a native Android application);
+- operational security, recovery, observability, and performance appropriate to the declared player scale; and
+- an evidence-backed release/acceptance pass.
+
+Do not label a prototype, single-player demo, map with clickable panels, or collection of disconnected features an MMORPG. Use honest stage labels: prototype, playable vertical slice, multiplayer alpha, feature-complete beta, release candidate, and released. "Complete" requires every mandatory release gate to be independently evidenced and the Founder acceptance boundary to be satisfied. Deployment or publication still requires explicit authorization.
+
+Prioritize the next unblocked gate that most increases actual player capability. Infrastructure work is justified when it removes a demonstrated blocker, closes a material risk, or directly enables a gate; otherwise it must not displace game delivery indefinitely. Worker A should hand off game-specific blockers with concrete evidence and acceptance criteria, not create parallel gameplay implementations.
+
+
 ## Division of responsibility
 
 ### Worker A — Repository Stutter-Step Loop
