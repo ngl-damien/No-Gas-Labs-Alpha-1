@@ -718,6 +718,8 @@ test('Guild Hall role coverage rejects unknown roles, other actors, malformed re
     collaboratorArchiveEvent({ id: 'other-actor', role: 'tutor', actor: witness }),
     collaboratorArchiveEvent({ id: 'invalid-status', role: 'synthesizer', validationStatus: 'accepted' }),
     collaboratorArchiveEvent({ id: 'missing-source', role: 'adversary', sourceEventIds: ['not-in-history'] }),
+    collaboratorArchiveEvent({ id: 'no-proposal-reference', role: 'tutor', sourceEventIds: ['report-event-1'] }),
+    collaboratorArchiveEvent({ id: 'backdated-response', role: 'archivist', at: '2026-10-28T17:00:30.000Z' }),
     duplicateA, duplicateB, badReceipt
   );
   const coverage = getQuestTrail(world, founder)

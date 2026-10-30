@@ -486,6 +486,8 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const uniqueEventById = new Map(events.filter(event => uniqueMoonshotEventIds.has(event?.id))
+    .map(event => [event.id, event]));
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -572,6 +574,14 @@ export function getQuestTrail(world, viewer) {
           Array.from(id).length > 128 || !uniqueMoonshotEventIds.has(id)) ||
         new Set(event.sourceEventIds).size !== event.sourceEventIds.length ||
         event.validator !== 'ngl.collaborator-response.v1') return false;
+    const proposalPosition = proposalPositionById.get(event.moonshotId);
+    const responsePosition = eventPositionByReference.get(event);
+    const proposal = Number.isInteger(proposalPosition) ? events[proposalPosition] : null;
+    const sourceEvents = event.sourceEventIds.map(id => uniqueEventById.get(id));
+    if (!proposal || !Number.isInteger(responsePosition) || responsePosition <= proposalPosition ||
+        Date.parse(proposal.at) > Date.parse(event.at) ||
+        !event.sourceEventIds.includes(proposal.id) ||
+        sourceEvents.some(source => !source || eventPositionByReference.get(source) >= responsePosition)) return false;
     if (event.validationStatus === 'valid-for-human-review') return event.validationReason === null;
     return event.validationStatus === 'rejected' &&
       typeof event.validationReason === 'string' && Boolean(event.validationReason.trim()) &&
