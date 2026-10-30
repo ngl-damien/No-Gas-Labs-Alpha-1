@@ -3,7 +3,11 @@ import { createHash, createPublicKey, verify as verifySignature } from "node:cry
 const verificationSeals = new WeakMap();
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
-const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) && !RESERVED_IDENTIFIERS.has(value);
+// IDs are later used as keys in ordinary projection objects. Reject every
+// inherited Object.prototype name, not only constructor/prototype, so a quest
+// such as "toString" cannot resolve to an inherited method before it is created.
+const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value) &&
+  !RESERVED_IDENTIFIERS.has(value) && !Object.hasOwn(Object.prototype, value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const DECISION_SCHEMA = "ngl.founder-decision.v2";
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabilities", "outputs", "acceptance", "expires_at"];
