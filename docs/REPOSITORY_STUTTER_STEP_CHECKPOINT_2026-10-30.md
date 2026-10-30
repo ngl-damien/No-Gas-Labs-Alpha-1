@@ -496,3 +496,20 @@ Commits that establish the final scanner/tests include `66d33b98396c3246e1012574
 - Next: (1) recheck PR #216 Browser Acceptance and fix any attributable failure; (2) hand off PR #219's exact browser failure to Worker B with artifact evidence; (3) after server work settles, design the narrow verifier-to-canonical-mutation integration with an explicit signer/trust-anchor decision; (4) continue issue #17 crash/concurrency acceptance without automatic stale-lock deletion; (5) preserve the missing APK/RAE inputs as a blocker rather than claim complete Relay integration.
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. PR #216 and checkpoint PR #210 remain draft/open/unmerged.
+
+
+## Verification follow-up — 2026-10-30 10:47 UTC
+
+### PR #216 — first scanner head fully green; encrypted-key coverage added afterward
+- The prior scanner head `f6caf4c36ac177edcbea58e54da1dcd6ba0f5dcc` completed all three exact-head workflows successfully: Verify [41042763165](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763165), Genesis Evidence Invariant [41042763120](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763120), and Browser Acceptance [41042763257](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763257). Browser receipts report **12/12 passing journeys** and no journey errors; artifact [12971760260](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41042763257/artifacts/12971760260).
+- A further source-backed gap was then closed on the same existing PR #216 branch: the private-key signature rule now also recognizes `ENCRYPTED PRIVATE KEY` PEM headers. Regression coverage checks both plain and encrypted headers through `verifyRepository`, requiring `source_failed` and no copied workspace.
+- Source commit: `5409f863050e0b0ded310275d7bc35070d2f192e`; test commit/final current branch head: `539fc6479e2621751543bb787f4e79cb892a0f2b`.
+- The new exact-head checks had not completed at this checkpoint update. Push-triggered Verify/Genesis attempts were cancelled during PR-triggered workflow replacement; do not treat cancellation as failure or pass. The exact-head Browser Acceptance push run `41043272796` was pending; await PR-triggered exact-head Verify, Genesis and Browser results before calling this new head green. The prior `f6caf4c...` green result does not substitute for `539fc647...`.
+- PR #216 body was updated for the earlier green head; update it again after the latest head's checks complete.
+
+### PR #219 failure — additional source comparison, cause still unproven
+- Read the branch and current-main versions of `game/client.mjs`: `startPrivate()` and the `render()` segment that sets `#mode-label` are unchanged in the compared regions.
+- PR #219's `WorldView.setWorld()` now invokes `projectCollaboratorResponseWorldObjects(next)` before the client updates the mode label. The projector is intended to return an empty frozen array when a private world lacks the expected id/revision/event envelope, so this is only a diagnostic lead—not a demonstrated root cause.
+- The failed Browser Acceptance journey still timed out at `scripts/verify-browser.py:71` waiting for private mode after the world became visible. Next useful diagnostic is to inspect the failed screenshot/console evidence or make the harness capture page errors and the actual mode-label text at timeout. Avoid an unchanged blind rerun and avoid editing Worker B's owned files without a distinct handoff.
+
+No merge, deployment, release, branch deletion, workflow dispatch, credential/key/permission change, spending, or external publication occurred.
