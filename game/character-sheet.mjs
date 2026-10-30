@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
-import { getQuestTrail } from './quests.mjs';
+import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -80,6 +80,71 @@ function matchedPublications(world) {
   );
 }
 
+
+function validActivityActor(actor) {
+  return actor && typeof actor.id === 'string' && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
+}
+
+function validActivityField(field, value) {
+  if (field === 'version') return Number.isSafeInteger(value) && value > 0;
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+// Join a projected record to one unique retained event using the fields the
+// writer records identically. If either side is ambiguous, the activity does
+// not count. This is a read-only projection, not a new canonical receipt.
+function matchedActivityRecords(type, records, allEvents, fields, viewer, predicate = () => true) {
+  const eventGroups = new Map();
+  for (const event of rows(allEvents)) {
+    if (event?.type !== type) continue;
+    const key = activityJoinKey(event, fields);
+    if (key === null) continue;
+    const group = eventGroups.get(key) || [];
+    group.push(event);
+    eventGroups.set(key, group);
+  }
+
+  const source = rows(records);
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+
+  const recordGroups = new Map();
+  for (const record of source) {
+    if (typeof record?.id !== 'string' || !record.id || record.id.trim() !== record.id ||
+        record.actor?.id !== viewer?.id || record.actor?.role !== viewer?.role) continue;
+    const key = activityJoinKey(record, fields);
+    if (key === null) continue;
+    const group = recordGroups.get(key) || [];
+    group.push(record);
+    recordGroups.set(key, group);
+  }
+
+  const matched = [];
+  for (const [key, group] of recordGroups) {
+    if (group.length !== 1) continue;
+    const record = group[0];
+    if (recordIdCounts.get(record.id) !== 1) continue;
+    const candidates = eventGroups.get(key);
+    if (!candidates || candidates.length !== 1) continue;
+    let accepted = false;
+    try { accepted = predicate(candidates[0], record) === true; } catch { accepted = false; }
+    if (accepted) matched.push(record);
+  }
+  return matched;
+}
+
+function activityJoinKey(entry, fields) {
+  if (!validActivityActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
+  const values = fields.map(field => entry[field]);
+  if (!fields.every((field, index) => validActivityField(field, values[index]))) return null;
+  return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
+}
+
 export function projectCharacter(world, viewer) {
   const allEvents = uniqueEvents(world?.events);
   // Resolve append positions once. Repeated indexOf scans made challenge and
@@ -147,7 +212,7 @@ export function projectCharacter(world, viewer) {
   };
   const matchedDiscoveries = matchedActivityRecords(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
-    event => GUIDE_LOCATIONS.has(event.locationId)
+    event => event.repeat !== true && getLocationAction(event.locationId, world, viewer) !== null
   );
   const matchedContributions = matchedActivityRecords(
     'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,

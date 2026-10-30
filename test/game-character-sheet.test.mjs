@@ -658,3 +658,81 @@ test('ambiguous discovery history does not count as a completed Questkeeper obje
 
   assert.equal(record.skills.find(item => item.id === 'questkeeper').count, 0);
 });
+
+
+test('activity skills require unique one-to-one record/event joins and real guide locations', () => {
+  const source = publishedCreation('activity-source', [t1]);
+  const world = {
+    xp: 100,
+    creations: [source],
+    events: [
+      publication('activity-source-publication', founder, 'activity-source', 1, t1),
+      event('discover-valid', 'discover', founder, t2, { locationId: 'relay' }),
+      event('discover-unknown', 'discover', founder, t3, { locationId: 'not-a-guide' }),
+      event('discover-repeat', 'discover', founder, t4, { locationId: 'river', repeat: true }),
+      event('contribute-valid', 'contribute', founder, t5, { creationId: 'activity-source', version: 1 }),
+      event('contribute-ambiguous', 'contribute', founder, t6, { creationId: 'activity-source', version: 1 }),
+      event('contribute-duplicate-a', 'contribute', founder, t7, { creationId: 'activity-source', version: 1 }),
+      event('contribute-duplicate-b', 'contribute', founder, t7, { creationId: 'activity-source', version: 1 }),
+      event('report-valid', 'report', founder, t8, { creationId: 'activity-source', version: 1 })
+    ],
+    discoveries: [
+      { id: 'discovery-valid', actor: founder, locationId: 'relay', at: t2 },
+      { id: 'discovery-unknown', actor: founder, locationId: 'not-a-guide', at: t3 },
+      { id: 'discovery-repeat', actor: founder, locationId: 'river', at: t4 }
+    ],
+    contributions: [
+      { id: 'note-valid', actor: founder, creationId: 'activity-source', version: 1, text: 'A retained note.', at: t5 },
+      { id: 'note-orphan', actor: founder, creationId: 'activity-source', version: 1, text: 'No matching event.', at: '2026-10-25T12:09:00.000Z' },
+      { id: 'note-ambiguous-a', actor: founder, creationId: 'activity-source', version: 1, text: 'Ambiguous A.', at: t6 },
+      { id: 'note-ambiguous-b', actor: founder, creationId: 'activity-source', version: 1, text: 'Ambiguous B.', at: t6 },
+      { id: 'note-duplicate-event', actor: founder, creationId: 'activity-source', version: 1, text: 'Two matching events.', at: t7 }
+    ],
+    reports: [
+      { id: 'report-valid', actor: founder, creationId: 'activity-source', version: 1, text: 'A retained report.', at: t8 }
+    ],
+    methods: []
+  };
+
+  const record = projectCharacter(world, founder);
+  assert.equal(record.skills.find(skill => skill.id === 'explorer').count, 1,
+    'only a unique discovery of an authored guide location counts');
+  assert.equal(record.skills.find(skill => skill.id === 'observer').count, 1,
+    'orphaned records, duplicate record joins, and duplicate event joins do not count');
+  assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 1);
+  assert.equal(record.xp, 100);
+});
+
+
+test('Restorer requires one unique earlier repair event joined to the published revision', () => {
+  const world = {
+    xp: 200,
+    creations: [publishedCreation('repaired-source', [t1, t3])],
+    events: [
+      publication('repair-source-v1', founder, 'repaired-source', 1, t1),
+      event('repair-attempt', 'repair', founder, t2, {
+        creationId: 'repaired-source', draftId: 'repair-draft-1', baseVersion: 1
+      }),
+      publication('repair-source-v2', founder, 'repaired-source', 2, t3)
+    ],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: [{
+      id: 'method-v2', actor: founder, creationId: 'repaired-source', version: 2,
+      title: 'Checked repair', description: 'A retained revision.', at: t3
+    }]
+  };
+
+  const valid = projectCharacter(world, founder);
+  assert.equal(valid.skills.find(skill => skill.id === 'restorer').count, 1);
+
+  const ambiguous = structuredClone(world);
+  ambiguous.events.splice(2, 0, event('second-repair-attempt', 'repair', founder,
+    '2026-10-25T12:01:30.000Z', {
+      creationId: 'repaired-source', draftId: 'repair-draft-2', baseVersion: 1
+    }));
+  const rejected = projectCharacter(ambiguous, founder);
+  assert.equal(rejected.skills.find(skill => skill.id === 'restorer').count, 0,
+    'two earlier repairs for the same base version make the method-to-publication join ambiguous');
+});
