@@ -388,3 +388,15 @@ Cycle C — checking Origin against the Host header still permits DNS rebinding 
 - Alpha 1 `main` remains unchanged at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
 - No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred.
 - No local repository test execution is claimed; verification cited above is from exact-head hosted CI.
+
+
+## Founder authorization taxonomy correction — supersedes earlier shorthand
+
+A fresh source-level comparison of issue #17, merged PR #18, current `main`, and PR #203 requires a sharper distinction:
+
+1. **PR #16's original `demonstrate()` self-signing finding is superseded.** Issue #17 says that branch was closed and the replacement offline INSTALL signer was transplanted and merged as PR #18 (merge commit `213f3b5c7771da24b36f9ce6ebdde871d22e4602`). The merged `scripts/approve-install.mjs` uses detached Ed25519 signatures, a separate digest-confirmation step, and an independently provisioned public-key fingerprint. It proves possession of a key when operated; it does not prove the human identity of the operator, and it does not itself install a capability or authenticate live game-server requests.
+2. **PR #203 is a separate, unmerged P-256 `QUEST_AUTHORIZED` helper.** Current `src/authority/decision.js` accepts a caller-supplied `{ valid: true }` verification object in `authorizationEvent()`. PR #203 hardens that different helper with a module-private WeakMap seal, public-key fingerprint validation, audience binding, and tests that reject a forged `{ valid: true }` object. This is not the original PR #16 `demonstrate()` path and is not the PR #18 Ed25519 INSTALL signer.
+3. **The live game-server boundary is a third, distinct path.** Current `game/server.mjs` authenticates Founder login using the local shared-secret `NGL_FOUNDER_KEY` / `founder.key` and issues an ephemeral session cookie. `src/institution/decisions.mjs` explicitly states that the host must authenticate its actor argument. The live server does not import PR #203's P-256 verifier or invoke PR #18's offline signer for canonical decision writes.
+4. **The next Founder task is architectural reconciliation before integration, not reviving PR #16.** Decide which signature scheme and trust anchor is canonical for live Founder decisions (the merged Ed25519 INSTALL path, the separate P-256 event helper, or a deliberately specified bridge); then integrate it into the canonical server/reducer boundary after active `game/server.mjs` work (#205/#213/#214) settles. Keep independent key custody and human-identity proof separate. Issue #17's concurrency, crash/stale-lock recovery, and cross-process acceptance remain open.
+
+This correction supersedes earlier shorthand in this checkpoint that described the separate P-256 helper as the remaining PR #16 self-signing issue or named a PR #8/PR #18 combination without this distinction. No Founder key material was created, read, provisioned, rotated, or used in this run.
