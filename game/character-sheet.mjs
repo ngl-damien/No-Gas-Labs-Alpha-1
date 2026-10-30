@@ -157,9 +157,31 @@ export function projectCharacter(world, viewer) {
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
   );
+  const repairEventsByVersion = new Map();
+  for (const event of allEvents) {
+    if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
+        !['founder', 'witness'].includes(event.actor.role) ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.baseVersion) ||
+        event.baseVersion < 1 || typeof event.draftId !== 'string' || !event.draftId ||
+        !isStrictTimestamp(event.at)) continue;
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.baseVersion]);
+    const list = repairEventsByVersion.get(key) || [];
+    list.push(event);
+    repairEventsByVersion.set(key, list);
+  }
+  const hasUniquePriorRepair = event => {
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.version - 1]);
+    const publicationPosition = positionByEvent.get(event) ?? -1;
+    const prior = (repairEventsByVersion.get(key) || []).filter(repair => {
+      const repairPosition = positionByEvent.get(repair) ?? -1;
+      return repairPosition >= 0 && publicationPosition > repairPosition &&
+        Date.parse(repair.at) <= Date.parse(event.at);
+    });
+    return prior.length === 1;
+  };
   const matchedMethods = matchedActivityRecords(
     'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
-    event => event.version > 1 && retainedPublicationIds.has(event.id)
+    event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
   );
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
