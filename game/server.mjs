@@ -30,7 +30,6 @@ const STATIC = new Map([
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'collaborator-world-objects', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
-  ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']],
   ['/assets/app-icon.svg', ['assets/app-icon.svg', 'image/svg+xml; charset=utf-8']],
