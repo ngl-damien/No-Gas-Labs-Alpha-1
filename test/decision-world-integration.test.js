@@ -221,3 +221,23 @@ test("legacy self-asserted authorizeQuest output cannot pass the signed host ver
   assert.equal(projection.status, QUEST_STATUS.OPEN);
   assert.equal(projection.authorized, false);
 });
+
+test("world and quest projections fail closed without a host authorization verifier", () => {
+  const { quest } = fixture();
+  const forged = authorizeQuest({
+    quest,
+    grant_id: "caller-invented-grant",
+    actor: "founder"
+  });
+
+  const questProjection = projectQuest(quest, [forged]);
+  assert.equal(questProjection.status, QUEST_STATUS.OPEN);
+  assert.equal(questProjection.authorized, false);
+  assert.deepEqual(questProjection.executions, []);
+
+  const worldProjection = projectWorld([forged]);
+  assert.equal(worldProjection.history.length, 1, "the rejected claim remains visible in history");
+  assert.equal(worldProjection.xp, 0);
+  assert.deepEqual(worldProjection.inventory, {});
+  assert.deepEqual(worldProjection.world, {});
+});
