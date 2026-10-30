@@ -126,3 +126,12 @@ A complete five-page branch listing was compared with all 36 open PRs (same-repo
 - Multiple branch names share identical tips: 18 refs at `7b5085b5f1686290569d564ff20774e313a69aea`; 9 at `be7c1116d0628cb2e0fe366720cdfe3a2f2497a0`; 6 at `7afbccdf60f7560195ecd8fa1a52f26bbda55915`; and smaller groups.
 
 These are **classification candidates, not deletion candidates**. Equal tip SHAs establish identical current commit tips only; they do not prove that branch names are unused, that history is disposable, or that cleanup is authorized. No branches were deleted. Next: map each non-PR branch to merged/closed PR history, last commit date, unique commits, and any workflow/reference use; prepare an evidence-backed cleanup proposal for Damien without executing it.
+
+
+## Exact-head follow-up — 2026-10-30 04:55 UTC
+
+After the first PR #208 checks started, the preview test title and duplicate assertion were corrected, and its regexes were rechecked against the actual file contents. The final PR #208 head is now `393c42c48499534f19ee025b8b18b9342294e89e`, 7 commits ahead / 0 behind main, still draft and unmerged. The workflow-level permission block remains byte-for-byte equivalent in scope to main (`contents: write`, `pull-requests: read`); no permission-setting change is proposed. Preview contains no Git-ref mutation API call.
+
+Exact-head checks on `393c42c` at last observation: Verify 41005394371 **pending**; Browser Acceptance 41005394373 **queued**; Genesis Evidence Invariant 41005394388 had completed all steps successfully but the run was still finalizing. Earlier-head results do not count for this final head.
+
+The checkpoint handoff itself is now at branch commit `8f0312a72f3ec3716da438861f7a497457e41577` before this follow-up. The checkpoint PR's new exact-head checks were queued/in progress at last observation; its earlier all-green checks belong to the prior head, not this updated document.
