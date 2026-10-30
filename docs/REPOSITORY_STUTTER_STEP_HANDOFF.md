@@ -135,3 +135,8 @@ After the first PR #208 checks started, the preview test title and duplicate ass
 Exact-head checks on `393c42c` at last observation: Verify 41005394371 **pending**; Browser Acceptance 41005394373 **queued**; Genesis Evidence Invariant 41005394388 had completed all steps successfully but the run was still finalizing. Earlier-head results do not count for this final head.
 
 The checkpoint handoff itself is now at branch commit `8f0312a72f3ec3716da438861f7a497457e41577` before this follow-up. The checkpoint PR's new exact-head checks were queued/in progress at last observation; its earlier all-green checks belong to the prior head, not this updated document.
+
+
+### PR #207 failure — fixture semantics confirmed
+
+A further source read confirms the count of **2** is correct for the new test fixture as written: its `publishedCreation()` helper sets `kind: 'observatory'`. One retained publication therefore completes both `founder-first-place` and `founder-source-observatory` in `getQuestTrail()`. The Questkeeper skill counts completed objectives, so the new test should expect **2**, and the older exact skill-list assertion should include `['questkeeper', 2]` (before `restorer`). This resolves both observed failures without changing projection behavior. Worker A did not edit Worker B's active gameplay branch.
