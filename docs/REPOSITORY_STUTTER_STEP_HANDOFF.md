@@ -53,3 +53,11 @@
 ## Authority
 
 No pull requests were merged or closed; no branches were deleted; no releases or deployments were performed; no Founder key was created/read/rotated; no secrets or permissions were changed; no paid services or spending were used. This run updated existing review branches only. All code changes remain unmerged and reviewable.
+
+
+## Linked donor update — ngl-mesh Relay trust PR #1
+
+- The donor repository main advanced to `b4d17f38fab4a38cfd23bd17ef33016c844a63c1`. Its intervening commit changed only governance/root documentation paths, disjoint from the 10 files in Relay trust PR #1.
+- PR #1 branch `security/pin-relay-operator-key-20261026` was advanced by normal merge commit `d10fe10fee8924d085afbd513f162dae8e4fb734`; compare against donor main is 35 commits ahead / 0 behind. PR remains draft/open and mergeable.
+- Exact-head PR workflow `Relay operator-key trust` run 40996304779 passed; `agent-governance` run 40996304479 passed. Push counterparts 40996297423 and 40996297446 also passed. The Relay job's observed completed steps include Java compilation, OperatorKeyTrustTest, DurableMarkerTest, and RevocationAuthorizationTest.
+- This is a tested local Java authority boundary, not proof of a production Android build/device integration, operator identity, private-key custody, or remote-service isolation. Marker creation intentionally fails closed on sync failure; a marker can remain without a later append, so this is not a multi-file transaction.
