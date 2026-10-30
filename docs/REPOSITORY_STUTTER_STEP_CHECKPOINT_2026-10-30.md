@@ -912,3 +912,44 @@ Issue #17 remains open. PR #16's original self-signing finding is superseded by 
 5. Preserve the $0 constraint and continue exact-head verification; do not infer deployment from CI.
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred in this run.
+
+## Worker A stutter-step handoff — 2026-10-30 16:45 UTC (persisted decision-expiry hardening)
+
+### Rehydration and fresh state
+- Read root `AGENTS.md`, the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, and this durable checkpoint before acting.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Fresh Alpha 1 inventory at 16:43 UTC: **51 open PRs**, **2 open issues** (#17 and #22), **468 branch refs**, and **0 refs marked protected** by the branch-list API. This is not a full ruleset audit.
+- Current Worker B result: PR #223 head `bd05f66507dc7aee031058b7a4c1ca0ca57561df`, stacked on PR #222; exact-head Verify, world-projection, and Playable-world checks all succeeded. The PR records 13/13 browser journeys, including malformed HTTP 200 world data falling back to stale/read-only state. PR #221 head `05465d7b54e852b4c84c0194af7d24a9710e3222` also has all three exact-head checks green. Both remain proposals; neither is on main.
+
+### Cycle A — prevent caller-controlled time at the persisted Founder-event boundary
+Existing draft PR #203, branch `security/founder-decision-seal-main-20261030`, remains based on main. The current helper exposed `verifyAuthorizationEvent(event, options)` with an optional `now` option. That allowed a caller of the exported persisted-event verifier to supply an artificial earlier timestamp and make an expired signature appear current. The separate `createFounderAuthorizationVerifier()` wrapper already uses wall-clock time; this change makes the lower-level persisted-event entry point enforce the same wall-clock rule.
+
+Changes on PR #203:
+- `db66c9719430385fc40f71e734dbac5b060bb5ad` — `src/authority/decision.js`: reject unrecognized `now` option and always evaluate persisted decision expiry with `Date.now()`.
+- `3d6131ea30b8f5096615dea0a03a73acef28d23c` — `test/decision-chamber.test.js`: construct a cryptographically valid but expired persisted event and prove both the configured host verifier and direct persisted-event verifier reject it; prove caller-supplied `now: 0` is rejected.
+- `36966fb74d990716e8d1f9b519f41fbcb2ee7d78` — `test/decision-world-integration.test.js`: remove test-clock overrides from audience-mismatch and signature-tampering cases so those assertions exercise their intended rejection paths.
+
+Exact final-head hosted verification on `36966fb74d990716e8d1f9b519f41fbcb2ee7d78`:
+- Verify workflow [41092363644](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363644): **success**. The `Execute tests, package and bounded institutional exercise` step exited successfully; package build exited 0 and the institutional report recorded `passed: true`.
+- Genesis Evidence Invariant [41092363645](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363645): **success**.
+- The Verify run's `world-projection` job [124189464535](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363644/job/124189464535): **success**.
+- A duplicate run [41092359648](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092359648) was cancelled during replacement; it is not counted as a failure. No Browser Acceptance run was triggered/observed for this authority-only change.
+- No local full-suite run is claimed.
+
+### Cycle B — challenge assumptions and recheck competing work
+- Re-read the exact changed files and current PR head after writing. PR #203 changed only `src/authority/decision.js`, `test/decision-chamber.test.js`, and `test/decision-world-integration.test.js`; all current checks listed above refer to its exact head.
+- Current main's `src/authority/decision.js` is still the older v1 helper: `authorizationEvent()` accepts a caller-supplied verification object and checks its `valid` field. This defect is not fixed on main because PR #203 is draft/unmerged.
+- Issue #17 confirms PR #16's original self-signing finding is superseded by merged PR #18. Do not revive PR #16. PR #203 is a separate P-256 signed-decision helper; the live `game/server.mjs` uses its separate host-key/session gate and does not import the P-256 verifier. Real Founder key custody/identity and server integration remain unresolved.
+- PR #222 and its stacked PR #223 own the current shared server/client integration path; no overlapping server edit was made.
+- EvidenceOS PR #2 head `c19bdf9c230e1d0bd5f54ad5dea050bd33705292` retains successful hosted test run [41084314765](https://github.com/ngl-damien/evidenceos/actions/runs/41084314765), reporting 23 passed / 0 failed. It remains draft and loopback-only; this does not add remote authentication or TLS.
+- Fresh ngl-mesh main tree contains `forensics/relay/REFERENCE_ARTIFACT.md` and Java bridge/test sources, but no tracked APK/AAB/ZIP or RAE report. PR #1's operator-key-trust and required-agent-instructions checks pass on `81536604a8473b8d698aa4c5d752c7d5426dab7d`; full Android/RAE integration remains blocked by the missing recovered source archive, reference APK, and RAE report.
+
+### Next ranked actions
+1. Rehydrate and recheck PR #203's current head/checks and the shared PR #222/#223 stack before any further authority integration work.
+2. After the shared server stack settles, design one canonical verifier/trust-anchor path and acceptance tests. Do not select between the existing Ed25519 INSTALL signer and P-256 decision helper by inference; do not create/read/provision/rotate real key material.
+3. Continue Issue #17 concurrency and crash/stale-lock acceptance, distinguishing process-kill coverage from actual power-loss/filesystem durability; do not auto-delete stale locks.
+4. Recover the ngl-mesh source archive, reference APK, and RAE report before claiming or attempting full integration.
+5. Preserve the $0 constraint and do not merge, release, deploy, delete branches, change permissions/credentials, spend, or publish externally without explicit Founder authorization.
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred in this run.
+
