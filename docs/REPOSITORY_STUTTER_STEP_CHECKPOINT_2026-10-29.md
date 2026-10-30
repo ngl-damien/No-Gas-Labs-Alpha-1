@@ -667,3 +667,14 @@ No merge, PR closure, branch deletion, release, deployment, key creation/rotatio
 #### Current authority and next action
 
 No merge, PR closure, branch deletion, release, deployment, key creation/rotation, secret/permission change, or spending occurred. PR #202's browser recovery test and PR #205's browser acceptance are the immediate verification blockers. Then reconcile checkpoint PR #191 and review the now-green PR #203/#204 branches without treating CI as authorization to merge.
+
+
+### Final status snapshot — 2026-10-30 UTC
+
+- Alpha 1 current main remains 7d8c77367f6acb2d85e35cd9a195797555d1ac7d. Open-PR search returns 33; the inventory is not a full review of all 33.
+- PR #202 head ca16aba1c5a73f3e560aafa93b73709176dd1a12: Verify 40994463363 **success**, Genesis 40994463331 **success**, Browser Acceptance 40994463330 **in progress**. Branch is 15 ahead / 1 behind current main; GitHub reports mergeable. It remains open, not merged.
+- PR #203 head 83684f484f4045d9a4a54c534b9015b4921cfbbf: Verify 40993470387, Genesis 40993470402 and Browser Acceptance 40993470367 all **success**. Draft, open, unmerged.
+- PR #204 head 6493a36b19e7a8fcc91aeb64e64cdac80f5d0ac3: Verify 40993528425, Genesis 40993528572 and Browser Acceptance 40993528551 all **success**. Open, unmerged.
+- PR #205 head 03a7365ee2a5681f85e37278e2b66c335c64a04e: Verify 40994419741 **success**, Genesis 40994419828 **success**, Browser Acceptance 40994419665 **in progress**. Six commits ahead / zero behind current main. Draft, open, unmerged.
+- Checkpoint PR #191 branch head eb44e1a7ed1ef84bd91d9ee90f1bb3fd34adb48d is 23 commits ahead / 7 behind current main. It is a durable handoff only; its branch divergence must be reconciled before merge.
+- The current run did not merge or close any PR. No mainline runtime change, release, deployment, Founder key operation, secret/permission change, or spend occurred.
