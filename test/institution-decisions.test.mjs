@@ -825,3 +825,95 @@ test('process death after atomic rename keeps the decision store fenced until ex
     await Promise.allSettled([exit]);
   }
 });
+
+
+test('process death before atomic rename leaves the canonical envelope unchanged and requires explicit offline recovery', { timeout: 20000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-pre-rename-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const moduleUrl = new URL('../src/institution/decisions.mjs', import.meta.url).href;
+  const workerScript = `
+    import { openDecisions } from ${JSON.stringify(moduleUrl)};
+    import { rename } from 'node:fs/promises';
+    import { createInterface } from 'node:readline';
+    const directory = process.env.NGL_DECISIONS_TEST_DIR;
+    const founder = ${JSON.stringify(founder)};
+    const policy = ${JSON.stringify(policy)};
+    let renameCalls = 0;
+    const renameFile = async (pending, target) => {
+      renameCalls += 1;
+      if (renameCalls === 1) return rename(pending, target);
+      await new Promise((resolve, reject) => {
+        if (typeof process.send !== 'function') return reject(new Error('IPC channel is unavailable'));
+        process.send('BEFORE_RENAME', error => error ? reject(error) : resolve());
+      });
+      await new Promise(() => {});
+    };
+    const store = await openDecisions({ directory, now: () => ${instant}, renameFile });
+    process.send('READY');
+    for await (const line of createInterface({ input: process.stdin })) {
+      if (line === 'commit') await store.setPolicy(founder, policy);
+    }
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', workerScript], {
+    env: { ...process.env, NGL_DECISIONS_TEST_DIR: directory },
+    stdio: ['pipe', 'ignore', 'pipe', 'ipc']
+  });
+  child.stdin.on('error', () => {});
+  child.stderr.setEncoding('utf8');
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const messages = [];
+  const waiters = [];
+  child.on('message', message => {
+    const waiter = waiters.shift();
+    if (waiter) waiter(message);
+    else messages.push(message);
+  });
+  const nextMessage = () => messages.length
+    ? Promise.resolve(messages.shift())
+    : new Promise(resolve => waiters.push(resolve));
+  const exit = new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })));
+  const bounded = (promise, label) => {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label + (stderr ? ': ' + stderr : ''))), 7000); })
+    ]).finally(() => clearTimeout(timer));
+  };
+
+  try {
+    assert.equal(await bounded(nextMessage(), 'pre-rename worker did not open the decision store'), 'READY');
+    child.stdin.end('commit\\n');
+    assert.equal(
+      await bounded(nextMessage(), 'pre-rename worker did not reach the durable temporary-file boundary'),
+      'BEFORE_RENAME'
+    );
+    const stopped = await bounded(exit.then(value => value), 'pre-rename worker did not terminate').catch(async error => {
+      child.kill('SIGKILL');
+      throw error;
+    });
+    assert.equal(stopped.signal, 'SIGKILL');
+
+    const lockPath = join(directory, '.decisions.lock');
+    assert.equal((await lstat(lockPath)).isFile(), true, 'process death must leave the writer lease visible');
+    const pendingFiles = (await readdir(directory)).filter(name => /^\\.decisions-[a-f0-9-]+\\.tmp$/.test(name));
+    assert.equal(pendingFiles.length, 1, 'the fully written temporary envelope must remain visible after SIGKILL');
+    const retained = JSON.parse(await readFile(join(directory, 'decisions.json'), 'utf8'));
+    assert.deepEqual(retained.payload.records, [], 'the canonical envelope must remain at its previous revision');
+    await rejected(decisionsModule.openDecisions({ directory, now: () => instant }), 'DECISIONS_LOCKED');
+
+    // Explicit test-only offline recovery: remove the stale lease and orphaned
+    // temporary envelope only after the writer process has exited.
+    await rm(lockPath);
+    await rm(join(directory, pendingFiles[0]));
+    const recovered = await decisionsModule.openDecisions({ directory, now: () => instant });
+    try {
+      assert.equal((await recovered.snapshot(founder)).revision, 0);
+    } finally {
+      await recovered.close();
+    }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await Promise.allSettled([exit]);
+  }
+});
