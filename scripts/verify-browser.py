@@ -606,7 +606,8 @@ def offline_pwa(browser,url):
         page.reload(wait_until='networkidle')
         page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)")
         context.set_offline(True)
-        page.reload(wait_until='domcontentloaded')
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         draft(page,'loom','Offline field instrument')
@@ -614,7 +615,8 @@ def offline_pwa(browser,url):
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
         api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
-        page.reload(wait_until='domcontentloaded')
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
         assert not errors,errors
