@@ -596,7 +596,35 @@ def launchpad(page,url,out,label):
     assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'A rejected save must not overwrite the last valid character position'
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
-    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'Private save import did not restore the character location'
+    position_key='ngl.common-ground.player-position.v1'
+    expected_position=lambda point:{'schema':'ngl.player-position.v1','x':point['x'],'y':point['y']}
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(saved_position), 'Private save import did not restore the character location'
+
+    # A later import must back up the world and the position that existed before the import.
+    backup_position={'x':min(saved_position['x']+25,1590),'y':min(saved_position['y']+25,990)}
+    page.evaluate("""position=>localStorage.setItem('ngl.common-ground.player-position.v1',JSON.stringify({schema:'ngl.player-position.v1',...position}))""",backup_position)
+    page.locator('#journal-button').click()
+    page.locator('#import-world').set_input_files({'name':'world-again.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
+    page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.locator('#journal-button').click()
+    page.locator('#recover-backup').click()
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(backup_position), 'Manual backup recovery did not restore the previous character position'
+
+    # If the primary world is damaged, automatic backup recovery must restore its matching position too.
+    automatic_backup_position={'x':min(backup_position['x']+25,1590),'y':min(backup_position['y']+25,990)}
+    page.evaluate("""position=>localStorage.setItem('ngl.common-ground.player-position.v1',JSON.stringify({schema:'ngl.player-position.v1',...position}))""",automatic_backup_position)
+    page.locator('#import-world').set_input_files({'name':'world-third.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
+    page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.evaluate("localStorage.setItem('ngl.common-ground.v2','{')")
+    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(automatic_backup_position), 'Automatic backup recovery did not restore the previous character position'
+
+    # Legacy world-only backups remain readable and use the documented original spawn point.
+    page.evaluate("""world=>{localStorage.setItem('ngl.common-ground.v2','{');localStorage.setItem('ngl.common-ground.v2.backup',JSON.stringify(world));localStorage.removeItem('ngl.common-ground.player-position.v1')}""",world)
+    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':180,'y':640}, 'Legacy world-only backup should restore at the original spawn point'
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
