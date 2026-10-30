@@ -345,9 +345,11 @@ export async function validateWorld(raw) {
        (e.validationStatus==='rejected'&&(typeof e.validationReason!=='string'||!e.validationReason||Array.from(e.validationReason).length>128))||
        e.validator!=='ngl.collaborator-response.v1')invalid('Malformed or repeated collaborator archive.');
     collaboratorResponseIds.add(e.responseId);
+    const receiptShape=value=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')==='algorithm,digest,size';
+    if(!receiptShape(e.packetReceipt)||!receiptShape(e.responseReceipt))invalid('Collaborator archive receipt shape is invalid.');
     const packetReceipt=await receipt(e.packetJson),responseReceipt=await receipt(e.responseText);
-    if(e.packetReceipt?.algorithm!=='sha256'||e.packetReceipt.digest!==packetReceipt.digest||e.packetReceipt.size!==packetReceipt.size||
-       e.responseReceipt?.algorithm!=='sha256'||e.responseReceipt.digest!==responseReceipt.digest||e.responseReceipt.size!==responseReceipt.size)invalid('Collaborator archive byte receipt mismatch.');
+    if(e.packetReceipt.algorithm!=='sha256'||e.packetReceipt.digest!==packetReceipt.digest||e.packetReceipt.size!==packetReceipt.size||
+       e.responseReceipt.algorithm!=='sha256'||e.responseReceipt.digest!==responseReceipt.digest||e.responseReceipt.size!==responseReceipt.size)invalid('Collaborator archive byte receipt mismatch.');
     let payload;try{payload=JSON.parse(e.packetJson)}catch{invalid('Collaborator packet JSON is malformed.');}
     const packetIndex=index,sourceSnapshot=payload?.sourceSnapshot;
     if(payload?.protocol!=='ngl.bounded-collaborator-packet.v1'||payload.role!==e.role||payload.targetMoonshotId!==e.moonshotId||
@@ -355,7 +357,9 @@ export async function validateWorld(raw) {
        payload.mayAwardProgress!==false||payload.mayCertifyTruthOrExecution!==false||
        sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||!['draft','repair'].includes(source.type)).length||
        !Array.isArray(payload.inputRefs)||JSON.stringify(payload.inputRefs)!==JSON.stringify(e.sourceEventIds)||
-       !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length)invalid('Collaborator packet identity or authority boundary mismatch.');
+       !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length||
+       !Array.isArray(payload.omittedEventIds)||payload.omittedEventIds.length>64||!Number.isSafeInteger(payload.omittedCount)||payload.omittedCount<0||payload.omittedCount<payload.omittedEventIds.length||
+       payload.omittedEventIdListTruncated!==(payload.omittedCount>payload.omittedEventIds.length))invalid('Collaborator packet identity or authority boundary mismatch.');
     for(let sourceIndex=0;sourceIndex<e.sourceEventIds.length;sourceIndex++){
       const source=eventById.get(e.sourceEventIds[sourceIndex]),record=payload.inputRecords[sourceIndex];
       if(!source||eventPositions.get(source)>=packetIndex||record?.eventId!==source.id||record?.type!==source.type||record?.at!==source.at||
