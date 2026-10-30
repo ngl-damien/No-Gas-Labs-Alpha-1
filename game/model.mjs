@@ -178,7 +178,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(new Set(sourceEventIds).size!==sourceEventIds.length)fail('INVALID_COLLABORATOR_SOURCES','Source event IDs must be unique.');
       if(typeof action.responseText!=='string'||!action.responseText.trim())fail('INVALID_COLLABORATOR_RESPONSE','The exact external response is required.');
       if(encoder.encode(action.responseText).length>64*1024)fail('TOO_LARGE','Collaborator response exceeds 64 KiB.',413);
-      const packet=projectCollaboratorPackets(original).find(candidate=>candidate.id===role&&candidate.available===true&&candidate.moonshotId===moonshotId&&candidate.packetJson===action.packetJson);
+      const packet=projectCollaboratorPackets(publicWorld(original,who)).find(candidate=>candidate.id===role&&candidate.available===true&&candidate.moonshotId===moonshotId&&candidate.packetJson===action.packetJson);
       if(!packet)fail('STALE_COLLABORATOR_PACKET','The source-bound packet no longer matches this world. Reopen Guild Hall and prepare a fresh packet.',409);
       if(JSON.stringify(packet.inputRefs)!==JSON.stringify(sourceEventIds))fail('INVALID_COLLABORATOR_SOURCES','Source event IDs do not match the exact hand-off packet.');
       const checked=validateCollaboratorResponse(packet,action.responseText);
@@ -353,7 +353,7 @@ export async function validateWorld(raw) {
     if(payload?.protocol!=='ngl.bounded-collaborator-packet.v1'||payload.role!==e.role||payload.targetMoonshotId!==e.moonshotId||
        payload.authority!=='advisory-only'||payload.mayWriteCanonicalState!==false||payload.mayGrantAuthority!==false||
        payload.mayAwardProgress!==false||payload.mayCertifyTruthOrExecution!==false||
-       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==packetIndex||
+       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||!['draft','repair'].includes(source.type)).length||
        !Array.isArray(payload.inputRefs)||JSON.stringify(payload.inputRefs)!==JSON.stringify(e.sourceEventIds)||
        !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length)invalid('Collaborator packet identity or authority boundary mismatch.');
     for(let sourceIndex=0;sourceIndex<e.sourceEventIds.length;sourceIndex++){
