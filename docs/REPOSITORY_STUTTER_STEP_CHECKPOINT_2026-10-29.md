@@ -621,3 +621,12 @@ No Alpha 1 runtime code was changed in this run. No merge, branch deletion, rele
 #### Authority
 
 No merge, PR closure, branch deletion, release, deployment, key creation/rotation, permission or secret change, or spending occurred. PR #203 is a draft transplant for review; PR #202 was updated in place; this checkpoint was updated in the existing draft PR #191. All three current-main runtime changes remain unmerged.
+
+
+### Verification status correction — 2026-10-30 UTC
+
+- PR #202: the first expanded browser run 40993546455 failed at the manual-backup assertion. Inspection showed the test asserted immediately after a click while the guarded handler was still awaiting asynchronous world validation. Added a wait for the persisted coordinates, and added a recovery case where both old copies are malformed. New head is fede388e859c99ffbfb5640ba408017146a7d860. Verify 40993959235 **success**; Genesis Evidence Invariant 40993958641 **success**; Browser Acceptance 40993959055 **pending** at this correction. The failed earlier run is not hidden; the corrected browser path is not yet passed.
+- PR #203: Verify 40993470387 **success** and Genesis Evidence Invariant 40993470402 **success** on exact head 83684f484f4045d9a4a54c534b9015b4921cfbbf. Browser Acceptance 40993470367 is **in progress**.
+- PR #204: Browser Acceptance 40993528551 has now completed **success**, joining Verify 40993528425 and Genesis Evidence Invariant 40993528572. Its desktop, phone, institutional-location, two-session shared, phone-toolbar, one-button, standalone-file, exact-byte and shared-restart journeys all reported passed. PR #204 remains open and unmerged.
+- PR #197 (public-host temporary-storage warning): one documentation file changed; its branch is 1 ahead / 4 behind current main. Exact-head Verify 40988268489, Genesis Evidence Invariant 40988268512 and Browser Acceptance 40988268556 all succeeded. The current-main-only commits do not modify docs/meteor/server.md. The PR documents that shared hosted data is temporary on the configured Render Free service; this run did not independently re-open the Render workspace, so the service metadata in the PR body is not re-verified here.
+- Current checkpoint branch head after this run's update is d77147c252fcf04afe71901406660b59dde5e825; after the next correction it will be 22 commits ahead / 7 behind current main. It remains a draft handoff, not a merge candidate.
