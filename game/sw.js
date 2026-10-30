@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
-const CACHE_NAME = CACHE_PREFIX + 'v1';
+// Bump this identifier when any cached shell resource changes.
+const CACHE_NAME = CACHE_PREFIX + '20261030-1';
 
 // Only the public application shell is cached. Shared-world APIs, authenticated
 // state, private server data, and retained artifact endpoints are never cached.
@@ -36,9 +37,8 @@ const SHELL_PATHS = new Set([...CORE_SHELL, ...OPTIONAL_SHELL]);
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_SHELL);
+    await cache.addAll(CORE_SHELL.map(path => new URL(path, self.location.origin).href));
     // Optional artwork is cached on first successful request, not during install.
-    await self.skipWaiting();
   })());
 });
 
@@ -72,7 +72,7 @@ self.addEventListener('fetch', event => {
       } catch {
         const cache = await caches.open(CACHE_NAME);
         return await cache.match(request) ||
-          await cache.match('/index.html') ||
+          await cache.match(new URL('/index.html', self.location.origin).href) ||
           Response.error();
       }
     })());
