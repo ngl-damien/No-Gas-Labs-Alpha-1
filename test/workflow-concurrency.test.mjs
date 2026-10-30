@@ -19,13 +19,20 @@ test('validation workflows isolate cancellation by workflow, source repository, 
 });
 
 function sectionAfterTopLevel(source, heading) {
-  const lines = source.split(/\\r?\\n/);
+  const lines = source.split(String.fromCharCode(10)).map(line =>
+    line.endsWith("\r") ? line.slice(0, -1) : line
+  );
   const start = lines.findIndex(line => line === heading + ":");
   assert.notEqual(start, -1, `missing top-level ${heading} section`);
-  const end = lines.findIndex((line, index) =>
-    index > start && /^[A-Za-z0-9_-]+:\\s*$/.test(line)
-  );
-  return lines.slice(start + 1, end < 0 ? lines.length : end);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.length > 0 && !line.startsWith(" ") && line.endsWith(":")) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end);
 }
 
 test("validation workflows run push checks only on main while retaining pull-request checks", async () => {
@@ -38,8 +45,8 @@ test("validation workflows run push checks only on main while retaining pull-req
     assert.ok(pullRequestIndex > pushIndex, `${path} must retain pull_request validation after push`);
     const pushBlock = triggers.slice(pushIndex + 1, pullRequestIndex);
     const pushBranches = pushBlock
-      .filter(line => /^\\s{6}-\\s*/.test(line))
-      .map(line => line.replace(/^\\s{6}-\\s*/, '').trim());
+      .filter(line => line.startsWith('      - '))
+      .map(line => line.slice(8).trim());
     assert.deepEqual(pushBranches, ['main'], `${path} must not run the full suite on every feature-branch push`);
   }
 });
