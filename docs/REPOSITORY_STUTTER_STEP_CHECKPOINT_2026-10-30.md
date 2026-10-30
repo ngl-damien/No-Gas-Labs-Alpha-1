@@ -325,3 +325,56 @@ PR #216 remains draft/open/unmerged at `43e05b657ff71467a74002eab9bb4bfd4a348a66
 - Playable-world check `123976578118` — **in progress**; Browser Acceptance workflow [41029826281](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029826281) — **pending** at final inspection. Do not call the final head fully verified until those finish.
 - The immediately preceding head `c6f9536f909bd6606980357a6a3448cd816f22ff` had Browser Acceptance run [41029214315](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214315) **success**, with 12/12 desktop, phone, institutional-location, shared-world, toolbar, one-button, standalone-file and restart journeys passing; artifact [12964644237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214315/artifacts/12964644237). That browser result predates the final `.tmp` exclusion commit and is not a substitute for current-head acceptance.
 - Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #216 remains draft/open/unmerged.
+
+
+## Repository Stutter-Step run — 2026-10-30 UTC: EvidenceOS local HTTP boundary
+
+### Rehydration, current state, and coordination
+
+- Re-read root `AGENTS.md` and the full shared Ralph-style protocol before repository work.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Fresh paginated branch inventory: **462 refs** (100 + 100 + 100 + 100 + 62). Fresh open-PR search: **45**. Open issues: **2** (#17 Founder key custody/concurrency/recovery; #22 hybrid-cognition evaluation challenge). No branch was deleted.
+- Worker B's latest result is draft PR #217, head `298be1c6496aa45ad3be4127cdf457b3aae121f1`, stacked on PR #204. It adds four bounded Guild Hall NPC entry points and focuses the matching collaborator card. Exact-head Verify, world-projection, and Playable-world checks passed (41034572448, 41034572435, 41034572936). Its changed paths include `game/client.mjs`, `game/world-view.mjs`, `game/collaborator-contracts.mjs`, `docs/meteor/world.md`, and geometry/browser tests. No Worker B-owned gameplay paths were edited.
+- Alpha 1 PR #216 (Forge independent verifier workspace) exact head `43e05b657ff71467a74002eab9bb4bfd4a348a66` now has Verify, world-projection, and Playable-world **success** (41029826202, job 123976827824, 41029826281). The prior pending browser check has completed successfully.
+- PR #203 exact head `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901` has Verify, world-projection, and Playable-world **success** (40999308640, 40999308626, 40999308607). PR #205, #213, #214, and #215 current exact heads also have successful non-cancelled Verify/world-projection/Playable-world results. PR #210's prior checkpoint head `83ebc87...` also had all three successful.
+
+### Founder authorization — priority rechecked against live source
+
+- Issue #17 says the original PR #16 self-signing finding is superseded by the earlier PR #8 prototype and PR #18 integration. Do not duplicate the obsolete PR #16 branch.
+- Current Alpha 1 `main` still has the caller-supplied `{ valid: true }` boundary in `src/authority/decision.js`.
+- PR #203 seals verifier results in a module-private WeakMap, validates the configured public-key fingerprint, and binds decisions to an expected audience. Its exact-head checks pass, but it is still an unmerged draft and the live `game/server.mjs` does not import its verifier.
+- PRs #205/#213 own overlapping changes to `game/server.mjs`; PR #214 is a green combined validation head, not a merge. Editing that file now would duplicate Worker B/active integration work. No Founder key material was created, read, provisioned, or rotated. Real independent key custody and proof Damien controls a signing key remain unresolved.
+
+### Implemented — EvidenceOS PR #2, two source-backed HTTP boundary defects
+
+**Linked repository:** `ngl-damien/evidenceos`  
+**Draft PR #2:** [security(evidenceos): constrain local HTTP analysis access](https://github.com/ngl-damien/evidenceos/pull/2)  
+**Branch:** `security/evidenceos-http-bearer-20261030`  
+**Final head:** `2d7a634655f0e8ad79f21362fcbc46850d263004`  
+**Base:** EvidenceOS PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b` (stacked; neither PR is merged).
+
+Cycle A — the prior allowlist admitted `localhost`. Hostname resolution is machine-configurable, so the code now permits only numeric loopback bind addresses `127.0.0.1` and `::1`; `localhost` is rejected. Regression coverage checks `0.0.0.0`, `::`, and `localhost` fail before listening.
+
+Cycle B — reinspection showed loopback-only binding did not prevent cross-site browser writes: `readBody()` parsed JSON regardless of Content-Type, and the analysis POST did not validate Origin. A browser can send a simple cross-site `text/plain` request to a loopback service. The analysis route now requires `application/json`, rejects any supplied Origin that does not exactly match the request origin, and continues to support native/local JSON clients with no Origin header. Tests assert text/plain rejection (415), cross-origin JSON rejection (403) before job creation, same-origin JSON reaches normal validation, and no-Origin native JSON reaches normal validation. README and SECURITY policy disclose the boundary.
+
+**Exact-head verification:** EvidenceOS run [41036187928](https://github.com/ngl-damien/evidenceos/actions/runs/41036187928) succeeded on `2d7a634655f0e8ad79f21362fcbc46850d263004`. Node v22.23.4 reports **16 passed, 0 failed** (8 ingestion, 2 aggregation, 6 HTTP-boundary tests); all five JavaScript syntax checks passed. The run installed declared dependencies with lifecycle scripts disabled. This is hosted CI evidence, not a browser automation test or production deployment. PR #2 remains draft/open and stacked on PR #1.
+
+### Linked repository recheck
+
+- EvidenceOS PR #1 exact head `7fbb4c83412e83882ea43df92532a346d524e00b`: hosted test check succeeded. It remains draft/open; PR #2 is stacked on it.
+- `ngl-mesh` PR #1 exact head `d10fe10fee8924d085afbd513f162dae8e4fb734`: operator-key-trust and required-agent-instructions checks succeeded. Fresh recursive tree contained 30 paths, two RAE bridge source/test paths, and no APK/AAB/ZIP/AAR artifacts. Full Android/RAE integration remains unverified.
+
+### Next ranked actions
+
+1. Recheck the latest EvidenceOS PR #2 exact head/check after any further branch update; review PR #1 then #2 as a stack. Do not merge either without Founder authorization.
+2. Resume Founder verifier-to-server integration only after the active `game/server.mjs` work (#205/#213/#214) is reconciled. Keep signed-decision verification fail-closed and do not create or handle real Founder key material.
+3. Finish issue #17's crash/concurrency acceptance and define an explicit, Founder-controlled stale-lock recovery procedure. Do not automatically delete a production lock.
+4. Review Worker B's #204/#217 Guild Hall response/archive/NPC stack without duplicating its paths.
+5. Locate/recover the missing ngl-mesh APK/source/RAE report before claiming Android or RAE integration.
+6. Reconcile stale-base PRs #191/#192 and keep the 462-ref branch inventory read-only; do not delete branches or alter repository permissions.
+
+### Authority and result
+
+- Alpha 1 `main` remains unchanged at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred.
+- No local repository test execution is claimed; verification cited above is from exact-head hosted CI.
