@@ -1028,3 +1028,51 @@ No merge, release, deployment, branch deletion, workflow dispatch, permission/cr
 5. Recover the missing `ngl-mesh` source archive, reference APK, and RAE report before claiming full Android/RAE integration.
 
 Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, deployment, release, branch deletion, permission/credential/key operation, spending, or external publication occurred.
+
+
+## Worker A stutter-step handoff — 2026-10-30 (run 11)
+
+### Rehydration and live Alpha 1 baseline
+- Re-read root `AGENTS.md` and the full `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` before work.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Fresh paginated inventory: **53 open PRs, 2 open issues, 470 branch refs** (five non-empty pages: 100/100/100/100/70).
+- GitHub's branch endpoint reports `main.protected=false`, `protection.enabled=false`, and required-status enforcement off. This is an observed governance gap; no repository settings or permissions were changed.
+- Issue #17 (Founder key custody/concurrency/recovery) and issue #22 (hybrid-cognition falsifiability challenge) remain open.
+
+### Cycle 1 — recheck Alpha 1 proposals and exact-head CI
+- PR #203 head `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932`: Verify run **41101129249 success**, Genesis run **41101111073 success**, Browser Acceptance run **41101111004 success**. The Verify job's bounded institutional exercise reported `passed: true`. The P-256 helper remains a separate proposal and is not wired into `game/server.mjs`.
+- PR #224 head `1c30e1ba8cf6e0055e5a1b1bcd306c8d3d60ba44`: Verify **41101499763 success**, Genesis **41101499822 success**, Browser Acceptance **41101499761 success**. The main-only push trigger fix remains unmerged.
+- PR #222 combined integration head `609f676e482c1a3151b64f4f44c32fc30f1ca5d9`: Verify **41097959717 success**, Genesis **41097959759 success**, Browser Acceptance **41097959351 success**.
+- PR #223 snapshot follow-up head `bd05f66507dc7aee031058b7a4c1ca0ca57561df`: Verify **41089032129 success**, Genesis **41089032058 success**, Browser Acceptance **41089032150 success**.
+- PR #225 quest-terminal follow-up head `42a5832a93671974ad330a2d3fda24b5fbf5caaa`, based on PR #222: Verify **41106479117 success**, Genesis **41106479144 success**, Browser Acceptance **41106479164 success**.
+- PR #205 writer-lease head `54c54a5660ab799476d48871dc9d0fbb5c59f93c` and PR #215 pre-rename process-death head `98c9354ce8f7ee0b8957b9f4c092e457edb71b07`: all three respective Verify/Genesis/Playable-world workflows completed successfully.
+- This checkpoint PR's prior head `73e121d08ed253087e2e90ec20ed45714ce0ec25`: Verify **41101619822 success**, Genesis **41101619789 success**, Browser Acceptance **41101619904 success**.
+
+### Cycle 2 — ngl-mesh: strict report decoding
+- Rehydrated `ngl-damien/ngl-mesh` main at `b4d17f38fab4a38cfd23bd17ef33016c844a63c1`, read its root agent instructions and Relay bridge documentation, and checked PR #1's changed-file list before editing.
+- Source defect: `RaeEvidenceBridge.java` used Java's replacement-decoding `new String(reportBytes, UTF_8)` while the stored receipt hashed the original bytes. Malformed UTF-8 could therefore produce stored text that did not round-trip to the bytes named by the receipt.
+- Draft PR [ngl-mesh #3](https://github.com/ngl-damien/ngl-mesh/pull/3), final head `7847c0fd7eb334d4bed726f12703567bdff9de42`: added `StrictUtf8.decode`, wired it before JSON parsing, added invalid-sequence/round-trip tests and a read-only Java 17 workflow.
+- Exact-head Relay bridge input-contract run **41110544604 success**; logs: `STRICT_UTF8: 10 checks passed`, `RAE_BRIDGE_SOURCE_CONTRACT: 4 checks passed`. Agent-governance run **41110544499 success**. Local Java 21 helper test: **10 checks passed**.
+- Full `verify_bridge.py` remains blocked because the recovered source archive, reference APK and RAE report are absent. No Android rebuild, device validation, or full bridge integration is claimed. PR #3 is draft and unmerged.
+
+### Cycle 3 — EvidenceOS: prototype-safe aggregation
+- Rehydrated `ngl-damien/evidenceos`, inspected open PR ownership and confirmed existing PR #1 already owns `src/pass2.js` and `test/pass2.test.js`; continued on that branch rather than creating a competing PR.
+- Source defect: ordinary-object dictionaries keyed by repository-derived names could collide with inherited keys such as `__proto__` and `constructor`; the domain-weight lookup had the same inherited-property ambiguity.
+- Continued draft PR [EvidenceOS #1](https://github.com/ngl-damien/evidenceos/pull/1), final head `602a1041458375b529c1af844656089530a11a1c`: null-prototype signal/group dictionaries, Map-backed domain weights with neutral fallback, and regression coverage for `__proto__`, `constructor`, categories and unknown domains.
+- Local isolated Node harness of the updated aggregation logic and regression cases: **3 passed, 0 failed**; not a full repository suite. Exact-head hosted run **41111264199** was **queued** at final inspection and is not counted as a pass.
+- EvidenceOS PR #2 head `c19bdf9c230e1d0bd5f54ad5dea050bd33705292`: hosted run **41084314765 success**, 23 tests passed, 0 failed.
+
+### Authority and integration limits
+- Issue #17 explicitly records PR #16's original self-signing finding as superseded by merged PR #18's detached Ed25519 INSTALL-signature prototype. Do not revive the obsolete PR #16 implementation.
+- PR #203's P-256 helper is not the live server verifier. The current server path still uses its separate local Founder-key/session mechanism. No independent proof of Damien's control of a real signing key, canonical Ed25519/P-256 trust-anchor decision, or end-to-end signed-decision server integration is established.
+- PRs #222/#223/#225 and #203/#224 have green exact-head workflows but remain unmerged. PR #205/#215 exercise process-death boundaries, not actual power loss or filesystem hardware durability.
+- Issue #22 remains a proposal to falsify hybrid-cognition superiority; no benchmark has been run and no superiority claim is made.
+
+### Next ranked actions
+1. Recheck EvidenceOS PR #1 exact-head run **41111264199**; if completed, inspect its logs and update this handoff with the actual result.
+2. Reconcile the existing Ed25519 INSTALL prototype with the separate P-256 helper and the live server path; do not integrate a guessed trust anchor or create/handle Founder key material.
+3. Recover the missing Relay source archive, reference APK and RAE report before attempting the full bridge harness.
+4. Present the now-green Alpha 1 PR stack and the observed unprotected-main state for Founder review; do not merge or change repository settings without authorization.
+5. Keep issue #22's benchmark pre-registration distinct from actual experiment execution and results.
+
+No merges, releases, deployments, branch deletions, permission/credential/key changes, spending, provider calls, or external publication occurred in this run.
