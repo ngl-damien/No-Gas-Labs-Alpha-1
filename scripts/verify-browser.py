@@ -204,6 +204,8 @@ def institutional_locations(browser,url,out):
     context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
     page=context.new_page()
     page.on('pageerror',lambda error:errors.append(str(error)))
+    page.on('console',lambda message:errors.append('console '+message.type+': '+message.text) if message.type=='error' else None)
+    page.on('requestfailed',lambda request:errors.append('request failed '+request.url+' '+str(request.failure)))
     try:
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
@@ -594,7 +596,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
 
-def offline_pwa(browser,url):
+def offline_pwa(browser,url,out):
     context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,service_workers='allow')
     page=context.new_page();errors=[]
     page.on('pageerror',lambda error:errors.append(str(error)))
@@ -609,7 +611,13 @@ def offline_pwa(browser,url):
         page.reload(wait_until='networkidle')
         page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
         page.locator('#start-private').click()
-        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        try:
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        except Exception as error:
+            page.screenshot(path=str(out/'offline-pwa-start-failure.png'))
+            diagnostic=page.evaluate("""async()=>{const registration=await navigator.serviceWorker.getRegistration();const names=await caches.keys();const cached=await Promise.all(names.map(async name=>({name,paths:(await (await caches.open(name)).keys()).map(request=>new URL(request.url).pathname)})));return {mode:document.querySelector('#mode-label')?.textContent,playHidden:document.querySelector('#play-ui')?.hidden,doorwayHidden:document.querySelector('#doorway')?.hidden,startHandler:typeof document.querySelector('#start-private')?.onclick,toast:document.querySelector('#toast')?.textContent,toastHidden:document.querySelector('#toast')?.hidden,controller:Boolean(navigator.serviceWorker.controller),workerState:registration?.active?.state,cacheNames:names,cached,localSave:localStorage.getItem('ngl.common-ground.v2')?.length||0};}""")
+            (out/'offline-pwa-start-failure.json').write_text(json.dumps({'error':str(error),'diagnostic':diagnostic,'browserErrors':errors},indent=2))
+            raise AssertionError('Offline private-world start failed: '+json.dumps(diagnostic)) from error
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
@@ -638,7 +646,7 @@ def main():
             with sync_playwright() as playwright:
                 browser=playwright.chromium.launch(executable_path=os.environ.get('NGL_CHROMIUM_EXECUTABLE','/usr/bin/chromium'),args=['--no-sandbox'])
                 try:
-                    record(offline_pwa(browser,url))
+                    record(offline_pwa(browser,url,out))
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
                         page=context.new_page()
