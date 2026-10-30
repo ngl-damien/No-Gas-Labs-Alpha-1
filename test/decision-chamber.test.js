@@ -94,6 +94,27 @@ test("verification requires a host-pinned audience and rejects mismatches", () =
 test("mutating global Date.now cannot revive an expired decision", () => {
   const expiredPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
   const expiredSigned = signedReceipt(expiredPayload);
+  const expiredEvent = {
+    event_id: "authorize:" + expiredPayload.proposal_id + ":" + expiredSigned.payload_sha256,
+    type: "QUEST_AUTHORIZED",
+    quest_id: expiredPayload.quest_id,
+    audience: expiredPayload.audience,
+    proposal_id: expiredPayload.proposal_id,
+    grant_id: expiredSigned.payload_sha256,
+    actor: "founder",
+    capabilities: expiredPayload.capabilities,
+    outputs: expiredPayload.outputs,
+    acceptance: expiredPayload.acceptance,
+    expires_at: expiredPayload.expires_at,
+    key_fingerprint: expiredSigned.key_fingerprint,
+    signature: expiredSigned.signature
+  };
+  const trust = {
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  };
+  const hostVerifier = createFounderAuthorizationVerifier(trust);
   const realNow = Date.now;
   try {
     Date.now = () => 0;
@@ -101,6 +122,8 @@ test("mutating global Date.now cannot revive an expired decision", () => {
       valid: false,
       reason: "DECISION_EXPIRED"
     });
+    assert.equal(verifyAuthorizationEvent(expiredEvent, trust), false);
+    assert.equal(hostVerifier(expiredEvent), false);
   } finally {
     Date.now = realNow;
   }
