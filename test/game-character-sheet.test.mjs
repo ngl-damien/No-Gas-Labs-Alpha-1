@@ -454,3 +454,68 @@ test('character projections preserve challenge and study chronology across a lar
 
   assert.deepEqual(world, before, 'character projection must remain read-only');
 });
+
+
+test('Questkeeper skill mirrors completed source-linked Founder objectives without awarding XP', () => {
+  const world = {
+    xp: 100,
+    creations: [publishedCreation('first-place', [t1])],
+    events: [publication('publish-first-place', founder, 'first-place', 1, t1)],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const record = projectCharacter(world, founder);
+  const skill = record.skills.find(item => item.id === 'questkeeper');
+
+  assert.ok(skill);
+  assert.equal(skill.count, 1);
+  assert.match(skill.basis, /not truth, mastery, correctness, or approval/i);
+  assert.equal(record.xp, 100);
+  assert.equal(record.skills.find(item => item.id === 'maker').count, 1);
+});
+
+test('Questkeeper skill requires all four uniquely matched Witness guide discoveries', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    id: 'discovery-' + index,
+    actor: witness,
+    locationId,
+    at: new Date(Date.parse(t1) + index * 1000).toISOString()
+  }));
+  const events = discoveries.map((discovery, index) => ({
+    id: 'event-' + index,
+    type: 'discover',
+    actor: witness,
+    locationId: discovery.locationId,
+    at: discovery.at
+  }));
+  const world = { xp: 0, creations: [], discoveries, events };
+  const record = projectCharacter(world, witness);
+
+  assert.equal(record.skills.find(item => item.id === 'explorer').count, 4);
+  assert.equal(record.skills.find(item => item.id === 'questkeeper').count, 1);
+  assert.equal(record.xp, 0);
+});
+
+test('ambiguous discovery history does not count as a completed Questkeeper objective', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    id: 'discovery-' + index,
+    actor: witness,
+    locationId,
+    at: new Date(Date.parse(t1) + index * 1000).toISOString()
+  }));
+  const events = discoveries.map((discovery, index) => ({
+    id: 'event-' + index,
+    type: 'discover',
+    actor: witness,
+    locationId: discovery.locationId,
+    at: discovery.at
+  }));
+  events.push({ ...events[0] });
+  const record = projectCharacter({ xp: 0, creations: [], discoveries, events }, witness);
+
+  assert.equal(record.skills.find(item => item.id === 'questkeeper').count, 0);
+});
