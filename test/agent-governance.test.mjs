@@ -102,3 +102,18 @@ test('preflight rejects nested instruction files reached through an escaping sym
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('preflight rejects a target path whose existing parent escapes through a symlink', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-target-outside-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    await symlink(outside, join(root, 'scripts/external'), 'dir');
+    const result = await runPreflight({ root, paths: ['scripts/external/new-file.mjs'], checkpoint: 'CHECKPOINT.md' });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.reason.includes('target path escapes repository root through a symlink')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
