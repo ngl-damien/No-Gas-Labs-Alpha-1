@@ -17,10 +17,9 @@ test('branch cleanup is manual-only and blank confirmation is preview-only', () 
   assert.match(trigger, /Leave blank for a read-only preview/);
 });
 
-test('the default preview job has read-only repository permissions and never deletes refs', () => {
-  assert.match(workflow, /^permissions:\n  contents: write\n  pull-requests: read/m);
-  assert.doesNotMatch(preview, /deleteRef/);
-  assert.doesNotMatch(preview, /deleteRef/);
+test('the preview script has no Git-ref mutation calls and the existing token scope is preserved', () => {
+  assert.match(workflow, /^permissions:\\n  contents: write\\n  pull-requests: read/m);
+  assert.doesNotMatch(preview, /\\b(deleteRef|createRef|updateRef)\\b/);
   assert.match(preview, /mode: 'preview-only'/);
 });
 
