@@ -1161,3 +1161,44 @@ No merge, release, deployment, branch deletion, permission/credential/key operat
 - EvidenceOS PR #1 final head eea29797c80bab41428476ca7ba9f519b43b742e completed hosted run [41125011030](https://github.com/ngl-damien/evidenceos/actions/runs/41125011030): **success**. Exact log shows Node 22.23.4 test runner **12 passed, 0 failed**, including the new test rejecting a recursive Git tree response with no explicit truncation/completeness flag. All five JavaScript entry-point syntax checks passed.
 - Alpha 1 PR #227 was rechecked at head 8370920d45accb9209ca6e6da3d2605ed2d22f9e. Its Verify, Genesis, and Browser Acceptance runs remain successful; browser job completed the 13-journey exercise and preserved artifact 13010180880. The integrated character-sheet source imports getLocationAction and contains no duplicate GUIDE_LOCATIONS set, confirming that the #226 branch edit is superseded rather than needed in #227.
 - Checkpoint update commit d46be95c6e72328ee634490c9e25cbda388ffe49 triggered Verify [41125220403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220403), Genesis [41125220238](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220238), and Browser Acceptance [41125220197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220197). These were queued at the final status read; do not count them as passed until rechecked.
+
+
+## Run 13 — Repository Stutter-Step handoff (2026-10-30 22:53 UTC)
+
+### Rehydration and procedural note
+- Re-read Alpha 1 root `AGENTS.md` and the complete canonical shared protocol sequentially before making any code changes. The initial baseline request had been launched in parallel with those reads; after noticing the ordering violation, the instructions were reread in the required order and the baseline was restarted. No code write occurred before that sequential reread.
+- Worker B's latest durable result inspected: PR #229, exact head `ec826bc45bcdc8679c2e921b4e105655334cbd1a`; Verify [41138228008], Genesis [41138228018], Browser Acceptance [41138228014] all succeeded. The MMORPG G0–G9 ledger still starts NOT ASSESSED; this PR is an operating contract, not evidence the gates are complete.
+- Alpha 1 main: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; fresh inventory: **57 open PRs, 2 open issues (#17 and #22), 475 branch refs**. Branch API reports `main.protected=false` and required status enforcement `off`; no settings were changed.
+
+### Cycle 1 — correct Command Center's false operational claim
+- Linked repo: `ngl-damien/no-gas-labs-command-center`; continued the existing draft PR #3 rather than opening a duplicate.
+- Source defect: `client/src/pages/Home.tsx` hardcoded “System Status: Operational” even when no API/upstream evidence had been obtained.
+- Added `client/src/lib/capability-health.ts` and tests; the home page now polls `/api/capabilities` every 30 seconds and reports only observed upstream state: checking, operational, degraded, unavailable, or unknown.
+- First exact-head CI on `911617dde833c02251f04fb99fc930eccd933dfd` passed type-check, build, and **12/12 server tests** on Node 20/22. Reinspection of `vitest.config.ts` revealed the new client test file was excluded by `include: ["server/**/*.test.ts"]`; therefore those green checks did **not** verify the new helper tests. This gap was not counted as verified.
+
+### Cycle 2 — distinguish API failure from upstream outages; close the test-discovery gap
+- Updated `client/src/pages/Dashboard.tsx`: failed/non-2xx/malformed `/api/capabilities` responses now produce a Command Center API-status error, rather than claiming no upstreams are reachable. A valid empty list is described as unknown, not unavailable.
+- Hardened capability parsing against sparse arrays; direct summary input is revalidated so skipped array holes cannot produce a false OPERATIONAL result.
+- Expanded Vitest discovery to include `client/src/**/*.test.ts`. Added regressions for malformed responses, mixed/unavailable states, empty data, and sparse arrays.
+- Preserved the intermediate exact-head failure: `e33389bccd55da598e7f3d40ea01a1d9ead8c190` failed TypeScript narrowing in Dashboard lines 129/136. Reordered the render branches; final head below passes.
+- Final PR #3 branch `fix/command-center-dev-api-proxy-20261030-r2`, head `42d0d6c0adb63e1e9cb30a2fbf8b95cd9200e14e`, draft/open, base `main` at `ff5ff98ca7fa9884a156233179d55e2a41dd1b34`.
+- Exact-head hosted checks all succeeded: Core CI [41140952817], CI [41140952836], Security Core [41140952818], agent-governance [41140952813], Repo Classification [41140952840]. Core CI logs confirm Node 20 and Node 22 each passed type-check, **19/19 tests across 2 files**, and production build. CI logs independently confirm 19/19 tests and build on both Node versions.
+- Warnings remain: `/grid-pattern.svg` unresolved at build time, Node `url.parse()` deprecation, and ignored dependency build scripts. No local command execution or live smoke test with Node-Gate and EvidenceOS running is claimed. PR #3 remains draft; no merge/deploy.
+
+### Alpha 1 authority and capability reinspection
+- PR #16 is closed unmerged. PR #18 is merged at merge commit `213f3b5c7771da24b36f9ce6ebdde871d22e4602` and supplies the detached Ed25519 INSTALL-signature prototype. This supersedes PR #16's original self-signing flow; it does not prove Damien's real-world identity or private-key custody.
+- Main `src/authority/decision.js` blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b` still accepts a caller-supplied `verification.valid` object in `authorizationEvent()`. PR #203's P-256 helper head `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932` has exact-head Verify [41101129249], Genesis [41101111073], Browser [41101111004] all successful, but the helper is not imported by live `game/server.mjs`. Issue #17 remains open for real key custody/identity, concurrency, and stale-lock/crash recovery. No real key material was read or changed.
+- PR #205 writer-lease head `54c54a5660ab799476d48871dc9d0fbb5c59f93c` has Verify [41022753029], Genesis [41022753159], Browser [41022753170] successful. Active PRs #213/#214 and integration #222/#223 still own shared server/offline-shell paths; no duplicate server integration was attempted.
+- Worker B's PR #227 exact head `ce87f1b1e04010b6a25e2c22bf1ed75099732a80` has Verify [41138584739], Genesis [41138584573], Browser [41138584567] successful. PR #226 is superseded/merge-conflicted; it was not edited, merged, or closed.
+- Linked EvidenceOS: PR #1 head `eea29797c80bab41428476ca7ba9f519b43b742e`, verification [41125011030] success (12/12 tests); PR #2 head `c19bdf9c230e1d0bd5f54ad5dea050bd33705292`, verification [41084314765] success (23 tests). Both remain open/draft.
+- Linked ngl-mesh: PR #3 head `7847c0fd7eb334d4bed726f12703567bdff9de42`, strict UTF-8 bridge [41110544604] and governance [41110544499] successful; PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d`, operator-key trust [41041610180] and governance [41041610303] successful. Full APK/RAE integration remains blocked by missing recovered source archive, reference APK, and RAE report.
+
+### Next ranked actions
+1. Obtain a real local Command Center + Node-Gate + EvidenceOS smoke test when a runnable local environment is available; separately resolve the `grid-pattern.svg` warning. Do not infer runtime integration from CI.
+2. Reconcile the Ed25519 INSTALL signer and P-256 decision helper with an explicit Founder trust-anchor/key-custody decision, then integrate the canonical verifier into the live server only after #205/#213/#214/#222/#223 shared server work is reconciled. No key material or authority operation is authorized by this checkpoint.
+3. Worker B: audit and populate the G0–G9 MMORPG completion ledger with evidence from current main and selected integration PRs; do not treat #229's proposed contract as completion.
+4. Recover the missing Relay artifacts before attempting full Android/RAE bridge integration.
+5. Bring Alpha 1's observed unprotected-main status to Founder review; no branch-protection or permission changes were made.
+6. Keep Issue #22's pre-registered benchmark separate from any claim that the hybrid-cognition experiment has actually run.
+
+No merge, release, deployment, branch deletion, permission/credential/key change, spending, provider call, or external publication occurred in this run.
