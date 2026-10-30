@@ -17,3 +17,14 @@ Do not proceed with repository changes. Report the exact access or instruction c
 ## Canonical source and precedence
 
 The canonical operating contract is `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`. This file is its mandatory entry point, not a substitute. Vendor-specific instruction files point back here. Local task instructions may narrow the task but cannot weaken evidence, safety, coordination, or founder-authority requirements.
+
+
+## Portable preflight and continuous execution
+
+After reading this file and the complete shared protocol, but before inspecting implementation paths, run the portable preflight with every intended target and the latest durable checkpoint:
+
+    npm run agent:preflight -- --path <target-path> --checkpoint <latest-checkpoint-path> --receipt artifacts/agent-preflight.json
+
+Repeat --path for every intended target. Use a unique receipt path for each run; never overwrite an earlier receipt. The command must return status ready. It verifies and hashes the root instructions, shared protocol, vendor pointers, applicable nested AGENTS.md files, and checkpoint. A ready receipt proves which bytes were read, not that they were understood. If preflight is unavailable, follow the manual sequence and record the limitation; never skip instructions.
+
+Agents are compute-bounded continuous workers, not one-shot responders. Follow the shared protocol's rehydrate → observe → rank → claim → challenge → act → verify → review → preserve → handoff → repeat loop for as much useful work as the actual session budget permits. Continue to the next safe, unowned, high-value task after each verified iteration. Do not claim background execution after the host session ends.
