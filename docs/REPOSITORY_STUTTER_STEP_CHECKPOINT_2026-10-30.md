@@ -933,7 +933,7 @@ Exact final-head hosted verification on `36966fb74d990716e8d1f9b519f41fbcb2ee7d7
 - Verify workflow [41092363644](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363644): **success**. The `Execute tests, package and bounded institutional exercise` step exited successfully; package build exited 0 and the institutional report recorded `passed: true`.
 - Genesis Evidence Invariant [41092363645](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363645): **success**.
 - The Verify run's `world-projection` job [124189464535](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092363644/job/124189464535): **success**.
-- A duplicate run [41092359648](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092359648) was cancelled during replacement; it is not counted as a failure. No Browser Acceptance run was triggered/observed for this authority-only change.
+- A duplicate run [41092359648](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092359648) was cancelled during replacement; it is not counted as a failure. Browser Acceptance run [41092364240](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41092364240) was triggered on the exact PR #203 head and remained in progress at this checkpoint update; no browser result is claimed.
 - No local full-suite run is claimed.
 
 ### Cycle B — challenge assumptions and recheck competing work
