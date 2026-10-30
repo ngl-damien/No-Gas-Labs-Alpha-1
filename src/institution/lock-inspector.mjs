@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { lstat, open, readdir } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
 
 const MAX_LOCK_BYTES = 4096;
@@ -52,6 +52,78 @@ function probePid(pid) {
   }
 }
 
+async function inspectDecisionGuardDirectory(path, before) {
+  if ((before.mode & 0o077) !== 0) {
+    return report('unsafe', path, { reason: 'permissions-too-broad', file: fileSummary(before) });
+  }
+  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+    return report('unsafe', path, { reason: 'owner-mismatch', file: fileSummary(before) });
+  }
+
+  let entries;
+  try {
+    entries = await readdir(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-inspection' });
+    throw error;
+  }
+
+  let after;
+  try {
+    after = await lstat(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-inspection' });
+    throw error;
+  }
+  if (after.isSymbolicLink() || !after.isDirectory()) {
+    return report('unsafe', path, { reason: 'guard-directory-replaced', file: fileSummary(after) });
+  }
+  if (!sameSnapshot(before, after)) {
+    return report('changed', path, { reason: 'guard-directory-changed-during-inspection', file: fileSummary(after) });
+  }
+
+  if (entries.length === 0) {
+    return report('present', path, {
+      format: 'guard-directory',
+      reason: 'owner-receipt-missing',
+      file: fileSummary(after)
+    });
+  }
+  if (entries.length !== 1 || !/^\\.owner-[0-9a-f-]{36}\\.json$/.test(entries[0])) {
+    return report('unsafe', path, {
+      format: 'guard-directory',
+      reason: 'unexpected-guard-contents',
+      file: fileSummary(after)
+    });
+  }
+
+  const owner = await inspectWriterLock(join(path, entries[0]));
+  let final;
+  try {
+    final = await lstat(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-owner-inspection' });
+    throw error;
+  }
+  if (!sameSnapshot(after, final)) {
+    return report('changed', path, { reason: 'guard-directory-changed-during-owner-inspection', file: fileSummary(final) });
+  }
+  if (owner.status !== 'present' || owner.format !== 'owner-metadata' ||
+      owner.owner?.schema !== 'ngl.decisions-lock-guard.v1') {
+    const status = owner.status === 'unsafe' || owner.status === 'changed' ? owner.status : 'malformed';
+    return report(status, path, {
+      format: 'guard-directory',
+      reason: 'owner-receipt-' + (owner.reason || 'invalid'),
+      file: fileSummary(final)
+    });
+  }
+  return report('present', path, {
+    format: 'guard-directory',
+    owner: owner.owner,
+    file: fileSummary(final)
+  });
+}
+
 /**
  * Inspect a transient writer-lock file without modifying it.
  * The result deliberately never authorizes automatic stale-lock recovery.
@@ -67,6 +139,13 @@ export async function inspectWriterLock(filePath) {
   } catch (error) {
     if (error.code === 'ENOENT') return report('missing', path, { reason: 'no-lock-at-inspection-time' });
     throw error;
+  }
+
+  if (before.isDirectory()) {
+    if (basename(path) !== '.decisions.lock.guard') {
+      return report('unsafe', path, { reason: 'not-a-regular-file', file: fileSummary(before) });
+    }
+    return inspectDecisionGuardDirectory(path, before);
   }
 
   const initialUnsafe = unsafeReason(before);
