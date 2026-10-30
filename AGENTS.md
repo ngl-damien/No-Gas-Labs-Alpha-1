@@ -23,7 +23,7 @@ The canonical operating contract is `docs/operations/RALPH_SHARED_HOURLY_SCHEDUL
 
 After reading this file and the complete shared protocol, but before inspecting implementation paths, run the portable preflight with every intended target and the latest durable checkpoint:
 
-    npm run agent:preflight -- --path <target-path> --checkpoint <latest-checkpoint-path> --receipt artifacts/agent-preflight.json
+    npm run agent:preflight -- --path src/example.mjs --checkpoint docs/operations/LATEST_CHECKPOINT.md --receipt artifacts/agent-runs/worker-a-iteration-001.json
 
 Repeat --path for every intended target. Use a unique receipt path for each run; never overwrite an earlier receipt. The command must return status ready. It verifies and hashes the root instructions, shared protocol, vendor pointers, applicable nested AGENTS.md files, and checkpoint. A ready receipt proves which bytes were read, not that they were understood. If preflight is unavailable, follow the manual sequence and record the limitation; never skip instructions.
 
