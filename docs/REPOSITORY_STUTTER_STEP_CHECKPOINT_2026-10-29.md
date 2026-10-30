@@ -226,3 +226,104 @@ The most recent 300 completed Alpha 1 workflow records returned 98 successes, 19
 6. Continue account-wide failure analysis beyond the recent 300-run sample, separating actual failures, cancellations and superseded runs.
 
 Authority remains with Damien Featherstone. This addendum records evidence and work state; it does not authorize merges, closures, deletions, key provisioning, deployment, release publication or spending.
+
+
+## Second execution cycle — failure forensics and donor source review (2026-10-29)
+
+### Alpha 1: genuine failed-run samples and job-log findings
+
+The Actions runs endpoint was paged directly and each returned row was filtered locally by its actual `conclusion`. In the latest five 100-run pages, genuine failures were present; this is a sample, not a complete 9,133-run historical census. The first page had 0 failures, page 2 had 3, page 3 had 5, page 4 had 16, and page 5 had 10. Many are duplicate push/PR attempts for the same branch/commit and should be grouped by underlying SHA before counting defects.
+
+Specific root-cause evidence:
+
+1. **Decision-lock inspector test mismatch — run 40969712941, job 123783207975, head `bb534c1eb454a1bd22d61052854e11e3d21999f1`.** The only failing test was `test/writer-lock-inspector.test.mjs` at line 57. It attempted to read `decisions/.decisions.lock.guard` after `openDecisions()` had returned and failed with ENOENT. Source inspection of `src/institution/decisions.mjs` confirms the guard is deliberately short-lived: acquisition creates the private guard and owner receipt, and the release function closes/unlinks the receipt and removes the guard directory before the lease acquisition returns. The new inspector test incorrectly assumes the transient guard remains present for the lifetime of the decision lease. This is a test-fixture/lifecycle expectation mismatch, not evidence that the production lock guard failed to acquire. The failing branch is not main; do not transplant this test as written. Correct approach if this experiment is resumed: construct an isolated synthetic guard-owner fixture for inspector parsing, and separately test that real guard acquisition/release is transient and serialized.
+
+2. **World activity expectation mismatch — run 40948117466, job 123708734452, head `d19818d4a0ba0872d3fc89ca90dbf0f5a12e3f0e`.** Two assertions in `test/game-world-institution-activity.test.mjs` disagree with the implementation: one receives 2 where the test expects 3; another receives 3 where the test expects 2. The evidence proves a disagreement between the expected counter semantics and current projection output, but not which side is correct. Inspect the exact fixture records, identity deduplication rules, and product requirement before changing code. The branch is not main.
+
+3. **Cross-process decision writer lease — run 40942794829, job 123690261737, head `3ac7fc1897b0b08d981cf1884ac928a6bb66594f`.** The test `independent Node processes contend for one decision-writer lease and preserve the durable ledger` failed after about 7 seconds with `winning worker did not commit`. This is a real failed integration test, but the log alone does not establish whether the winner deadlocked, lost the lease, failed to signal, or exceeded a brittle timeout. Do not merely lengthen the timeout. Inspect the worker fixture, child exit/stderr, guard acquisition/release and lock cleanup at the exact commit.
+
+4. **Founder key/session integration tests — run 40965949761, job 123770639447, head `3e606fa68f099980dc4f78555a5bd7df0421f414`.** Three tests failed: generated Founder key persistence/restart, session churn capacity protection, and rejected cross-origin/malformed writes. The captured workflow log exposed test names but did not preserve assertion details/stack traces in the stage summary. Root cause remains unknown; retrieve the full test-run artifact or reproduce at the exact commit before proposing a patch.
+
+5. **Five game test files failed together — run 40957641052, job 123741943439, head `8f535275c48e8d2d0e7c1950f6e285ba758e0c6e`.** The stage summary names academy, geometry, moonshot, world activity, and moonshot world-object suites but does not retain individual causes. This may be a shared module/import or fixture failure; the exact error is not established from the retrieved summary. Root cause unresolved.
+
+These failures are on experimental feature branches, not evidence that the current mainline is failing. The exact branch/commit and test name must be preserved when diagnosing; do not “fix” main based on an unrelated branch's failing test.
+
+### ngl-mesh: diagnosed workflow defect already corrected on the PR branch
+
+- Open PR #1: [security: pin Relay operator authority and persist replay markers](https://github.com/ngl-damien/ngl-mesh/pull/1), head `839f553f5255f47b3d7fcbd1272efbdeb5ac73af`.
+- Four failed historical attempts (runs 40381579114, 40381570634, 40381566052, 40381563494) all failed in the same workflow step, `Compile isolated trust-pin regression`.
+- Exact log: after the `javac` list, the shell attempted to execute `integration/relay/RevocationAuthorization.java` as a separate command and returned permission denied, exit code 126.
+- Root cause: missing shell line-continuation backslash after `integration/relay/DurableMarkerTest.java` in the earlier workflow revision.
+- Current PR-head workflow source includes the continuation and all six Java source/test paths in the same `javac` invocation. The latest exact-head push and pull-request runs 40381701298 and 40381710261 both succeeded.
+- Status: **corrected on the existing PR branch and independently verified by later exact-head CI success**. No additional write was needed in this cycle. PR #1 remains open and unmerged.
+
+### Donor repository source audit — priority candidates
+
+#### TaskAgile
+
+- Default branch `main`; tree has 202 entries (33 directories, 169 blobs); 4 workflow files.
+- Contains a substantial React/TypeScript/Express application with client/server/shared/modules, assets, RPG/shrine pages, Drizzle configuration and a package lock.
+- Package scripts: dev, build, check, db:push. No test script and no test files were found in the recursive tree.
+- `.github/workflows/ci.yml` runs `npm install`, TypeScript check and Vite/esbuild build; it does not run tests.
+- `.github/workflows/org-ci.yml` calls reusable workflows from `No-Gas-Labs-Official/no-gas-labs-governance`. TaskAgile is public. Confirm reusable-workflow repository visibility/access before relying on these checks; Actions API currently reports zero workflow runs, which is not proof of failure or success.
+- `ip-protection.yml` runs TruffleHog against `main..HEAD` and has an attribution grep. Its commercial-usage step is heuristic text matching, not legal/license validation.
+- The README claims “successfully audited and recreated” and gives 143 files, while the current recursive tree contains 202 entries. Treat those README numbers/status as stale generated claims, not current audit evidence.
+- Candidate for independent retention and selective UI/game component reuse only after source/license/runtime review. Do not import wholesale.
+
+#### Damien-Featherstone
+
+- Private repository; default branch `main`; 85 tree entries (8 directories, 77 blobs); last push 2026-10-29.
+- README and PROVENANCE explicitly describe this as a recovery shell/vessel, not a populated counterpart to an Official repository.
+- Package scripts include dev/build/start/test/lint, with `tests/verifyWorld.ts`; dependencies include React 19, Vite 8, TypeScript 7, Express, ws and Google GenAI.
+- The tracked `.data` directory contains `institutional_keypair.json`, `mesh_state.json`, `receipt_ledger.jsonl`, and `world_state.json`. The keypair file is sensitive by name and must not be fetched, printed, copied, or integrated. Treat its presence in Git history as a security review item; repository privacy does not prove that the private key is uncompromised.
+- Candidate source is currently a recovery vessel. No test/build execution was performed.
+
+#### ngl-mesh
+
+- Public repository; default branch `main`; 16 tree entries (11 files, 5 directories); no default-branch Actions workflow or test directory was present in the inspected tree.
+- Contains a small, distinct Java integration layer and Python verification harness under `integration/relay`, plus forensic/reference documentation.
+- README clearly separates recovered APK/source claims from the new host integration and explicitly states that the Kotlin/Compose/Room mesh runtime is inferred, not implemented in this checkout.
+- The RAE bridge independently checks APK byte length/hash, imports a report as external evidence, preserves the existing CaseStore lineage, and grants no execution authority. The separate Ed25519 authority-transition experiment requires a host-pinned operator key, action/case/evidence binding, nonce and expiry.
+- Harness requires operator-supplied recovered source archive, reference APK, RAE report and an external RAE verified-runtime path. Those inputs are not in the repository; full harness reproducibility is therefore blocked here. The README records 131 recovered checks and 11 bridge checks, but these were not rerun in this audit.
+- Recommendation: retain as an independent integration experiment with provenance; do not claim an Android rebuild, full mesh runtime, APK/source equivalence, or live provider operation. This is a valuable RAE/Relay bridge candidate, not a drop-in NGL Mesh application.
+
+#### ngl001-def4us28
+
+- Private repository; default branch `main`; 30 tree entries; package declares React 19 and Vite 8.0.12.
+- Its Pages deployment workflow installed Node 18, which is outside Vite 8's supported Node engine range (`^20.19.0 || >=22.12.0`). This is a source-backed build-environment incompatibility.
+- Created draft PR #1 to change only the deployment workflow to Node 22: [ci: use supported Node 22 for Pages build](https://github.com/ngl-damien/ngl001-def4us28/pull/1).
+- Commit: `63772fb97377fecf5f272fcb372a5f563f89ac1a`.
+- Hosted Actions currently reports zero runs for this repository/branch. The correction is not yet verified by an actual build and must remain pending until CI executes. Merge remains founder-controlled because the workflow deploys GitHub Pages on main pushes.
+- A separate scheduled `contact-autonomy.yml` runs every five minutes with `contents: write` and commits/pushes state/ledger changes. This is consequential autonomous write automation; inspect its runtime, state transitions, permissions and cost/rate-limit impact before enabling or retaining it. No changes made to it.
+
+#### no-gas-labs-command-center
+
+- Public repository; default branch `main`; 124 tree entries; four workflows; no conventional test files detected in the recursive tree.
+- Uses pnpm 10.4.1 and Vite 7; the inlined Core CI correctly enables Corepack before setup-node's pnpm cache and uses a frozen lockfile. It covers Node 20 and 22.
+- Core CI contains TypeScript check, conditional test script and build. The package has no declared test script.
+- The separate Security Core workflow pins TruffleHog v3.97.4 by commit SHA and runs with read-only contents permission.
+- The legacy `ci.yml` includes a dependency audit step ending in `|| true`, which masks audit failure. This is a fail-open reporting configuration, but no Actions runs were recorded and no current audit result was obtained; assess whether the separate Security Core workflow supersedes it before changing.
+- The README still says documentation is in progress. No workflow runs were returned; do not classify the repository as broken.
+
+#### evidenceos, AI-BI-Intelligence-node-gate, Omnichain_Bridge_wallet
+
+- `evidenceos`: private, 15 tree entries, package declares `start`, `analyze`, `test`, `serve` and Octokit dependency. README describes a two-pass GitHub analysis pipeline recovered from an Official source commit; the repository is explicitly a recovery vessel. No workflows or test directory were found in its tree. Needs inspection of actual `src` files and dependency lock/reproducibility before reuse.
+- `AI-BI-Intelligence-node-gate`: private, 17 tree entries; package declares Node >=18, Express/CORS and a Node test script. README identifies an intelligence router with taxonomy and three endpoints. This is a promising compact independent module; inspect `core`, tests and runtime contracts next.
+- `Omnichain_Bridge_wallet`: private, 14 tree entries; README says Vite/React + tonweb, TownSquare and wallet scripts, but package manifest exposes only a `lite-server` start script and tonweb dependency. This mismatch indicates the root manifest may not describe the full app. Treat as security-sensitive because wallet/key operations are present; inspect scripts and key handling without copying credentials.
+
+### New work created this cycle
+
+- `ngl-damien/ngl001-def4us28` draft PR #1 created; no merge/deploy performed.
+- No Alpha 1 application or workflow code changed.
+- No secrets, keys, permissions, branches, or releases were changed.
+- No paid service or external provider was used.
+
+### Revised next actions
+
+1. Resolve PR #191's hosted checks and update this checkpoint with the final exact-head outcomes.
+2. Inspect the exact source and child-process diagnostics for the unresolved Alpha 1 test clusters; group repeated failures by SHA and distinguish test expectation defects from production regressions.
+3. Inspect the full source and test contracts of AI-BI Intelligence Node-Gate and evidenceos; these are compact, plausible independent capabilities.
+4. Audit the ngl001 contact-autonomy scheduled write workflow before any enablement/merge; the Node 22 PR remains pending hosted verification.
+5. Inspect TaskAgile and Command Center's full UI/server architecture and licenses; do not treat no-run repositories as failed.
+6. Inspect wallet and private-key exposure paths in Damien-Featherstone and Omnichain_Bridge_wallet without reading or reproducing secret contents.
+7. Continue the remaining donor audit and cross-repository reconciliation; no integration decision is yet justified by root listings alone.
