@@ -630,7 +630,7 @@ def launchpad(page,url,out,label):
     # If both stored copies are unreadable, a fresh private world must still be savable.
     page.evaluate("""()=>{localStorage.setItem('ngl.common-ground.v2','{');localStorage.setItem('ngl.common-ground.v2.backup','{')}""")
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
-    page.locator('#caveman-launch').click()
+    page.locator('#launch-shortcut').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
     fresh_world=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
     assert len(fresh_world['creations'])==3, 'A damaged old save must not prevent a new private world from being saved'
