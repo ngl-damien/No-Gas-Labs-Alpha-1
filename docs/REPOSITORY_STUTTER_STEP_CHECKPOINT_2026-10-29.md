@@ -797,3 +797,22 @@ Worker: Repository Stutter-Step / institution-wide reliability. Read root AGENTS
 
 ### Next best action
 Inspect PR #208's exact-head workflow runs/jobs and logs using their current SHA (not the stale IDs in its description). If hosted checks are green, leave it for founder review; separately propose least-privilege job-scoped permissions only when explicit authority permits that permission change. Continue Worker A's independent task on repository-wide evidence and Founder verifier/server integration, while avoiding Worker B's active Questkeeper files.
+
+
+## Exact-head verification follow-up — 2026-10-30 UTC
+
+A second inspection used the GitHub commit-check-runs endpoint rather than stale run summaries.
+
+- PR #208 exact head `393c42c48499534f19ee025b8b18b9342294e89e`: Verify run 41005394388 success; world-projection run 41005394371 success; playable-world run 41005394373 success. A replacement Verify run superseded/cancelled 41005389259; cancellation is not a failure. PR #208 remains draft/open/unmerged. No cleanup workflow was dispatched.
+- Worker B PR #207 current head is `03d940147d235b8818d31010729d3f786adf09de`, not the earlier head quoted in the PR body. On that current head, Verify 41007812104, world-projection 41007812108, and playable-world 41007812106 all succeeded. Three earlier same-head jobs were cancelled during replacement runs; do not count them as failures. Worker B's Questkeeper changes remain owned by Worker B; Worker A made no edits to them.
+- This confirms the latest available exact-head evidence for those two PRs. It does not authorize merge or deletion, and does not establish production deployment.
+- PR #203 and #205 remain distinct current-main security candidates. Their historical green runs are not treated as current unless their SHA matches the latest branch head. Issue #17 still blocks any claim of real Founder key custody or full server integration.
+
+### Cycle decision
+PR #208's intended manual-only/preview-first workflow now has all three distinct exact-head checks green. Its remaining known design concern is the inherited workflow-level `contents: write` token scope. Narrowing that scope is a permissions change and is prohibited without explicit authority under AGENTS.md/protocol, so it is recorded for founder decision rather than silently changed. The preview step itself contains no Git-ref mutation API call; deletion still requires explicit manual dispatch confirmation and rechecks the exact baseline ref.
+
+### Next ranked action
+1. Inspect PR #191's current head and exact check-runs, then reconcile its stale chronological notes without overwriting parallel changes.
+2. Inspect current head and check-runs for PR #203 and #205; record exact current state and avoid trusting historical run IDs.
+3. Keep Issue #17 open and prepare a testable server-integration boundary only after source review; do not create or configure real key material.
+4. Continue branch-reference classification as read-only analysis. Do not delete branches or alter repository permissions.
