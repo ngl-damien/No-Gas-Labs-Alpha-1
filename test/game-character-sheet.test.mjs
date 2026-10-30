@@ -158,6 +158,9 @@ test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => 
   const record = projectCharacter(world, founder);
   assert.deepEqual([record.xp, record.worldXp, record.level], [0, 0, 1]);
   assert.deepEqual(record.inventory, []);
+  assert.deepEqual(record.fieldSatchel, []);
+  assert.equal(record.fieldSatchelTotal, 0);
+  assert.equal(record.fieldSatchelOmittedCount, 0);
   for (const id of ['explorer', 'observer', 'challenger', 'restorer', 'questkeeper']) {
     assert.equal(record.skills.find(skill => skill.id === id).count, 0, id + ' requires retained matching activity');
   }
@@ -916,4 +919,117 @@ test('Questkeeper map rejects repeat discovery events even when a record mirrors
   assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0);
   assert.equal(map.progress, explorer.count,
     'quest and character projections share the same first-discovery evidence rule');
+});
+
+
+test('field satchel projects retained work while preserving failed reports and dissent without granting progress', () => {
+  const source = publishedCreation('satchel-source', [t1]);
+  const publicationEvent = publication('satchel-publication', founder, 'satchel-source', 1, t1);
+  const discoveryEvent = event('satchel-discovery-event', 'discover', founder, t2, { locationId: 'river' });
+  const noteEvent = event('satchel-note-event', 'contribute', founder, t2, {
+    creationId: 'satchel-source', version: 1
+  });
+  const fieldReportEvent = event('satchel-field-report-event', 'report', founder, t3, {
+    creationId: 'satchel-source', version: 1
+  });
+  const proposal = event('satchel-proposal-event', 'moonshot-proposed', witness, t2, {
+    moonshotId: 'satchel-moonshot',
+    title: 'A bounded field question',
+    hypothesis: 'The stated effect appears under the recorded condition.',
+    falsifier: 'A controlled counterexample fails to reproduce the effect.',
+    evidenceNeeded: 'A retained source and independent observation.'
+  });
+  const study = event('satchel-study-event', 'study', founder, t3, {
+    studyId: 'satchel-study',
+    creationId: 'satchel-source',
+    version: 1,
+    question: 'What does the retained artifact establish?',
+    attempt: 'It establishes only the recorded wording.',
+    nextCheck: 'Compare the next retained version.'
+  });
+  const experiment = event('satchel-experiment-event', 'experiment-reported', witness, t3, {
+    reportId: 'satchel-experiment-report',
+    moonshotId: 'satchel-moonshot',
+    procedure: 'Repeat the bounded comparison.',
+    observation: 'The reported effect was not reproduced.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const review = event('satchel-review-event', 'study-reviewed', founder, t4, {
+    reviewId: 'satchel-review',
+    studyId: 'satchel-study',
+    creationId: 'satchel-source',
+    version: 1,
+    response: 'The retained version does not answer the broader question.',
+    reflection: 'A second source is needed before changing the claim.'
+  });
+  const challenge = event('satchel-challenge-event', 'experiment-challenged', founder, t5, {
+    challengeId: 'satchel-challenge',
+    reportId: 'satchel-experiment-report',
+    moonshotId: 'satchel-moonshot',
+    challengeType: 'contradiction',
+    challengeText: 'The failed report does not include the stated control condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = {
+    id: 'satchel-world',
+    revision: 9,
+    xp: 0,
+    creations: [source],
+    events: [publicationEvent, discoveryEvent, noteEvent, fieldReportEvent, proposal, study, experiment, review, challenge],
+    discoveries: [{ id: 'satchel-discovery-record', actor: founder, locationId: 'river', at: t2 }],
+    contributions: [{
+      id: 'satchel-note-record', actor: founder, creationId: 'satchel-source',
+      version: 1, text: 'The page records a claim but does not supply the cited source.', at: t2
+    }],
+    reports: [{
+      id: 'satchel-field-report-record', actor: founder, creationId: 'satchel-source',
+      version: 1, text: 'The cited source is not attached to this version.', at: t3
+    }]
+  };
+  const before = structuredClone(world);
+  const founderRecord = projectCharacter(world, founder);
+  const witnessRecord = projectCharacter(world, witness);
+  const founderKinds = new Set(founderRecord.fieldSatchel.map(item => item.kind));
+  const witnessKinds = new Set(witnessRecord.fieldSatchel.map(item => item.kind));
+
+  for (const kind of ['guide-discovery', 'field-note', 'field-report', 'study-note', 'retrieval-review', 'experiment-challenge']) {
+    assert.equal(founderKinds.has(kind), true, kind);
+  }
+  assert.equal(witnessKinds.has('moonshot-proposal'), true);
+  assert.equal(witnessKinds.has('experiment-report'), true);
+  assert.equal(founderRecord.fieldSatchel.find(item => item.kind === 'experiment-challenge').status,
+    'dissent preserved · not adjudicated');
+  assert.equal(witnessRecord.fieldSatchel.find(item => item.kind === 'experiment-report').status,
+    'self-reported · failed');
+  assert.equal(founderRecord.xp, 100, 'only the retained publication reward contributes XP');
+  assert.equal(witnessRecord.xp, 0, 'research and reported failure do not award XP');
+  assert.deepEqual(world, before, 'opening the satchel is a read-only projection');
+});
+
+test('field satchel keeps its newest 100 objects and points back to retained append order', () => {
+  const events = Array.from({ length: 101 }, (_, index) => event(
+    'satchel-moonshot-event-' + index,
+    'moonshot-proposed',
+    founder,
+    new Date(Date.parse(t1) + index * 1000).toISOString(),
+    {
+      moonshotId: 'satchel-moonshot-' + index,
+      title: 'Bounded proposal ' + index,
+      hypothesis: 'A testable hypothesis.',
+      falsifier: 'A reproducible counterexample.',
+      evidenceNeeded: 'A retained source and independent check.'
+    }
+  ));
+  const world = { id: 'bounded-satchel-world', revision: events.length, creations: [], events };
+  const record = projectCharacter(world, founder);
+
+  assert.equal(record.fieldSatchel.length, 100);
+  assert.equal(record.fieldSatchelTotal, 101);
+  assert.equal(record.fieldSatchelOmittedCount, 1);
+  assert.equal(record.fieldSatchel[0].eventId, events.at(-1).id,
+    'the newest appended event is first even if other timestamps are backdated');
+  assert.equal(record.fieldSatchel.at(-1).eventId, events[1].id);
 });

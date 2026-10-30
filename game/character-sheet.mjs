@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
 import { getLocationAction, getQuestTrail, matchActivityRecords } from './quests.mjs';
+import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -10,6 +11,7 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const MAX_FIELD_SATCHEL_ITEMS = 100;
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -116,9 +118,9 @@ function matchedPublications(world) {
 }
 
 
-function matchedActivityRecords(type, records, allEvents, fields, viewer, predicate = () => true) {
-  return matchActivityRecords(type, records, allEvents, fields, viewer?.id, viewer?.role, predicate)
-    .map(match => match.record);
+function matchedActivityEvidence(type, records, allEvents, fields, viewer, predicate = () => true) {
+  const matches = matchActivityRecords(type, records, allEvents, fields, viewer?.id, viewer?.role, predicate);
+  return { matches, records: matches.map(match => match.record) };
 }
 
 export function projectCharacter(world, viewer) {
@@ -186,18 +188,21 @@ export function projectCharacter(world, viewer) {
       isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
       Date.parse(publication.at) <= Date.parse(event.at);
   };
-  const matchedDiscoveries = matchedActivityRecords(
+  const discoveryEvidence = matchedActivityEvidence(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
     event => event.repeat !== true && getLocationAction(event.locationId, world, viewer) !== null
   );
-  const matchedContributions = matchedActivityRecords(
+  const matchedDiscoveries = discoveryEvidence.records;
+  const contributionEvidence = matchedActivityEvidence(
     'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
   );
-  const matchedReports = matchedActivityRecords(
+  const matchedContributions = contributionEvidence.records;
+  const reportEvidence = matchedActivityEvidence(
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
   );
+  const matchedReports = reportEvidence.records;
   const repairEventsByVersion = new Map();
   for (const event of allEvents) {
     if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
@@ -220,10 +225,11 @@ export function projectCharacter(world, viewer) {
     });
     return prior.length === 1;
   };
-  const matchedMethods = matchedActivityRecords(
+  const methodEvidence = matchedActivityEvidence(
     'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
     event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
   );
+  const matchedMethods = methodEvidence.records;
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
@@ -383,6 +389,160 @@ export function projectCharacter(world, viewer) {
     }
   ].map(skill => Object.freeze(skill));
 
+  // The field satchel is a bounded, read-only index of this character's
+  // retained work. Every entry points back to a unique event (and, where
+  // relevant, a matched activity record or strict Relay folio projection).
+  // It never creates ownership, XP, approval, or canonical world state.
+  const creationsById = new Map();
+  for (const creation of rows(world?.creations)) {
+    if (!creation || typeof creation.id !== 'string' || !creation.id) continue;
+    if (creationsById.has(creation.id)) creationsById.set(creation.id, null);
+    else creationsById.set(creation.id, creation);
+  }
+  const eventById = new Map(allEvents.map(event => [event.id, event]));
+  const satchelEntries = [];
+  const compactText = value => typeof value === 'string'
+    ? Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, 280).join('')
+    : '';
+  const creationTitle = id => {
+    const creation = creationsById.get(id);
+    return typeof creation?.title === 'string' && creation.title.trim()
+      ? creation.title
+      : (typeof id === 'string' && id ? id : 'retained source');
+  };
+  const addFieldItem = (kind, event, record, metadata = {}) => {
+    const position = positionByEvent.get(event);
+    if (!Number.isInteger(position) || !isStrictTimestamp(event?.at)) return;
+    const recordId = typeof record?.id === 'string' && record.id ? record.id : event.id;
+    const receipt = metadata.receipt && typeof metadata.receipt.digest === 'string' &&
+      Number.isSafeInteger(metadata.receipt.size)
+      ? Object.freeze({ digest: metadata.receipt.digest, size: metadata.receipt.size })
+      : null;
+    satchelEntries.push({
+      position,
+      item: Object.freeze({
+        id: kind + ':' + recordId,
+        eventId: event.id,
+        kind,
+        title: typeof metadata.title === 'string' && metadata.title.trim()
+          ? Array.from(metadata.title.replace(/\s+/g, ' ').trim()).slice(0, 120).join('')
+          : kind,
+        at: event.at,
+        status: typeof metadata.status === 'string' ? metadata.status : 'retained',
+        summary: compactText(metadata.summary),
+        sourceCreationId: typeof metadata.sourceCreationId === 'string' ? metadata.sourceCreationId : null,
+        sourceVersion: Number.isSafeInteger(metadata.sourceVersion) && metadata.sourceVersion > 0
+          ? metadata.sourceVersion : null,
+        locationId: typeof metadata.locationId === 'string' ? metadata.locationId : null,
+        receipt
+      })
+    });
+  };
+
+  for (const match of discoveryEvidence.matches) {
+    addFieldItem('guide-discovery', match.event, match.record, {
+      title: 'Guide discovery · ' + match.record.locationId,
+      status: 'visit recorded',
+      summary: 'A recorded visit; it does not verify the guide or its claims.',
+      locationId: match.record.locationId
+    });
+  }
+  for (const match of contributionEvidence.matches) {
+    addFieldItem('field-note', match.event, match.record, {
+      title: 'Field note · ' + creationTitle(match.record.creationId),
+      status: 'retained note',
+      summary: match.record.text,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version
+    });
+  }
+  for (const match of reportEvidence.matches) {
+    addFieldItem('field-report', match.event, match.record, {
+      title: 'Field report · ' + creationTitle(match.record.creationId),
+      status: 'retained report · not adjudicated',
+      summary: match.record.text,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version
+    });
+  }
+  for (const match of methodEvidence.matches) {
+    addFieldItem('checked-repair', match.event, match.record, {
+      title: 'Repair method · ' + (match.record.title || creationTitle(match.record.creationId)),
+      status: 'repair publication matched',
+      summary: match.record.description,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version
+    });
+  }
+  for (const event of studyEvents) {
+    addFieldItem('study-note', event, null, {
+      title: 'Study note · ' + creationTitle(event.creationId),
+      status: 'practice recorded · not mastery',
+      summary: 'Question: ' + event.question + ' · Attempt: ' + event.attempt + ' · Next check: ' + event.nextCheck,
+      sourceCreationId: event.creationId,
+      sourceVersion: event.version
+    });
+  }
+  for (const event of studyReviews) {
+    addFieldItem('retrieval-review', event, null, {
+      title: 'Retrieval review · ' + event.studyId,
+      status: 'practice recorded · not accuracy proof',
+      summary: 'Response: ' + event.response + ' · Reflection: ' + event.reflection,
+      sourceCreationId: event.creationId,
+      sourceVersion: event.version
+    });
+  }
+  for (const event of events) {
+    if (!validMoonshotProposalIds.has(event.id)) continue;
+    addFieldItem('moonshot-proposal', event, null, {
+      title: 'Moonshot · ' + event.title,
+      status: 'proposal only · not execution',
+      summary: 'Hypothesis: ' + event.hypothesis + ' · Falsifier: ' + event.falsifier + ' · Evidence needed: ' + event.evidenceNeeded,
+      sourceCreationId: event.sourceCreationId,
+      sourceVersion: event.sourceVersion
+    });
+  }
+  for (const event of experimentReports) {
+    addFieldItem('experiment-report', event, null, {
+      title: 'Experiment report · ' + event.reportedOutcome,
+      status: 'self-reported · ' + event.reportedOutcome,
+      summary: 'Procedure: ' + event.procedure + ' · Observation: ' + event.observation,
+      sourceCreationId: event.evidenceCreationId,
+      sourceVersion: event.evidenceVersion
+    });
+  }
+  for (const event of experimentChallenges) {
+    addFieldItem('experiment-challenge', event, null, {
+      title: 'Challenge · ' + event.challengeType,
+      status: 'dissent preserved · not adjudicated',
+      summary: event.challengeText,
+      sourceCreationId: event.evidenceCreationId,
+      sourceVersion: event.evidenceVersion
+    });
+  }
+  for (const object of projectCollaboratorResponseWorldObjects(world)) {
+    if (object.actorId !== viewer?.id || object.actorRole !== viewer?.role) continue;
+    const event = eventById.get(object.eventId);
+    if (!event) continue;
+    const rejected = object.validationStatus === 'rejected';
+    addFieldItem('guild-folio', event, object, {
+      title: 'Guild folio · ' + object.name,
+      status: rejected ? 'rejected response preserved' : 'structurally valid · human review only',
+      summary: rejected
+        ? 'Reason: ' + (object.validationReason || 'structural validation rejected the response') + ' · Moonshot ' + object.moonshotId
+        : 'Response preserved for human review · Moonshot ' + object.moonshotId + '. Structural validity is not truth, evidence, execution or approval.'
+    });
+  }
+
+  satchelEntries.sort((left, right) =>
+    right.position - left.position || left.item.id.localeCompare(right.item.id)
+  );
+  const fieldSatchelTotal = satchelEntries.length;
+  const fieldSatchelOmittedCount = Math.max(0, fieldSatchelTotal - MAX_FIELD_SATCHEL_ITEMS);
+  const fieldSatchel = Object.freeze(
+    satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(entry => entry.item)
+  );
+
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string' &&
@@ -424,6 +584,9 @@ export function projectCharacter(world, viewer) {
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
     inventory: Object.freeze(inventory),
+    fieldSatchel,
+    fieldSatchelTotal,
+    fieldSatchelOmittedCount,
     recentActivity: Object.freeze(recentActivity)
   });
 }
