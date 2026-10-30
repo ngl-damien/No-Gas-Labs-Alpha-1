@@ -770,3 +770,30 @@ PR #205 exact head 03a7365ee2a5681f85e37278e2b66c335c64a04e now has all three ho
 4. Review PR #205 against #187/#182 and define a safe, evidence-based offline recovery procedure for interrupted lock guards; do not guess that a PID is dead.
 5. Reconcile PR #204 against #195/#174–#179; preserve the newer archive behavior and avoid duplicate collaborator modules.
 6. Continue account-wide source audit beyond the priority repositories; the 32-repository inventory is not a complete source/behavior audit.
+
+
+## Rehydrated execution — 2026-10-30 UTC
+
+Worker: Repository Stutter-Step / institution-wide reliability. Read root AGENTS.md and the complete shared Ralph-style protocol before acting. Inspected the current main commit, open PR search, Issue #17, checkpoint PR #191 and latest MMORPG worker result in PR #207. The other worker's result was directly available in PR #207; it reports a corrected Questkeeper test expectation on commit 4ce236e279e001d1aa1ffca00a82ada65e5706c6 and explicitly leaves gameplay changes to Worker B.
+
+### Fresh baseline and challenge
+- Alpha 1 default branch main is still `7d8c77367f6acb2d85e35cd9a195797555d1ac7d` (commit endpoint observed).
+- PR #191 branch is `audit/repository-stutter-step-checkpoint-2026-10-29`. The earlier assumed checkpoint ref name was wrong; current checkpoint files were fetched from the actual PR head branch.
+- PR #208 head remains `393c42c48499534f19ee025b8b18b9342294e89e`, draft/open. Its workflow `.github/workflows/branch-cleanup.yml` still declares workflow-level `contents: write`; preview makes no ref-write call, but its token has inherited write permission. The 80 historical manifest refs were previously observed absent in a 453-ref inventory. No dispatch or deletion occurred.
+- PR #207 is Worker B's active Questkeeper skill branch. Do not modify its gameplay files. Its PR body records two initial assertion failures and a corrected commit; the latest result available here does not establish the status of any later replacement runs.
+- PR #203 Founder verifier hardening remains a review-branch change, not mainline integration. Issue #17 still lists real key custody, concurrency and stale-lock recovery acceptance work.
+- Private EvidenceOS PR #1 is still draft/open; its latest supplied PR description says head `7fbb4c83412e83882ea43df92532a346d524e00b`, hosted run 40999488401 succeeded, and 10 tests passed. It is not merged. This worker did not duplicate the active Pass 1/Pass 2 fixes.
+
+### Ranked actions and bounded cycles
+1. Highest immediate safety leverage: retain manual-only, preview-first cleanup and verify the exact-head checks before asking for review. Do not dispatch it or change permission scopes: the protocol forbids permission changes without explicit authority.
+2. Cross-worker collision check: inspected PR #207's recorded result and left its runtime/test files untouched; its next action remains Worker B's verification of exact-head Verify and Browser Acceptance.
+3. Durable continuity: this addendum records current refs and boundaries on the existing checkpoint branch; it does not claim the checkpoint PR is merged or the file is on main.
+
+### Verification and limits
+- Repository metadata confirms main and PR #208 head. The commit combined-status endpoint returned an empty status list for the queried SHA; this is not evidence that CI passed or failed. Earlier run IDs in PR descriptions are historical unless the exact head matches.
+- The workflow source was fetched from PR #208's exact head. Review confirms the preview step has no ref mutation API call, but the token scope remains broader than preview needs.
+- No local shell/test runner is exposed through the connected GitHub operations used in this run. No new CI run was triggered, no workflow was dispatched, and no test pass is claimed for a new commit.
+- No merge, PR closure, branch deletion, release, deployment, secret/key/permission change, spending or external service operation occurred.
+
+### Next best action
+Inspect PR #208's exact-head workflow runs/jobs and logs using their current SHA (not the stale IDs in its description). If hosted checks are green, leave it for founder review; separately propose least-privilege job-scoped permissions only when explicit authority permits that permission change. Continue Worker A's independent task on repository-wide evidence and Founder verifier/server integration, while avoiding Worker B's active Questkeeper files.
