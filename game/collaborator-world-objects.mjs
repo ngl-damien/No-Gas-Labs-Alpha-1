@@ -25,16 +25,27 @@ function ownDataValue(value, key) {
 }
 
 function ownDataRecord(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const keys = Reflect.ownKeys(descriptors);
-    if (keys.some(key => typeof key !== 'string')) return null;
-    const result = {};
+    if (keys.some(key => typeof key !== 'string' ||
+        key === '__proto__' || key === 'prototype' || key === 'constructor')) return null;
+    // A normal-object assignment to "__proto__" invokes Object.prototype's
+    // setter. Use a null-prototype snapshot and explicit data properties so
+    // imported JSON cannot turn untrusted fields into inherited event fields.
+    const result = Object.create(null);
     for (const key of keys) {
       const descriptor = descriptors[key];
       if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return null;
-      result[key] = descriptor.value;
+      Object.defineProperty(result, key, {
+        value: descriptor.value,
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
     }
     return result;
   } catch {
@@ -44,7 +55,7 @@ function ownDataRecord(value) {
 
 function ownDataArray(value, maximum) {
   try {
-    if (!Array.isArray(value)) return null;
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const lengthDescriptor = descriptors.length;
     const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
@@ -54,7 +65,7 @@ function ownDataArray(value, maximum) {
     const result = [];
     for (let index = 0; index < length; index += 1) {
       const descriptor = descriptors[String(index)];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value')) return null;
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return null;
       result.push(descriptor.value);
     }
     return result;
@@ -125,7 +136,10 @@ export function projectCollaboratorResponseWorldObjects(world) {
 
   for (let index = 0; index < events.length; index += 1) {
     const raw = events[index];
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    if (!raw || typeof raw !== 'object') continue;
+    let rawIsArray;
+    try { rawIsArray = Array.isArray(raw); } catch { continue; }
+    if (rawIsArray) continue;
     const record = ownDataRecord(raw);
     const entry = { index, visibleIndex: visibleEventCount, record };
     entries.push(entry);

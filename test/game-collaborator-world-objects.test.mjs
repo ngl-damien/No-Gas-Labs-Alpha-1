@@ -264,3 +264,23 @@ test('accessor-backed response bytes are rejected without executing the getter',
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(event)), []);
   assert.equal(getterCalls, 0);
 });
+
+
+test('prototype-sensitive JSON keys cannot manufacture inherited Relay folios', () => {
+  const forgedEvent = JSON.parse('{"__proto__":' + JSON.stringify(responseEvent()) + '}');
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(forgedEvent)), [],
+    'an own JSON __proto__ field is data, not a source of inherited event identity');
+
+  const forgedActorEvent = responseEvent();
+  forgedActorEvent.actor = JSON.parse('{"__proto__":' + JSON.stringify({ id: 'witness-1', role: 'witness' }) + '}');
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(forgedActorEvent)), [],
+    'actor identity and role must be own data fields, not inherited from JSON');
+});
+
+test('revoked proxy event entries are skipped without crashing Relay folio projection', () => {
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const world = worldWith(null, { revision: 2, events: [proposal, revoked.proxy] });
+  assert.doesNotThrow(() => projectCollaboratorResponseWorldObjects(world));
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(world), []);
+});
