@@ -153,7 +153,7 @@ async function syncDirectory(directory) {
   try { await parent.sync(); } finally { await parent.close(); }
 }
 
-async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory) {
+async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory, renameFileFn = rename) {
   const pending = join(directory, `.decisions-${randomUUID()}.tmp`);
   let handle;
   let renamed = false;
@@ -162,7 +162,7 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirecto
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close(); handle = undefined;
-    await rename(pending, file);
+    await renameFileFn(pending, file);
     renamed = true;
     try {
       await syncDirectoryFn(directory);
@@ -335,8 +335,8 @@ async function unlinkOwnedDecisionLock(path, identity) {
  * this API does not authenticate an object copied from a network payload.
  * APPROVE records a decision only and never invokes an effect or promotes code.
  */
-export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
-  if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, and directory-sync function are required');
+export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = rename } = {}) {
+  if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function' || typeof renameFileFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, directory-sync function, and rename function are required');
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
   await assertNoSymlinkPathComponents(location);
@@ -440,7 +440,7 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
       } catch (error) { fail('DECISIONS_TAMPERED', `Cannot validate saved decision history: ${error.code ?? 'INVALID_JSON'}`); }
     } else {
       const payload = { records, projection: state };
-      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location, syncDirectoryFn);
+      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location, syncDirectoryFn, renameFileFn);
     }
 
     let queue = Promise.resolve();
@@ -482,7 +482,7 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
       const payload = { records: nextRecords, projection: candidate.state };
       const serialized = canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) });
       if (Buffer.byteLength(serialized, 'utf8') > MAX_STORE_BYTES) fail('DECISIONS_CAPACITY', 'Decision envelope exceeds 64 MiB; archive through an explicit continuity procedure');
-      try { await atomicWrite(file, serialized, location, syncDirectoryFn); }
+      try { await atomicWrite(file, serialized, location, syncDirectoryFn, renameFileFn); }
       catch (error) {
         uncertain = true;
         if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') {
