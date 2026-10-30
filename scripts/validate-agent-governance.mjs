@@ -145,9 +145,22 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       try {
         const destination = resolve(rootPath, receiptPath);
         if (!insideRoot(rootPath, destination)) throw new Error('receipt path escapes repository root');
-        await mkdir(dirname(destination), { recursive: true });
-        const realParent = await realpath(dirname(destination));
-        if (!insideRoot(rootPath, realParent)) throw new Error('receipt directory escapes repository root through a symlink');
+        const segments = dirname(receiptPath) === '.' ? [] : dirname(receiptPath).split('/');
+        let realParent = rootPath;
+        for (const segment of segments) {
+          const candidate = resolve(realParent, segment);
+          let resolvedDirectory;
+          try {
+            resolvedDirectory = await realpath(candidate);
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+            await mkdir(candidate);
+            resolvedDirectory = await realpath(candidate);
+          }
+          if (!insideRoot(rootPath, resolvedDirectory)) throw new Error('receipt directory escapes repository root through a symlink');
+          if (!(await stat(resolvedDirectory)).isDirectory()) throw new Error('receipt parent is not a directory');
+          realParent = resolvedDirectory;
+        }
         await writeFile(resolve(realParent, basename(destination)), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
       } catch (error) {
         result.failures.push({ path: receiptPath, reason: 'cannot write receipt (' + (error.code ?? error.message) + ')' });
