@@ -24,6 +24,7 @@ function receipt(value) {
   };
 }
 
+// Packet fixtures retain the complete compact source record, not just its event ID.
 function responseEvent({
   eventId = 'response-event-1',
   responseId = 'response-1',
