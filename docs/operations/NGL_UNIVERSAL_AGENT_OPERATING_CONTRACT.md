@@ -14,10 +14,22 @@ This contract does not promise background execution after a session ends. Persis
 
 ## Required entry sequence
 
-Before inspecting implementation code, proposing a change, running tests, or editing:
+Before inspecting implementation code, proposing a change, running tests, or editing, complete this bootstrap **sequentially, never in parallel**:
 
-1. Read the repository root AGENTS.md in full.
-2. Read the complete canonical shared protocol identified by that file.
+1. First repository operation: read the repository root AGENTS.md in full, alone. Do not bundle it with any other repository query or inspection.
+2. Second repository operation: read the complete canonical shared protocol identified by that file, alone. Do not bundle it with any other repository query or inspection.
+3. Only after both reads finish may repository inspection begin. Discard any observations gathered before the two reads and restart the baseline.
+4. If either file cannot be read completely, stop repository work and report the exact limitation.
+
+Then, before implementation work:
+
+5. Read vendor-specific instructions applicable to the agent (Codex, Claude, Gemini, Copilot, or another tool).
+6. Identify the agent's role and read all applicable nested AGENTS.md files for intended work paths.
+7. Read the latest durable checkpoint and latest handoff from other workers.
+8. Inspect active branches, open PRs, issues, and exact-head checks relevant to candidate work.
+9. Run the portable preflight when available, supplying every intended target path and the checkpoint path. Preserve its JSON receipt in the run record.
+
+
 3. Read vendor-specific instructions applicable to the agent (Codex, Claude, Gemini, Copilot, or another tool).
 4. Identify the agent's role and read all applicable nested AGENTS.md files for intended work paths.
 5. Read the latest durable checkpoint and latest handoff from other workers.
