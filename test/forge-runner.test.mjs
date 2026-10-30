@@ -203,6 +203,42 @@ test('Forge excludes tracked ignored files and common credential configuration n
   for (const path of ['.npmrc', '.envrc', 'ignored.txt']) assert.ok(!paths.includes(path), `${path} must not be copied`);
 });
 
+test('Forge excludes common local credential stores and private-key files from every copy', async t => {
+  const options = await fixture(t);
+  const credentialFiles = {
+    '.git-credentials': 'https://user:token@github.com\\n',
+    '.docker/config.json': '{"auths":{"registry":{"auth":"secret"}}}',
+    '.kube/config': 'users: [private-token]',
+    '.azure/azureProfile.json': '{"accessTokens":["secret"]}',
+    '.gnupg/private-keys-v1.d/key': 'private-key-bytes',
+    '.terraform/terraform.tfstate': '{"secret":"state-token"}',
+    '.terraform.d/credentials.tfrc.json': '{"credentials":{"registry":{"token":"secret"}}}',
+    '.config/gh/hosts.yml': 'github.com: oauth_token: secret',
+    '.config/hub': 'github.com: token secret',
+    '.config/gcloud/application_default_credentials.json': '{"refresh_token":"secret"}',
+    '.config/containers/auth.json': '{"auths":{"registry":{"auth":"secret"}}}',
+    '.config/git/credentials': 'https://user:secret@example.invalid',
+    'id_ecdsa': 'private-key',
+    'id_dsa': 'private-key',
+    'id_ed25519_sk': 'private-key',
+    '.vault-token': 'secret-token',
+    'application_default_credentials.json': '{"refresh_token":"secret"}',
+    'google_application_credentials.json': '{"private_key":"secret"}',
+    'service-account-production.json': '{"private_key":"secret"}',
+    'terraform.tfstate': '{"secret":"state-token"}'
+  };
+  await repositoryTestFiles(options.sourceDir, credentialFiles);
+  const { compareCandidates } = await api();
+  const report = await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
+  const included = new Set(report.source.files.map(file => file.path));
+  const copiedWorkspace = join(options.outDir, report.results[0].workspace);
+  for (const path of Object.keys(credentialFiles)) {
+    assert.ok(!included.has(path), `${path} must be excluded from the source manifest`);
+    await assert.rejects(access(join(copiedWorkspace, path)), `${path} must not reach candidate execution`);
+  }
+  assert.ok(included.has('README.md'), 'ordinary public source remains available');
+});
+
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
