@@ -793,3 +793,71 @@ The latest Worker B PR #220 head `83f2a8e42c5666e3c59160325a6773131b95ac68` now 
 - Browser artifact: [12986714437](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635917/artifacts/12986714437).
 
 This closes the prior pending-browser note for PR #220's exact head. The PR remains draft and unmerged; browser acceptance is hosted evidence for the tested build/journeys, not deployment or external adoption.
+
+
+## Worker A stutter-step handoff — 2026-10-30T15:32:15.235Z
+
+### Rehydration and coordination
+
+- Re-read root `AGENTS.md` and the full `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` before acting.
+- Read this checkpoint at prior branch head `4d648fb4ef3c9e200e4c482326be8afbff645dda`.
+- Worker B's latest result was re-observed on PR #220, head `83f2a8e42c5666e3c59160325a6773131b95ac68`: Verify, world-projection, and Browser Acceptance all passed; browser reported 13/13 journeys. PR #220 remains draft/unmerged and is stacked on PR #219.
+- Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+
+### Ranked work and challenge
+
+1. **Founder decision boundary:** current main still has the caller-supplied `{valid:true}` path in `src/authority/decision.js`. PR #203 is the current-main transplant of the helper work. Older PR #164 is stale/diverged; #180 and #181 are an older stacked seal/audience sequence. PR #203 is the clean current-main proposal; do not merge the older stack or treat any helper as live server integration.
+2. **Guild Hall projection integrity:** `projectGuildHall()` performed inherited-property bracket lookup on the projected quest map, allowing unknown names such as `toString` to bypass the intended not-found check. Its agent roster also read caller-owned capabilities twice and accepted accessor-backed inputs. No inspected active Guild Hall PR owns `src/world/guild-hall.js` or `test/guild-hall.test.js`; Worker B's current PR #217–#220 work is in the game/runtime paths. A local Node reproduction confirmed inherited names resolve on an equivalent `Object.fromEntries()` map while `Object.hasOwn()` is false.
+3. **Receipt integrity:** PR #212 already has a current-head receipt snapshot fix with all three hosted checks successful; no duplicate change was made.
+4. **Independent capability / linked repos:** EvidenceOS PR #2 remains loopback-only with no remote authentication/TLS; do not expose it remotely without a separate reviewed boundary. ngl-mesh still lacks the original source archive, reference APK and RAE report needed for full integration.
+
+### Changes this run
+
+**Alpha 1 PR #203** — branch `security/founder-decision-seal-main-20261030`, final head `04b66687074363c06a125ad48ec5d9407e2cb7bf`, 14 commits ahead / 0 behind main.
+
+- `7623ab2d1e8fc2d16098be8f13b1b8bed54d74b2`: bound P-256 DER signature receipts to the curve's maximum 72 bytes / 96 unpadded base64url characters.
+- `51dba4f51227a86f7cf8bf84ce0397dd2a87d0f7`: regression for oversized signature receipts; valid fixture signature remains accepted.
+- `327e0dbd795bbaea85283100aa4892b4c002493a`: reject inherited `Object.prototype` names as decision identifiers.
+- `04b66687074363c06a125ad48ec5d9407e2cb7bf`: regress all own property names of `Object.prototype` for proposal and quest IDs.
+
+Exact-head hosted checks on `04b66687074363c06a125ad48ec5d9407e2cb7bf`:
+- Verify workflow [41080049246](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049246): success; hosted log confirms `npm run verify` completed, including Node tests, Python inspector tests, package build and bounded institutional exercise.
+- Genesis Evidence Invariant [41080049344](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049344): success.
+- Browser Acceptance [41080049279](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049279): success.
+- No aggregate Node test count was printed in the inspected logs.
+
+**Alpha 1 PR #221** — new draft PR [fix(guild): reject inherited quest lookup results](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/221), branch `fix/guild-hall-own-quest-lookup-20261030`, final head `05465d7b54e852b4c84c0194af7d24a9710e3222`, 4 commits ahead / 0 behind main.
+
+- `d562f0df6da99843710cc3f5152d8564f54f0ec5`: require non-empty string quest ID and own-property lookup.
+- `f013274ceb32d1c7e681832c4d969928e7940d91`: regress inherited names and empty IDs.
+- `a87b5622dd8c9a7b06c1942ad4b9733f2171219a`: validate and snapshot agent roster input.
+- `05465d7b54e852b4c84c0194af7d24a9710e3222`: regress accessor rejection and immutable capability snapshot.
+- Exact-head Verify workflow [41080981732](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981732): success.
+- Exact-head Genesis Evidence Invariant [41080981791](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981791): success.
+- Exact-head Browser Acceptance [41080981716](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981716): in progress at checkpoint time. The previous head's browser run was cancelled when superseded; do not treat that as a pass or failure for the current head.
+
+### Rechecked workstreams
+
+- PR #212 head `5b4c7426b3a1820d927997540221de9dce13b044`: Verify [41067059453](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059453), world-projection [41067059559](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059559), and Playable-world [41067059570](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059570) all success.
+- PR #220 head `83f2a8e42c5666e3c59160325a6773131b95ac68`: Verify [41076635826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635826), world-projection [41076635827](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635827), and Browser Acceptance [41076635917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635917) all success; browser 13/13.
+- EvidenceOS PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b`: hosted test [40999488401](https://github.com/ngl-damien/evidenceos/actions/runs/40999488401) success.
+- EvidenceOS PR #2 head `cd5bf08916211b77331f5c77a37c3bf313de2050`: hosted test [41075713717](https://github.com/ngl-damien/evidenceos/actions/runs/41075713717) success; PR record reports 22/22 tests. Service remains numeric-loopback-only; no remote auth/TLS adapter.
+- ngl-mesh PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d`: operator-key-trust and required-agent-instructions checks success. Full APK/RAE integration remains blocked by missing artifacts.
+
+### Current inventory and blockers
+
+- Fresh Alpha 1 search: 50 open PRs and 2 open issues (#17 and #22).
+- Fresh paginated branch inventory: 467 branch refs; zero marked protected by the branch-list API. This is not a full ruleset audit and does not imply deletion safety.
+- Checkpoint PR #210 branch head at reinspection: `4d648fb4ef3c9e200e4c482326be8afbff645dda`; its Verify, world-projection and Playable-world checks all passed.
+- Issue #17 remains open. PR #16's original self-signing finding is superseded by merged PR #18. PR #203 remains helper-level; live `game/server.mjs` still uses a separate host-key/session mechanism and does not consume the P-256 verifier. No real Founder key material was created, read, provisioned, or rotated.
+- Shared server paths remain occupied by PRs #205/#213/#214/#220. No competing server edit was made.
+
+### Next ranked actions
+
+1. Recheck PR #221's exact-head Browser Acceptance; if it fails, inspect the exact failing journey/log and repair only the attributable defect.
+2. After the #205/#213/#214/#220 server stack settles, design and test one canonical Founder verifier/trust-anchor integration path. Do not choose a signing scheme or handle real keys by inference.
+3. Continue Issue #17 concurrency, stale-lock, and crash-recovery acceptance; distinguish process-kill tests from power-loss/filesystem durability.
+4. Recover the ngl-mesh source archive, reference APK, and RAE report before attempting full integration.
+5. Keep EvidenceOS loopback-only unless a separately reviewed remote-auth/TLS design is authorized.
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. PRs #203, #210, #212, #220 and #221 remain draft/unmerged where observed. Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
