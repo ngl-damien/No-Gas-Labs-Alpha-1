@@ -232,6 +232,21 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
+        for role,name in [
+            ('archivist','Hostile Archivist'),
+            ('adversary','Adversary'),
+            ('synthesizer','Synthesis Clerk'),
+            ('tutor','Polymath Tutor')
+        ]:
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {name}',exact=True).click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(role_card).to_be_visible()
+            expect(role_card).to_be_focused()
+            assert page.locator('#creation-count').text_content()=='0', 'Speaking to a collaborator must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', 'Speaking to a collaborator must not award XP'
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()

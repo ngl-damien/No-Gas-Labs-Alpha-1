@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
+import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -76,6 +77,36 @@ test('the playable map exposes all eight institutional functions as real destina
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
 });
+
+test('Guild Hall NPCs are the exact bounded collaborator roles and stay within the playable map',()=>{
+ assert.deepEqual(GUILD_NPCS.map(npc=>npc.roleId),COLLABORATOR_ROLES.map(role=>role.id));
+ assert.equal(new Set(GUILD_NPCS.map(npc=>npc.id)).size,GUILD_NPCS.length);
+ assert.ok(GUILD_NPCS.every(npc=>npc.id==='guild-npc-'+npc.roleId&&npc.name&&npc.objective));
+ assert.ok(GUILD_NPCS.every(npc=>npc.x>24&&npc.x<1576&&npc.y>28&&npc.y<972));
+});
+
+test('each Guild Hall NPC is a reachable map destination and dispatches only its own role',t=>{
+ const {view,interactions}=makeView(t);
+ for(const npc of GUILD_NPCS){
+  view.setPlayer({x:180,y:640});
+  view.setWorld({creations:[]});
+  view.goTo(npc.id);
+  assert.equal(view.target,npc.id,npc.name+' route should be accepted');
+  for(let step=0;step<500&&!interactions.length;step++)view.update(.045,step*45);
+  assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}],npc.name+' must open its own bounded role');
+  interactions.length=0;
+ }
+});
+
+test('a nearby Guild Hall NPC can be spoken to without recording discovery or progress',t=>{
+ const {view,interactions}=makeView(t);
+ const npc=GUILD_NPCS[0];
+ view.setPlayer({x:npc.x,y:npc.y+10});
+ view.interact(npc.id,'collaborator');
+ assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}]);
+ assert.deepEqual(view.world,{creations:[],discoveries:[]});
+});
+
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
