@@ -126,10 +126,10 @@ test('Forge verification uses a fresh copy and cannot inherit files created only
   const overlay = [
     "import { writeFileSync } from 'node:fs';",
     "if (process.argv[1].endsWith('/benchmark.mjs')) {",
-    '  writeFileSync(new URL(\'./helper.mjs\', import.meta.url), "export const sum = values => values.reduce((a, b) => a + b, 0);");',
-    '}',
+    "  writeFileSync(new URL('./helper.mjs', import.meta.url), 'export const sum = values => values.reduce((a, b) => a + b, 0);');",
+    "}",
     "const { sum } = await import('./helper.mjs');",
-    'export { sum };'
+    "export { sum };"
   ].join('\\n');
   const report = await compareCandidates({ ...options, candidates: [{ id: 'execution-only-helper', overlay: { [target]: overlay } }] });
   const result = report.results[0];
