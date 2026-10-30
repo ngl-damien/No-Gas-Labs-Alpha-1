@@ -5,7 +5,16 @@ export function projectGuildHall({
 }) {
   if (!institution?.projection) throw new Error("institution projection required");
   const eventList = validatedEventList(events, "Guild Hall event");
-  const quest = institution.projection.quests?.[quest_id];
+  if (typeof quest_id !== "string" || quest_id.length === 0) {
+    throw new Error("quest_id required");
+  }
+  const projectedQuests = institution.projection.quests;
+  // Projection maps are ordinary objects. Bracket lookup alone can return an
+  // inherited Object.prototype member for an unknown quest ID (for example,
+  // "toString"), incorrectly passing the not-found check.
+  const quest = projectedQuests && Object.hasOwn(projectedQuests, quest_id)
+    ? projectedQuests[quest_id]
+    : undefined;
   if (!quest) throw new Error("quest not projected");
 
   const proposals = eventList.filter(event =>
