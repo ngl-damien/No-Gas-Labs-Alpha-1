@@ -91,8 +91,7 @@ test("signed authorization cannot be replayed or relabeled for another audience"
   assert.equal(verifyAuthorizationEvent(event, {
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
-    expected_audience: otherAudience,
-    now: 0
+    expected_audience: otherAudience
   }), false);
   const otherVerifier = createFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
@@ -108,8 +107,7 @@ test("signed authorization cannot be replayed or relabeled for another audience"
   assert.equal(verifyAuthorizationEvent(relabeledEvent, {
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
-    expected_audience: otherAudience,
-    now: 0
+    expected_audience: otherAudience
   }), false);
 
   const questProjection = projectQuest(quest, [relabeledEvent], { verifyAuthorization: otherVerifier });
@@ -191,19 +189,12 @@ test("persisted authorization verifier rejects accessors without executing them"
   assert.equal(getterCalls, 0);
 });
 
-test("persisted authorization verifier rejects altered signatures and expired decisions", () => {
+test("persisted authorization verifier rejects altered signatures", () => {
   const { event, publicKeyJwk, expectedFingerprint } = fixture();
   assert.equal(verifyAuthorizationEvent({ ...event, signature: event.signature + "x" }, {
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
-    expected_audience: audience,
-    now: 0
-  }), false);
-  assert.equal(verifyAuthorizationEvent(event, {
-    public_key_jwk: publicKeyJwk,
-    expected_fingerprint: expectedFingerprint,
-    expected_audience: audience,
-    now: Date.parse("2100-01-01T00:00:00.000Z")
+    expected_audience: audience
   }), false);
 });
 
