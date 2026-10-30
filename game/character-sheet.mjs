@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
-import { getQuestTrail } from './quests.mjs';
+import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -84,7 +84,7 @@ function matchedPublications(world) {
 }
 
 // Keep this set aligned with the four guide locations used by the world model and quest trail.
-const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+// Reuse the quest module's canonical guide-location registry so the character sheet cannot drift.
 
 // Join denormalized activity rows to exactly one retained event. The same
 // fingerprint and ambiguity rule is used by getQuestTrail: duplicate rows or
@@ -196,7 +196,7 @@ export function projectCharacter(world, viewer) {
   };
   const matchedDiscoveries = matchedActivityRecords(
     'discover', world?.discoveries, allEvents, ['locationId'], viewer,
-    event => GUIDE_LOCATIONS.has(event.locationId)
+    event => getLocationAction(event.locationId, { creations: [] }, viewer) !== null
   );
   const matchedContributions = matchedActivityRecords(
     'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,
