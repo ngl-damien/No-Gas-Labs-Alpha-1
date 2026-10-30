@@ -320,10 +320,13 @@ export function makeDecisionPayload(input) {
 }
 
 export function verifyFounderDecision(input) {
-  const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint", "expected_audience"], ["now"]);
+  // Every exported verification boundary uses this process wall clock. Test
+  // callers must not be able to make an expired decision appear current by
+  // supplying an artificial `now` value.
+  const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) return rejected("VERIFICATION_INPUT_INVALID");
   const { signed, payload, public_key_jwk, expected_fingerprint, expected_audience } = args;
-  const now = args.now === undefined ? Date.now() : args.now;
+  const now = Date.now();
   const decision = snapshotDecisionPayload(payload);
   if (!decision || !isDecisionPayload(decision)) return rejected("DECISION_PAYLOAD_INVALID");
   if (!isIdentifier(expected_audience) || decision.audience !== expected_audience) return rejected("AUDIENCE_MISMATCH");
@@ -414,9 +417,8 @@ export function authorizationEvent(input) {
 }
 
 export function verifyAuthorizationEvent(event, options = {}) {
-  // Persisted-event verification always uses this process's wall clock. Do not
-  // accept caller-controlled time at the host trust boundary; deterministic
-  // clock injection remains available only on the lower-level decision verifier.
+  // Persisted-event verification also uses this process's wall clock; no
+  // exported verifier accepts caller-controlled time.
   const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) return false;
   const { public_key_jwk, expected_fingerprint, expected_audience } = args;
@@ -446,7 +448,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
     key_fingerprint: raw.key_fingerprint,
     signature: raw.signature
   };
-  return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, expected_audience, now }).valid === true;
+  return verifyFounderDecision({ signed, payload, public_key_jwk, expected_fingerprint, expected_audience }).valid === true;
 }
 
 export function createFounderAuthorizationVerifier(options = {}) {
