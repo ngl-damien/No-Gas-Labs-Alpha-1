@@ -89,7 +89,7 @@ async function inspectDecisionGuardDirectory(path, before) {
       file: fileSummary(after)
     });
   }
-  if (entries.length !== 1 || !/^\\.owner-[0-9a-f-]{36}\\.json$/.test(entries[0])) {
+  if (entries.length !== 1 || !/^\.owner-[0-9a-f-]{36}\.json$/.test(entries[0])) {
     return report('unsafe', path, {
       format: 'guard-directory',
       reason: 'unexpected-guard-contents',
