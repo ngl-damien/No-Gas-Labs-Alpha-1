@@ -74,6 +74,7 @@ def basic(page,url,out,label):
     expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))
     character.click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+    expect(page.locator('#sheet')).to_contain_text('Questkeeper')
     expect(page.locator('#sheet')).to_contain_text('Level 1')
     close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
@@ -193,6 +194,7 @@ def phone_toolbar_layout(browser,url,width):
         character=page.locator('#character-button')
         character.click()
         expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(page.locator('#sheet')).to_contain_text('Questkeeper')
         close_sheet(page)
         return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44}
     finally:
@@ -662,6 +664,25 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet')).not_to_contain_text('No operational review policy is activated')
         b.unroute('**/api/**',fail_institution_reads)
         close_sheet(b)
+
+        # A 200 response is not necessarily a usable world snapshot. An object
+        # with missing schema/collections must not be shown as a fresh empty world.
+        def return_malformed_world(route):
+            path=route.request.url.split('?',1)[0]
+            if route.request.method=='GET' and path.endswith('/api/state'):
+                route.fulfill(status=200,content_type='application/json',body=json.dumps({'world':{}}))
+            else:
+                route.continue_()
+        b.route('**/api/**',return_malformed_world)
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The institution at work.')
+        expect(b.locator('#sheet')).to_contain_text('last snapshot received by this session')
+        expect(b.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+        expect(b.locator('#sheet')).not_to_contain_text('No world snapshot is available')
+        b.unroute('**/api/**',return_malformed_world)
+        close_sheet(b)
+
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
