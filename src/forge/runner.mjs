@@ -20,6 +20,36 @@ function exactKeys(value, keys, label) {
   if (!isRecord(value)) throw new TypeError(`${label} must be an object`);
   for (const key of Object.keys(value)) if (!keys.includes(key)) throw new Error(`Unknown ${label} field: ${key}`);
 }
+function dataRecord(value, keys, label) {
+  if (!isRecord(value)) throw new TypeError(`${label} must be an object`);
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); }
+  catch { throw new Error(`${label} must expose ordinary data properties`); }
+  const copy = Object.create(null);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== 'string' || !keys.includes(key)) throw new Error(`Unknown ${label} field: ${String(key)}`);
+    const descriptor = descriptors[key];
+    if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw new Error(`${label} fields must be enumerable data properties`);
+    copy[key] = descriptor.value;
+  }
+  return copy;
+}
+function denseDataArray(value, maximum, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); }
+  catch { throw new Error(`${label} must be a dense data array`); }
+  const length = descriptors.length?.value;
+  const keys = Reflect.ownKeys(descriptors);
+  if (!Number.isSafeInteger(length) || length < 1 || length > maximum || keys.length !== length + 1) throw new Error(`${label} must be a dense data array of 1..${maximum} items`);
+  const items = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw new Error(`${label} entries must be own data properties`);
+    items.push(descriptor.value);
+  }
+  return items;
+}
 function safePath(path) {
   return typeof path === 'string' && path.length > 0 && !path.includes('\\') && !path.includes('\0') && !path.startsWith('/') && path.split('/').every(part => part && part !== '.' && part !== '..');
 }
@@ -33,30 +63,30 @@ export function forgeCapabilities() {
   return { execution: 'trusted-local-child-processes', workloads: listWorkloads(), limits: { defaults: DEFAULTS, maxCandidates: 8, maxConcurrency: 4, maxTimeoutMs: 10000, maxOutputBytes: 1048576, source: SOURCE_LIMITS }, repositoryLimits: { defaults: REPOSITORY_DEFAULTS, maxConcurrency: 4, maxTimeoutMs: 120000, maxOutputBytes: 1048576 }, automaticIntegration: false, osSandbox: false };
 }
 function validate(options) {
-  exactKeys(options, ['sourceDir', 'outDir', 'workloadId', 'candidates', 'limits'], 'request');
-  if (typeof options.sourceDir !== 'string' || typeof options.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
-  const workloadId = options.workloadId ?? 'vector-sum-v1';
+  const request = dataRecord(options, ['sourceDir', 'outDir', 'workloadId', 'candidates', 'limits'], 'request');
+  if (typeof request.sourceDir !== 'string' || typeof request.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
+  const workloadId = request.workloadId ?? 'vector-sum-v1';
   if (workloadId !== 'vector-sum-v1') throw new Error(`Workload is not allowlisted: ${workloadId}`);
-  exactKeys(options.limits ?? {}, Object.keys(DEFAULTS), 'limits');
-  const limits = { ...DEFAULTS, ...options.limits };
+  const limitInput = dataRecord(request.limits ?? {}, Object.keys(DEFAULTS), 'limits');
+  const limits = { ...DEFAULTS, ...limitInput };
   for (const [key, min, max] of [['timeoutMs', 50, 10000], ['maxOutputBytes', 1024, 1048576], ['concurrency', 1, 4]]) {
     if (!Number.isSafeInteger(limits[key]) || limits[key] < min || limits[key] > max) throw new Error(`Invalid ${key} limit: ${min}..${max}`);
   }
-  if (!Array.isArray(options.candidates) || !options.candidates.length || options.candidates.length > 8) throw new Error('Candidate limit is 1..8');
+  const candidateInputs = denseDataArray(request.candidates, 8, 'Candidate list');
   const ids = new Set();
-  const candidates = options.candidates.map(candidate => {
-    exactKeys(candidate, ['id', 'overlay'], 'candidate');
-    if (typeof candidate.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/.test(candidate.id) || ids.has(candidate.id)) throw new Error('Candidate IDs must be unique, short path-safe identifiers');
-    ids.add(candidate.id);
-    exactKeys(candidate.overlay ?? {}, [TARGET], 'overlay allowlist');
+  const candidates = candidateInputs.map(candidate => {
+    const candidateInput = dataRecord(candidate, ['id', 'overlay'], 'candidate');
+    if (typeof candidateInput.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/.test(candidateInput.id) || ids.has(candidateInput.id)) throw new Error('Candidate IDs must be unique, short path-safe identifiers');
+    ids.add(candidateInput.id);
+    const overlayInput = dataRecord(candidateInput.overlay ?? {}, [TARGET], 'overlay allowlist');
     const overlay = {};
-    for (const path of Object.keys(candidate.overlay ?? {}).sort()) {
+    for (const path of Object.keys(overlayInput).sort()) {
       if (!safePath(path) || path !== TARGET) throw new Error(`Overlay path is not allowlisted: ${path}`);
-      const source = candidate.overlay[path];
-      if (typeof source !== 'string' || Buffer.byteLength(source) > 65536) throw new Error('Overlay must contain at most 65536 UTF8 source bytes');
-      overlay[path] = source;
+      const candidateSource = overlayInput[path];
+      if (typeof candidateSource !== 'string' || Buffer.byteLength(candidateSource) > 65536) throw new Error('Overlay must contain at most 65536 UTF8 source bytes');
+      overlay[path] = candidateSource;
     }
-    return { id: candidate.id, overlay };
+    return { id: candidateInput.id, overlay };
   });
   return { workloadId, candidates, limits };
 }
