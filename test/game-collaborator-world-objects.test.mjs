@@ -247,7 +247,7 @@ test('the world map dispatches a folio interaction to the exact retained respons
   assert.deepEqual(interactions, [{
     type: 'collaborator-response',
     responseId: 'response-1',
-    roleId: 'adversary',
+    roleId: 'tutor',
     moonshotId: 'moonshot-1',
     validationStatus: 'valid-for-human-review'
   }]);
@@ -279,7 +279,7 @@ test('malformed packet scope, receipt size, chronology, and duplicate identities
 
 test('duplicate packet keys are not projected as a trustworthy source-bound folio', () => {
   const event = responseEvent();
-  event.packetJson = event.packetJson.replace('"role":"adversary"', '"role":"adversary","role":"tutor"');
+  event.packetJson = event.packetJson.replace('"role":"tutor"', '"role":"tutor","role":"adversary"');
   event.packetReceipt = receipt(event.packetJson);
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(event)), []);
 });
