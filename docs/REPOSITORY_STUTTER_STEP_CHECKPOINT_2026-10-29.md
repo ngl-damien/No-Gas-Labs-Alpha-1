@@ -729,3 +729,44 @@ PR #205 exact head 03a7365ee2a5681f85e37278e2b66c335c64a04e now has all three ho
 - ngl-mesh PR #1 current-main merge head `d10fe10fee8924d085afbd513f162dae8e4fb734`: Relay operator-key trust PR run 40996304779 and agent-governance PR run 40996304479 passed; push runs 40996297423 and 40996297446 passed. Java compile and all three isolated trust/marker/revocation regression steps passed. This remains a draft local prototype, not proof of Android-device integration or real operator identity/key custody.
 - PR #191 checkpoint head `c75e9d6a3bfca36c0c2c60e6ca502f501004a4aa` is 31 ahead / 0 behind current main and changes only the two checkpoint documents. It remains draft/open/unmerged.
 - No Alpha 1 merge, PR closure, branch deletion, release, deployment, secret/permission change, Founder key operation, or spending occurred.
+
+
+### Stutter-step execution — 2026-10-30 UTC (run 4)
+
+#### Rehydration and scope
+- Read root `AGENTS.md` and the complete shared operating protocol. Inspected the latest Build NGL MMORPG automation result before choosing work; that worker had already advanced PR #205 and verified it. No duplicate writer-lock implementation was started.
+- Current Alpha 1 main: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. GitHub branch metadata reports `protected: false` and no required status checks for main. No settings were changed.
+- Open Alpha 1 pull-request search returned 33 results. This run inspected the relevant security, CI, checkpoint, storage, Guild Hall and portable-save PRs; it did not complete a source audit of all 32 connected repositories.
+
+#### Cycle A — Founder authorization boundary
+- Re-read Issue #17 and corrected the historical numbering from live source: PR #8 is the earlier signed-decision prototype; PR #16 is Experiment 001; PR #18 rebased that experiment and merged. The original PR #16 self-signing finding is explicitly marked superseded in Issue #17.
+- Current main `src/authority/decision.js` blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b` still allows `authorizationEvent()` to trust a caller-supplied `{ valid: true }` object. The current-main transplant PR #203 seals verifier outputs, snapshots immutable payload/receipt data, binds an audience, recomputes the public-key fingerprint, and has hostile-input/projection tests.
+- Added a separate regression test on PR #203 branch `security/founder-decision-seal-main-20261030`: commit `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901`. It proves that, with no host authorization verifier configured, the legacy `authorizeQuest()` claim does not authorize the quest or mint XP/inventory/world state; the rejected claim remains in history.
+- Exact-head Verify run 40999308626 **success**; Genesis Evidence Invariant 40999308640 **success**; Browser Acceptance 40999308607 **in progress** at last inspection. PR #203 remains draft/open/unmerged.
+- No real Founder key was created, enrolled, read or rotated. Signed-verifier integration into the live game-server gate remains unresolved. Do not wire it into consequential server transitions until actual key custody, trust configuration, and the authorization/execution contract are established.
+
+#### Cycle B — validation workflow regression guard
+- PR #192 branch `ci/pr-only-validation-20261029` already restricted full push validation to main while retaining pull-request validation. Added a static regression test to assert those triggers remain intact.
+- The first test implementation was malformed: intermediate commit `ff747494857a59952a6730ed755acbe9051a55d6` produced Verify failure run 40999312601 (`missing top-level on section`); Genesis run 40999312584 passed; Browser run 40999312617 was cancelled after the correction was pushed.
+- Replaced the over-escaped regex parsing with line-based YAML-section inspection in commit `88f43f73c03166184026a3014bb6ee98018c9a22`. On the corrected exact head, Verify 40999346395 **success**, Genesis 40999346447 **success**, Browser Acceptance 40999346400 **in progress** at last inspection. PR #192 remains draft/open/unmerged.
+- The earlier CI workflow change now has a regression test, but its branch is still review work and is not on main.
+
+#### Cycle C — EvidenceOS cross-repository scoring defect
+- Freshly inspected private `ngl-damien/evidenceos` main `055d2fc3de8b05b4722f144497b1c7876136a78e` and its open PR #1. In `src/pass2.js`, each per-file signal was assigned the repository-wide `intra_repo_counts[signal.name]` and then summed again for every file. A signal appearing in two files could therefore be counted as four occurrences rather than two, inflating confidence scores.
+- Fixed Pass 2 by aggregating file-level occurrences once per repository before cross-repository aggregation: commit `508a14a6c49438c62a3489ef874d49db267db60f`.
+- Updated `package.json` so the test command runs both suites: commit `975babf4f13b18bb1887e8c0e9170150485c0187`.
+- Added two regression tests for per-file and cross-repository occurrence counts: commit `7fbb4c83412e83882ea43df92532a346d524e00b`.
+- Exact-head EvidenceOS verification run 40999488401 **success**. Node 22.23.4 syntax checks passed; 10 tests passed, 0 failed. Private EvidenceOS PR #1 remains draft/open/unmerged, 14 commits ahead / 0 behind its main.
+
+#### Rechecked competing work and remaining limits
+- Build NGL MMORPG's latest recorded result was inspected: PR #205 writer-lease hardening had all three exact-head checks green and was moved to ready-for-review by that worker. It deliberately fails closed on interrupted guards; automatic stale-lock recovery remains unresolved. Do not duplicate PR #205.
+- PR #204 Guild Hall response archive has all three recorded exact-head checks green; its older duplicate PR #195 remains a reconciliation issue. PR #202 portable private-save work and PR #193 evidence-ingest work had all three recorded exact-head checks green on their stated heads. None was merged in this run.
+- Alpha 1 main remained `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, PR closure, branch deletion, release, deployment, secret/permission change, Founder-key operation, or spending occurred.
+
+#### Next ranked actions
+1. Poll Browser Acceptance runs 40999308607 (PR #203) and 40999346400 (PR #192); inspect job logs and correct attributable failures only.
+2. Keep Issue #17 open. Define a real Founder-key custody/enrollment procedure and a narrow server integration acceptance boundary; no key material or trust configuration exists in this run.
+3. Reconcile PR #203 with #164/#180/#181 by exact file ancestry and current-main behavior; do not merge or close automatically.
+4. Review PR #205 against #187/#182 and define a safe, evidence-based offline recovery procedure for interrupted lock guards; do not guess that a PID is dead.
+5. Reconcile PR #204 against #195/#174–#179; preserve the newer archive behavior and avoid duplicate collaborator modules.
+6. Continue account-wide source audit beyond the priority repositories; the 32-repository inventory is not a complete source/behavior audit.
