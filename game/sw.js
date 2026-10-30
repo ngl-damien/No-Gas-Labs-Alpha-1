@@ -37,11 +37,7 @@ self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(CORE_SHELL);
-    // Artwork is useful but must not prevent a text-and-code shell from
-    // installing when a slow or partial connection drops an optional image.
-    await Promise.all(OPTIONAL_SHELL.map(async path => {
-      try { await cache.add(path); } catch { /* optional offline artwork */ }
-    }));
+    // Optional artwork is cached on first successful request, not during install.
     await self.skipWaiting();
   })());
 });
@@ -70,7 +66,7 @@ self.addEventListener('fetch', event => {
         const response = await fetch(request);
         if (response.ok) {
           const cache = await caches.open(CACHE_NAME);
-          await cache.put(url.pathname, response.clone());
+          await cache.put(request, response.clone());
         }
         return response;
       } catch {
