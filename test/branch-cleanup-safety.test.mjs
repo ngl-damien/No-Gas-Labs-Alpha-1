@@ -18,8 +18,8 @@ test('branch cleanup is manual-only and blank confirmation is preview-only', () 
 });
 
 test('the preview script has no Git-ref mutation calls and the existing token scope is preserved', () => {
-  assert.match(workflow, /^permissions:\\n  contents: write\\n  pull-requests: read/m);
-  assert.doesNotMatch(preview, /\\b(deleteRef|createRef|updateRef)\\b/);
+  assert.match(workflow, /^permissions:\n  contents: write\n  pull-requests: read/m);
+  assert.doesNotMatch(preview, /\b(deleteRef|createRef|updateRef)\b/);
   assert.match(preview, /mode: 'preview-only'/);
 });
 
