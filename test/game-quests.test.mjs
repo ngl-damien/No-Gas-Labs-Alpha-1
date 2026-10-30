@@ -715,7 +715,11 @@ function appendCollaboratorArchive(world, options) {
 }
 
 function refreshPacketReceipt(event) {
-  refreshPacketReceipt(event);
+  event.packetReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(event.packetJson, 'utf8').digest('hex'),
+    size: new TextEncoder().encode(event.packetJson).length
+  };
 }
 
 test('Guild Hall role-coverage quest counts only source-bound folios and routes to the next NPC', () => {
@@ -787,11 +791,7 @@ test('Guild Hall quest progress and Relay folio navigation share the same strict
   const payload = JSON.parse(event.packetJson);
   payload.sourceSnapshot.worldId = 'another-world';
   event.packetJson = JSON.stringify(payload);
-  event.packetReceipt = {
-    algorithm: 'sha256',
-    digest: createHash('sha256').update(event.packetJson, 'utf8').digest('hex'),
-    size: new TextEncoder().encode(event.packetJson).length
-  };
+  refreshPacketReceipt(event);
   assert.deepEqual(projectCollaboratorResponseWorldObjects(world), [],
     'the mismatched source snapshot must not become a navigable folio');
   const coverage = getQuestTrail(world, founder)
