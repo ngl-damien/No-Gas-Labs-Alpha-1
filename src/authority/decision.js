@@ -10,12 +10,74 @@ const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabil
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
 const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
 
-function canonical(value) {
-  if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
-  if (value && typeof value === "object") {
-    return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
+const CANONICAL_MAX_DEPTH = 64;
+const CANONICAL_MAX_NODES = 10000;
+const CANONICAL_MAX_BYTES = 1024 * 1024;
+
+function canonical(value, state = { active: new Set(), nodes: 0, bytes: 0 }, depth = 0) {
+  state.nodes += 1;
+  if (depth > CANONICAL_MAX_DEPTH || state.nodes > CANONICAL_MAX_NODES) {
+    throw new TypeError("canonical input exceeds structural limits");
   }
-  return JSON.stringify(value);
+
+  const account = encoded => {
+    state.bytes += Buffer.byteLength(encoded);
+    if (state.bytes > CANONICAL_MAX_BYTES) throw new TypeError("canonical input exceeds byte limit");
+    return encoded;
+  };
+
+  if (value === null) return account("null");
+  if (typeof value === "string") return account(JSON.stringify(value));
+  if (typeof value === "boolean") return account(value ? "true" : "false");
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("canonical numbers must be finite");
+    return account(JSON.stringify(value));
+  }
+  if (typeof value !== "object") {
+    throw new TypeError("canonical input must contain only JSON data values");
+  }
+  if (state.active.has(value)) throw new TypeError("canonical input must not contain cycles");
+  state.active.add(value);
+
+  try {
+    if (Array.isArray(value)) {
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      const keys = Reflect.ownKeys(descriptors);
+      const length = descriptors.length?.value;
+      if (!Number.isSafeInteger(length) || length < 0 || length > CANONICAL_MAX_NODES ||
+          keys.length !== length + 1 || !keys.includes("length")) {
+        throw new TypeError("canonical arrays must be dense and contain no extra properties");
+      }
+      const items = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = descriptors[String(index)];
+        if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) {
+          throw new TypeError("canonical arrays must contain own enumerable data elements");
+        }
+        items.push(canonical(descriptor.value, state, depth + 1));
+      }
+      return "[" + items.join(",") + "]";
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError("canonical objects must be plain data objects");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length > CANONICAL_MAX_NODES ||
+        keys.some(key => typeof key !== "string" ||
+          descriptors[key].enumerable !== true ||
+          !Object.hasOwn(descriptors[key], "value"))) {
+      throw new TypeError("canonical objects must contain only own enumerable data properties");
+    }
+    keys.sort();
+    return "{" + keys.map(key =>
+      account(JSON.stringify(key)) + ":" + canonical(descriptors[key].value, state, depth + 1)
+    ).join(",") + "}";
+  } finally {
+    state.active.delete(value);
+  }
 }
 
 export const decisionDigest = payload => createHash("sha256").update(canonical(payload)).digest("hex");
