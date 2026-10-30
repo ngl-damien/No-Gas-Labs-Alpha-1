@@ -8,7 +8,7 @@ const EVENT_FIELDS = [
   "authority", "evidence", "observation", "location_consent"
 ];
 
-function snapshotPlainData(value, fields, { exact = true } = {}) {
+function snapshotPlainData(value, fields, { exact = true, allowExtra = false } = {}) {
   try {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
@@ -20,7 +20,7 @@ function snapshotPlainData(value, fields, { exact = true } = {}) {
     if (exact && (keys.length !== fields.length || fields.some(key => !Object.hasOwn(descriptors, key)))) {
       return null;
     }
-    if (keys.some(key => !fields.includes(key))) return null;
+    if (!allowExtra && keys.some(key => !fields.includes(key))) return null;
 
     const snapshot = Object.create(null);
     for (const key of fields) {
@@ -109,7 +109,7 @@ export function projectLocationEvidence(events, quest_id) {
 
   const projected = [];
   for (const event of events) {
-    const record = snapshotPlainData(event, EVENT_FIELDS, { exact: false });
+    const record = snapshotPlainData(event, EVENT_FIELDS, { exact: false, allowExtra: true });
     if (!record || record.event_type !== "LOCATION_OBSERVATION" ||
         record.quest_id !== quest_id || record.subject !== quest_id ||
         record.admission !== "PROPOSED" || record.authority !== "UNVERIFIED" ||
