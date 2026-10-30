@@ -131,7 +131,7 @@ test('preflight rejects a target path whose existing parent escapes through a sy
 test('preflight supports NGL repositories with a remote protocol link when given a local pinned copy', async () => {
   const root = await fixture();
   try {
-    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read this file and the canonical [shared protocol](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).\n');
+    await writeFile(join(root, 'AGENTS.md'), 'Before any work, read this file and the canonical [shared protocol](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md).\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations.\n');
     const result = await runPreflight({ root, protocol: protocolPath });
     assert.equal(result.status, 'ready');
     assert.equal(result.protocol, protocolPath);
