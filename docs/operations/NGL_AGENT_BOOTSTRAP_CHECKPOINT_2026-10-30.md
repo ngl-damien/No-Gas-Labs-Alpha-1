@@ -2,7 +2,7 @@
 **Recorded:** 2026-10-30 UTC  
 **Repository:** ngl-damien/No-Gas-Labs-Alpha-1  
 **Branch:** ops/universal-agent-loop-bootstrap-20261030  
-**State:** Draft PR open; not merged; no release or deployment.
+**State:** Draft PR #229 open; not merged; no release or deployment.
 
 ## Objective
 
@@ -21,18 +21,21 @@ Establish a provider-agnostic, compute-bounded operating contract so any capable
 
 - Universal operating contract: docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md.
 - Root AGENTS.md and shared RALPH protocol now specify scoped preflight and provider-agnostic compute-bounded repetition.
-- scripts/validate-agent-governance.mjs now provides a fail-closed preflight with SHA-256 fingerprints for root instructions, shared protocol, all four standard vendor pointers, applicable nested AGENTS.md files, and a caller-supplied checkpoint.
-- The preflight rejects unsafe repository-relative paths, target/instruction symlink escapes, missing or invalid vendor pointers, missing checkpoint for scoped work, remote protocol URLs without a locally pinned copy, and receipt overwrites or escaping receipt directories.
-- package.json exposes npm run agent:preflight.
-- test/agent-governance.test.mjs contains 12 focused tests covering successful scope discovery, checkpoint requirement, traversal, missing protocol, vendor pointer failures, receipt persistence/non-overwrite, instruction and target symlink escapes, and pinned remote protocol handling.
+- scripts/validate-agent-governance.mjs provides a fail-closed preflight with SHA-256 fingerprints for root instructions, shared protocol, all four required vendor pointers, applicable nested AGENTS.md files, and a caller-supplied checkpoint.
+- The preflight rejects unsafe repository-relative paths, target/instruction symlink escapes, missing or invalid vendor pointers, missing checkpoint for scoped work, remote protocol URLs without a locally pinned copy, receipt overwrites, and receipt directories that escape through symlinks.
+- package.json exposes npm run agent:preflight for interactive use and agent:preflight:ci for a target-scoped CI run.
+- npm run verify now executes the scoped preflight against the governance contract, protocol, checkpoint, package manifest, implementation, and tests before the existing verification suite.
+- test/agent-governance.test.mjs contains 12 focused tests covering successful scope discovery, checkpoint requirement, traversal, missing protocol, vendor pointer failures, receipt persistence/non-overwrite, instruction and target symlink escapes, pinned remote protocol handling, and receipt-directory symlink protection.
+- A durable checkpoint is present at docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md and is passed into the CI preflight.
 
 ## Current branch and verification
 
-- Branch head at checkpoint creation: 861932caec73aade501aff21999bd14ae046bd15 (21 commits ahead of main, 0 behind).
-- Exact-head Verify run 41129076320: success. Its logs show the preflight ready in root-only mode, Node test command exit 0, Python inspector tests exit 0, package build exit 0, and institutional exercise exit 0 with passed=true.
-- Exact-head Genesis Evidence Invariant run 41129077059: success.
-- Exact-head Browser Acceptance run 41129076160: was still in progress when this checkpoint was recorded; do not infer its result from an earlier head.
-- The hosted Verify invocation so far was root-only. It did not yet run the new preflight against an actual target list and this checkpoint file.
+- Branch head immediately before this checkpoint refresh: a2751d82b677eaf8fb94c0d9135a8c70ca24e7a3 (23 commits ahead of main, 0 behind).
+- At the prior head 861932caec73aade501aff21999bd14ae046bd15, Verify run 41129076320 passed. Logs show root-only preflight status ready, Node test command exit 0, Python inspector tests exit 0, package build exit 0, and institutional exercise exit 0 with passed=true.
+- At that same prior head, Genesis Evidence Invariant run 41129077059 passed.
+- Browser Acceptance run 41129076160 was still in progress at checkpoint refresh; do not infer its result.
+- New exact-head CI runs for a2751d82b677eaf8fb94c0d9135a8c70ca24e7a3 were queued/pending: Verify 41129468695, Browser Acceptance 41129468766, Genesis Evidence Invariant 41129468870.
+- The new Verify run is intended to exercise scoped preflight against this checkpoint and every governance target, not merely root-only mode. Do not call this verified until its exact-head logs confirm the scoped receipt and success.
 - No local test execution is claimed.
 
 ## Cross-repository discovery
@@ -48,8 +51,8 @@ Their main branches already expose agent-governance workflows and root AGENTS.md
 
 ## Outstanding work
 
-1. Wire the preflight into CI with an explicit target-path list and this checkpoint, so CI exercises scoped instructions rather than only root files.
-2. Re-run all exact-head workflows after that change and update this checkpoint with the resulting head and evidence.
+1. Verify the new exact-head CI run, especially that Verify executes scoped preflight and writes its JSON receipt successfully.
+2. Update this checkpoint with exact-head CI evidence after all relevant checks finish.
 3. Reconcile the three existing agent-governance branches; do not overwrite their work.
 4. Roll out the portable preflight and standard vendor pointers to other eligible NGL repositories after reading each repository's instructions and local continuity requirements.
 5. Create and maintain the NGL repository portfolio/work-claim registry. It is not yet implemented.
