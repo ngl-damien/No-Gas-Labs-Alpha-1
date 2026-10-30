@@ -285,7 +285,7 @@ test('serves every first-party module imported by the playable game client', asy
   }
   const worldView = await client.request('/world-view.mjs');
   assert.equal(worldView.response.status, 200);
-  assert.match(worldView.body, /from ['\"]\\.\\/collaborator-world-objects\\.mjs['\"]/, 'world view imports the Relay folio projector');
+  assert.ok(worldView.body.includes("from './collaborator-world-objects.mjs'") || worldView.body.includes('from "./collaborator-world-objects.mjs"'), 'world view imports the Relay folio projector');
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
   for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'collaborator-world-objects', 'strict-json']) {
