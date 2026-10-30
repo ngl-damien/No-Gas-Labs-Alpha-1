@@ -346,6 +346,21 @@ def institutional_locations(browser,url,out):
         expect(next_role).to_be_focused()
         assert page.locator('#xp-count').text_content()=='0', 'Role coverage is recorded activity, not an XP reward'
         close_sheet(page)
+        response_id=archived_response['responseId']
+        folio_xp_before=page.locator('#xp-count').text_content()
+        folio_revision_before=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).revision")
+        page.locator('#places-button').click()
+        folio_row=page.get_by_role('button',name='Inspect archived response: Adversary',exact=True)
+        expect(folio_row).to_be_visible()
+        folio_row.click()
+        page.wait_for_function("(id)=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive' && Array.from(document.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id && card===document.activeElement)",arg=response_id)
+        folio_card=page.locator(f'[data-collaborator-response-id="{response_id}"]')
+        expect(folio_card).to_be_focused()
+        folio_card.locator('details.collaborator-response summary').click()
+        expect(folio_card.locator('textarea[aria-label="Archived collaborator response"]')).to_have_value(valid_response_text)
+        assert page.locator('#xp-count').text_content()==folio_xp_before, 'Inspecting a response folio must not award XP'
+        assert page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).revision")==folio_revision_before, 'Inspecting a response folio must not append a world event'
+        close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
