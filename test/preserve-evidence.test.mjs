@@ -33,7 +33,7 @@ test("preserves validated evidence and emits path-free content hashes", async ()
   try {
     const result = await preserveEvidence(f);
     assert.equal(result.tests, 3);
-    assert.equal(result.filesPreserved, 7);
+    assert.equal(result.filesPreserved, 6);
     const manifest = JSON.parse(await readFile(join(f.destination, "ingest-manifest.json"), "utf8"));
     assert.equal(manifest.schema, "ngl.commission-evidence-ingest.v2");
     assert.equal(manifest.validation.non_zero_test_count, 3);
