@@ -92,3 +92,82 @@ test("a resolver cannot mutate an event receipt to award forged canonical XP", (
   assert.equal(projected.world.forgeOpen, undefined);
   assert.equal(projected.quests["forge-gate"], undefined);
 });
+
+
+function makeObservedReceiptEvent(receipts, id) {
+  return {
+    event_id: id,
+    event_type: "SYSTEM_EVENT",
+    subject: "forge-gate",
+    grant_id: "grant-" + id,
+    admission: "ACCEPTED",
+    authority: "AUTHORIZED",
+    execution: "EXECUTED",
+    evidence: "OBSERVED",
+    observation_verification: "VERIFIED",
+    outcome: "SUCCEEDED",
+    receipts,
+    world_effect: { xp: 500 }
+  };
+}
+
+test("a resolver cannot rewrite or remove a later receipt during batch verification", () => {
+  const firstBytes = Buffer.from("first authentic execution bytes");
+  const secondBytes = Buffer.from("second authentic execution bytes");
+  const substitute = Buffer.from("substitute execution bytes");
+  const firstReceipt = makeReceipt(firstBytes);
+  const secondReceipt = makeReceipt(secondBytes);
+  const makeEvent = id => makeObservedReceiptEvent([
+    { ...firstReceipt },
+    { ...secondReceipt }
+  ], id);
+
+  const control = projectWorld([makeEvent("receipt-batch-control")], undefined, {
+    resolveArtifact: receipt => receipt.digest === firstReceipt.digest ? firstBytes : secondBytes,
+    verifyObservation: () => true,
+    verifyAuthorization: () => true
+  });
+  assert.equal(control.xp, 500, "two authentic receipts should permit the demonstrated effect");
+
+  const event = makeEvent("receipt-batch-mutation");
+  const projected = projectWorld([event], undefined, {
+    resolveArtifact: receipt => {
+      if (receipt.digest === firstReceipt.digest) {
+        event.receipts[1].digest = digestBytes(substitute);
+        event.receipts[1].size = substitute.byteLength;
+        delete event.receipts[1];
+        return firstBytes;
+      }
+      return substitute;
+    },
+    verifyObservation: () => true,
+    verifyAuthorization: () => true
+  });
+
+  assert.equal(event.receipts[1], undefined, "the resolver-side mutation actually occurred");
+  assert.equal(projected.xp, 0, "the missing/re-written second receipt must not be skipped");
+  assert.equal(projected.quests["forge-gate"], undefined);
+  assert.deepEqual(projected.history[0].receipts[1], secondReceipt,
+    "retained history must preserve the pre-verification receipt bytes");
+});
+
+test("a resolver cannot change the event later presented to the observation verifier", () => {
+  const bytes = Buffer.from("authentic execution bytes");
+  const receipt = makeReceipt(bytes);
+  const event = makeObservedReceiptEvent([{ ...receipt }], "event-snapshot-mutation");
+
+  const projected = projectWorld([event], undefined, {
+    resolveArtifact: () => {
+      event.evidence = "REFUTED";
+      event.admission = "REJECTED";
+      return bytes;
+    },
+    verifyObservation: candidate => candidate.evidence === "REFUTED",
+    verifyAuthorization: () => true
+  });
+
+  assert.equal(event.evidence, "REFUTED", "the resolver-side mutation actually occurred");
+  assert.equal(projected.history[0].evidence, "OBSERVED");
+  assert.equal(projected.xp, 0,
+    "the observation verifier must see the detached pre-resolution event, not callback mutations");
+});
