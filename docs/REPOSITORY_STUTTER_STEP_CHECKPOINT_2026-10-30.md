@@ -953,3 +953,48 @@ Exact final-head hosted verification on `36966fb74d990716e8d1f9b519f41fbcb2ee7d7
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred in this run.
 
+
+
+## Worker A stutter-step handoff — 2026-10-30 17:45 UTC (wall-clock-bound Founder verifier)
+
+### Fresh observation and ranked choice
+- Re-read root `AGENTS.md`, the full shared Ralph-style operating protocol, this checkpoint, Alpha 1's open PR inventory, Issue #17, and live source on `main` and the existing PR #203 branch.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #203 remains open/draft; PR #180 and stacked PR #181 are older overlapping Founder-helper proposals. PR #203 is the existing active branch being continued; no duplicate PR was opened.
+- Highest-value bounded target: remove caller-controlled time from the exported signed-decision verifier and protect expiry checks from later mutation of the global `Date.now` function.
+
+### Implementation on existing PR #203
+Repository: `ngl-damien/No-Gas-Labs-Alpha-1`  
+Branch: `security/founder-decision-seal-main-20261030`  
+Final observed branch commit: `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932`
+
+Commits this run:
+- `2067e377a9797f6a7e23d1284d5b5e33ec50dd19` — `src/authority/decision.js`: exported `verifyFounderDecision` no longer accepts a caller-supplied `now`; expiry uses the runtime wall clock.
+- `084a5f8ed041ee534d425be73f2db19e84a25c77` — regression cases for clock overrides and wall-clock-based expiry.
+- `75ff32a519c5317fbf40ec81ffe7b2c89d23c6c9` — remove the clock override from the world-integration fixture.
+- `376a2380c8de72647f05a02f6a3bcce41961e5aa` — capture `Date.now.bind(Date)` once at trusted module initialization; all three verifier/event expiry checks use that captured function.
+- `f4c658a99b30e0b1acb07457d9e502b7748b4877` — replace artificial time injection with an expiry-race test using a real short-lived timestamp.
+- `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932` — prove that mutating global `Date.now` cannot revive an expired decision at the low-level, persisted-event, and configured host-verifier boundaries.
+
+Changed paths: `src/authority/decision.js`, `test/decision-chamber.test.js`, `test/decision-world-integration.test.js`. No server file was changed.
+
+### Verification status — not yet green on the final head
+- Reinspection confirms the branch source no longer lists `now` as an allowed option for `verifyFounderDecision`; the persisted verifier also rejects extra `now` fields.
+- Regression coverage now checks caller-provided clock override rejection, post-import global-clock monkeypatching at all exported verification boundaries, and expiry between verification and event creation.
+- The connector returned no workflow runs for final commit `3af6a0c...` at the last query. Runs `41100752601` (verify), `41100752576` (Genesis Evidence Invariant), and `41100752612` (Browser Acceptance) remain **queued** and were associated with the earlier commit `75ff32a...`, not the final head. They are not accepted as exact-head evidence.
+- Local verification was blocked: Node `v22.16.0` is present, but `git ls-remote https://github.com/ngl-damien/No-Gas-Labs-Alpha-1.git refs/heads/main` failed because the container could not resolve `github.com`. No local full-suite pass is claimed.
+
+### Challenge review and blockers
+- Current `main` still contains the older v1 `authorizationEvent({verification})` boundary and accepts a caller-supplied `{valid:true}` object. PR #203 does not fix main until reviewed/merged; no merge is authorized or performed.
+- PR #16's original self-signing finding remains superseded by merged PR #18. Do not revive it.
+- PR #222 and stacked PR #223 still own the shared `game/server.mjs`/client integration path. The P-256 helper in PR #203 is not yet integrated into that server. Real Founder key custody, independently controlled signing, and canonical trust-anchor selection remain unresolved; no key material was handled.
+- PR #222's last recorded combined Browser Acceptance was pending; PR #223's own exact-head browser result was 13/13 on its recorded head. Recheck current heads before relying on either.
+- Linked `ngl-mesh` PR #1 remains isolated trust/marker work, not a verified APK/RAE integration. Missing recovered source archive, reference APK, and RAE report remain blockers. EvidenceOS PR #2 remains draft and loopback-only; no remote authentication/TLS or deployment is claimed.
+
+### Next ranked action
+1. Reinspect CI for the exact current PR #203 head and resolve why the latest commit has no associated run; do not accept the queued older-head runs as verification.
+2. If exact-head tests expose a regression, fix it on PR #203 and re-run the full workflow set.
+3. After CI, reconcile overlapping PRs #180/#181/#203 with the canonical server trust-anchor design, without touching shared server files while PR #222/#223 owns them.
+4. Continue Issue #17 concurrency and crash-recovery acceptance; distinguish process-kill tests from power-loss durability and keep stale-lock recovery fail-closed.
+5. Recover missing Relay artifacts before claiming full Android/RAE integration.
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key operation, spending, or external publication occurred in this run.
