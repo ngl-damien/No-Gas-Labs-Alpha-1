@@ -335,6 +335,7 @@ def institutional_locations(browser,url,out):
         assert archived_response['responseText']==valid_response_text
         assert world_after_archive['xp']==world_before_archive['xp']==0
         expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        close_sheet(page)
         council_coverage=page.locator('[data-objective-id="founder-guild-council-coverage"]')
         expect(council_coverage).to_contain_text('OPEN')
         expect(council_coverage).to_contain_text('1/4')
