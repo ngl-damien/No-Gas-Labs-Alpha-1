@@ -94,11 +94,16 @@ Recent run evidence on 2026-10-30 UTC (2026-10-29 US local):
 
 ## Open pull requests observed on Alpha 1
 
-24 open PRs were returned in the first 100-item query:
+26 open PRs were returned in the current open-PR query:
 
+- **#192** — `ci: run full validation on PRs and main only`, open draft; head `9a643ff633bcb15d799c8ed712e2e1d8baeae3e2`; restricts push-triggered runs of verify, Genesis, and browser acceptance to `main` while preserving pull-request checks. All three exact-head hosted checks passed (runs 40981348326, 40981348397, 40981348371). This is a useful duplicate-run reduction proposal; not merged.
+- **#191** — repository stutter-step checkpoint (this document), open draft.
 - **#190** — `fix(relay): serialize shared action receipts across tabs`, open, non-draft; head `7067b4a02c31ffc63f5a0956a732a39e45adb3a6`; all three hosted workflows passed on that exact head. The PR body says no local test or physical Android-device test was performed. Awaiting review; do not merge.
 - **#189** — `fix(world): broadcast Decision Chamber unavailability`, draft; base is feature branch for #188, not main.
 - **#188** — `feat(world): surface Decision Chamber activity on the map`, open, non-draft, based on main.
+- **#187** — `fix(storage): serialize decision writer lease mutations`, open draft; latest head `9b9c4e26d3107497973811999bbe233331f3c0fc`; adds a short-lived mutation guard, hardens game-server shutdown by closing idle connections before awaiting server close, and corrects the guard-inspector test to use a synthetic transient-guard fixture. Exact-head Verify, Genesis, and Browser Acceptance passed (runs 40969913708, 40969913707, 40969913778).
+- **#182** — `test(storage): verify decision writer lease across processes`, open draft; latest head `edd439987c2670afb4a0032d077208d64e0f2060`; exact-head Verify, Genesis, and Browser Acceptance passed (runs 40942911224, 40942911202, 40942911173). The earlier 7-second worker timeout failure on an older SHA was not reproduced on this exact head; keep the 7-second bound under observation.
+- **#174** — `feat(guild): add bounded collaborator handoff packets`, open non-draft, based on main; exact-head hosted checks passed (runs 40884124229, 40884124299, 40884124248). Review packet trust boundaries and functionality before any merge.
 - **#187**, **#182**, **#181**, **#180**, **#179**, **#178**, **#177**, **#172**, **#164**, **#76**, **#74**, **#73**, **#66**, **#63**, **#60**, **#58**, **#57**, **#49**, **#48**, **#26** — open PRs returned by the API; most are drafts, several are stacked on other feature branches, and they must be checked individually for current base/head divergence and usefulness before any closure or merge.
 - **#48** is a stale draft repository-assimilation checkpoint from 2026-10-26, not a complete or current inventory.
 
@@ -233,7 +238,7 @@ Authority remains with Damien Featherstone. This addendum records evidence and w
 
 ### Alpha 1: genuine failed-run samples and job-log findings
 
-The Actions runs endpoint was paged directly and each returned row was filtered locally by its actual `conclusion`. In the latest five 100-run pages, genuine failures were present; this is a sample, not a complete 9,133-run historical census. The first page had 0 failures, page 2 had 3, page 3 had 5, page 4 had 16, and page 5 had 10. Many are duplicate push/PR attempts for the same branch/commit and should be grouped by underlying SHA before counting defects.
+The Actions runs endpoint was paged directly and each returned row was filtered locally by its actual `conclusion`. In the latest five 100-run pages, genuine failures were present; this is a sample, not a complete 9,133-run historical census. The first page had 0 failures, page 2 had 3, page 3 had 5, page 4 had 16, and page 5 had 10. Later PR-head checks establish that some of these failures were fixed or not reproduced on newer commits. Many are duplicate push/PR attempts for the same branch/commit and should be grouped by underlying SHA before counting defects.
 
 Specific root-cause evidence:
 
@@ -241,7 +246,7 @@ Specific root-cause evidence:
 
 2. **World activity expectation mismatch — run 40948117466, job 123708734452, head `d19818d4a0ba0872d3fc89ca90dbf0f5a12e3f0e`.** Two assertions in `test/game-world-institution-activity.test.mjs` disagree with the implementation: one receives 2 where the test expects 3; another receives 3 where the test expects 2. The evidence proves a disagreement between the expected counter semantics and current projection output, but not which side is correct. Inspect the exact fixture records, identity deduplication rules, and product requirement before changing code. The branch is not main.
 
-3. **Cross-process decision writer lease — run 40942794829, job 123690261737, head `3ac7fc1897b0b08d981cf1884ac928a6bb66594f`.** The test `independent Node processes contend for one decision-writer lease and preserve the durable ledger` failed after about 7 seconds with `winning worker did not commit`. This is a real failed integration test, but the log alone does not establish whether the winner deadlocked, lost the lease, failed to signal, or exceeded a brittle timeout. Do not merely lengthen the timeout. Inspect the worker fixture, child exit/stderr, guard acquisition/release and lock cleanup at the exact commit.
+3. **Cross-process decision writer lease — run 40942794829, job 123690261737, head `3ac7fc1897b0b08d981cf1884ac928a6bb66594f`.** The test `independent Node processes contend for one decision-writer lease and preserve the durable ledger` failed after about 7 seconds with `winning worker did not commit`. The latest PR #182 head `edd439987c2670afb4a0032d077208d64e0f2060` contains the same 7-second per-operation bound and passed all three hosted checks. The failure was not reproduced on that exact head; classify the older failure as intermittent or commit-specific, not as a confirmed production deadlock. Keep monitoring this test under CI load; do not merely lengthen the timeout without evidence.
 
 4. **Founder key/session integration tests — run 40965949761, job 123770639447, head `3e606fa68f099980dc4f78555a5bd7df0421f414`.** Three tests failed: generated Founder key persistence/restart, session churn capacity protection, and rejected cross-origin/malformed writes. The captured workflow log exposed test names but did not preserve assertion details/stack traces in the stage summary. Root cause remains unknown; retrieve the full test-run artifact or reproduce at the exact commit before proposing a patch.
 
