@@ -746,35 +746,70 @@ test('Restorer requires one unique earlier repair event joined to the published 
 });
 
 
-test('Questkeeper and the active HUD invitation share one immutable evidence-backed trail', () => {
-  const world = {
+test('Questkeeper and the active HUD invitation share immutable evidence-backed progress', () => {
+  const earlyWorld = {
     xp: 100,
-    creations: [publishedCreation('questkeeper-shared-trail', [t1])],
-    events: [publication('questkeeper-shared-publication', founder, 'questkeeper-shared-trail', 1, t1)],
+    creations: [publishedCreation('early-questkeeper-place', [t1])],
+    events: [publication('early-questkeeper-publication', founder, 'early-questkeeper-place', 1, t1)],
     discoveries: [],
     contributions: [],
     reports: [],
     methods: []
   };
-  const before = structuredClone(world);
-  const trail = getQuestTrail(world, founder);
+  const earlyBefore = structuredClone(earlyWorld);
+  const earlyTrail = getQuestTrail(earlyWorld, founder);
+  const earlyCharacter = projectCharacter(earlyWorld, founder);
+  assert.equal(
+    earlyCharacter.skills.find(skill => skill.id === 'questkeeper').count,
+    earlyTrail.filter(milestone => milestone.complete).length
+  );
+  assert.equal(getActiveQuest(earlyWorld, founder, earlyTrail).id, 'founder-discover',
+    'the authored introductory journey remains active before the evidence-backed trail takes over');
+  assert.deepEqual(earlyWorld, earlyBefore, 'reading the introduction and character sheet creates no event');
+
+  const matureWorld = {
+    xp: 200,
+    creations: [
+      publishedCreation('questkeeper-first-place', [t1]),
+      publishedCreation('questkeeper-second-place', [t2])
+    ],
+    events: [
+      publication('questkeeper-first-publication', founder, 'questkeeper-first-place', 1, t1),
+      publication('questkeeper-second-publication', founder, 'questkeeper-second-place', 1, t2),
+      event('questkeeper-discovery-event', 'discover', founder, t3, { locationId: 'relay' }),
+      event('questkeeper-note-event', 'contribute', founder, t4, {
+        creationId: 'questkeeper-first-place', version: 1
+      })
+    ],
+    discoveries: [{
+      id: 'questkeeper-discovery-record', actor: founder, locationId: 'relay', at: t3
+    }],
+    contributions: [{
+      id: 'questkeeper-note-record', actor: founder, creationId: 'questkeeper-first-place',
+      version: 1, text: 'A source-bound field note.', at: t4
+    }],
+    reports: [],
+    methods: []
+  };
+  const matureBefore = structuredClone(matureWorld);
+  const trail = getQuestTrail(matureWorld, founder);
   const completed = trail.filter(milestone => milestone.complete);
   const next = trail.find(milestone => !milestone.complete);
   assert.ok(next, 'the fixture leaves a real next objective');
 
-  const character = projectCharacter(world, founder);
+  const character = projectCharacter(matureWorld, founder);
   assert.equal(
     character.skills.find(skill => skill.id === 'questkeeper').count,
     completed.length,
-    'the character skill is the same completed-objective count shown by the quest trail'
+    'the character skill is the same completed-objective count shown by the evidence-backed trail'
   );
 
-  const active = getActiveQuest(world, founder, trail);
-  assert.equal(active.id, next.id, 'the HUD points to the first unfinished objective');
+  const active = getActiveQuest(matureWorld, founder, trail);
+  assert.equal(active.id, next.id, 'after the introductory journey, the HUD points to the first unfinished trail objective');
   assert.deepEqual(active.nextAction, next.action);
-  assert.deepEqual(world, before, 'reading the character sheet and quest invitation creates no world event');
+  assert.deepEqual(matureWorld, matureBefore, 'reading the character sheet and quest invitation creates no world event');
 
-  const reopened = getActiveQuest(world, founder, trail);
+  const reopened = getActiveQuest(matureWorld, founder, trail);
   assert.deepEqual(reopened, active, 'reopening the invitation is deterministic');
-  assert.deepEqual(world, before, 'navigation never manufactures progress');
+  assert.deepEqual(matureWorld, matureBefore, 'navigation never manufactures progress');
 });
