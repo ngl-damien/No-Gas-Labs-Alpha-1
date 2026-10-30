@@ -6,7 +6,7 @@ export function digestBytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function snapshotReceipt(receipt) {
+export function snapshotReceipt(receipt) {
   try {
     if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) return null;
     const prototype = Object.getPrototypeOf(receipt);
