@@ -585,6 +585,12 @@ def launchpad(page,url,out,label):
     assert saved_position and 0<=saved_position['x']<=1600 and 0<=saved_position['y']<=1000
     page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.locator('#journal-button').click()
+    invalid_save={**saved_game,'playerPosition':{'x':1601,'y':640}}
+    page.locator('#import-world').set_input_files({'name':'invalid-world.json','mimeType':'application/json','buffer':json.dumps(invalid_save).encode()})
+    expect(page.locator('#toast')).to_contain_text('invalid character position')
+    assert page.locator('#creation-count').text_content()=='3', 'An invalid position must not replace the saved world'
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'A rejected save must not overwrite the last valid character position'
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
     assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'Private save import did not restore the character location'
