@@ -69,7 +69,7 @@ test('PWA metadata and the offline shell are served without exposing API respons
   const client = f.client();
   const manifest = await client.request('/manifest.webmanifest');
   assert.equal(manifest.response.status, 200);
-  assert.match(manifest.response.headers.get('content-type'), /application\\/manifest\\+json/);
+assert.ok(manifest.response.headers.get('content-type').includes('application/manifest+json'));
   assert.equal(manifest.body.start_url, './');
   assert.equal(manifest.body.display, 'standalone');
   assert.equal(manifest.body.icons[0].src, './assets/app-icon.svg');
@@ -77,13 +77,13 @@ test('PWA metadata and the offline shell are served without exposing API respons
   const worker = await client.request('/sw.js');
   assert.equal(worker.response.status, 200);
   assert.match(worker.response.headers.get('content-type'), /javascript/);
-  assert.match(worker.body, /url\\.pathname === '\/api' \\|\\| url\\.pathname\\.startsWith\\('\/api\\/'\\)/);
+assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
   assert.match(worker.body, /const CORE_SHELL =/);
 
   const icon = await client.request('/assets/app-icon.svg');
   assert.equal(icon.response.status, 200);
-  assert.match(icon.response.headers.get('content-type'), /image\\/svg\\+xml/);
-  assert.match(icon.body, /<svg\\b/);
+assert.ok(icon.response.headers.get('content-type').includes('image/svg+xml'));
+assert.ok(icon.body.includes('<svg'));
 });
 
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
