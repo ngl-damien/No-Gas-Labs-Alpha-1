@@ -244,7 +244,7 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
   const file = 'src/embedded-credential.mjs';
   const { compareCandidates, verifyRepository } = await api();
   const githubToken = 'ghp_' + 'A'.repeat(36);
-  await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(githubToken) + ';\\n' });
+  await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(githubToken) + ';' });
   let failure;
   try {
     await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
@@ -252,17 +252,17 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
     failure = error;
   }
   assert.ok(failure instanceof Error);
-  assert.match(failure.message, /Credential-like content detected in source file: src\\/embedded-credential\\.mjs \\(github-token\\)/);
+  assert.ok(failure.message.includes('Credential-like content detected in source file: src/embedded-credential.mjs (github-token)'));
   assert.equal(failure.message.includes(githubToken), false, 'errors must not echo matched credential bytes');
   await assert.rejects(access(options.outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
 
   await rm(join(options.sourceDir, file));
-  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + '\\nredacted-test-fixture\\n';
-  await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(privateKeyBlock) + ';\\n' });
+  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' redacted-test-fixture';
+  await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(privateKeyBlock) + ';' });
   const report = await verifyRepository({ ...options, outDir: options.outDir + '-verify' });
   assert.equal(report.outcome, 'source_failed');
   assert.equal(report.correct, false);
-  assert.match(report.reason, /Credential-like content detected.*private-key-block/);
+  assert.ok(report.reason.includes('private-key-block'));
   await assert.rejects(access(join(options.outDir + '-verify', 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
 });
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
