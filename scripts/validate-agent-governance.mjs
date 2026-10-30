@@ -4,7 +4,7 @@ import { dirname, basename, resolve, relative, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VENDOR_POINTERS = ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md'];
-const ENTRY_MARKERS = ['STOP: Read this file before', 'RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md', 'durable, factual record'];
+const ENTRY_MARKERS = ['RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'];
 const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien'];
 
 function insideRoot(root, candidate) {
@@ -60,8 +60,12 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   }
 
   const entryText = await inspect(entry, 'root-instructions');
-  const protocolPath = protocol ?? (entryText ? protocolFromEntry(entryText) : null);
-  if (!protocolPath) failures.push({ path: entry, reason: 'no canonical shared protocol path found; pass --protocol explicitly' });
+  const inferredProtocol = entryText ? protocolFromEntry(entryText) : null;
+  const protocolPath = protocol ?? (inferredProtocol && !/^https?:\\/\\//i.test(inferredProtocol) ? inferredProtocol : null);
+  if (!protocolPath) failures.push({ path: entry, reason: 'no local canonical protocol path resolved; for a remote protocol URL, pass --protocol pointing to a locally pinned copy' });
+  if (entryText && !/(STOP:\\s*Read this file before|Before any work)/i.test(entryText)) {
+    failures.push({ path: entry, reason: 'root instructions must explicitly require reading them before repository work' });
+  }
   if (entryText) for (const marker of ENTRY_MARKERS) {
     if (!entryText.includes(marker)) failures.push({ path: entry, reason: 'missing mandatory instruction marker: ' + marker });
   }
