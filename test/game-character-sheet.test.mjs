@@ -95,6 +95,8 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
   assert.equal(record.xp,100);
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,1);
   assert.equal(record.worldXp, 100, 'world XP is projected from the one unique retained publication, not the raw summary total');
+  assert.deepEqual(record.inventory.map(item => item.id).sort(), ['good', 'wrong-reward'],
+    'a single malformed reward does not erase a retained artifact, while ambiguous publication claims remain excluded');
 });
 
 test('skills count only activity joined to retained events for the active character', () => {

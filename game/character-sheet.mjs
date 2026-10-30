@@ -67,9 +67,26 @@ function retainedPublicationEvents(world) {
     if (!version || version.publishedAt !== event.at) continue;
     candidates.push({ event, key });
   }
-  const counts = new Map();
-  for (const candidate of candidates) counts.set(candidate.key, (counts.get(candidate.key) || 0) + 1);
-  return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
+  const groups = new Map();
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.key) || [];
+    group.push(candidate);
+    groups.set(candidate.key, group);
+  }
+  const retained = [];
+  for (const group of groups.values()) {
+    const rewarded = group.filter(candidate =>
+      Number.isSafeInteger(candidate.event.reward) && candidate.event.reward === XP_PER_PUBLICATION
+    );
+    // Prefer one valid fixed-reward receipt over malformed reward claims for
+    // the same exact version. If no valid reward exists, one unambiguous
+    // publication still keeps the artifact inspectable without granting XP.
+    const selected = rewarded.length === 1 ? rewarded
+      : rewarded.length === 0 && group.length === 1 ? group
+      : [];
+    for (const candidate of selected) retained.push(candidate.event);
+  }
+  return retained;
 }
 
 // A publication is an XP receipt only when the exact fixed reward is present.
