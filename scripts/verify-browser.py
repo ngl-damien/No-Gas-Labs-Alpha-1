@@ -198,17 +198,26 @@ def basic(page,url,out,label):
             response_field.fill(json.dumps(response))
             packet.get_by_role('button',name='Validate response for review',exact=True).click()
             expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+            valid_response_text=json.dumps(response)
             response['targetEventId']='event-not-in-packet'
             response_field.fill(json.dumps(response))
             packet.get_by_role('button',name='Validate response for review',exact=True).click()
             expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('RESPONSE_SCHEMA_OR_SCOPE_INVALID')
+            response_field.fill(valid_response_text)
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+            expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY')
         expect(page.locator('#xp-count')).to_have_text('200')
     state_after_packets=page.evaluate("()=>{const raw=localStorage.getItem('ngl.common-ground.v2');if(!raw)throw new Error('Private world disappeared');return JSON.parse(raw)}")
     before_world=state_before_packets;after_world=state_after_packets
-    assert before_world['revision']==after_world['revision'], 'Inspecting/copying collaborator packets must not append world events'
-    assert before_world['xp']==after_world['xp'], 'Inspecting/copying collaborator packets must not award XP'
-    assert before_world['events']==after_world['events'], 'Collaborator packets must preserve the exact event history'
-    assert len(before_world['creations'])==len(after_world['creations']), 'Collaborator packets must not publish artifacts'
+    assert after_world['revision']==before_world['revision']+1, 'Only the explicit archive action may append one world event'
+    assert after_world['xp']==before_world['xp'], 'Archiving collaborator text must not award XP'
+    assert after_world['events'][:-1]==before_world['events'], 'Archiving must preserve the exact prior event history'
+    archived_response=after_world['events'][-1]
+    assert archived_response['type']=='collaborator-response-recorded'
+    assert archived_response['validationStatus']=='valid-for-human-review'
+    assert archived_response['responseText']==valid_response_text
+    assert len(before_world['creations'])==len(after_world['creations']), 'Archiving collaborator text must not publish artifacts'
     packet_requests=requests[request_start:]
     assert all(request.startswith(url) for request in packet_requests), 'Collaborator packet interaction must not call an external model/provider: '+repr(packet_requests)
     assert not any('/api/action' in request for request in packet_requests), 'Inspecting/copying collaborator packets must not submit a world action'
@@ -232,6 +241,11 @@ def basic(page,url,out,label):
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
     expect(page.locator('#sheet')).to_contain_text('REPORT ONLY — NOT A VERDICT')
+    expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
+    expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+    archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
+    expect(archived_field).to_have_count(1)
+    assert archived_field.input_value()==valid_response_text
     expect(page.locator('#xp-count')).to_have_text('200')
     close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
