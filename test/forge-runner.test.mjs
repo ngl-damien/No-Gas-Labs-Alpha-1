@@ -239,6 +239,33 @@ test('Forge excludes common local credential stores and private-key files from e
   assert.ok(included.has('README.md'), 'ordinary public source remains available');
 });
 
+test('Forge rejects recognizable embedded credentials before candidate copying or repository test execution', async t => {
+  const options = await fixture(t);
+  const file = 'src/embedded-credential.mjs';
+  const { compareCandidates, verifyRepository } = await api();
+  const githubToken = 'ghp_' + 'A'.repeat(36);
+  await repositoryTestFiles(options.sourceDir, { [file]: `export const token = '${githubToken}';\\n` });
+  let failure;
+  try {
+    await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /Credential-like content detected in source file: src\\/embedded-credential\\.mjs \\(github-token\\)/);
+  assert.equal(failure.message.includes(githubToken), false, 'errors must not echo matched credential bytes');
+  await assert.rejects(access(options.outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
+
+  await rm(join(options.sourceDir, file));
+  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('\\n') + '\\nredacted-test-fixture\\n';
+  await repositoryTestFiles(options.sourceDir, { [file]: `export const key = ${JSON.stringify(privateKeyBlock)};\\n` });
+  const report = await verifyRepository({ ...options, outDir: options.outDir + '-verify' });
+  assert.equal(report.outcome, 'source_failed');
+  assert.equal(report.correct, false);
+  assert.match(report.reason, /Credential-like content detected.*private-key-block/);
+  await assert.rejects(access(join(options.outDir + '-verify', 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
+});
+
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
