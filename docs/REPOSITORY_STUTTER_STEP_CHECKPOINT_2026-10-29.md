@@ -399,3 +399,16 @@ All listed PRs remain unmerged. No deployment, release, branch deletion, secret 
 - EvidenceOS is not ready to be treated as an authoritative repository auditor. Its current Pass 1 suppresses several GitHub API failures and can return partial/empty analysis without surfacing the affected repository/path. The pipeline's per-repository error list only captures thrown errors, so these catches defeat its intended completeness accounting. Add explicit failure/partial-state reporting and a real test suite before using its output for institutional decisions.
 - PR #192's final exact-head runs are all successful (40981348326, 40981348397, 40981348371). Its browser artifact upload succeeded; the ZIP was not downloaded or inspected.
 - The prior PR #191 checkpoint head f3192d53afeb39bf54ebce32d90a7808ccbf76ae (before this follow-up update) had Genesis success, while Verify and Browser Acceptance were cancelled by competing push/PR workflow events. This is direct evidence that the existing mainline duplicate-trigger problem still affects the checkpoint PR until the proposed workflow change is reviewed and, if authorized, merged. This follow-up checkpoint commit supersedes that head; its own exact-head checks have not yet been observed and must be inspected afresh next run. No attempt was made to bypass or suppress checks.
+
+
+### Final checkpoint revision — exact head and latest checks
+
+The checkpoint was further corrected to reflect the live 26-PR inventory and the later exact-head evidence for PRs #174, #182, #187, and #192. The current checkpoint branch head is `ae9b13a780d275bda20c40626393feba839642ca`.
+
+For the immediately preceding checkpoint head `18a25171e916f03ccd33e969b6b9b3eafed5035c`, Verify and Genesis passed; Browser Acceptance remained in progress at last observation. The latest checkpoint commit `ae9b13a780d275bda20c40626393feba839642ca` triggered a fresh run set:
+- Verify: run 40982083834 — in progress at last observation.
+- Genesis Evidence Invariant: run 40982083844 — in progress at last observation.
+- Browser Acceptance: run 40982083840 — pending at last observation.
+- Superseded attempts 40982077747, 40982077762, and 40982077848 were cancelled by concurrency after the newer head was pushed.
+
+Do not treat the current checkpoint PR as fully verified until these exact-head checks complete. No more changes should be pushed to this documentation branch merely to chase intermediate workflow states; capture the final outcomes in the next scheduled stutter-step run.
