@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -195,6 +196,10 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(world?.xp) && world.xp >= 0 ? world.xp : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
+  const completedQuestObjectives = getQuestTrail(world, viewer)
+    .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
+      Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+
   const skills = [
     {
       id: 'maker',
@@ -258,6 +263,13 @@ export function projectCharacter(world, viewer) {
       count: experimentChallenges.length,
       record: 'retained challenges to another actor’s experiment reports',
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
+    },
+    {
+      id: 'questkeeper',
+      label: 'Questkeeper',
+      count: completedQuestObjectives,
+      record: 'completed evidence-backed quest objectives',
+      basis: 'The same source-linked quest trail shown in the world HUD. Completion records matched activity or artifact linkage, not truth, mastery, correctness, or approval.'
     },
     {
       id: 'restorer',
