@@ -74,10 +74,28 @@ function retainedPublicationEvents(world) {
 
 // A publication is an XP receipt only when the exact fixed reward is present.
 // Invalid reward metadata does not erase a retained artifact from the world.
+// XP requires one unambiguous retained publication whose own event carries
+// the fixed game reward. Malformed reward claims do not suppress a separate,
+// valid receipt for the same retained version.
 function matchedPublications(world) {
-  return retainedPublicationEvents(world).filter(event =>
-    Number.isSafeInteger(event.reward) && event.reward === XP_PER_PUBLICATION
-  );
+  const events = uniqueEvents(world?.events);
+  const versions = retainedVersionIndex(world);
+  const candidates = [];
+  for (const event of events) {
+    if (event.type !== 'publish' ||
+        typeof event.actor?.id !== 'string' || !event.actor.id.trim() ||
+        event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
+        !Number.isSafeInteger(event.reward) || event.reward !== XP_PER_PUBLICATION ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
+        event.version < 1 || !isStrictTimestamp(event.at)) continue;
+    const key = versionKey(event.creationId, event.version);
+    const version = versions.get(key);
+    if (!version || version.publishedAt !== event.at) continue;
+    candidates.push({ event, key });
+  }
+  const counts = new Map();
+  for (const candidate of candidates) counts.set(candidate.key, (counts.get(candidate.key) || 0) + 1);
+  return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
 }
 
 

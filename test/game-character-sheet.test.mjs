@@ -7,6 +7,11 @@ const witness={id:'w-1',role:'witness'};
 const t1='2026-10-25T12:00:00.000Z';
 const t2='2026-10-25T12:01:00.000Z';
 const t3='2026-10-25T12:02:00.000Z';
+const t4='2026-10-25T12:03:00.000Z';
+const t5='2026-10-25T12:04:00.000Z';
+const t6='2026-10-25T12:05:00.000Z';
+const t7='2026-10-25T12:06:00.000Z';
+const t8='2026-10-25T12:07:00.000Z';
 const event=(id,type,actor,at=t1,detail={})=>({id,type,actor,at,...detail});
 const receipt=(version)=>({algorithm:'sha256',digest:String(version).padStart(2,'0')+'a'.repeat(62),size:100+version});
 function publishedCreation(id,times) {
