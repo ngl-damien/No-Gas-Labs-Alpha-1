@@ -335,6 +335,15 @@ def institutional_locations(browser,url,out):
         assert archived_response['responseText']==valid_response_text
         assert world_after_archive['xp']==world_before_archive['xp']==0
         expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        council_coverage=page.locator('[data-objective-id="founder-guild-council-coverage"]')
+        expect(council_coverage).to_contain_text('OPEN')
+        expect(council_coverage).to_contain_text('1/4')
+        council_coverage.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        next_role=page.locator('[data-collaborator-role="archivist"]')
+        expect(next_role).to_be_visible()
+        expect(next_role).to_be_focused()
+        assert page.locator('#xp-count').text_content()=='0', 'Role coverage is recorded activity, not an XP reward'
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
