@@ -139,6 +139,9 @@ test('Forge verification uses a fresh copy and cannot inherit files created only
   assert.equal(result.outcome, 'failed');
   assert.equal(result.verificationWorkspace, 'candidates/execution-only-helper/verification-workspace');
   assert.notEqual(result.verificationWorkspace, result.workspace);
+  assert.equal(result.integrity.passed, false);
+  assert.ok(result.integrity.changedPaths.includes('fixtures/forge/workload/helper.mjs'));
+  assert.deepEqual(result.integrity.verification.changedPaths, []);
 });
 test('Forge CLI demo executes fixture candidates and writes a report without a shell', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngl-forge-cli-'));
