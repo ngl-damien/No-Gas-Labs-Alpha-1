@@ -1,0 +1,53 @@
+name: Publish The Common Ground
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the approved source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build the self-contained game
+        run: npm run build:game
+
+      - name: Prepare the public website
+        run: |
+          mkdir -p site
+          cp dist/play.html site/index.html
+          test -s site/index.html
+          echo "Published game bytes: $(wc -c < site/index.html)"
+
+      - name: Enable and configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload only the playable game
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Publish the game world
+        id: deployment
+        uses: actions/deploy-pages@v4
