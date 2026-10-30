@@ -8,6 +8,7 @@ const KNOWN_LOCK_SCHEMAS = new Set([
   'ngl.service-lock.v1',
   'ngl.ledger-lock.v1',
   'ngl.decisions-lock.v1',
+  'ngl.decisions-lock-guard.v1',
   'ngl.courier-lock.v1'
 ]);
 const WARNING = 'Read-only diagnostic. A PID probe is advisory only: PID reuse, namespaces, permissions, and races can mislead. This report never authorizes lock deletion; stop the owner and use an explicitly offline recovery procedure.';
