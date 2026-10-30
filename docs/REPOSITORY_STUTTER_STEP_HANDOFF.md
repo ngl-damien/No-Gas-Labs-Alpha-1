@@ -113,3 +113,16 @@ No pull requests were merged or closed; no branches were deleted; no releases or
 ### Authority and outcome
 
 Main remains unchanged. No merge, branch deletion, release, deployment, secret/key operation, permission-setting change, spending, or workflow dispatch occurred. PR #208 is a proposed safety correction only.
+
+## Branch hygiene evidence — 2026-10-30 UTC
+
+A complete five-page branch listing was compared with all 36 open PRs (same-repository head refs):
+
+- **453** branch refs total, including `main`.
+- **36** branches are the heads of open PRs.
+- **416** non-main branches have no open PR.
+- The GitHub branch-list response marked **0** of the 453 refs as protected.
+- The 416 non-PR branches are concentrated in `experiment` (134), `fix` (53), and `stutter-step` (44), followed by `game` (21), `security` (19), and `integration` (15).
+- Multiple branch names share identical tips: 18 refs at `7b5085b5f1686290569d564ff20774e313a69aea`; 9 at `be7c1116d0628cb2e0fe366720cdfe3a2f2497a0`; 6 at `7afbccdf60f7560195ecd8fa1a52f26bbda55915`; and smaller groups.
+
+These are **classification candidates, not deletion candidates**. Equal tip SHAs establish identical current commit tips only; they do not prove that branch names are unused, that history is disposable, or that cleanup is authorized. No branches were deleted. Next: map each non-PR branch to merged/closed PR history, last commit date, unique commits, and any workflow/reference use; prepare an evidence-backed cleanup proposal for Damien without executing it.
