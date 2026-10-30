@@ -64,11 +64,14 @@ def draft(page,kind,title):
 
 
 def basic(page,url,out,label):
-    errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    errors=[];page.on('pageerror',lambda error:errors.append('pageerror: '+str(error)));page.on('console',lambda message:errors.append('console error: '+message.text) if message.type=='error' else None)
     page.goto(url,wait_until='networkidle')
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
-    page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    try:page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    except Exception:
+        print('BROWSER_STARTUP_DIAGNOSTICS '+json.dumps({'errors':errors,'mode':page.locator('#mode-label').text_content(),'worldHidden':page.locator('#world').get_attribute('hidden'),'body':page.locator('body').inner_text()[:1200]}))
+        raise
     character=page.locator('#character-button')
     expect(character).to_be_visible()
     expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))
