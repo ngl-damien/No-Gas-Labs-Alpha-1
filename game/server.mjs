@@ -314,7 +314,8 @@ function validateHistory(world) {
           (event.validationStatus === 'rejected' && (typeof event.validationReason !== 'string' || !event.validationReason || Array.from(event.validationReason).length > 128)) ||
           event.validator !== 'ngl.collaborator-response.v1') throw new Error('Stored collaborator response is malformed or repeated');
       collaboratorResponseIds.add(event.responseId);
-      const receiptMatches = (value, receipt) => receipt && receipt.algorithm === 'sha256' &&
+      const receiptMatches = (value, receipt) => receipt && typeof receipt === 'object' && !Array.isArray(receipt) &&
+        Object.keys(receipt).sort().join(',') === 'algorithm,digest,size' && receipt.algorithm === 'sha256' &&
         receipt.digest === createHash('sha256').update(value, 'utf8').digest('hex') && receipt.size === Buffer.byteLength(value);
       if (!receiptMatches(event.packetJson, event.packetReceipt) || !receiptMatches(event.responseText, event.responseReceipt)) throw new Error('Stored collaborator response byte receipt mismatch');
       let packet; try { packet = JSON.parse(event.packetJson); } catch { throw new Error('Stored collaborator packet JSON is malformed'); }
