@@ -158,6 +158,9 @@ def basic(page,url,out,label):
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
+    saved_position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert saved_position and saved_position['schema']=='ngl.player-position.v1', 'Private player position was not saved across reload'
+    assert saved_position['x']>180, f'Expected the moved player position to be restored, got {saved_position}'
     assert not errors,errors
     return {'journey':label,'passed':True,'errors':errors}
 
