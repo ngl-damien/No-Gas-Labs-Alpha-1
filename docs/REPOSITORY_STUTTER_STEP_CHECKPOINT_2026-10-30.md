@@ -998,3 +998,33 @@ Changed paths: `src/authority/decision.js`, `test/decision-chamber.test.js`, `te
 5. Recover missing Relay artifacts before claiming full Android/RAE integration.
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key operation, spending, or external publication occurred in this run.
+
+
+## Worker A stutter-step handoff — 2026-10-30 17:48 UTC (Founder clock + CI trigger correction)
+
+### Cycle 2 — reinspection found a second high-leverage defect
+- Current `.github/workflows/verify.yml`, `genesis.yml`, and `browser-acceptance.yml` on `main` all trigger on unrestricted `push` plus `pull_request`. During this run, the same feature head `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932` generated both push and pull_request runs for each workflow; the runs were queued rather than executing. This is direct Actions API evidence of duplicate work, not an inferred failure.
+- Existing PR #192 aims at the same trigger correction, but a fresh changed-file inventory shows its actual diff includes 23 paths, including game runtime/player-position code, README/governance docs, package scripts, and tests, despite its body claiming only three workflow trigger blocks changed. It remains untouched and unmerged; a clean scoped proposal was created rather than overwriting its branch.
+
+### Clean workflow proposal
+- Draft PR #224: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/224
+- Branch: `ci/main-only-push-validation-clean-20261030`
+- Exact commit: `1c30e1ba8cf6e0055e5a1b1bcd306c8d3d60ba44`, parent/base main `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Exactly four changed files: the three workflow YAML files and `test/workflow-concurrency.test.mjs`. Feature-branch pushes are excluded; pull-request validation remains enabled. The new test asserts all three workflows restrict push checks to `main`.
+- The branch has no push-triggered run for commit `1c30e1...`; its exact-head PR checks are `41101499763` (verify), `41101499822` (Genesis Evidence Invariant), and `41101499761` (Browser Acceptance), all **queued** at the last observation. Three push runs `41101444611`, `41101444625`, and `41101444783` used main SHA `7d8c773...` when the branch was initially created, before the filtered workflow commit was installed; do not confuse those with feature-head runs.
+
+### Cycle 1 — Founder verifier expiry boundary
+- Existing draft PR #203 final observed code head: `3af6a0c19afffbbeb5b84ad6c7c31d5dc17c9932`.
+- `verifyFounderDecision` rejects caller-provided `now`; module captures `Date.now.bind(Date)` at initialization; verification and event creation use that captured wall clock.
+- Tests cover caller override rejection, global-clock mutation against low-level/persisted/configured-host verifiers, and expiry between verification and event creation. Paths: `src/authority/decision.js`, `test/decision-chamber.test.js`, `test/decision-world-integration.test.js`.
+- Exact-head runs `41101129249` (verify), `41101111073` (Genesis), and `41101111004` (Browser Acceptance) are **queued** for `3af6a0c...`. Duplicate push runs `41101102846`, `41101104927`, and `41101103686` are also queued for the same head under the old trigger configuration. No completed exact-head result is available yet.
+- Local test fallback remains blocked by DNS failure resolving `github.com`; no full local-suite pass is claimed.
+
+### Current state and next ranked actions
+1. Recheck the exact-head workflow runs for PRs #203 and #224 and the checkpoint PR. Current observations show a runner/queue backlog; don't count queued jobs as passes or failures.
+2. If PR #224's exact-head test fails, fix only the focused four-file branch and reverify. Do not close or overwrite PR #192 without authorization.
+3. After exact-head verification, reconcile PRs #180/#181/#203 and choose one canonical Founder verifier/trust-anchor path. The P-256 helper is still not wired into `game/server.mjs`; PR #222/#223 own that shared path.
+4. Continue Issue #17 concurrency and crash-recovery acceptance; distinguish process death from power-loss durability and keep stale-lock recovery fail-closed.
+5. Recover the missing `ngl-mesh` source archive, reference APK, and RAE report before claiming full Android/RAE integration.
+
+Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, deployment, release, branch deletion, permission/credential/key operation, spending, or external publication occurred.
