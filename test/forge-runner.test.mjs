@@ -269,13 +269,20 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
     await rm(join(options.sourceDir, file));
   }
 
-  const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' redacted-test-fixture';
-  await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(privateKeyBlock) + ';' });
-  const report = await verifyRepository({ ...options, outDir: options.outDir + '-verify' });
-  assert.equal(report.outcome, 'source_failed');
-  assert.equal(report.correct, false);
-  assert.ok(report.reason.includes('private-key-block'));
-  await assert.rejects(access(join(options.outDir + '-verify', 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
+  const privateKeyBlocks = [
+    ['plain', ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' redacted-test-fixture'],
+    ['encrypted', ['-----BEGIN ', 'ENCRYPTED PRIVATE KEY-----'].join('') + ' redacted-test-fixture']
+  ];
+  for (const [index, [kind, keyText]] of privateKeyBlocks.entries()) {
+    const outDir = options.outDir + '-verify-' + index;
+    await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(keyText) + ';' });
+    const report = await verifyRepository({ ...options, outDir });
+    assert.equal(report.outcome, 'source_failed', kind);
+    assert.equal(report.correct, false, kind);
+    assert.ok(report.reason.includes('private-key-block'), kind);
+    await assert.rejects(access(join(outDir, 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
+    await rm(join(options.sourceDir, file));
+  }
 });
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
