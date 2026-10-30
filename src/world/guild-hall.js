@@ -1,5 +1,23 @@
 import { validatedEventList, isVerifiedAuthorization } from "./project.js";
 
+function denseStringList(value, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      Object.keys(value).length !== value.length ||
+      Reflect.ownKeys(value).length !== value.length + 1) {
+    throw new Error("invalid " + label);
+  }
+  const values = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value") ||
+        typeof descriptor.value !== "string" || descriptor.value.trim().length === 0) {
+      throw new Error("invalid " + label);
+    }
+    values.push(descriptor.value);
+  }
+  return values;
+}
+
 export function projectGuildHall({
   institution, quest_id, events = [], agents = [], verifyAuthorization
 }) {
@@ -31,13 +49,23 @@ export function projectGuildHall({
     ) ? "AUTHORIZED" : "PROPOSED"
   }));
 
-  const roster = agents.map(agent => Object.freeze({
-    agent_id: agent.agent_id,
-    capabilities: Array.isArray(agent.capabilities) ? [...agent.capabilities] : [],
-    can_contribute: (agent.capabilities || []).some(capability =>
-      quest.quest.capabilities.includes(capability)
-    )
-  }));
+  const agentList = validatedEventList(agents, "Guild Hall agent");
+  const roster = agentList.map(agent => {
+    const idProperty = Object.getOwnPropertyDescriptor(agent, "agent_id");
+    const capabilitiesProperty = Object.getOwnPropertyDescriptor(agent, "capabilities");
+    if (!idProperty || idProperty.enumerable !== true || !Object.hasOwn(idProperty, "value") ||
+        typeof idProperty.value !== "string" || idProperty.value.trim().length === 0 ||
+        (capabilitiesProperty &&
+          (capabilitiesProperty.enumerable !== true || !Object.hasOwn(capabilitiesProperty, "value")))) {
+      throw new Error("invalid Guild Hall agent");
+    }
+    const capabilities = denseStringList(capabilitiesProperty?.value ?? [], "Guild Hall agent capabilities");
+    return Object.freeze({
+      agent_id: idProperty.value,
+      capabilities: Object.freeze(capabilities),
+      can_contribute: capabilities.some(capability => quest.quest.capabilities.includes(capability))
+    });
+  });
 
   return Object.freeze({
     room: "Guild Hall",
