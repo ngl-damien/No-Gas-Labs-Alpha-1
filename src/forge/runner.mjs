@@ -69,12 +69,12 @@ function excluded(path) {
 
 const SENSITIVE_CONTENT_RULES = [
   { id: 'private-key-block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
-  { id: 'github-token', pattern: /\\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b/ },
-  { id: 'aws-access-key', pattern: /\\bAKIA[0-9A-Z]{16}\\b/ },
-  { id: 'google-api-key', pattern: /\\bAIza[0-9A-Za-z_-]{35}\\b/ },
-  { id: 'slack-token', pattern: /\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b/ },
-  { id: 'stripe-live-secret', pattern: /\\bsk_live_[A-Za-z0-9]{16,}\\b/ },
-  { id: 'npm-token', pattern: /\\bnpm_[A-Za-z0-9]{30,}\\b/ }
+  { id: 'github-token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/ },
+  { id: 'aws-access-key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
+  { id: 'google-api-key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { id: 'slack-token', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
+  { id: 'stripe-live-secret', pattern: /\bsk_live_[A-Za-z0-9]{16,}\b/ },
+  { id: 'npm-token', pattern: /\bnpm_[A-Za-z0-9]{30,}\b/ }
 ];
 function credentialContentRule(content) {
   // Latin-1 preserves ASCII signatures even in mixed/binary blobs. The scanner
