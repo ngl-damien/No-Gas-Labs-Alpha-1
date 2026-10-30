@@ -786,13 +786,13 @@ test('process death after atomic rename keeps the decision store fenced until ex
     let timer;
     return Promise.race([
       promise,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label + (stderr ? ': ' + stderr : '')), 7000); })
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label + (stderr ? ': ' + stderr : ''))), 7000); })
     ]).finally(() => clearTimeout(timer));
   };
 
   try {
     assert.equal(await bounded(nextMessage(), 'crash worker did not open the decision store'), 'READY');
-    child.stdin.end('commit\\n');
+    child.stdin.end('commit\n');
     assert.equal(
       await bounded(nextMessage(), 'crash worker did not reach the post-rename boundary'),
       'AFTER_RENAME_BEFORE_DIRECTORY_SYNC'
