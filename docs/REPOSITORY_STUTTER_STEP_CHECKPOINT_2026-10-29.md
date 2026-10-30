@@ -565,3 +565,59 @@ No Alpha 1 runtime code was changed in this run. No merge, branch deletion, rele
 - Exact Git blob identities show that PR #179 and PR #195 contain byte-identical core files: `game/collaborator-contracts.mjs` (`f88de3e4dfeeac320aa7cc771f2e93c5420bbcae`), `game/collaborator-response.mjs` (`586366f16e5246ff0413adfea78653779fb28d8c`), `game/strict-json.mjs` (`cd0607b05f776935257f0b2621c314d5f996dd73`), `test/game-collaborator-contracts.test.mjs` (`21b657ee28dcac1ae3b7eb94a6d58d1f8e533205`), and `test/game-collaborator-response.test.mjs` (`29dcb7d56a6f8048b8b833b5ce1ea3c770b535d2`). `game/server.mjs` is also byte-identical between #179 and #195.
 - They are not identical PRs: `game/client.mjs`, `scripts/verify-browser.py`, and `test/game-server.test.mjs` differ. PR #195 therefore carries additional integration work while reusing the exact core collaborator modules from the older stack.
 - This is evidence of shared implementation, not proof that #195 fully supersedes every staged PR. All four older PRs remain open. Do not merge/close them automatically. Worker B should choose one canonical integration path, reconcile its base with current main, and prevent the identical core files from being merged twice.
+
+
+### Stutter-step execution addendum — 2026-10-30 UTC
+
+#### Fresh baseline and current repository state
+
+- Re-read repository metadata, the main ref, current open PRs and issues, selected PR diffs, source files, and hosted workflow runs.
+- Main is now 7d8c77367f6acb2d85e35cd9a195797555d1ac7d. This is 11 commits beyond the checkpoint's original merge base 933648a23608d4da4c4e007906cdda62eaf1afd5.
+- The current open-PR search returned 32 open PRs. The open issue search returned #17 (Founder key custody, concurrency and stale-lock recovery) and #22 (hybrid-cognition challenge).
+- Existing checkpoint PR #191 remains draft. Its branch was 3f20c64158d3cbb0cf7e3d847efbb30dc038b9ac, 20 commits ahead / 7 behind current main before this addendum. It must be reconciled; it is not a current-main merge candidate merely because older checks passed.
+
+#### Functional repair — private save backup now preserves character position
+
+- Re-inspected PR #202, its five-file diff, exact base/head ancestry, current-main changes since its merge base, and hosted workflow runs before editing.
+- Source defect: PR #202 introduced a versioned private-save envelope with character coordinates, but the existing local backup stored only the world. Manual and automatic backup recovery could restore progress while leaving the position sidecar from a different save.
+- Updated PR #202 branch game/export-private-position-20261030:
+  - 5865f803b9d99e1b1090b1e3421c36558a2c4442 — backup envelope stores the previous world and its matching character position; manual and automatic recovery restore both; legacy world-only backups use the original spawn point.
+  - 76647131161ab598b20ec7b797347446eb05be47 — browser acceptance adds manual/automatic/legacy backup recovery checks.
+  - 00d33b06dae4b48b045da8107aaad32dd7f18c85 — unreadable primary saves no longer prevent a fresh private world from being saved; an unreadable current copy does not overwrite the last known-good backup.
+  - 25199d5c1e8ab131e7df51510f1419ecafc73922 — browser acceptance adds recovery from both unreadable stored copies.
+- PR #202 is 13 commits ahead / 1 behind current main; the single mainline-only commit changes game/world-view.mjs and test/game-geometry.test.mjs, not the five PR #202 files. GitHub reports it mergeable.
+- Exact-head checks at last inspection: Verify run 40993546372 success; Genesis Evidence Invariant 40993546388 success; Browser Acceptance 40993546455 in progress. Do not call the browser journey passed until that exact run completes.
+
+#### Founder authorization — current-main transplant
+
+- Corrected the PR-number history again: PR #16 is Experiment 001, not the self-signing authorization PR. PR #8 is the earlier signed-decision prototype; PR #18 rebased the experiment. Issue #17 remains open.
+- Fresh mainline source inspection confirmed src/authority/decision.js still allowed authorizationEvent() to accept a caller-created { valid: true } object. That is a source-backed forgeability defect in the helper.
+- PRs #180/#181 contain the relevant hardening but their shared branch ancestry is 11 commits behind current main. Compared current main with their merge base: none of the three affected paths (src/authority/decision.js, test/decision-chamber.test.js, test/decision-world-integration.test.js) changed in those 11 mainline commits.
+- Transplanted those three files onto a fresh branch created from current main and opened draft PR #203: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/203
+- Exact commits: edd33fb09ccfbbd6372a1a61aac0180f6cd4f72c (sealed verifier and audience-bound decision helper), 300cab79e7a90ff8c47f57034b315a9ff840a7f1 (adversarial unit tests), 83684f484f4045d9a4a54c534b9015b4921cfbbf (persisted-event/quest/world projection integration tests).
+- PR #203 is 3 commits ahead / 0 behind current main. Exact-head Verify 40993470387 success and Genesis Evidence Invariant 40993470402 success; Browser Acceptance 40993470367 pending at last inspection. Earlier cancelled runs are superseded and are not failures.
+- The tests explicitly reject a caller-forged valid flag, bind verification to the exact payload/receipt, check expiry and audience replay, and verify that authorization alone creates no XP, inventory or execution.
+- Unresolved by design: no real Founder private key was created or enrolled; no external custody or identity proof exists; the signed-decision verifier is not integrated into the live game-server login/session gate. Issue #17 remains open. Do not describe Founder identity or production authorization as solved.
+
+#### Guild Hall — newer archive branch is a stronger consolidation candidate
+
+- A new current-main PR #204 was observed: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/204
+- Exact blob comparison against PR #195 shows game/collaborator-contracts.mjs, game/collaborator-response.mjs, and game/model.mjs are byte-identical. PR #204 changes the client/server integration and adds archive/history projection, persisted packet/response receipts, server revalidation, and restart recovery.
+- PR #204 is 24 commits ahead / 0 behind current main. Exact-head Verify 40993528425 success and Genesis Evidence Invariant 40993528572 success; Browser Acceptance 40993528551 in progress at last inspection. The branch body records an earlier browser-test harness failure and a corrected retry; the latest run has not yet passed.
+- PR #195 remains open, 7 commits behind current main and reported unmergeable. PR #204 is a stronger candidate for a single canonical Guild Hall integration path, but no older PR (#174/#177/#178/#179/#195) was closed or merged. Structural response validation remains human-review-only, not truth, execution, XP or authority.
+
+#### Linked donor status
+
+- EvidenceOS PR #1 remains open draft and unmerged. Its exact head c0e0506684421a4c0d95fbe0e831b59cd840f34f has hosted run 40987422770 success, with 8 tests passing and syntax checks passing. The private repository's main remains 055d2fc3de8b05b4722f144497b1c7876136a78e; its old node --test src/ command remains on main until the PR is reviewed/merged. The repair is not yet part of the default branch.
+
+#### Next ranked actions
+
+1. Inspect exact-head Browser Acceptance run 40993546455 for PR #202; if it fails, diagnose its job log and fix the source/test rather than rerunning blindly.
+2. Inspect PR #203 Browser Acceptance run 40993470367; retain the explicit key-custody and server-integration blockers in Issue #17.
+3. Inspect PR #204 Browser Acceptance run 40993528551; compare its archive/restart behavior against the old Guild Hall stack before recommending one canonical path.
+4. Reconcile PR #191 with current main; its 7-commit divergence predates this addendum.
+5. Continue the Issue #17 cross-process writer/lease and stale-lock recovery acceptance, then continue recursive source/test/workflow audits across the remaining 32 repositories. The 32-repository inventory is not a completed source audit.
+
+#### Authority
+
+No merge, PR closure, branch deletion, release, deployment, key creation/rotation, permission or secret change, or spending occurred. PR #203 is a draft transplant for review; PR #202 was updated in place; this checkpoint was updated in the existing draft PR #191. All three current-main runtime changes remain unmerged.
