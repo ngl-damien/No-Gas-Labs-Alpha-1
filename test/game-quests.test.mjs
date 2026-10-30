@@ -543,8 +543,11 @@ test('main quest stops repeating the generic task when every current objective h
     assert.equal(quest.id, actor.role + '-current-trail-recorded');
     assert.equal(quest.title, 'Current quest trail · all objectives recorded');
     assert.equal(quest.action, 'trail');
-    assert.equal(quest.button, 'Inspect retained quest trail →');
+    assert.equal(quest.button, 'Start a new research question →');
+    assert.deepEqual(quest.nextAction, { type: 'location', id: 'moonshot_field' });
+    assert.equal(Object.isFrozen(quest.nextAction), true);
     assert.match(quest.copy, /not approval, truth verification, mastery, or proof of external execution/i);
+    assert.match(quest.copy, /optional step.*Moonshot Field/i);
   }
 });
 
