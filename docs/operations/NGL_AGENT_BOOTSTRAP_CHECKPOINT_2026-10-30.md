@@ -61,3 +61,55 @@ Their main branches already expose agent-governance workflows and root AGENTS.md
 ## Important limitation
 
 This contract tells an invoked agent to continue iterating for as much useful compute as its host session permits. It does not create compute, start an agent by itself, or keep a model running after its host session ends.
+
+
+## Delivery-governance correction — 2026-10-30
+
+### Why this was added
+
+The initial protocol described the shared institution/game objective but did not define a testable MMORPG completion standard. That left room for repeated governance, reliability, and isolated feature work to look like progress without demonstrating that the product was approaching a complete MMORPG.
+
+### Changes on this branch
+
+- Root `AGENTS.md` now explicitly requires sequential bootstrap: root instructions alone as the first repository operation, the complete canonical protocol alone as the second, and no repository inventory until both reads finish. Pre-read observations must be discarded.
+- `scripts/validate-agent-governance.mjs` now fails preflight if the sequential-bootstrap markers or MMORPG completion section are removed.
+- `test/agent-governance.test.mjs` adds a regression proving preflight blocks when the sequential bootstrap requirement is removed.
+- `docs/operations/MMORPG_COMPLETION_CONTRACT.md` defines product stages and mandatory G0–G9 gates: product definition, coherent playable loop, persistence, authoritative multiplayer, core RPG systems, social/economic systems, repeatable world/content, Android-first device experience, operational readiness, and release/Founder acceptance.
+- `docs/operations/MMORPG_COMPLETION_LEDGER.md` starts each gate at **NOT ASSESSED**. This means the required audit has not yet been completed; it does not claim the capability is absent.
+- The shared protocol and universal contract now require Worker B to maintain the evidence ledger, prioritize the highest unblocked player-capability gate, distinguish current-main from proposed-branch evidence, and avoid letting infrastructure-only work displace gameplay indefinitely.
+- `package.json` adds both completion documents to the scoped CI preflight targets.
+
+### Other-worker result inspected
+
+Latest observed Worker B result at this checkpoint: PR #211, branch `game/contradiction-clerk-version-receipts-20261030`, exact head `961921e72c521c1df000c38cbf32fcc83d51981a`. Its PR description reports successful exact-head Verify run **41131527105**, Genesis Evidence Invariant run **41131527033**, and Browser Acceptance run **41131527101** (12/12 journeys). The change improves the Contradiction Clerk's binding of review reports to exact retained artifact-version receipts. It does not establish MMORPG completion, provider execution, adjudication, or physical Android-device testing.
+
+Also inspected PR #227 (Questkeeper + snapshot-safe reads + Moonshot flow), whose description reports exact-head Verify **41123352167**, Genesis **41123352194**, and Browser Acceptance **41123352239** (13/13 journeys). PR #226 is a parallel older Questkeeper repair stacked on #207; #227 explicitly selects #207's implementation rather than combining both. These are proposed branches, not integrated mainline capabilities.
+
+### Governance collision and disposition
+
+- PR #228 separately proposes the sequential-bootstrap correction on `AGENTS.md` and `scripts/validate-agent-governance.mjs`.
+- This branch now carries the same required sequential bootstrap plus additional completion-gate enforcement in those paths. PR #228 remains open and must be reconciled as superseded/overlapping before merge; do not merge both blindly.
+- PR #229 remains draft/open. No PR was merged, no branch deleted, and no deployment, release, key/credential/permission change, spending, or external publication occurred.
+
+### Verification state and limits
+
+- GitHub contents API accepted the sequential edits on this branch. This is evidence of committed source changes, not test success.
+- Exact-head hosted checks for the resulting branch have not yet been observed. The new preflight regression, existing 12 tests, full verification, Genesis invariant, and browser acceptance remain pending exact-head CI.
+- No local clone/test execution or physical Android-device testing is claimed.
+- The completion ledger is intentionally unassessed pending Worker B's source-backed audit of current `main` and active game PRs.
+
+### Handoff to Worker B — game delivery
+
+1. Read the completion contract and ledger before the next game change.
+2. Audit current `main` separately from open/stacked game PRs. Populate ledger rows only with exact source refs and test evidence; mark proposed work separately.
+3. Identify the highest unblocked release gate and deliver one coherent player-facing capability with end-to-end tests.
+4. Demonstrate authoritative multiplayer with two independent clients before marking G3 beyond implemented/tested.
+5. Distinguish PWA/browser evidence from native Android package and physical-device evidence.
+6. Do not claim feature-complete, release-ready, accepted, or released until the corresponding gates and Founder boundary are satisfied.
+
+### Next actions
+
+1. Inspect the exact resulting PR #229 head and wait for all three exact-head workflows; inspect logs and repair any attributable failure.
+2. Reconcile PR #228's overlapping governance change; do not merge either proposal without full diff/base review and explicit Founder authorization.
+3. Worker B: perform the G0–G9 baseline audit and maintain the ledger while continuing the highest-value game delivery work.
+4. Worker A: resume institution-wide reliability work only after checking the new ledger for cross-cutting blockers; do not duplicate Worker B's game implementation.
