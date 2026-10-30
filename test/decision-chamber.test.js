@@ -91,6 +91,21 @@ test("verification requires a host-pinned audience and rejects mismatches", () =
   });
 });
 
+test("mutating global Date.now cannot revive an expired decision", () => {
+  const expiredPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
+  const expiredSigned = signedReceipt(expiredPayload);
+  const realNow = Date.now;
+  try {
+    Date.now = () => 0;
+    assert.deepEqual(verify(expiredSigned, expiredPayload), {
+      valid: false,
+      reason: "DECISION_EXPIRED"
+    });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test("public decision verifier rejects caller-controlled clock overrides", () => {
   assert.deepEqual(verifyFounderDecision({
     signed,
@@ -177,20 +192,13 @@ test("a verification result is bound to the exact payload and signed receipt", (
   );
 });
 
-test("a decision verified before expiry cannot authorize after its expiry", () => {
-  const expiringPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
+test("a decision verified before expiry cannot authorize after its expiry", async () => {
+  const expires_at = new Date(Date.now() + 1200).toISOString();
+  const expiringPayload = makePayload({ expires_at });
   const expiringSigned = signedReceipt(expiringPayload);
-  const realNow = Date.now;
-  let verification;
-  try {
-    // The verifier uses wall-clock time. Simulate the decision's valid instant
-    // without exposing a caller-controlled clock parameter in its public API.
-    Date.now = () => 0;
-    verification = verify(expiringSigned, expiringPayload, jwk, fingerprint);
-  } finally {
-    Date.now = realNow;
-  }
+  const verification = verify(expiringSigned, expiringPayload, jwk, fingerprint);
   assert.equal(verification.valid, true);
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, Date.parse(expires_at) - Date.now() + 10)));
   assert.throws(
     () => authorizationEvent({ signed: expiringSigned, payload: expiringPayload, verification }),
     /verified Founder decision required/
