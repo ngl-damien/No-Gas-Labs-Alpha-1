@@ -52,7 +52,7 @@ function fixture() {
   const signed = {
     payload_sha256: decisionDigest(payload),
     key_fingerprint: expectedFingerprint,
-    signature: sign("sha256", Buffer.from(canonical(payload)), privateKey).toString("base64url")
+    signature: sign("sha256", Buffer.from(canonical(payload)), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url")
   };
   const verification = verifyFounderDecision({
     signed, payload, public_key_jwk: publicKeyJwk,

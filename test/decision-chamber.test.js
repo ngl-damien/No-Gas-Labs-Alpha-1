@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { createHash, generateKeyPairSync, sign, webcrypto } from "node:crypto";
 import { defineQuest } from "../src/quest/engine.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
 import {
@@ -52,7 +53,7 @@ function signedReceipt(value, key = privateKey, keyFingerprint = fingerprint) {
   return {
     payload_sha256: decisionDigest(value),
     key_fingerprint: keyFingerprint,
-    signature: sign("sha256", Buffer.from(canonical(value)), key).toString("base64url")
+    signature: sign("sha256", Buffer.from(canonical(value)), { key, dsaEncoding: "ieee-p1363" }).toString("base64url")
   };
 }
 const signed = signedReceipt(payload);
@@ -73,6 +74,55 @@ test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () 
     valid: false,
     reason: "DECISION_PAYLOAD_INVALID"
   });
+});
+
+test("browser WebCrypto P-256 signatures verify with the Founder decision wire format", async () => {
+  const pair = await webcrypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const exported = await webcrypto.subtle.exportKey("jwk", pair.publicKey);
+  const publicKeyJwk = { kty: exported.kty, crv: exported.crv, x: exported.x, y: exported.y };
+  const spki = Buffer.from(await webcrypto.subtle.exportKey("spki", pair.publicKey));
+  const browserFingerprint = createHash("sha256").update(spki).digest("hex");
+  const value = makePayload();
+  const signature = Buffer.from(await webcrypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    pair.privateKey,
+    Buffer.from(canonical(value))
+  ));
+  assert.equal(signature.length, 64);
+  const receipt = {
+    payload_sha256: decisionDigest(value),
+    key_fingerprint: browserFingerprint,
+    signature: signature.toString("base64url")
+  };
+  assert.deepEqual(verifyFounderDecision({
+    signed: receipt,
+    payload: value,
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: browserFingerprint,
+    expected_audience: audience
+  }), { valid: true, reason: null });
+});
+
+test("DER-encoded P-256 signatures are rejected at the browser wire boundary", () => {
+  const derSignature = sign("sha256", Buffer.from(canonical(payload)), privateKey);
+  assert.notEqual(derSignature.length, 64);
+  assert.deepEqual(verify({ ...signed, signature: derSignature.toString("base64url") }), {
+    valid: false,
+    reason: "SIGNATURE_INVALID"
+  });
+});
+
+test("Founder signing page emits the verifier-compatible v2 envelope", async () => {
+  const html = await readFile(new URL("../authority/index.html", import.meta.url), "utf8");
+  assert.ok(html.includes("ngl.founder-decision.v2"));
+  assert.ok(html.includes("exportKey('spki',publicKey)"));
+  assert.ok(html.includes("signature.length!==64"));
+  assert.ok(html.includes("schema:'ngl.agp.founder-decision-envelope.v2'"));
+  assert.ok(html.includes("payload_sha256:digest,key_fingerprint:fingerprint,signature:b64url(signature)"));
 });
 
 test("verification requires a host-pinned audience and rejects mismatches", () => {

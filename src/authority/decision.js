@@ -20,10 +20,9 @@ const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "p
 const CANONICAL_MAX_DEPTH = 64;
 const CANONICAL_MAX_NODES = 10000;
 const CANONICAL_MAX_BYTES = 1024 * 1024;
-// A P-256 ECDSA signature is DER-encoded; two 33-byte INTEGERs plus
-// the SEQUENCE header cannot exceed 72 bytes (96 unpadded base64url chars).
-const P256_DER_SIGNATURE_MAX_BYTES = 72;
-const P256_DER_SIGNATURE_MAX_BASE64URL_CHARS = 96;
+// WebCrypto ECDSA signatures use IEEE-P1363 r||s encoding: 32 bytes each.
+const P256_P1363_SIGNATURE_BYTES = 64;
+const P256_P1363_SIGNATURE_BASE64URL_CHARS = 86;
 
 function canonical(value, state = { active: new Set(), nodes: 0, bytes: 0 }, depth = 0) {
   state.nodes += 1;
@@ -220,9 +219,9 @@ function snapshotSignedReceipt(signed) {
   if (!raw || typeof raw.payload_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(raw.payload_sha256) ||
       typeof raw.key_fingerprint !== "string" || !FINGERPRINT.test(raw.key_fingerprint) ||
       typeof raw.signature !== "string" || raw.signature.length === 0 ||
-      raw.signature.length > P256_DER_SIGNATURE_MAX_BASE64URL_CHARS) return null;
+      raw.signature.length !== P256_P1363_SIGNATURE_BASE64URL_CHARS) return null;
   const signatureBytes = Buffer.from(raw.signature, "base64url");
-  if (signatureBytes.length < 8 || signatureBytes.length > P256_DER_SIGNATURE_MAX_BYTES ||
+  if (signatureBytes.length !== P256_P1363_SIGNATURE_BYTES ||
       signatureBytes.toString("base64url") !== raw.signature) return null;
   return Object.freeze({
     payload_sha256: raw.payload_sha256,
@@ -361,7 +360,7 @@ export function verifyFounderDecision(input) {
     const valid = verifySignature(
       "sha256",
       Buffer.from(canonical(decision)),
-      key,
+      { key, dsaEncoding: "ieee-p1363" },
       signatureBytes
     );
     if (!valid) return rejected("SIGNATURE_INVALID");
