@@ -393,6 +393,48 @@ def shared(browser,url,data,out):
         expect(b.locator('#relay-retry-pending-shared-action')).to_have_count(0)
         close_sheet(b)
         b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
+
+        # Exercise the same-origin cross-tab race in two pages sharing this browser context.
+        # A held Web Lock must stop the second tab before it can create or replace a receipt.
+        c=visitor.new_page()
+        c.on('pageerror',lambda error:errors.append(str(error)))
+        c.goto(url);c.locator('#start-shared').click()
+        c.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        visit(c,'The shared observatory')
+        c.get_by_text('Report a problem or unsupported claim',exact=True).click()
+        b.evaluate("localStorage.removeItem('ngl.common-ground.pending-shared-action.v1')")
+        b.evaluate("""() => {
+            window.__nglLockHeld = false;
+            window.__nglSharedLockPromise = navigator.locks.request(
+                'ngl.common-ground.shared-action.v1',
+                {mode:'exclusive'},
+                lock => new Promise(resolve => {
+                    window.__nglLockHeld = Boolean(lock);
+                    window.__nglReleaseSharedLock = resolve;
+                })
+            );
+        }""")
+        b.wait_for_function("()=>window.__nglLockHeld===true")
+        cross_tab_report='Cross-tab write must not replace an unresolved receipt.'
+        c.locator('#report-text').fill(cross_tab_report)
+        c.locator('#report-button').click()
+        expect(c.locator('#toast')).to_contain_text('Another tab is handling a shared action')
+        assert c.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')") is None
+        state_after_empty_race=visitor.request.get(url+'api/state').json()
+        assert not any(item['text']==cross_tab_report for item in state_after_empty_race['world']['reports'])
+
+        # A busy tab must also leave an already-saved uncertain receipt byte-for-byte intact.
+        b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
+        second_cross_tab_report='A busy tab must preserve the original request receipt.'
+        c.locator('#report-text').fill(second_cross_tab_report)
+        c.locator('#report-button').click()
+        expect(c.locator('#toast')).to_contain_text('Another tab is handling a shared action')
+        assert c.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")==receipt
+        state_after_saved_race=visitor.request.get(url+'api/state').json()
+        assert not any(item['text'] in (cross_tab_report,second_cross_tab_report) for item in state_after_saved_race['world']['reports'])
+        b.evaluate("window.__nglReleaseSharedLock?.()")
+        b.evaluate("window.__nglSharedLockPromise")
+        c.close()
         b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to The Relay',exact=True).click()
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
