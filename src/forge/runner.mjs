@@ -54,7 +54,7 @@ function safePath(path) {
   return typeof path === 'string' && path.length > 0 && !path.includes('\\') && !path.includes('\0') && !path.startsWith('/') && path.split('/').every(part => part && part !== '.' && part !== '..');
 }
 function excluded(path) {
-  return path.split('/').some(part => /^(?:\.git|\.runtime|runtime|node_modules|dist|\.aws|\.ssh|\.codex|\.agents|\.npmrc|\.netrc|\.pypirc|secrets?|credentials?|__pycache__)$/i.test(part) || /^\.env/i.test(part) || /\.(?:pem|key|p12|pfx|pyc)$/i.test(part) || /^(?:id_rsa|id_ed25519|credentials(?:\.json)?|secrets?\.json)$/i.test(part));
+  return path.split('/').some(part => /^(?:\.git|\.runtime|\.tmp|runtime|node_modules|dist|\.aws|\.ssh|\.codex|\.agents|\.npmrc|\.netrc|\.pypirc|secrets?|credentials?|__pycache__)$/i.test(part) || /^\.env/i.test(part) || /\.(?:pem|key|p12|pfx|pyc)$/i.test(part) || /^(?:id_rsa|id_ed25519|credentials(?:\.json)?|secrets?\.json)$/i.test(part));
 }
 export function listWorkloads() {
   return [{ id: 'vector-sum-v1', description: 'Sum the same deterministic 10,000-number vector 200 times; verify seven independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
