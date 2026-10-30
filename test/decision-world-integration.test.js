@@ -57,7 +57,7 @@ function fixture() {
   const verification = verifyFounderDecision({
     signed, payload, public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
-    expected_audience: audience, now: 0
+    expected_audience: audience
   });
   assert.equal(verification.valid, true);
   const event = authorizationEvent({ signed, payload, verification });
