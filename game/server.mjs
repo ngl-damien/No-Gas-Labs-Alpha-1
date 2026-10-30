@@ -326,7 +326,8 @@ function validateHistory(world) {
           snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== world.events.slice(0, index).filter(source => event.actor.role === 'founder' || !['draft', 'repair'].includes(source.type)).length ||
           !Array.isArray(packet.inputRefs) || JSON.stringify(packet.inputRefs) !== JSON.stringify(event.sourceEventIds) ||
           !Array.isArray(packet.inputRecords) || packet.inputRecords.length !== event.sourceEventIds.length ||
-          !Array.isArray(packet.omittedEventIds) || !Number.isSafeInteger(packet.omittedCount) || packet.omittedCount < packet.omittedEventIds.length ||
+          !Array.isArray(packet.omittedEventIds) || packet.omittedEventIds.length > 64 || packet.omittedEventIds.some(id => typeof id !== 'string' || !id || Array.from(id).length > 128 || event.sourceEventIds.includes(id)) || new Set(packet.omittedEventIds).size !== packet.omittedEventIds.length ||
+          !Number.isSafeInteger(packet.omittedCount) || packet.omittedCount < 0 || packet.omittedCount < packet.omittedEventIds.length ||
           packet.omittedEventIdListTruncated !== (packet.omittedCount > packet.omittedEventIds.length)) throw new Error('Stored collaborator packet identity or authority boundary mismatch');
       for (let sourceIndex = 0; sourceIndex < event.sourceEventIds.length; sourceIndex += 1) {
         const source = eventById.get(event.sourceEventIds[sourceIndex]), record = packet.inputRecords[sourceIndex];
