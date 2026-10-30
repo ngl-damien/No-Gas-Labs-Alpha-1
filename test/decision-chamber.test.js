@@ -584,3 +584,32 @@ test("decisionDigest rejects hidden properties and enforces the byte budget", ()
   );
   assert.throws(() => decisionDigest(structuralObjectBudgetAttack), /byte limit/);
 });
+
+test("persisted host verifier uses wall clock and rejects caller-controlled clock overrides", () => {
+  const expiredPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
+  const expiredSigned = signedReceipt(expiredPayload);
+  const expiredEvent = Object.freeze({
+    event_id: "authorize:" + expiredPayload.proposal_id + ":" + expiredSigned.payload_sha256,
+    type: "QUEST_AUTHORIZED",
+    quest_id: expiredPayload.quest_id,
+    audience: expiredPayload.audience,
+    proposal_id: expiredPayload.proposal_id,
+    grant_id: expiredSigned.payload_sha256,
+    actor: "founder",
+    capabilities: expiredPayload.capabilities,
+    outputs: expiredPayload.outputs,
+    acceptance: expiredPayload.acceptance,
+    expires_at: expiredPayload.expires_at,
+    key_fingerprint: expiredSigned.key_fingerprint,
+    signature: expiredSigned.signature
+  });
+  const options = {
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  };
+  const hostVerifier = createFounderAuthorizationVerifier(options);
+  assert.equal(hostVerifier(expiredEvent), false, "expired persisted decisions must fail at the host trust boundary");
+  assert.equal(verifyAuthorizationEvent(expiredEvent, { ...options, now: 0 }), false,
+    "the persisted-event API must not accept a caller-controlled clock");
+});
