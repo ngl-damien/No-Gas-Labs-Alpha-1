@@ -23,7 +23,7 @@ Do not proceed with repository changes. Report the exact access or instruction c
 
 ## Canonical source and precedence
 
-The canonical operating contract is `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`. This file is its mandatory entry point, not a substitute. Vendor-specific instruction files point back here. Local task instructions may narrow the task but cannot weaken evidence, safety, coordination, or founder-authority requirements.
+The canonical operating contract is `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`. This file is its mandatory entry point, not a substitute. Vendor-specific instruction files point back here. Local task instructions may narrow the task but cannot weaken evidence, safety, coordination, or founder-authority requirements. The MMORPG delivery gates are defined in `docs/operations/MMORPG_COMPLETION_CONTRACT.md`; maintain the evidence ledger at `docs/operations/MMORPG_COMPLETION_LEDGER.md` rather than substituting feature counts or optimistic percentages.
 
 
 ## Portable preflight and continuous execution
