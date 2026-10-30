@@ -72,3 +72,44 @@ No pull requests were merged or closed; no branches were deleted; no releases or
 - ngl-mesh PR #1 head `d10fe10fee8924d085afbd513f162dae8e4fb734`: Relay operator-key trust PR run 40996304779 and agent-governance PR run 40996304479 passed; push counterparts 40996297423 and 40996297446 passed. The isolated Java trust, durable-marker and signed-revocation tests completed successfully. PR remains draft/unmerged.
 - Alpha 1 PR #203, #204 and #205 retain all-three-check success on their recorded exact heads; their functional and trust-boundary limitations remain as above.
 - This checkpoint PR #191 head is `c75e9d6a3bfca36c0c2c60e6ca502f501004a4aa`, 31 commits ahead / 0 behind main, two documentation files changed, draft/open/mergeable. It is a handoff artifact, not a merge request recommendation.
+
+
+## Worker A stutter-step run — 2026-10-30 04:52 UTC
+
+### Fresh baseline and coordination
+
+- Alpha 1 `main`: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; unchanged by this run.
+- Open Alpha 1 pull requests: **36** at inspection.
+- Complete paginated branch inventory: **453 refs** across five pages. The historical branch-cleanup manifest contains 80 names; **none of those names currently exists** in the complete inventory. No branch was deleted.
+- This checkpoint branch is `audit/repository-stutter-step-checkpoint-2026-10-29` at `0c2a64c9c1196db9426dc9ff277f8456b7135872` before this append; compare against current main was 34 commits ahead / 0 behind. Its exact-head Verify 40999614317, Genesis 40999614315, and Browser Acceptance 40999614406 all passed.
+- Read root `AGENTS.md`, the full shared operating protocol, and this handoff before acting. Inspected the current MMORPG worker's latest open PRs #206/#207; no edits were made to their active gameplay files.
+
+### Implemented: branch-cleanup safety PR #208
+
+- PR: [#208 — make redundant branch cleanup manual and preview-first](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/208)
+- Branch: `safety/manualize-branch-cleanup-20261030`
+- Final exact head at this checkpoint: `257cbc8791fb63d430f5eab4ae791b1448be35ef`
+- Changed paths: `.github/workflows/branch-cleanup.yml`, `test/branch-cleanup-safety.test.mjs`.
+- Replaced the automatic push-to-main trigger with manual `workflow_dispatch`. Blank confirmation runs a preview only. The deletion job requires the exact phrase `DELETE-ONLY-MANIFESTED-BRANCHES` and a successful preview. It rechecks manifest size, default branch, protected branches, open PR heads, exact baseline SHA, and the live ref immediately before a deletion.
+- The existing workflow-level token permissions are deliberately unchanged: `contents: write` / `pull-requests: read`. The preview script performs reads only but inherits the existing write-capable token; narrowing that permission is not included without explicit authority.
+- Exact-head CI at last observation: Genesis run [41005107781](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41005107781) **success**; Verify run [41005107978](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41005107978) **pending**; Browser Acceptance run [41005107829](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41005107829) **in progress**. Push-trigger counterparts 41005104734/41005104735/41005104845 were cancelled after PR-trigger runs superseded them; they are not failures.
+- The workflow was not dispatched. No branch was deleted. PR #208 remains draft/open/unmerged.
+
+### Challenged findings and worker handoff
+
+- **PR #207 — Questkeeper skill:** Worker B's branch is `game/questkeeper-skill-20261030`, head `a7ad7f54eeabd58ac5fed88a8f088fab79b76f48`. Verify run [41002552971](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41002552971) failed with 673 passed / 2 failed. The existing skill-list assertion at `test/game-character-sheet.test.mjs:93` does not include the newly added Questkeeper entry. The new Founder objective test expected count 1 but observed 2. Genesis run 41002553040 and Browser Acceptance run 41002552965 passed. This is active Worker B gameplay work; do not duplicate edits to `game/character-sheet.mjs` or its test. Handoff: inspect the fixture's completed objectives and decide whether the count of 2 is correct; update the legacy exact skill-list expectation and the new test only after that semantic check.
+- **PR #206 — verified retry status:** exact head `52c9d15cbecb318dafaf991b2b04a534cac25f1d`; Verify 41002349999, Genesis 41002349997, and Browser Acceptance 41002349993 all passed. No duplicate change made.
+- **PR #192 — CI trigger deduplication:** exact head `88f43f73c03166184026a3014bb6ee98018c9a22`; compare to main 6 ahead / 0 behind; Verify 40999346447, Genesis 40999346395, Browser Acceptance 40999346400 all passed. It changes only the three validation workflow triggers and their regression test. Draft remains unmerged.
+- **Founder authorization:** corrected numbering remains important: PR #16 is Experiment 001; PR #8 is the earlier signed-decision prototype; PR #18 is the replacement experiment integration. Current-main `src/authority/decision.js` still has an `authorizationEvent` helper that trusts a caller-supplied `verification.valid` boolean. PR #203 exact head `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901` adds WeakMap-backed verification seals and audience binding; Verify 40999308640, Genesis 40999308626, and Browser Acceptance 40999308607 passed. The live `game/server.mjs` uses a separate host-key/ephemeral-session gate and does not import the signed-decision verifier. Issue #17 remains open for real key custody, independent signing, concurrency, stale-lock recovery, and integration. No key was created, read, or rotated.
+
+### Next ranked actions
+
+1. Poll PR #208 exact-head Verify and Browser Acceptance; inspect job logs if either fails, then repair only an attributable defect.
+2. Hand PR #207's exact test mismatch to Worker B; do not edit its active files from Worker A.
+3. Continue PR #203's server-integration review without creating or handling real Founder key material; keep the local session gate and signed-decision verifier distinct until a safe integration design and key-custody acceptance exist.
+4. Keep PR #192 and checkpoint PR #191 as review candidates; do not merge.
+5. Continue branch and repository reconciliation across the 453-ref inventory. The 80 historical cleanup names are absent; no cleanup or branch deletion is authorized.
+
+### Authority and outcome
+
+Main remains unchanged. No merge, branch deletion, release, deployment, secret/key operation, permission-setting change, spending, or workflow dispatch occurred. PR #208 is a proposed safety correction only.
