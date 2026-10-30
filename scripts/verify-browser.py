@@ -625,6 +625,9 @@ def offline_pwa(browser,url,out):
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
         page.reload(wait_until='networkidle')
         page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        # A reload returns to the explicit doorway; reopen the existing device-local world.
+        expect(page.locator('#doorway')).to_be_visible()
+        page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
         assert not errors,errors
