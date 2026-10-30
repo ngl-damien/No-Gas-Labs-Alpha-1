@@ -87,6 +87,19 @@ test('Forge rejects protected paths, traversal, arbitrary commands and unbounded
   await assert.rejects(access(options.outDir));
 });
 
+test('Forge rejects sparse and accessor-backed candidate inputs before creating outputs', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  await assert.rejects(compareCandidates({ ...options, candidates: new Array(1) }), /dense|candidate/i);
+  await assert.rejects(access(options.outDir));
+  let getterInvoked = false;
+  const overlay = {};
+  Object.defineProperty(overlay, target, { enumerable: true, get() { getterInvoked = true; return correct; } });
+  const accessorOut = options.outDir + '-accessor';
+  await assert.rejects(compareCandidates({ ...options, outDir: accessorOut, candidates: [{ id: 'accessor', overlay }] }), /data|overlay/i);
+  assert.equal(getterInvoked, false);
+  await assert.rejects(access(accessorOut));
+});
 test('Forge snapshots tracked and nonignored source bytes, omits runtime and credentials, refuses symlinks', async t => {
   const options = await fixture(t);
   await writeFile(join(options.sourceDir, 'ignored.txt'), 'ignored runtime');
