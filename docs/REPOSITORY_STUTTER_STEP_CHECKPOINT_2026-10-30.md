@@ -116,3 +116,13 @@ No merge, release, deployment, branch deletion, workflow dispatch, secret/key/cr
 ### Authority boundary
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/secret/credential change, key operation, spending, or external publication occurred. Main is unchanged. All three new/active code proposals remain unmerged.
+
+
+## Verification and inventory follow-up — 2026-10-30 06:5x UTC
+
+- PR #212 exact head `2fdd4b808fea1da01083a237fced13f84f1e1640` now has all three hosted checks **success**: Verify / Genesis run 41015795338; world-projection run 41015795353; Playable-world / browser acceptance run 41015795366. The superseded same-head world-projection run 41015764568 was cancelled, not failed.
+- PR #210 checkpoint branch head remains `cfe31f5735b411b62516957a4a862e6c72982d75`. Its Verify run 41016122346 and world-projection run 41016122370 succeeded; browser acceptance run 41016122358 was still in progress at this follow-up. Earlier replacement runs 41016115718, 41016115732, and 41016115771 were cancelled, not failures.
+- Full branch pagination (pages 1–5: 100, 100, 100, 100, 57; page 6 empty) observed **457 branch refs**, with **0 marked protected** by the branch-list API. This is observation only, not authorization to change protections or delete branches.
+- Fresh search observed **40 open PRs** and **2 open issues**.
+- `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #212 remains draft/open/unmerged; no merge or deployment occurred.
+- Next run should recheck PR #210's browser job, inspect review feedback or new checks on PR #212, and rehydrate before choosing any further code change.
