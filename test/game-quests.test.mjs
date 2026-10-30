@@ -678,7 +678,9 @@ function collaboratorArchiveEvent({
       };
     });
   }
-  const packetJson = JSON.stringify(payload);
+  const packetJson = payload.role === role && sourceEventIds === null
+    ? packet.packetJson
+    : JSON.stringify(payload);
   const responseText = JSON.stringify({ externalText: 'Untrusted response retained for human review.' });
   const receipt = value => ({
     algorithm: 'sha256',
