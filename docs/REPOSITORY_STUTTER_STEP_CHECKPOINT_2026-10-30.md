@@ -127,7 +127,7 @@ No merge, release, deployment, branch deletion, workflow dispatch, permission/se
 - `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #212 remains draft/open/unmerged; no merge or deployment occurred.
 - Next run should recheck PR #210's browser job, inspect review feedback or new checks on PR #212, and rehydrate before choosing any further code change.
 
-## Run addendum — 2026-10-30 08:0x UTC (Worker A)
+## Run addendum — 2026-10-30 UTC (Worker A)
 
 ### Fresh baseline and coordination
 
