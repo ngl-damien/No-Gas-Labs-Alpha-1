@@ -513,3 +513,14 @@ No merge, release, deployment, branch deletion, workflow dispatch, permission/cr
 - The failed Browser Acceptance journey still timed out at `scripts/verify-browser.py:71` waiting for private mode after the world became visible. Next useful diagnostic is to inspect the failed screenshot/console evidence or make the harness capture page errors and the actual mode-label text at timeout. Avoid an unchanged blind rerun and avoid editing Worker B's owned files without a distinct handoff.
 
 No merge, deployment, release, branch deletion, workflow dispatch, credential/key/permission change, spending, or external publication occurred.
+
+
+## Latest exact-head status — 2026-10-30 10:50 UTC
+
+- Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; no merge.
+- PR #216 current code head is `539fc6479e2621751543bb787f4e79cb892a0f2b` (includes encrypted private-key PEM coverage).
+- On that exact SHA, Genesis Evidence Invariant [41043280286](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41043280286) and Verify [41043280391](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41043280391) succeeded. Verify logs show Node tests exit 0, Python inspector tests exit 0, package build exit 0, and bounded institutional exercise `passed: true`.
+- Browser Acceptance [41043280438](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41043280438) is still in progress. The standalone build completed and the browser journey step is running; no final browser result or receipt is available yet. Do not reuse the prior head's 12/12 result as proof for this latest SHA.
+- PR #216 description now reflects the latest head and current workflow statuses. Next action is to recheck the exact-head browser job, inspect its final journey results/artifact, and update this checkpoint and PR description with the final outcome.
+
+No other repository state changed. PR #216 and checkpoint PR #210 remain draft/open/unmerged; no deployment, release, deletion, permission change, key operation, or spending occurred.
