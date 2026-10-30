@@ -243,20 +243,32 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
   const options = await fixture(t);
   const file = 'src/embedded-credential.mjs';
   const { compareCandidates, verifyRepository } = await api();
-  const githubToken = 'ghp_' + 'A'.repeat(36);
-  await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(githubToken) + ';' });
-  let failure;
-  try {
-    await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
-  } catch (error) {
-    failure = error;
+  const samples = [
+    ['github-token', 'ghp_' + 'A'.repeat(36)],
+    ['github-token', 'github_pat_' + 'A'.repeat(24)],
+    ['aws-access-key', 'AKIA' + 'A'.repeat(16)],
+    ['google-api-key', 'AIza' + 'A'.repeat(35)],
+    ['slack-token', 'xoxb-' + 'A'.repeat(20)],
+    ['stripe-live-secret', 'sk_live_' + 'A'.repeat(24)],
+    ['npm-token', 'npm_' + 'A'.repeat(36)],
+    ['gitlab-token', 'glpat-' + 'A'.repeat(24)]
+  ];
+  for (const [index, [rule, secret]] of samples.entries()) {
+    const outDir = options.outDir + '-' + index;
+    await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(secret) + ';' });
+    let failure;
+    try {
+      await compareCandidates({ ...options, outDir, candidates: [{ id: 'correct', overlay: {} }] });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error, rule + ' must fail closed');
+    assert.ok(failure.message.includes('Credential-like content detected in source file: src/embedded-credential.mjs (' + rule + ')'), rule);
+    assert.equal(failure.message.includes(secret), false, 'errors must not echo matched credential bytes');
+    await assert.rejects(access(outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
+    await rm(join(options.sourceDir, file));
   }
-  assert.ok(failure instanceof Error);
-  assert.ok(failure.message.includes('Credential-like content detected in source file: src/embedded-credential.mjs (github-token)'));
-  assert.equal(failure.message.includes(githubToken), false, 'errors must not echo matched credential bytes');
-  await assert.rejects(access(options.outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
 
-  await rm(join(options.sourceDir, file));
   const privateKeyBlock = ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' redacted-test-fixture';
   await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(privateKeyBlock) + ';' });
   const report = await verifyRepository({ ...options, outDir: options.outDir + '-verify' });
