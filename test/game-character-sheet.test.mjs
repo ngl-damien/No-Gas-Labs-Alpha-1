@@ -20,7 +20,7 @@ const publication=(id,actor,creationId,version,at,extra={})=>
 
 test('character XP and level derive from unique publications matched to retained versions',()=>{
   const world={
-    xp:300,
+    xp:999,
     creations:[publishedCreation('c1',[t1,t2,t3])],
     events:[
       publication('p1',founder,'c1',1,t1),
@@ -153,6 +153,38 @@ test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => 
   for (const id of ['explorer', 'observer', 'challenger', 'restorer', 'questkeeper']) {
     assert.equal(record.skills.find(skill => skill.id === id).count, 0, id + ' requires retained matching activity');
   }
+});
+
+test('a retained publication remains inventory and a valid source even when its XP receipt is invalid', () => {
+  const world = {
+    xp: 0,
+    creations: [publishedCreation('unrewarded-place', [t1])],
+    events: [
+      event('unrewarded-publication', 'publish', founder, t1, {
+        creationId: 'unrewarded-place', version: 1, reward: 0
+      }),
+      event('note-after-unrewarded-publication', 'contribute', founder, t2, {
+        creationId: 'unrewarded-place', version: 1
+      })
+    ],
+    discoveries: [],
+    contributions: [{
+      id: 'note-record',
+      actor: founder,
+      creationId: 'unrewarded-place',
+      version: 1,
+      text: 'The published version can still be inspected.',
+      at: t2
+    }],
+    reports: [],
+    methods: []
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.xp, 0);
+  assert.equal(record.worldXp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'maker').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'observer').count, 1);
+  assert.deepEqual(record.inventory.map(item => [item.id, item.version]), [['unrewarded-place', 1]]);
 });
 
 test('ambiguous activity-to-event joins do not grant Explorer, Observer, or Challenger progress', () => {
