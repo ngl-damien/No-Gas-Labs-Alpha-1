@@ -120,6 +120,26 @@ test('Forge task identities are deterministic for source bytes and overlays and 
   await assert.rejects(compareCandidates({ ...options, candidates }), /exist|fresh/i);
 });
 
+test('Forge verification uses a fresh copy and cannot inherit files created only during candidate execution', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const overlay = [
+    "import { writeFileSync } from 'node:fs';",
+    "if (process.argv[1].endsWith('/benchmark.mjs')) {",
+    '  writeFileSync(new URL(\'./helper.mjs\', import.meta.url), "export const sum = values => values.reduce((a, b) => a + b, 0);");',
+    '}',
+    "const { sum } = await import('./helper.mjs');",
+    'export { sum };'
+  ].join('\\n');
+  const report = await compareCandidates({ ...options, candidates: [{ id: 'execution-only-helper', overlay: { [target]: overlay } }] });
+  const result = report.results[0];
+  assert.equal(result.execution.outcome, 'passed');
+  assert.equal(result.verification.outcome, 'failed');
+  assert.equal(result.correct, false);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.verificationWorkspace, 'candidates/execution-only-helper/verification-workspace');
+  assert.notEqual(result.verificationWorkspace, result.workspace);
+});
 test('Forge CLI demo executes fixture candidates and writes a report without a shell', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngl-forge-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
