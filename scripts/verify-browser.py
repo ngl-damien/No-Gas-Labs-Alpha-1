@@ -64,11 +64,14 @@ def draft(page,kind,title):
 
 
 def basic(page,url,out,label):
-    errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    errors=[];page.on('pageerror',lambda error:errors.append('pageerror: '+str(error)));page.on('console',lambda message:errors.append('console error: '+message.text) if message.type=='error' else None)
     page.goto(url,wait_until='networkidle')
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
-    page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    try:page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    except Exception:
+        print('BROWSER_STARTUP_DIAGNOSTICS '+json.dumps({'errors':errors,'mode':page.locator('#mode-label').text_content(),'worldHidden':page.locator('#world').get_attribute('hidden'),'body':page.locator('body').inner_text()[:1200]}))
+        raise
     character=page.locator('#character-button')
     expect(character).to_be_visible()
     expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))
@@ -578,12 +581,59 @@ def launchpad(page,url,out,label):
     page.locator('#portal-close').click();close_sheet(page)
     page.locator('#journal-button').click()
     with page.expect_download() as saved:page.locator('#export-world').click()
-    world=json.loads(Path(saved.value.path()).read_text())
+    saved_game=json.loads(Path(saved.value.path()).read_text())
+    assert saved_game['schema']=='ngl.private-save.v1'
+    world=saved_game['world'];saved_position=saved_game['playerPosition']
     assert len(world['creations'])==3 and world['xp']==300
-    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(world).encode()})
+    assert saved_position and 0<=saved_position['x']<=1600 and 0<=saved_position['y']<=1000
+    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.locator('#journal-button').click()
+    invalid_save={**saved_game,'playerPosition':{'x':1601,'y':640}}
+    page.locator('#import-world').set_input_files({'name':'invalid-world.json','mimeType':'application/json','buffer':json.dumps(invalid_save).encode()})
+    expect(page.locator('#toast')).to_contain_text('invalid character position')
+    assert page.locator('#creation-count').text_content()=='3', 'An invalid position must not replace the saved world'
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'A rejected save must not overwrite the last valid character position'
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    position_key='ngl.common-ground.player-position.v1'
+    expected_position=lambda point:{'schema':'ngl.player-position.v1','x':point['x'],'y':point['y']}
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(saved_position), 'Private save import did not restore the character location'
+
+    # A later import must back up the world and the position that existed before the import.
+    backup_position={'x':min(saved_position['x']+25,1590),'y':min(saved_position['y']+25,990)}
+    page.evaluate("""position=>localStorage.setItem('ngl.common-ground.player-position.v1',JSON.stringify({schema:'ngl.player-position.v1',...position}))""",backup_position)
+    page.locator('#journal-button').click()
+    page.locator('#import-world').set_input_files({'name':'world-again.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
+    page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.locator('#journal-button').click()
+    page.locator('#recover-backup').click()
+    page.wait_for_function("""expected=>{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'));return saved?.schema==='ngl.player-position.v1'&&saved.x===expected.x&&saved.y===expected.y}""",arg=backup_position)
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(backup_position), 'Manual backup recovery did not restore the previous character position'
+
+    # If the primary world is damaged, automatic backup recovery must restore its matching position too.
+    automatic_backup_position={'x':min(backup_position['x']+25,1590),'y':min(backup_position['y']+25,990)}
+    page.evaluate("""position=>localStorage.setItem('ngl.common-ground.player-position.v1',JSON.stringify({schema:'ngl.player-position.v1',...position}))""",automatic_backup_position)
+    page.locator('#import-world').set_input_files({'name':'world-third.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
+    page.wait_for_function("()=>document.querySelector('#sheet').hidden")
+    page.evaluate("localStorage.setItem('ngl.common-ground.v2','{')")
+    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(automatic_backup_position), 'Automatic backup recovery did not restore the previous character position'
+
+    # Legacy world-only backups remain readable and use the documented original spawn point.
+    page.evaluate("""world=>{localStorage.setItem('ngl.common-ground.v2','{');localStorage.setItem('ngl.common-ground.v2.backup',JSON.stringify(world));localStorage.removeItem('ngl.common-ground.player-position.v1')}""",world)
+    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':180,'y':640}, 'Legacy world-only backup should restore at the original spawn point'
+
+    # If both stored copies are unreadable, a fresh private world must still be savable.
+    page.evaluate("""()=>{localStorage.setItem('ngl.common-ground.v2','{');localStorage.setItem('ngl.common-ground.v2.backup','{')}""")
+    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.locator('#launch-shortcut').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    fresh_world=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+    assert len(fresh_world['creations'])==3, 'A damaged old save must not prevent a new private world from being saved'
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
