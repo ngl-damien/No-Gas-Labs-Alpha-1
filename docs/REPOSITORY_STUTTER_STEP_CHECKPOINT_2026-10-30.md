@@ -1121,3 +1121,37 @@ No merges, releases, deployments, branch deletions, permission/credential/key ch
 5. Recover missing Relay artifacts before claiming full Android/RAE integration. Issue #22 remains a falsifiable experiment proposal, not an executed benchmark.
 
 No merge, release, deployment, branch deletion, permission/credential/key operation, spending, provider call, workflow dispatch, or external publication occurred in this run.
+
+## Run 12 handoff — 2026-10-30 UTC
+
+### Fresh Alpha 1 state and integration supersession
+- Current main: 7d8c77367f6acb2d85e35cd9a195797555d1ac7d (unchanged).
+- Latest search returned 55 open PRs and 2 open issues (#17 Founder custody/concurrency/recovery; #22 hybrid-cognition falsifiable challenge).
+- Latest checkpoint head before this addendum: 72789390e9dab2ec8ec742be60fb86a79fc7d5a9. Its exact-head Verify [41117843456](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117843456), Genesis [41117843438](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117843438), and Browser Acceptance [41117843430](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117843430) all completed successfully.
+
+### Cycle 1 — Questkeeper activity matcher re-inspected and superseded
+- PR #226 was initially at 9fd04fe1cf6702d71b1d11594458e0d3bbab141c with all three hosted checks successful (Verify [41117507541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117507541), Genesis [41117507600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117507600), Browser [41117507548](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41117507548)).
+- A source review found that #226 duplicated the four guide-location IDs already owned by game/quests.mjs. Commit 3893f3cf611b7166225c80346e0c96815e127f18 removes the duplicate set and calls the canonical getLocationAction() registry instead.
+- Reinspection then found new integration PR #227. Its body explicitly states that #226 is a parallel older implementation and that #227 selects #207's current exact-head implementation. #227's game/character-sheet.mjs already imports getLocationAction and uses stricter activityJoinKey validation. PR #226 now reports mergeable=false; its latest commit has no associated PR-triggered workflow run returned by the API.
+- Decision: treat #226 as superseded; do not merge it, do not duplicate its implementation into #227, and do not close it without Founder authorization. PR #227 is the selected integration candidate.
+- PR #207 current head: 1ed9fa23550feb3191865f53e9630af3acc9ad04; base remains current main. PR #227 head: 8370920d45accb9209ca6e6da3d2605ed2d22f9e, base PR #225 head 42a5832a93671974ad330a2d3fda24b5fbf5caaa.
+- PR #227 exact-head Verify [41123352167](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41123352167), Genesis [41123352194](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41123352194), and Browser [41123352239](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41123352239) all succeeded; browser logs report 13/13 journeys and artifact [13010180880](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41123352239/artifacts/13010180880). PR #225's three exact-head checks also completed successfully. Both remain draft/unmerged.
+
+### Cycle 2 — EvidenceOS rejects unknown recursive-tree completeness
+- Continued existing EvidenceOS PR #1 on fix/evidenceos-incomplete-ingestion-20261029, not a competing branch.
+- Commits: 0748ac41e195d287a5ebbf8702f674aecfe511b1 changes src/pass1.js to require response.data.truncated be an explicit boolean before accepting a recursive tree; eea29797c80bab41428476ca7ba9f519b43b742e adds a regression test that rejects a tree response with no truncation/completeness flag and confirms no partial signals/files are retained.
+- Exact current PR #1 head: eea29797c80bab41428476ca7ba9f519b43b742e. Hosted run [41125011030](https://github.com/ngl-damien/evidenceos/actions/runs/41125011030) was queued at final inspection. Previous head 602a1041458375b529c1af844656089530a11a1c passed run [41111264199](https://github.com/ngl-damien/evidenceos/actions/runs/41111264199), but that does not verify the new commit. No local full-suite result is claimed.
+- PR #2 remains a separate stacked loopback-only HTTP boundary proposal; its recorded exact-head run [41084314765](https://github.com/ngl-damien/evidenceos/actions/runs/41084314765) passed 23 tests. Do not describe the service as remotely authenticated or deployed.
+
+### Linked Relay and Founder boundaries
+- ngl-mesh PR #3 head 7847c0fd7eb334d4bed726f12703567bdff9de42: Relay strict UTF-8 input-contract run [41110544604](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544604) and agent-governance run [41110544499](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544499) both succeeded. Full Android/RAE integration remains blocked by missing recovered source archive, reference APK, and RAE report.
+- Issue #17 remains open. PR #16's original self-signing demonstrate() finding is superseded by merged PR #18's Ed25519 INSTALL-signature prototype. PR #203's separate P-256 helper is not integrated into live game/server.mjs; current main still contains the caller-supplied { valid: true } verification-object boundary in src/authority/decision.js. Do not choose a canonical trust anchor by inference. No real Founder key custody or independent key-control proof is established; no key material was handled.
+
+### Next ranked steps
+1. Recheck EvidenceOS PR #1 exact-head run 41125011030; if failed, inspect its job log and fix only the attributable regression.
+2. Treat Alpha 1 PR #227 as the selected Questkeeper/snapshot/Moonshot integration candidate; recheck its exact head before considering any further change. Keep PR #226 marked superseded in future handoffs; do not merge or close it automatically.
+3. Reconcile the Ed25519 INSTALL signer and P-256 decision helper, then integrate a host verifier into the live server only after the trust anchor and key-custody model are explicit and shared server ownership is settled.
+4. Recover the missing Relay artifacts before claiming Android/RAE integration.
+5. Keep main branch protection/ruleset review separate; no permission or protection settings were changed.
+
+No merge, release, deployment, branch deletion, permission/credential/key operation, spending, provider call, workflow dispatch, or external announcement occurred in this run.
