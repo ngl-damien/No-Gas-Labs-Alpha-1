@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { runPreflight } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
-const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien'].join('\n');
+const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
   await mkdir(join(root, 'docs/operations'), { recursive: true });
   await mkdir(join(root, '.github'), { recursive: true });
-  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
   await writeFile(join(root, protocolPath), protocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
