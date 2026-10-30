@@ -168,3 +168,61 @@ Root-level content groups observed:
 - Recursive source/test/workflow/history inspection: partial; the existing donor audit covers a prior 12-repository snapshot, not today's full 32.
 - Workflow failure root-cause analysis across the account: not complete.
 - Current Alpha 1 Actions and open-PR state: inspected as described above.
+
+
+## Run addendum — 2026-10-29 local / 2026-10-30 UTC
+
+### Fresh baseline and coverage
+
+- Reconfirmed `main` at `933648a23608d4da4c4e007906cdda62eaf1afd5`; no mainline change was made.
+- Reconfirmed 32 repositories in the connected `ngl-damien` account. This run retrieved recursive Git trees for 10 priority repositories: TaskAgile (169 blobs), Damien-Featherstone (77), ngl001-def4us28 (24), ngl-mesh (11), Command Center (108), evidenceos (14), no-gas-labs (13), ai-guild-hardened-v0.2 (4), no-gas-labs-system-integration (2), and Omnichain_Bridge_wallet (11). Tree counts are blob counts, not build/runtime evidence.
+- `ngl-mesh`: all 11 current source blobs match the 11-file Alpha 1 reference snapshot under `integrations/ngl-mesh-reference/`; no new donor delta exists in those files. The Java RAE bridge and authorization experiment are executable-looking source/test candidates, but they are not a full Android Mesh runtime and the bridge test requires an external recovered source archive, reference APK and report. The authorization experiment uses a generated test operator key; it does not establish real Founder key custody. Preserve as an independent adapter/reference; do not copy it wholesale into canonical runtime.
+- `TaskAgile`: inspected package manifest, persistence, security and state modules. The offline queue stores to browser localStorage, but its sync handlers explicitly simulate leaderboard/progress/achievement operations with random delays and random failures rather than calling a real server. Score/anti-cheat logic is client-side. Useful interaction/offline UX patterns only; not canonical progression, security, or evidence.
+- `ngl001-def4us28`: inspected CONTACT runtime, acceptance contract, workflow and persisted state/ledger. Current state reports 128 observation runs and last recorded external observation at 2026-10-25T23:55:02Z. The runtime performs a public GitHub repository metadata read and appends an observation; it does not implement the declared recursive capability-acquisition sequence. The five-minute scheduled workflow has `contents: write`; treat as a write-capable automation requiring separate review. The latest Actions API query returned no run entries; this is not evidence that the repository is broken or that the workflow never ran.
+- Command Center, Damien-Featherstone, evidenceos, no-gas-labs, Guild, system-integration and Omnichain Bridge Wallet received recursive tree inventory only in this run, not complete source/build/security audits. The Damien-Featherstone tree includes `.data/institutional_keypair.json`; private material was not read or copied. Wallet source remains security-sensitive.
+
+### PR #16 / Founder authorization adjudication
+
+- PR #16 is **closed, unmerged**. Issue #17 explicitly records its self-signing `demonstrate()` approach as superseded by PR #18, which merged on 2026-10-22. Do not reopen #16 or treat it as the current repair target.
+- PR #18's replacement prototype uses a detached Ed25519 INSTALL signature and a configured public-key fingerprint pinned at module import; its exact-head Verify and Genesis checks passed before merge, per Issue #17. This is prototype evidence, not proof that Damien controls the private key or that a production signing service exists.
+- Issue #17 remains open: real Founder key custody/identity, adversarial concurrency, stale-lock/crash recovery and independent reuse acceptance remain unresolved.
+- Current main's `src/authority/decision.js` is a separate helper and is not imported by `game/server.mjs`. The world reducer's `isVerifiedAuthorization` requires a host-injected verifier and fails closed when none is supplied; do not describe the helper as a live production server authorization path.
+- Open PRs #164 and #180 both change `src/authority/decision.js` and the same two test files. #164 is heavily diverged from current main (27 commits ahead / 112 behind); #180 is 6 ahead / 4 behind; #181 is 14 commits ahead of #180 and adds an institution-audience binding. These are overlapping/stacked draft lines, not three independent production integrations. No PR was merged or closed.
+- PR #187 is 11 commits ahead / 0 behind current main. Its latest head `9b9c4e26d3107497973811999bbe233331f3c0fc` passed Verify run 40969913708, Genesis run 40969913707 and Browser Acceptance run 40969913778. It remains draft/unmerged. PR #182 is a separate test-only line 7 ahead / 4 behind main; compare against #187 before deciding whether its tests are already subsumed.
+- PR #26 is 15 ahead / 275 behind current main; preserve as stale/diverged pending a source-level re-adjudication, not a merge candidate.
+
+### Actions failure diagnosis — recent 300 completed records
+
+The most recent 300 completed Alpha 1 workflow records returned 98 successes, 191 cancellations and 11 failures. This is a bounded recent sample, not the full 9,103-run history.
+
+- Same-head push/PR duplication is verified: on PR #191 head `48fd91cb5e724e8486cad9f3513442836e7d9849`, push runs 40980660074/60076/60079 were cancelled while PR runs 40980665307/65314 executed on that same SHA. Cancellation is not a test failure.
+- Decision-store failures on PR #187's earlier commits were source-backed:
+  - Runs 40965949761 and 40969240918 timed out at the 120-second test-stage limit with Founder-key/server teardown failures. PR #187's source notes identify the ordering defect: tests removed the temporary runtime directory before `server.closeGame()` released the decision-store lease, causing guard-directory `ENOENT`. Commit `75e0d674502140a3fec838506b3b05467699fa8e` handles only the missing-directory teardown case and closes the retained descriptor; `bb534c1eb454a1bd22d61052854e11e3d21999f1` adds a regression.
+  - Run 40969712941 at `bb534c1...` failed 670/671: the lock-inspector test expected the transient `.decisions.lock.guard` directory to remain for the store lifetime; log shows `ENOENT` while scanning it. Commit `9b9c4e26d3107497973811999bbe233331f3c0fc` corrects the fixture to create a synthetic receipt for the inspector test and remove it before close. All three exact-head workflows now pass on that commit.
+- Run 40957641052 on `game/kernel-activity-on-world-map` failed five top-level test files (`game-academy`, `game-geometry`, `game-moonshot`, `game-world-institution-activity`, `moonshot-world-objects`). The retained log only reports each as 'test failed'; the underlying exception is not exposed there. Later mainline exact-head Verify passed, so this is superseded evidence; root cause remains unknown.
+- Runs 40948117466, 40948109185, 40948068527, 40948062165, 40947928001, 40947898020 and 40947853775 repeatedly failed activity-count assertions on the old `game/institution-event-mapping` branch. Logs show expected/actual count mismatches (2 vs 3, 3 vs 2, and 1 vs 2) in `test/game-world-institution-activity.test.mjs` and `test/game-geometry.test.mjs`. Current mainline Verify passes on the later PR #191 head; these old branch failures are superseded, not evidence of current-main instability. Their exact historical source cause remains unproven.
+
+### CI improvement in progress
+
+- Created draft PR #192: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/192
+- Head: `9a643ff633bcb15d799c8ed712e2e1d8baeae3e2`; base main: `933648a23608d4da4c4e007906cdda62eaf1afd5`.
+- Commits: `3b5261c0fee6141ec49ef5b9520805baef3819b6` (Verify), `83bd0f37957a599b1ed2818b5ca359f89030875b` (Genesis), `9a643ff633bcb15d799c8ed712e2e1d8baeae3e2` (Browser Acceptance).
+- All three validation workflows now use `pull_request` plus `push` restricted to `main`; existing concurrency, permissions and test commands are unchanged. This removes the same-commit feature-branch push/PR duplicate; it does not remove cancellation of obsolete runs after a newer PR commit.
+- Re-read all three files from the branch. GitHub accepted the workflow syntax: Verify run 40981348326 **success**; Genesis run 40981348397 **success**; Browser Acceptance run 40981348371 was still **in progress** at the last inspection (dependency install and standalone build had passed; browser journey was running). No local test or YAML parser was run. Do not call the PR fully verified until the browser run completes.
+- No merge, branch deletion, release, deployment, secret/permission change or paid action occurred.
+
+### Current PR and branch inventory
+
+- Current open PR count: 26. PR #192 and the checkpoint PR #191 are drafts; #190 and #188 are non-draft; #189 is stacked on #188; #181 is stacked on #180; #179/#178/#177 are a Guild stack. Several other open PRs have base SHAs older than current main and need explicit ancestry/conflict review.
+- Branch pages 1–3 returned 300 branches. Pagination is incomplete; do not claim a complete branch inventory.
+
+### Next prioritized actions
+
+1. Finish and inspect PR #192 Browser Acceptance on exact head `9a643ff...`; if successful, update its evidence and leave draft for founder review.
+2. Recheck PR #191's three checks after this checkpoint update; prior head `48fd91c...` had Verify, Genesis and Browser Acceptance all successful, but those results do not validate a later checkpoint commit.
+3. Adjudicate overlapping Founder-decision work (#164 vs #180/#181) and writer-lock work (#182 vs #187) from current diffs, exact checks and base ancestry; do not merge or close without Damien's authorization.
+4. Continue recursive source/test/workflow inspection of the remaining donor candidates, starting with Command Center, Damien-Featherstone (without reading/copying key material), evidenceos and the TownSquare/Omnichain sources.
+5. Reconcile the 94-entry historical recovery manifest against the 32 currently connected repositories; preserve inaccessible, unrecovered and provenance-only states explicitly.
+6. Continue account-wide failure analysis beyond the recent 300-run sample, separating actual failures, cancellations and superseded runs.
+
+Authority remains with Damien Featherstone. This addendum records evidence and work state; it does not authorize merges, closures, deletions, key provisioning, deployment, release publication or spending.
