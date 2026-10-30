@@ -146,7 +146,11 @@ function retainedVersion(creation, version) {
   // retained HTML bytes. The Clerk carries that validated receipt forward; it
   // does not treat the digest as proof that the artifact's claims are true.
   const sourceReceipt = ownDataValue(source, "receipt");
-  requirePlainObject(sourceReceipt, "the retained version receipt");
+  try {
+    requirePlainObject(sourceReceipt, "the retained version receipt");
+  } catch {
+    throw new Error("the requested version has no valid SHA-256 byte receipt");
+  }
   const algorithm = ownDataValue(sourceReceipt, "algorithm");
   const digest = ownDataValue(sourceReceipt, "digest");
   const size = ownDataValue(sourceReceipt, "size");
