@@ -151,9 +151,10 @@ export function getActiveQuest(world, viewer, trail = null) {
     return Object.freeze({
     id: `${viewer.role}-current-trail-recorded`,
     title: 'Current quest trail · all objectives recorded',
-    copy: 'Every currently defined objective has a matching retained record. This is a gameplay checkpoint—not approval, truth verification, mastery, or proof of external execution. Inspect the retained trail, then choose a new research question when ready.',
-    button: 'Inspect retained quest trail →',
-    action: 'trail'
+    copy: 'Every currently defined objective has a matching retained record. This is a gameplay checkpoint—not approval, truth verification, mastery, or proof of external execution. Your next optional step is to frame a new falsifiable question at the Moonshot Field.',
+    button: 'Start a new research question →',
+    action: 'trail',
+    nextAction: Object.freeze({ type: 'location', id: 'moonshot_field' })
     });
   }
 
