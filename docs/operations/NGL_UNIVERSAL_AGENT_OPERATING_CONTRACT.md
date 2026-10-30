@@ -73,6 +73,21 @@ The script verifies the root entry contract, canonical protocol, all four standa
 
 When adopting this contract in another repository, copy the portable preflight script and its tests, add the four standard vendor pointer files (Claude, Gemini, Codex, and Copilot) so each points back to root AGENTS.md and the shared protocol, set the local root instruction file to point to the canonical shared protocol, and wire preflight into the repository's verification workflow. If the root AGENTS.md points to a remote protocol URL, fetch the protocol from an immutable commit into a local workspace path and pass that path with --protocol. The preflight deliberately does not fetch mutable remote URLs itself. Never silently substitute a stale local copy.
 
+## Product delivery contract — finish the MMORPG
+
+The MMORPG is a required product outcome, not merely a source of engineering tasks. Follow `docs/operations/MMORPG_COMPLETION_CONTRACT.md` and maintain `docs/operations/MMORPG_COMPLETION_LEDGER.md` as the evidence-backed completion matrix.
+
+For every game run:
+- identify the highest-priority incomplete or unassessed release gate;
+- state whether the capability exists on current main, only on a proposed branch, or not yet observed;
+- implement and verify a substantive player-facing capability when a safe, unowned task is available;
+- update the ledger with exact evidence and limitations; and
+- hand off cross-scope blockers to the other worker with acceptance criteria.
+
+Do not spend successive runs polishing governance or infrastructure while a higher-value, unblocked gameplay gate remains. Infrastructure work must identify the game gate or material risk it unblocks. Do not equate code presence, a passing unit test, a browser mock, a draft PR, or a local demo with integrated multiplayer or release readiness.
+
+Use the product stages and lifecycle states in the completion contract. No unsupported percentage-complete claims. "MMORPG complete" is reserved for all mandatory release gates independently evidenced, actual supported-device acceptance, and Founder acceptance. Agents cannot deploy, publish, or accept the product on Damien's behalf.
+
 ## Required run record
 
 Every iteration must record:
