@@ -1,6 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COLLABORATOR_ROLES, isBoundedIdentifier, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectResearchRecords } from './research-records.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_WORLD_EVENT_SCAN = 100_000;
@@ -104,15 +103,6 @@ function parsePacket(packetJson) {
   }
 }
 
-function validProposal(record, eventId, moonshotId) {
-  const actor = validActor(record.actor);
-  return record.type === 'moonshot-proposed' && record.id === eventId &&
-    WORLD_OBJECT_ID.test(eventId) && record.moonshotId === moonshotId &&
-    boundedText(record.title, 80) && boundedText(record.hypothesis, 1000) &&
-    boundedText(record.falsifier, 1000) && boundedText(record.evidenceNeeded, 1000) &&
-    actor && isStrictTimestamp(record.at);
-}
-
 /**
  * Project exact archived collaborator responses into small, navigable Relay
  * folios. These are retained response objects, not autonomous NPCs, approvals,
@@ -130,7 +120,6 @@ export function projectCollaboratorResponseWorldObjects(world) {
   const entries = [];
   const eventIdCounts = new Map();
   const responseIdCounts = new Map();
-  const proposalCounts = new Map();
   const entryById = new Map();
   let visibleEventCount = 0;
 
@@ -148,9 +137,6 @@ export function projectCollaboratorResponseWorldObjects(world) {
     }
     if (record.type === 'collaborator-response-recorded' && typeof record.responseId === 'string') {
       responseIdCounts.set(record.responseId, (responseIdCounts.get(record.responseId) || 0) + 1);
-    }
-    if (record.type === 'moonshot-proposed' && typeof record.moonshotId === 'string') {
-      proposalCounts.set(record.moonshotId, (proposalCounts.get(record.moonshotId) || 0) + 1);
     }
   }
 
@@ -208,6 +194,16 @@ export function projectCollaboratorResponseWorldObjects(world) {
         payload.omittedEventIdListTruncated !== (omittedCount > omittedIds.length) ||
         omittedIds.some(id => !isBoundedIdentifier(id) || sourceIds.includes(id)) ||
         new Set(omittedIds).size !== omittedIds.length) continue;
+
+    const sourceChainValid = sourceIds.every(sourceId => {
+      const sourceEntry = entryById.get(sourceId);
+      const source = sourceEntry?.record;
+      return Boolean(sourceEntry && eventIdCounts.get(sourceId) === 1 &&
+        sourceEntry.index < entry.index && source &&
+        source.moonshotId === moonshotId && isStrictTimestamp(source.at) &&
+        Date.parse(source.at) <= atMs);
+    });
+    if (!sourceChainValid) continue;
 
     // Rebuild the role packet from the exact earlier event slice. Checking
     // source IDs and copied record text is not enough: a forged Synthesis Clerk
