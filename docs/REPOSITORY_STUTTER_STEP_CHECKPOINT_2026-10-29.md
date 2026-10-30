@@ -710,3 +710,12 @@ PR #205 exact head 03a7365ee2a5681f85e37278e2b66c335c64a04e now has all three ho
 - PR #203 (sealed/audience-bound Founder verification), #204 (untrusted Guild response archive), and #205 (guarded decision-writer lease) retain all-three-check success on their recorded exact heads: 83684f484f4045d9a4a54c534b9015b4921cfbbf; 6493a36b19e7a8fcc91aeb64e64cdac80f5d0ac3; 03a7365ee2a5681f85e37278e2b66c335c64a04e.
 - Founder blocker remains Issue #17. PR #16 numbering is corrected: #8 is the earlier signed-decision prototype, #16 is Experiment 001, and #18 is its rebased merge. No real Founder key custody or server-wide signed-decision integration is proven.
 - No merge, closure, branch deletion, release, deployment, secret/permission change, Founder key operation or spending occurred.
+
+
+## Linked donor execution addendum — ngl-mesh — 2026-10-30 UTC
+
+- Refreshed `ngl-damien/ngl-mesh`: public repository, default branch `main`, 23 paths in its current recursive tree; one open draft PR.
+- PR #1 (`security: pin Relay operator authority and persist replay markers`) had exact head `839f553f5255f47b3d7fcbd1272efbdeb5ac73af`, 34 commits ahead / 1 behind donor main. Current main's one intervening commit touched only root/governance docs; PR #1's 10 changed files were disjoint.
+- Advanced the existing PR branch by normal merge commit `d10fe10fee8924d085afbd513f162dae8e4fb734`, with current donor main `b4d17f38fab4a38cfd23bd17ef33016c844a63c1` as first parent and previous PR head as second parent. Compare against main: 35 ahead / 0 behind.
+- Exact-head PR run 40996304779 passed Java compilation, operator-key trust regression, durable marker regression, and signed revocation regression. Exact-head agent-governance run 40996304479 passed. Push runs 40996297423 and 40996297446 also passed.
+- The PR remains draft/open. This is a local Java integration prototype; it is not proof of an Android device build, production call-site isolation, real operator identity, or private-key custody. Durable marker creation is fail-closed but can consume a marker without a later append after a sync failure.
