@@ -66,3 +66,53 @@ No gameplay, writer-lease, or cleanup-workflow files were edited in this run. PR
 ## Authority and result
 
 No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred. Main remains unchanged. PR #209 is a draft proposal; its latest-head hosted verification was still pending at this checkpoint.
+
+
+## Run addendum — 2026-10-30 06:4x UTC (Worker A)
+
+### Fresh rehydration and coordination
+
+- Re-read root `AGENTS.md` and the complete shared Ralph protocol before acting.
+- Current `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; no mainline write occurred.
+- Fresh open-PR search returned **40 open PRs** and issue search returned **2 open issues**. This run did not paginate the full branch inventory; do not reuse the earlier branch count as a fresh count.
+- Worker B's latest result is PR #211, exact head `33b337e192bd18cccb232debd1f558575a97032b`, changed only `game/contradiction-clerk.mjs` and its test. Its exact-head Verify, world-projection, and playable-world checks all succeeded (runs 41013389441, 41013389630, 41013389571). No Worker B files were edited.
+
+### Implemented — receipt resolver mutation boundary
+
+**Draft PR #212:** [fix(evidence): bind receipt checks to immutable snapshots](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/212)
+
+- Branch: `fix/receipt-resolver-mutation-20261030`.
+- Base: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Head: `2fdd4b808fea1da01083a237fced13f84f1e1640`.
+- Changed files: `src/evidence/content-addressed.js` and new `test/content-addressed.test.js`; no open PR in the fresh inventory owned either path.
+- Reproduction: an isolated Node reproduction of the old implementation returned `true` for substitute bytes after the resolver mutated the same receipt object that had been validated. The old function compared against that mutated object after the callback.
+- Fix: validate an exact plain-data receipt, copy its algorithm/digest/size into a frozen detached snapshot, pass only that snapshot to the resolver, compare returned Buffer/Uint8Array bytes against the snapshot, and fail closed on malformed data or resolver errors.
+- Regression coverage includes resolver mutation, accessor and extra fields, unsafe sizes, non-byte returns, resolver errors, and an end-to-end `projectWorld` check that the mutation attempt cannot award XP.
+- Exact-head hosted checks on `2fdd4b808fea1da01083a237fced13f84f1e1640`: Genesis Evidence Invariant run **41015795338 success**; Verify/world-projection run **41015795353 success**; Playable-world run **41015795366 in progress at checkpoint time**. A superseded same-head world-projection run 41015764568 was cancelled, not failed. Local full repository tests were not run; hosted verification is the test evidence.
+- PR #212 is draft/open/unmerged. The isolated reproduction is not a production exploit demonstration against a deployed service; the resolver is host-supplied, and the fix prevents mutation from changing the expected receipt.
+
+### Rechecked active work and supersession
+
+- PR #209 location evidence: exact head `5411b9d6c19700c277637d4f53f62a98275ce8b3`; Verify 41011097114, Genesis 41011097113, and Playable-world 41011097111 all succeeded. Its location work remains consented/self-reported/unverified; it is not GPS proof or persistent server integration.
+- PR #203 Founder verifier sealing/audience binding: exact head `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901`; Verify 40999308640, Genesis 40999308626, and Playable-world 40999308607 all succeeded. Still draft and not integrated into `game/server.mjs`.
+- PR #205 writer lease: exact head `03a7365ee2a5681f85e37278e2b66c335c64a04e`; Verify 40994419828, Genesis 40994419741, and Playable-world 40994419665 all succeeded. This covers cooperating writers and fail-closed interrupted guards, not complete crash recovery or automatic stale-lock recovery.
+- PR #16's original self-signing finding remains superseded by the PR #8 prototype / PR #18 integration recorded in issue #17. The current-main caller-supplied `{ valid: true }` boundary in `src/authority/decision.js` is the active source defect; PR #203 addresses that helper, but the live game server still uses its separate host-key/session gate. No real Founder key custody or identity proof exists.
+- No edits were made to files owned by active PRs #203–#211. Stale-base PRs #191/#192 remain unreconciled and must not be treated as narrow checkpoint/CI-only diffs.
+
+### Linked NGL repositories
+
+- **evidenceos PR #1** remains draft/open at `7fbb4c83412e83882ea43df92532a346d524e00b`; its hosted test check succeeded (run 40999488401). Its incomplete-scan false-green fix is still proposed, not merged. The non-loopback HTTP authentication boundary in `src/server.js` remains a follow-up; PR #1 owns that file, so no concurrent edit was made.
+- **ngl-mesh PR #1** remains draft/open at `d10fe10fee8924d085afbd513f162dae8e4fb734`; operator-key-trust and required-agent-instructions checks succeeded (runs 40996304779 and 40996304479, with same-head replacement runs also successful). Signed revocation is now included in the branch history. Full APK/RAE integration remains unverified because the recovered source archive, reference APK, and RAE report are still missing.
+
+### Next ranked actions
+
+1. Recheck PR #212's Playable-world run 41015795366 on its exact head; repair any attributable failure before claiming all checks green.
+2. Review PR #203 and design the smallest safe verifier-to-server integration, but do not create or handle real Founder key material. Require a separately controlled signing operation before claiming Founder identity/custody.
+3. Complete issue #17's crash-window and stale-lock acceptance against PR #205 without duplicating its writer-lease files.
+4. After EvidenceOS PR #1 settles, implement and test an explicit loopback-only or authenticated non-loopback server boundary.
+5. Reconcile PRs #191/#192 by full changed-file/base analysis; no merge or branch deletion.
+6. Recover the missing Relay/APK/RAE artifacts before claiming device integration.
+
+### Authority boundary
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/secret/credential change, key operation, spending, or external publication occurred. Main is unchanged. All three new/active code proposals remain unmerged.
