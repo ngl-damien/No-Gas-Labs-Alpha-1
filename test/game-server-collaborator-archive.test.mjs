@@ -10,8 +10,9 @@ const KEY = 'test-founder-key-not-a-production-secret';
 
 test('shared Witness can preserve a server-revalidated response against its exact public packet and recover it after restart', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-collaborator-archive-'));
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
-  let server = await createGameServer({ dataDir, founderKey: KEY });
+  let server = null;
+  t.after(async () => { if (server) await server.closeGame().catch(() => {}); await rm(dataDir, { recursive: true, force: true }); });
+  server = await createGameServer({ dataDir, founderKey: KEY });
   let url = '';
   let cookie = '';
   const listen = async instance => {
@@ -31,8 +32,6 @@ test('shared Witness can preserve a server-revalidated response against its exac
     return { response, body: await response.json() };
   };
   await listen(server);
-  t.after(async () => { await server.closeGame().catch(() => {}); });
-
   const login = await request('/api/login', { key: KEY, name: 'Damien' });
   assert.equal(login.response.status, 200);
   assert.equal(login.body.viewer.role, 'founder');
