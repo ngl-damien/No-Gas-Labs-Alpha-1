@@ -553,3 +553,13 @@ No other repository state changed. PR #216 and checkpoint PR #210 remain draft/o
 2. Continue Founder integration only after shared `game/server.mjs` work settles; agree on one canonical trust-anchor/signature path rather than choosing between PR #18's Ed25519 INSTALL signer and PR #203's P-256 decision helper by inference.
 3. Continue Issue #17's writer-lease/crash-recovery acceptance; do not automate stale-lock deletion or touch real key material.
 4. Preserve the missing Relay APK/source archive and RAE report as explicit integration blockers.
+
+
+## Verification follow-up — digest edge-case test head
+
+- Fresh inventory at this pass: **47 open Alpha 1 PRs**, **464 branch refs**, and **0 refs marked protected** by the GitHub branch-list API. Main is still `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- PR #203 test-only head is now `0f8c7b823a8b3c25ebd4c411a83c97178dc51e28`. It adds explicit tests that symbol-backed and non-enumerable object fields are rejected instead of being silently omitted from the digest, and that the 1 MiB accounted-byte budget is enforced.
+- Exact-head Verify workflow [41050955318](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050955318) succeeded: Node `--test` exit 0 (9.6 s), Python inspector tests exit 0, package build exit 0, and bounded institutional exercise exit 0. Genesis Evidence Invariant [41050955322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050955322) also succeeded.
+- Exact-head Browser Acceptance [41050955409](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050955409) was still in progress at this checkpoint update. The prior code head `4b85f9e53146534be160ad8af28acba3d9adfd87` passed Browser Acceptance [41050193341](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050193341), but that does not substitute for the new test-only head.
+- Cross-repository checks re-observed: `ngl-mesh` PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d` has successful Relay operator-key trust and agent-governance workflows. EvidenceOS PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b` and PR #2 head `7335e83afba294c04ea721fd24797fd8b6affaac` both have successful EvidenceOS verification workflows. These are test results, not merges or deployments.
+- Next: recheck PR #203 Browser Acceptance for the exact test head; update this handoff with its final result. Then continue Founder verifier/server integration only when the shared server branches settle; real Founder identity/key custody and Issue #17 crash-recovery acceptance remain unresolved.
