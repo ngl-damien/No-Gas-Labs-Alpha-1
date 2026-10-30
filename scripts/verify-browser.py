@@ -578,12 +578,16 @@ def launchpad(page,url,out,label):
     page.locator('#portal-close').click();close_sheet(page)
     page.locator('#journal-button').click()
     with page.expect_download() as saved:page.locator('#export-world').click()
-    world=json.loads(Path(saved.value.path()).read_text())
+    saved_game=json.loads(Path(saved.value.path()).read_text())
+    assert saved_game['schema']=='ngl.private-save.v1'
+    world=saved_game['world'];saved_position=saved_game['playerPosition']
     assert len(world['creations'])==3 and world['xp']==300
-    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(world).encode()})
+    assert saved_position and 0<=saved_position['x']<=1600 and 0<=saved_position['y']<=1000
+    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(saved_game).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == {'schema':'ngl.player-position.v1','x':saved_position['x'],'y':saved_position['y']}, 'Private save import did not restore the character location'
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
