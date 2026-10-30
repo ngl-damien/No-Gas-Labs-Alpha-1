@@ -4,7 +4,7 @@
 
 - Canonical repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
 - Current `main`: `7d8c77367f6acb2d85e35cd9a195797555d1ac7d` (unchanged during this run).
-- Fresh inventory: **37 open Alpha 1 PRs**, **2 open issues**, **454 branch refs**, and **0 refs marked protected** by the GitHub branch-list API. The branch count includes this run's location-evidence branch. No branch was deleted.
+- Fresh inventory: **38 open Alpha 1 PRs**, **2 open issues**, **455 branch refs**, and **0 refs marked protected** by the GitHub branch-list API. The branch count includes this run's location-evidence branch and this checkpoint branch. No branch was deleted.
 - Root `AGENTS.md` and the full `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` were reread before repository work.
 - This is a selected source/PR audit, not a complete source audit of all 32 repositories previously inventoried.
 - Local clone/test execution was unavailable because the container could not resolve `github.com`. Hosted GitHub checks are the verification source for this run.
@@ -21,7 +21,7 @@
 - The branch now validates timestamp and accuracy bounds; preserves epoch-zero timestamps; requires the complete normalized fix schema, canonical UTC timestamp, bounded coordinates and precision-consistent rounding; rejects extra/accessor-backed fix and consent fields without invoking getters; snapshots and freezes the evidence; and revalidates event scope and fix shape during projection.
 - Existing policy is preserved: this is still consented, self-reported, **unverified** location. It does not prove physical presence, identity, anti-spoofing, or Founder authority; it does not award XP or upload/persist location.
 - Regression coverage added for invalid timestamps/accuracy, forged or malformed fixes, accessors, immutable snapshots, projection filtering, and unchanged quest/XP behavior.
-- Exact-head hosted verification for the latest head `5411b9d6...` was not yet available at checkpoint creation. Earlier head `a10a2fa27e02582cdd5952d87088a18e28d3050a` had Verify and world-projection success, but its Playable-world run was still in progress when a final negative-infinity accuracy edge case was added. **Do not carry those earlier results forward as latest-head verification.** Recheck the latest head's three checks and fix any failure.
+- Latest-head hosted checks on `5411b9d6c19700c277637d4f53f62a98275ce8b3`: Verify run **41011097113 success**; world-projection run **41011097114 success**; Playable-world run **41011097111 still in progress** at this update. Push-trigger counterparts were cancelled when PR-trigger runs superseded them; cancellations are not failures. Do not claim all three checks green until Playable-world completes.
 
 ## Founder authorization — source-backed status
 
