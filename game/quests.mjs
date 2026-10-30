@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -485,6 +486,8 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const uniqueEventById = new Map(events.filter(event => uniqueMoonshotEventIds.has(event?.id))
+    .map(event => [event.id, event]));
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -524,14 +527,6 @@ export function getQuestTrail(world, viewer) {
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
-  const collaboratorResponseIdCounts = new Map();
-  for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
-    collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
-  const collaboratorResponses = events.filter(event => event?.type === 'collaborator-response-recorded' &&
-    typeof event.id === 'string' && uniqueMoonshotEventIds.has(event.id) &&
-    typeof event.responseId === 'string' && collaboratorResponseIdCounts.get(event.responseId) === 1 &&
-    event.actor?.id === actorId && event.actor?.role === actorRole);
-  const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const moonshotProposals = events.filter(event =>
     isValidMoonshotProposal(event) && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
@@ -551,6 +546,54 @@ export function getQuestTrail(world, viewer) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
+  const collaboratorRoleIds = new Set(COLLABORATOR_ROLES.map(role => role.id));
+  const collaboratorResponseIdCounts = new Map();
+  for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
+    collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
+  const receiptMatches = (receipt, value) => receipt?.algorithm === 'sha256' &&
+    typeof receipt.digest === 'string' && /^[a-f0-9]{64}$/.test(receipt.digest) &&
+    Number.isSafeInteger(receipt.size) && receipt.size === new TextEncoder().encode(value).length;
+  // A rejected external response is still a preserved attempt. It counts as role
+  // coverage, never as correctness, provider provenance, execution or approval.
+  const collaboratorResponses = events.filter(event => {
+    if (event?.type !== 'collaborator-response-recorded' ||
+        typeof event.id !== 'string' || !uniqueMoonshotEventIds.has(event.id) ||
+        typeof event.responseId !== 'string' || !event.responseId.trim() ||
+        collaboratorResponseIdCounts.get(event.responseId) !== 1 ||
+        event.actor?.id !== actorId || event.actor?.role !== actorRole ||
+        !collaboratorRoleIds.has(event.role) || !validMoonshotIds.has(event.moonshotId) ||
+        !isStrictTimestamp(event.at) ||
+        typeof event.packetJson !== 'string' || !event.packetJson.trim() ||
+        new TextEncoder().encode(event.packetJson).length > 64 * 1024 ||
+        !receiptMatches(event.packetReceipt, event.packetJson) ||
+        typeof event.responseText !== 'string' || !event.responseText.trim() ||
+        new TextEncoder().encode(event.responseText).length > 64 * 1024 ||
+        !receiptMatches(event.responseReceipt, event.responseText) ||
+        !Array.isArray(event.sourceEventIds) || event.sourceEventIds.length < 1 || event.sourceEventIds.length > 8 ||
+        event.sourceEventIds.some(id => typeof id !== 'string' || !id.trim() ||
+          Array.from(id).length > 128 || !uniqueMoonshotEventIds.has(id)) ||
+        new Set(event.sourceEventIds).size !== event.sourceEventIds.length ||
+        event.validator !== 'ngl.collaborator-response.v1') return false;
+    const proposalPosition = proposalPositionById.get(event.moonshotId);
+    const responsePosition = eventPositionByReference.get(event);
+    const proposal = Number.isInteger(proposalPosition) ? events[proposalPosition] : null;
+    const sourceEvents = event.sourceEventIds.map(id => uniqueEventById.get(id));
+    if (!proposal || !Number.isInteger(responsePosition) || responsePosition <= proposalPosition ||
+        Date.parse(proposal.at) > Date.parse(event.at) ||
+        !event.sourceEventIds.includes(proposal.id) ||
+        sourceEvents.some(source => !source || eventPositionByReference.get(source) >= responsePosition)) return false;
+    if (event.validationStatus === 'valid-for-human-review') return event.validationReason === null;
+    return event.validationStatus === 'rejected' &&
+      typeof event.validationReason === 'string' && Boolean(event.validationReason.trim()) &&
+      Array.from(event.validationReason).length <= 128;
+  });
+  const hasCollaboratorResponse = collaboratorResponses.length > 0;
+  const collaboratorResponsesByRole = new Map();
+  for (const event of collaboratorResponses) {
+    if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
+  }
+  const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
+  const nextCollaboratorRole = COLLABORATOR_ROLES.find(role => !collaboratorResponsesByRole.has(role.id)) || null;
   const allExperimentReports = events.filter(event => {
     const eventPosition = eventPositionByReference.get(event);
     const proposalPosition = proposalPositionById.get(event?.moonshotId);
@@ -762,9 +805,17 @@ export function getQuestTrail(world, viewer) {
       ),
       trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
         collaboratorResponses.map(event => event.id), collaboratorResponses,
-        hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
         !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
         'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
+      trailMilestone('founder-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+        collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+        hasAnyMoonshotProposal && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; the Guild Hall roles need a retained research question.' : null,
+        'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
     ]);
   }
@@ -844,9 +895,17 @@ export function getQuestTrail(world, viewer) {
     ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,
-      hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
       !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
       'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+    ),
+    trailMilestone('witness-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+      collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+      hasAnyMoonshotProposal && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing the Guild Hall role hand-offs.' : null,
+      'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
     ),
   ]);
 }
