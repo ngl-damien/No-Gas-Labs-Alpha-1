@@ -4,7 +4,7 @@ import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyR
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
+import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
@@ -40,14 +40,15 @@ async function openInstitution(locationId = null) {
   if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
       viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
       content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return;
-  const freshWorld = stateResult.available && stateResult.data?.world &&
-    typeof stateResult.data.world === 'object';
-  const lastWorld = freshWorld ? stateResult.data.world : world;
+  const snapshot = selectWorldSnapshot(
+    stateResult.available ? stateResult.data?.world : null,
+    world
+  );
   renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
-    world: lastWorld,
-    worldSnapshotStale: !freshWorld,
-    worldUnavailable: !lastWorld || typeof lastWorld !== 'object',
+    world: snapshot.world,
+    worldSnapshotStale: snapshot.stale,
+    worldUnavailable: snapshot.unavailable,
     projectsUnavailable: !projectsResult.available,
     decisionsUnavailable: !gateResult.available,
     kernel: institutionResult.data?.kernel,
