@@ -255,3 +255,53 @@ Next: recheck run 41023860864 on exact head `8040c31...`; if it passes, record a
 - Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
 - No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred.
 - PRs #214 and #215 are draft validation/follow-up proposals, not merged capability. EvidenceOS PR #2 is also draft and stacked on PR #1.
+
+
+## Repository Stutter-Step run — 2026-10-30 UTC: Forge verification integrity
+
+### Rehydration and coordination
+
+- Read root `AGENTS.md` and the complete shared Ralph-style protocol before repository work.
+- Re-read this checkpoint and inspected Worker B's latest active work. PR #213 (offline mobile shell), #214 (combined offline shell + writer lease), and #215 (pre-rename process-death acceptance) own their listed gameplay/storage files. Their exact current heads were checked; all three current heads had successful Verify, world-projection and Playable-world checks. No overlapping paths were edited.
+- Alpha 1 `main` remained `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. Fresh search showed 38 open PRs before this run's PR #216, and issue #17 remained open.
+- PR #16's old self-signing concern is superseded by the PR #8 prototype / PR #18 integration described in issue #17. Current main still accepts a caller-supplied `{ valid: true }` object in `src/authority/decision.js`; PR #203 seals the verifier helper but is not wired into `game/server.mjs`. Worker B's active PRs own `game/server.mjs`, so no competing server integration was attempted.
+
+### Three inspect / challenge / act cycles — Alpha 1 Forge
+
+**Draft PR #216:** [fix(forge): verify candidates in an independent clean workspace](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/216)  
+Branch: `fix/forge-independent-verification-workspace-20261030`  
+Final head: `c6f9536f909bd6606980357a6a3448cd816f22ff`  
+Base: `main` at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`  
+Changed files: `src/forge/runner.mjs`, `test/forge-runner.test.mjs`.
+
+1. **Independent verification workspace.** Source showed candidate execution and verification shared one mutable workspace. A candidate could create a helper file only during the benchmark, then leave it for the verifier to import. Verification now starts from a separate copy of the frozen source plus the exact allowlisted overlay. The report identifies the verification workspace and its copy time. Regression: benchmark-only helper creation makes execution pass but clean verification fail.
+2. **Exact workspace inventory.** The old integrity check inspected only pre-existing snapshot files and ignored unmanifested files/directories. The check now inventories files/directories, flags unexpected paths and symlinks, verifies expected bytes in both workspaces, and treats only a real `.tmp` directory as scratch. The regression asserts the helper is reported as an unexpected artifact.
+3. **Data-only request boundary.** Candidate arrays accepted sparse slots; a sparse array could fail after output creation. Request/candidate/limits/overlay objects now snapshot only own enumerable data properties, and candidate arrays must be dense. Regression confirms sparse arrays and getter-backed overlay properties fail before output creation and the getter is not invoked.
+
+Meaningful commits on the branch: `17c60975d73fd23d93677683e4fbd55a4fe7e935` (clean verifier workspace), `17b9869178370be982c18f6dab6c55bb633554a0` and `e7f1bef1d46768d54851d3d6ae40e11802fe23d6` (corrected regression fixture and initial PR head), `9fdd04b4bc28427da6d69ef35ec999bf0e3cbca6` and `f55da2b12a6704dd9d576fdde93118c2c94c7a67` (unmanifested artifact detection), `81b081ca227efc34a657f903d18061488710e8cd` and `c6f9536f909bd6606980357a6a3448cd816f22ff` (dense data-only input validation). An intermediate test fixture commit `a17de0fc394660934f3d1e13a4f11ff20c5b5de7` was corrected before hosted verification; it is not the final tested head.
+
+### Exact-head verification — final PR #216 head
+
+- Verify workflow run [41029214337](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214337) — **success**. Logs show the Node test suite exit code 0, Python inspector tests exit code 0, package build exit code 0, and bounded institutional exercise exit code 0; report says `passed: true`.
+- World-projection check job `123974798865` — **success** on the same head.
+- Browser Acceptance run [41029214315](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214315) — **in progress** at checkpoint time; desktop/mobile/shared-world/recovery exercise had not completed. Do not claim it passed until final status is observed.
+- Genesis Evidence Invariant run [41029214316](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41029214316) — **pending** at checkpoint time. Do not claim it passed until final status is observed.
+- No local test execution is claimed; the working container has no repository checkout and its earlier GitHub DNS failure remains a limitation.
+
+### Linked repository recheck
+
+- ngl-mesh PR #1 exact head `d10fe10fee8924d085afbd513f162dae8e4fb734`: operator-key trust and required-agent-instructions checks passed. Full APK/RAE integration still lacks recovered source archive, reference APK and RAE report.
+- evidenceos PR #1 exact head `7fbb4c83412e83882ea43df92532a346d524e00b`: test check passed.
+- evidenceos PR #2 exact head `fcafd7b4a39a1e59f8cc0bbe2388191e07877d83`: non-loopback unauthenticated HTTP bind hardening test passed. PR #2 is stacked on PR #1; neither is merged.
+
+### Next ranked actions
+
+1. Recheck the final exact-head Browser Acceptance and Genesis Evidence Invariant runs for PR #216; fix any attributable failure before calling the PR fully verified.
+2. After Worker B's PR #214 server changes settle, design a narrow verifier-to-server integration that preserves ordinary gameplay and keeps Founder-reserved actions fail-closed. Do not generate or handle a real Founder key.
+3. Continue issue #17 acceptance: independently controlled Founder key custody, canonical mutation-path enforcement, adversarial concurrent writers, and safe stale-lock/crash recovery. PR #215 covers pre-rename process death only; it does not implement automatic recovery.
+4. Review EvidenceOS PR #1/#2 as a stacked pair; preserve loopback-only binding until the authenticated TLS adapter is independently reviewed.
+5. Recover the missing ngl-mesh APK/source/RAE artifacts; do not claim Android-device or RAE integration without them.
+
+### Authority and result
+
+PR #216 is open, draft, and unmerged. Main remains unchanged at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred. Forge remains a trusted-local-process harness, not an OS sandbox.
