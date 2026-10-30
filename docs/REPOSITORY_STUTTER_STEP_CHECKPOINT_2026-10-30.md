@@ -763,3 +763,21 @@ Final EvidenceOS PR #2 head: `cd5bf08916211b77331f5c77a37c3bf313de2050`.
 ### Authority and result
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #210 remains a draft checkpoint proposal.
+
+
+## Post-checkpoint cross-worker reinspection — 2026-10-30 15:02 UTC
+
+PR #220 advanced after the preceding handoff. The previous note that its world-projection and playable-world checks were both still running is superseded.
+
+- Current Worker B PR #220 head: `83f2a8e42c5666e3c59160325a6773131b95ac68`.
+- Exact-head Verify run [41076635826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635826): **success**.
+- Exact-head world-projection run [41076635827](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635827): **success**.
+- Exact-head Playable-world run [41076635917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635917): **in progress** at final recheck.
+
+The immediately prior head `c77e1d31238729de6f8c67aa3c2e22bf6baecdf3` had a failed world-projection run [41075975713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41075975713). The failure output showed Relay folio tests receiving no projected objects. Source review found a concrete fixture mismatch: runtime `makePacket()` serializes canonical packet JSON with `JSON.stringify(payload, null, 2)`, while the positive `responseEvent()` fixture in `test/game-collaborator-world-objects.test.mjs` manually serialized compact JSON. The new projector reconstructs the canonical packet and compares exact bytes, so the fixture was not a packet the runtime would issue.
+
+Worker B's subsequent commit `83f2a8e42c5666e3c59160325a6773131b95ac68` changes the positive fixture to call `projectCollaboratorPackets()` for the exact prior event slice and retain its canonical packet bytes; deliberate tamper cases still reserialize their modified payload. This directly addresses the confirmed world-object fixture mismatch. The new exact-head Verify and world-projection checks pass; the older failed head is superseded, not a current-head failure.
+
+The source-fidelity implementation is now present in `game/collaborator-world-objects.mjs`: it validates the source-event chronology and reconstructs the expected packet from the retained earlier event slice before projecting a folio. This is a deterministic source-binding check, not proof of the external model's truth or execution. Worker B owns the game/server/world/test paths; Worker A made no edits there.
+
+Next: recheck the current PR #220 Playable-world result and inspect any final browser receipts. Preserve the exact-head distinction if another replacement commit appears.
