@@ -130,7 +130,7 @@ test('Forge verification uses a fresh copy and cannot inherit files created only
     "}",
     "const { sum } = await import('./helper.mjs');",
     "export { sum };"
-  ].join('\\n');
+  ].join('\n');
   const report = await compareCandidates({ ...options, candidates: [{ id: 'execution-only-helper', overlay: { [target]: overlay } }] });
   const result = report.results[0];
   assert.equal(result.execution.outcome, 'passed');
