@@ -544,4 +544,14 @@ test("decisionDigest rejects hidden properties and enforces the byte budget", ()
   // over 1 MiB, so the complete representation must be rejected.
   const structuralBudgetAttack = Array.from({ length: 9999 }, () => "x".repeat(102));
   assert.throws(() => decisionDigest(structuralBudgetAttack), /byte limit/);
+
+  // Exercise the object branch separately: the old counter included key/value
+  // bytes but omitted each colon, comma, and the surrounding braces.
+  const structuralObjectBudgetAttack = Object.fromEntries(
+    Array.from({ length: 9999 }, (_, index) => [
+      "k" + String(index).padStart(4, "0"),
+      "x".repeat(95)
+    ])
+  );
+  assert.throws(() => decisionDigest(structuralObjectBudgetAttack), /byte limit/);
 });
