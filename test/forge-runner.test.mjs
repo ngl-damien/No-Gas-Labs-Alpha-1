@@ -105,6 +105,8 @@ test('Forge snapshots tracked and nonignored source bytes, omits runtime and cre
   await writeFile(join(options.sourceDir, 'ignored.txt'), 'ignored runtime');
   await mkdir(join(options.sourceDir, '.runtime'));
   await writeFile(join(options.sourceDir, '.runtime/session.json'), 'secret runtime');
+  await mkdir(join(options.sourceDir, '.tmp'));
+  await writeFile(join(options.sourceDir, '.tmp/scratch.mjs'), 'temporary workspace file');
   await writeFile(join(options.sourceDir, '.env'), 'SECRET=not-copied');
   await writeFile(join(options.sourceDir, 'identity.key'), 'not-copied');
   await writeFile(join(options.sourceDir, 'new-source.mjs'), 'export const dirty = true;');
@@ -115,6 +117,7 @@ test('Forge snapshots tracked and nonignored source bytes, omits runtime and cre
   const paths = report.source.files.map(file => file.path);
   assert.ok(paths.includes('new-source.mjs'));
   assert.ok(!paths.some(path => /ignored|runtime|\.env|identity\.key/.test(path)));
+  assert.ok(!paths.some(path => path.startsWith('.tmp/')));
   await symlink('/etc/passwd', join(options.sourceDir, 'linked-source'));
   await assert.rejects(compareCandidates({ ...options, outDir: options.outDir + '-symlink', candidates: [{ id: 'correct', overlay: {} }] }), /symbolic|symlink/i);
 });
