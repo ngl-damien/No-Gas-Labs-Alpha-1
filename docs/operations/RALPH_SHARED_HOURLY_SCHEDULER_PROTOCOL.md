@@ -105,3 +105,14 @@ The system is improving only when repository evidence shows at least one of:
 More commits, more files, more agent activity, and more green checks by themselves are not the objective.
 
 **Founder authority remains with Damien Featherstone.** This protocol coordinates work; it does not transfer sovereignty.
+
+
+## Provider-agnostic, compute-bounded agent workforce
+
+This protocol is the shared execution contract for any capable agent entering an NGL repository, regardless of provider or interface. The workers named above are responsibility lanes, not exclusive model identities. A replacement or additional agent inherits the same objective, reads the same current instructions, inspects the same durable state, and leaves compatible evidence and handoffs.
+
+The loop continues for the full useful execution budget of each run: rehydrate → observe → rank → claim → challenge → act → verify → review → preserve → handoff → repeat. Do not stop after a report or one small change while safe, unowned, high-value work and compute remain. Do not manufacture activity, claim execution beyond the host session, or promise background work after a run ends. Actual stop conditions are exhausted compute/time, unavailable required access, a hard technical blocker, an authority boundary, or no remaining safe meaningful task.
+
+Before claiming work, inspect other agents' latest durable results and active branches/PRs across the relevant repository portfolio. A branch/PR is a coordination claim, not a correctness guarantee. If a global work registry is unavailable, coordinate through durable branch/PR records and explicit handoffs; never pretend a global lock exists. Re-observe before resuming stale claims.
+
+Where available, run the portable preflight (npm run agent:preflight) with every intended target path and the latest checkpoint path. Preserve its machine-readable receipt. The receipt hashes the exact instruction/checkpoint bytes read; it does not prove comprehension, correctness, or execution. If the preflight is unavailable in another repository, follow the manual entry sequence and record that limitation rather than skipping instructions.
