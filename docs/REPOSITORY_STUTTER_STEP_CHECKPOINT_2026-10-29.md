@@ -490,3 +490,64 @@ No PR was merged, no branch deleted, and no secrets/permissions/releases/deploym
 - Branch: `improve/evidence-ingest-2026-10-29`. Commits: `940328e7e0101f7deb43c866fc5b7993bacadddf` (implementation), `a70e44b7ed23cdc15cdeaac9215237be16206b8b` (tests), `70c0c1248cb795534c20a2e07a0cf2c4aad56294` (test assertion correction / current PR head).
 - PR #193 remains draft and unmerged. Exact-head hosted checks were still running at checkpoint time: `world-projection` run 40982626027 in progress; Genesis Evidence Invariant run 40982638153 in progress; verify push run 40982625935 was cancelled as a duplicate after PR-triggered execution began; verify PR run 40982638148 pending; browser acceptance PR run 40982638110 pending. These are not test results yet.
 - Limitation disclosed in PR: file publication is atomic per file, not a single multi-file transaction. A process interruption during publication can still leave a mixed set. No archive deletion, merge, release, deployment, secret or permission change occurred.
+
+
+---
+
+## Repository Stutter-Step run 2 — 2026-10-30 UTC
+
+### Rehydration and current mainline
+
+- Read the newly merged root `AGENTS.md`, the shared `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` in full, the vendor entry point, and the latest durable checkpoint before further Alpha 1 work.
+- Worker A role: institution-wide repository reliability, evidence/provenance, cross-repository audit and handoff. The latest observed Worker B result is PR #195, described below. No separate scheduler execution record was available to this worker; PR/source/CI state was inspected directly.
+- Current `main`: `6c8acc941e1b29eee551a56b3f47258a6451ada2`, not the older `933648a...` baseline recorded in earlier sections.
+- Three commits moved main forward from `933648a...`: PR #194's shared operating protocol, PR #196's Pages workflow, and commit `6c8acc9` removing that workflow.
+- Current-main exact-head checks on `6c8acc9`: Verify run 40987061855 **success**; Genesis Evidence Invariant run 40987061896 **success**; Browser Acceptance run 40987061919 **success**. These are CI/application acceptance results, not proof of public hosting or deployment.
+
+### Hosting / deployment discrepancy
+
+- PR #196 merged at `0eae7b22587929457241d3aa7c1230e84cd17494` and added `.github/workflows/publish-common-ground.yml`. Its PR-head checks passed: Genesis 40986829010, Verify 40986829034, Browser Acceptance 40986829060.
+- The post-merge Pages workflow run 40986848931 on `0eae7b...` completed **failure** (run attempt 2). GitHub's job endpoint returned no step details; the job-log endpoint returned BlobNotFound. The root cause is therefore **unknown**, not diagnosed.
+- Main commit `6c8acc941e1b29eee551a56b3f47258a6451ada2` deletes only `.github/workflows/publish-common-ground.yml`. Its title says the game is published through a verified Render static site, but the observed commit contains no Render configuration or deployment evidence. Root `render.yaml` and `render.yml` were not present. The README still describes public hosting as a separate deployment operation.
+- Render service verification was blocked: the Render connector reported no workspace selected and requires the user to confirm a workspace before any service query. A workspace list was visible, but this worker did not select one. **No Render service, URL, deploy, or live HTTP response was verified.** Do not report the game as publicly deployed based on the commit title.
+- Do not re-enable Pages, create a Render service, trigger a deploy, or change hosting configuration without the required founder authorization and an independently verified target.
+
+### Current PR and issue state
+
+- Fresh Alpha 1 search returned **28 open PRs** and **2 open issues** (#17 and #22).
+- PR #191 (this checkpoint), #192, #193 and #195 still target the old `933648a...` base. Compared with current main they are each **3 commits behind**; they require reconciliation and exact-head revalidation before any merge. No merge or branch rewrite was performed.
+- PR #191 exact-head checks for `72ea6ca065c97a304c587f28d00d5a6cc7e1eb69` passed: Verify 40982684318, Genesis 40982684424, Browser Acceptance 40982684326. This checkpoint PR remains draft, open and unmerged; it is itself 16 commits ahead / 3 behind current main.
+- PR #192 exact-head checks passed: Verify 40981348326, Genesis 40981348397, Browser Acceptance 40981348371. It remains draft and unmerged.
+- PR #193 exact-head checks passed: Verify 40982638148, Genesis 40982638153, Browser Acceptance 40982638110. This corrects the prior checkpoint addendum that recorded those checks as pending. PR #193 remains draft and unmerged; its individual-file atomicity limitation remains disclosed.
+- PR #195 is the latest observed MMORPG-worker result: bounded Guild Hall workbench with four advisory collaborator roles, deterministic source-bound packets, strict response structure/scope checks, duplicate-JSON-key rejection, and explicit no-world-write/no-XP/no-authority boundaries. Exact-head Verify 40985427899, Genesis 40985427896, Browser Acceptance 40985427977 all passed. The PR is open, non-draft and unmerged. Its branch is 2 commits ahead / 3 behind current main. No physical Android-device test or live model-provider call is claimed. Handoff: Worker B should reconcile PR #195 with current main and the earlier Guild PR sequence (#174/#177/#178/#179) before any further duplicate Guild implementation.
+- PR #194 merged at 2026-10-30T01:32:07Z. Its exact-head Verify 40984086598, Genesis 40984086526, Browser Acceptance 40984086541 passed. It adds the shared protocol and a repository verification guard; the guard validates instruction-file presence/markers, not actual agent compliance.
+- PR #196 merged at 2026-10-30T01:36:28Z, but its post-merge Pages workflow failed as described above and was then removed by `6c8acc9`.
+
+### Founder authorization
+
+- PR #16 remains closed and unmerged; PR #18 is the merged replacement prototype.
+- Issue #17 remains open. The merged detached-signature prototype is not proof of Damien's real-world private-key custody, identity, or use. Concurrent-writer and stale-lock/crash-recovery acceptance remain unresolved.
+- No key was generated, read, signed, provisioned or rotated. No Founder decision or approval was made.
+
+### EvidenceOS donor repair — private repository
+
+- Reinspected the private `ngl-damien/evidenceos` source, branch list, package script, and PR state. Before this repair, Pass 1 swallowed repository-discovery, root-content, and recursive-tree errors; it also ignored GitHub's recursive-tree `truncated: true` marker. Such repositories could be counted as analyzed despite incomplete source inspection.
+- The existing `npm test` script also did not target any tests. On the available local Node v22.16.0 probe, `node --test src/` exited 0 while reporting zero tests. This was a false-green test command.
+- Implemented on branch `fix/evidenceos-incomplete-ingestion-20261029`, PR #1: [fix(evidenceos): reject incomplete repository analysis](https://github.com/ngl-damien/evidenceos/pull/1).
+- Final head: `c0e0506684421a4c0d95fbe0e831b59cd840f34f`. Eight paths changed: the test workflow, package script, CLI, Pass 1 scanner, pipeline completeness envelope, HTTP schema/error mapping, source-extension classifier, and new Pass 1 tests.
+- Behavior now fails the entire discovery phase on pagination/API failure; propagates per-repository root/tree failures into explicit failed-repository records; rejects truncated recursive trees; and labels Pass 1 `complete`, `partial`, `failed`, or `empty` with discovered/analyzed/failed counts. CLI and HTTP schema disclose the status.
+- Added eight tests and a read-only GitHub Actions workflow with syntax checks. Final exact-head run 40987422770 **success** on Node v22.23.4: syntax checks passed; 8 tests passed, 0 failed.
+- Two initial exact-head attempts failed and were corrected: run 40987262362 exposed a Node 22.23.4 directory-path invocation failure; run 40987327762 then exposed that `.tsx` was excluded from source classification. The test script now names the test file explicitly, and the classifier recognizes `.jsx`, `.tsx`, `.mjs`, `.cjs`, and `.vue`. The final run passed all eight tests.
+- PR #1 remains draft, open and unmerged. Tests use fake Octokit responses and no token; no live repository crawl, merge, deployment, or credential change is claimed.
+
+### Next ranked actions
+
+1. Resolve the hosting discrepancy only after founder workspace confirmation: inspect the actual Render service/deploy and live URL, or obtain the missing Pages workflow failure logs. Do not infer deployment from a commit message.
+2. Coordinate with Worker B on PR #195; reconcile its 3-commit mainline divergence and earlier Guild PR sequence, then re-run all exact-head checks.
+3. Reconcile PR #191/#192/#193 against current main's three new commits; do not merge stale-base branches on old check results.
+4. Continue Issue #17 with source-backed concurrent-writer and stale-lock/crash-recovery acceptance; keep real Founder key custody separate and unclaimed.
+5. Continue recursive source/test/workflow audits of the remaining connected NGL repositories; the 32-repository account inventory is not a completed source audit.
+
+### Authority and safety
+
+No Alpha 1 code was changed in this run. No merge, branch deletion, release, deployment, Render workspace selection, secret/permission change, Founder key operation, paid service, or external publication was performed. EvidenceOS changes are confined to its private draft PR #1. This checkpoint update is confined to the existing draft PR #191 branch.
