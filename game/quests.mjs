@@ -289,7 +289,7 @@ function validTrailActivityField(field, value) {
   return typeof value === 'string' && value.length > 0 && value.trim() === value;
 }
 
-function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
+export function matchActivityRecords(type, records, events, fields, actorId, actorRole, predicate = () => true) {
   const source = trailRows(records);
   const validIds = uniqueEventIds(events);
   const recordIdCounts = new Map();
@@ -329,8 +329,11 @@ function matchingTrailRecords(type, records, events, fields, actorId, actorRole)
   // for each record. Duplicate fingerprints and duplicate record IDs remain unusable.
   return owned.flatMap(record => {
     const fingerprint = key(record);
-    return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1
-      ? [{ record, event: eventByFingerprint.get(fingerprint) }] : [];
+    if (recordCounts.get(fingerprint) !== 1 || eventCounts.get(fingerprint) !== 1) return [];
+    const event = eventByFingerprint.get(fingerprint);
+    let accepted = false;
+    try { accepted = predicate(event, record) === true; } catch { accepted = false; }
+    return accepted ? [{ record, event }] : [];
   });
 }
 
@@ -509,16 +512,19 @@ export function getQuestTrail(world, viewer) {
   ));
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
-  const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
+  const discoveries = matchActivityRecords(
+    'discover', world?.discoveries, events, ['locationId'], actorId, actorRole,
+    (event, record) => event.repeat !== true && getLocationAction(record.locationId, world, viewer) !== null
+  );
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
       locations.set(match.record.locationId, match.event);
     }
   }
-  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
+  const notes = matchActivityRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
-  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
+  const reports = matchActivityRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
   const uniqueEventById = new Map(events.filter(event => uniqueMoonshotEventIds.has(event?.id))
