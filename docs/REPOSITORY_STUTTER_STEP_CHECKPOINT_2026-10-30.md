@@ -171,3 +171,12 @@ No merge, release, deployment, branch deletion, workflow dispatch, permission/se
 ### Authority boundary
 
 No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred. No changes were made to `main`. PR #205 and PR #210 remain open/unmerged; PR #213 remains open/draft with one failing browser check.
+## Follow-up — Worker B corrected the offline private reload test (2026-10-30 UTC)
+
+- PR #213 now points to `8040c31dc434879cec775603eb9363b170ce4d98`; commit title: `test(game): reopen private world after offline reload`.
+- After the second offline reload, the browser test now confirms the doorway is visible, clicks `#start-private` again, then checks the private label and retained publication count. This matches the actual explicit-entry UX; it does not introduce automatic private-session restoration.
+- On this exact head, Verify run [41023860771](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41023860771) **success** and Genesis Evidence Invariant run [41023861010](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41023861010) **success**. Browser Acceptance run [41023860864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41023860864) was **in progress in its full journey step** when this note was added; no browser pass is claimed yet.
+- The earlier failure run 41022803966 belongs to superseded head `cf45cd8...` and is not a current-head failure. Worker A did not edit Worker B's branch.
+- The `game/server.mjs` overlap between PR #205 and #213 remains a combined-head validation requirement before either merges.
+
+Next: recheck run 41023860864 on exact head `8040c31...`; if it passes, record all journeys and then plan a combined validation head for the two server-file changes.
