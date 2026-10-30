@@ -620,3 +620,67 @@ The highest-value safe source-backed defect within the active Founder-authentica
 - Checkpoint PR #210's current head before this update was `17a8d7049df3cd948ab6b5df89f534dc82adeb95`; its Verify and Genesis checks passed, Browser Acceptance was still in progress. This new addendum is the continuity point for the latest code head.
 - Main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; PR #203 and PR #210 remain draft/unmerged. Fresh inventory remains 48 open PRs, 465 branch refs, and issues #17 and #22 open.
 - Next: recheck Browser Acceptance for PR #203 head `ac3fac9406b1f2ab303fa7b22363b0fb49fb80f6` and checkpoint CI. Then pursue verifier-to-server integration only after the active PR #205/#213/#214 server stack is reconciled. Do not generate or handle real Founder key material.
+
+
+## Repository Stutter-Step execution — 2026-10-30 UTC (Worker A)
+
+### Rehydration and fresh baseline
+
+- Read root `AGENTS.md` and the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` before repository work.
+- Re-read this durable checkpoint and inspected the latest Worker B result: PR #220's current head `43abd20f8dfc94f889563531ae4c472b195cd75b`.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Fresh inventory: **48 open PRs, 2 open issues, 465 branch refs** across five branch-list pages; the branch API marked **0 refs protected**. This is not a full ruleset audit. No branch or repository setting was changed.
+
+### Cycle A — close the resolver-to-event mutation gap
+
+**Continued existing draft PR #212** (`fix/receipt-resolver-mutation-20261030`) rather than creating a competing receipt implementation.
+
+Before this follow-up, `hasVerifiedObservation()` validated a caller-owned event and `receiptsMatch()` iterated its mutable `receipts` array with `.every()`. The resolver callback could close over the original event, rewrite a later receipt, and delete that array slot. Array `.every()` skips holes. The host observation verifier was then called with a clone made after the resolver callback, not the original event state retained in history. This created a source-backed time-of-check/time-of-use gap between retained evidence and the object later presented for verification.
+
+Implemented on the existing PR #212 branch:
+
+- `7398cc5ba4d55fa915b08ab1027770637959bafc` — export the strict detached/frozen `snapshotReceipt()` validator for batch prevalidation.
+- `1c0051ee0c1d813d580d99eded8f437d56f7abd6` — validate and detach the event before invoking the resolver; snapshot every receipt before the first resolver call; use the retained event snapshot for both observation and authorization verification in success/failure paths.
+- `5b4c7426b3a1820d927997540221de9dce13b044` — add adversarial batch and event-mutation regressions.
+
+Changed paths: `src/evidence/content-addressed.js`, `src/world/project.js`, and `test/content-addressed.test.js`.
+
+The new regression includes a positive control in which two authentic receipts allow the demonstrated 500 XP effect. The adversarial resolver then rewrites and deletes the second receipt while the first is being resolved. The fixed reducer rejects the effect, awards 0 XP, and retains the original second receipt in history. A separate regression mutates the caller event from OBSERVED to REFUTED/REJECTED inside the resolver and verifies that the observation verifier still receives the detached pre-resolution event.
+
+### Exact-head verification
+
+PR #212 latest head: `5b4c7426b3a1820d927997540221de9dce13b044`, **5 commits ahead / 0 behind** current main.
+
+- Verify run [41067059453](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059453): **success**. Hosted log shows `npm run verify`; Node `--test` exit 0; Python inspector tests exit 0; package build exit 0; bounded institutional exercise reported `passed: true`. The workflow does not expose a total Node test count in its summary.
+- World-projection run [41067059559](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059559): **success**; hosted log reported the Genesis evidence invariant.
+- The previous PR #212 head `2fdd4b808fea1da01083a237fced13f84f1e1640` had Verify, world-projection, and playable-world checks pass, but those historical results do not replace current-head checks. No browser workflow was triggered on the new source/test-only head.
+- No local full-repository test run is claimed.
+
+### Cycle B — challenge assumptions and avoid collisions
+
+- Re-read `src/world/project.js`, `src/evidence/content-addressed.js`, the full PR #212 regression file, and the exact-head CI logs after the edits.
+- Checked changed-file ownership across open PRs #191–#220, including #191, #192, #193, #197, #202–#220. No other inspected open PR owns `src/world/project.js` or `test/content-addressed.test.js`; PR #212 remains the only active branch for this receipt change.
+- Rechecked PR #203's current Founder helper head `ac3fac9406b1f2ab303fa7b22363b0fb49fb80f6`: Verify 41057772336, world-projection 41057772403, and playable-world 41057772346 all succeeded.
+- Rechecked Worker B PR #220 head `43abd20f8dfc94f889563531ae4c472b195cd75b`: Verify 41062894241, world-projection 41062894480, and playable-world 41062894251 all succeeded. The Worker B PR comment records 13/13 browser journeys. No Worker B gameplay files were edited.
+- Rechecked linked repos: ngl-mesh PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d` has successful `required-agent-instructions` and `operator-key-trust` checks (41041610303 and 41041610180). EvidenceOS PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b` test run 40999488401 passed; PR #2 head `7335e83afba294c04ea721fd24797fd8b6affaac` test run 41037115712 passed. These remain draft proposals, not merged/deployed integrations.
+
+### Founder authority and remaining blockers
+
+- Issue #17 remains open. Its current text says PR #16's original `demonstrate()` self-signing finding was superseded by the merged PR #18 Ed25519 INSTALL signer. PR #203 is a separate P-256 `QUEST_AUTHORIZED` helper; its exact-head checks are green, but it is not wired into live `game/server.mjs`.
+- PRs #205, #213, and #214 still overlap on the live server boundary. Do not edit that shared path until the stack settles and the signing/trust-anchor choice is explicitly reconciled. The Ed25519 INSTALL signer, P-256 decision helper, and shared-secret Founder login/session are distinct mechanisms; no inference should collapse them into one.
+- Real independent key custody, proof of Damien's identity/control, canonical signed-decision server integration, and issue #17 crash/stale-lock acceptance remain unresolved. No key material was created, read, provisioned, or rotated.
+- Issue #22's hybrid-cognition comparison remains a proposed falsifiable experiment, not evidence of superiority or external participation.
+
+### Next ranked actions
+
+1. Recheck PR #212's exact-head checks after this checkpoint; inspect any new failure logs and repair only attributable defects. Keep PR #212 draft until the current diff is reviewed.
+2. Once the #205/#213/#214 server stack settles, design and test one canonical signed-decision path with a host-pinned trust configuration. Do not create or handle real Founder keys without the required independent custody process.
+3. Review EvidenceOS PR #2's actual-bound-address / Origin / JSON boundary against its latest exact-head source and tests; do not duplicate its current implementation.
+4. Continue the ngl-mesh source recovery only when the missing original archive, reference APK, and RAE report are available; do not claim complete Android/RAE integration from Java unit checks.
+5. Preserve the $0 constraint and keep branch classification read-only.
+
+### Authority and result
+
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- PR #212 and checkpoint PR #210 remain draft/open/unmerged.
+- No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred.
