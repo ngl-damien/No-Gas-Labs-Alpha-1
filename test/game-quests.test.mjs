@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
-import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord } from '../game/collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
@@ -649,45 +649,35 @@ function collaboratorArchiveEvent({
   validationStatus = 'valid-for-human-review', at = '2026-10-28T17:04:00.000Z',
   sourceEventIds = null
 }) {
-  const refs = sourceEventIds ?? (role === 'tutor'
-    ? ['proposal-1']
-    : ['proposal-1', 'report-event-1']);
-  const projectedById = new Map(projectResearchRecords(world.events, world.creations)
-    .map(record => [record.id, record]));
-  const inputRecords = refs.map(sourceId => {
-    const source = projectedById.get(sourceId);
-    return source ? compactCollaboratorSourceRecord(source) : {
-      eventId: sourceId,
-      type: 'missing',
-      at,
-      actor: { id: 'missing-actor', role: 'founder' },
-      moonshotId: 'moon-1',
-      truncatedFields: []
-    };
-  });
-  const payload = {
-    protocol: 'ngl.bounded-collaborator-packet.v1',
-    sourceSnapshot: {
-      status: 'identified',
-      worldId: world.id,
-      revision: world.revision,
-      suppliedEventCount: world.events.length
-    },
-    role,
-    objective: 'Test fixture only',
-    targetMoonshotId: 'moon-1',
-    authority: 'advisory-only',
-    mayWriteCanonicalState: false,
-    mayGrantAuthority: false,
-    mayAwardProgress: false,
-    mayCertifyTruthOrExecution: false,
-    inputRefs: [...refs],
-    omittedEventIds: [],
-    omittedCount: 0,
-    omittedEventIdListTruncated: false,
-    truncatedContentFieldCount: 0,
-    inputRecords
-  };
+  // Fixtures use the same packet builder as the runtime. Witness packets see
+  // the same redacted event slice as publicWorld(); their revision remains the
+  // underlying world revision while their supplied-event count is redacted.
+  const packetWorld = actor.role === 'founder'
+    ? world
+    : { ...world, events: world.events.filter(event => !['draft', 'repair'].includes(event.type)) };
+  const packets = projectCollaboratorPackets(packetWorld);
+  const packet = packets.find(candidate => candidate.id === role && candidate.available) ||
+    packets.find(candidate => candidate.id === 'tutor' && candidate.available);
+  assert.ok(packet, 'the fixture world must provide a source-bound Tutor packet');
+  const payload = JSON.parse(packet.packetJson);
+  if (payload.role !== role) payload.role = role;
+  let refs = sourceEventIds ?? [...payload.inputRefs];
+  if (sourceEventIds) {
+    const projectedById = new Map(projectResearchRecords(packetWorld.events, packetWorld.creations)
+      .map(record => [record.id, record]));
+    payload.inputRefs = [...refs];
+    payload.inputRecords = refs.map(sourceId => {
+      const source = projectedById.get(sourceId);
+      return source ? compactCollaboratorSourceRecord(source) : {
+        eventId: sourceId,
+        type: 'missing',
+        at,
+        actor: { id: 'missing-actor', role: 'founder' },
+        moonshotId: 'moon-1',
+        truncatedFields: []
+      };
+    });
+  }
   const packetJson = JSON.stringify(payload);
   const responseText = JSON.stringify({ externalText: 'Untrusted response retained for human review.' });
   const receipt = value => ({
@@ -835,6 +825,50 @@ test('Adversary folio requires a retained experiment report, not merely a Moonsh
   const coverage = getQuestTrail(world, founder)
     .find(item => item.id === 'founder-guild-council-coverage');
   assert.equal(coverage.progress, 0);
+});
+
+test('Synthesis Clerk folio must disclose and include the canonical bounded slice of retained attempts', () => {
+  const world = experimentQuestWorld();
+  for (let index = 2; index <= 8; index += 1) {
+    world.events.push({
+      id: 'report-event-' + index,
+      type: 'experiment-reported',
+      reportId: 'report-' + index,
+      moonshotId: 'moon-1',
+      actor: founder,
+      at: new Date(Date.parse('2026-10-28T17:03:00.000Z') + index * 60_000).toISOString(),
+      procedure: 'Repeat the bounded procedure ' + index,
+      observation: 'Retain attempt ' + index,
+      reportedOutcome: index % 2 ? 'failed' : 'inconclusive',
+      evidenceCreationId: null,
+      evidenceVersion: null
+    });
+  }
+  world.revision = world.events.length;
+  const generated = projectCollaboratorPackets(world).find(packet => packet.id === 'synthesizer');
+  assert.ok(generated?.available);
+  const generatedPayload = JSON.parse(generated.packetJson);
+  assert.equal(generatedPayload.omittedCount, 2);
+  assert.equal(generatedPayload.inputRecords.length, 7,
+    'the canonical packet includes the proposal and the six newest activities');
+
+  const event = appendCollaboratorArchive(world, { id: 'forged-incomplete-synthesis', role: 'synthesizer' });
+  const payload = JSON.parse(event.packetJson);
+  payload.inputRefs = ['proposal-1'];
+  payload.inputRecords = [payload.inputRecords[0]];
+  payload.omittedEventIds = [];
+  payload.omittedCount = 0;
+  payload.omittedEventIdListTruncated = false;
+  event.sourceEventIds = ['proposal-1'];
+  event.packetJson = JSON.stringify(payload);
+  refreshPacketReceipt(event);
+
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(world), [],
+    'a byte-valid packet that hides retained activities must not become a Relay folio');
+  const coverage = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(coverage.progress, 0,
+    'a forged synthesis packet must not advance Guild Hall role coverage');
 });
 
 test('Witness Guild Hall role coverage counts only the Witness own preserved role response', () => {
