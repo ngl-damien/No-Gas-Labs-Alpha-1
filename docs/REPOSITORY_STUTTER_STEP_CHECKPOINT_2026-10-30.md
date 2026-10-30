@@ -684,3 +684,13 @@ PR #212 latest head: `5b4c7426b3a1820d927997540221de9dce13b044`, **5 commits ahe
 - Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
 - PR #212 and checkpoint PR #210 remain draft/open/unmerged.
 - No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred.
+
+
+### Verification correction — PR #212 playable-world result
+
+A subsequent exact-head check-run poll found a third workflow on PR #212 head `5b4c7426b3a1820d927997540221de9dce13b044` that was not yet visible in the earlier poll:
+
+- Playable-world run [41067059570](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059570): **success**. Its job log runs `python3 scripts/verify-browser.py --out artifacts/browser-acceptance --standalone` and records **12/12 journeys passed**: desktop, phone, institutional-location actions, two-session shared world, phone toolbars at 320/360/412px, one-button 320/412, standalone file, standalone exact bytes, and shared restart. No journey errors were logged.
+- Browser evidence artifact: [12983291351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059570/artifacts/12983291351).
+
+This supersedes the earlier note in this run addendum that no browser workflow had been triggered. PR #212's latest exact head now has all three distinct checks green: Verify 41067059453, world-projection 41067059559, and Playable-world 41067059570. The PR remains draft/unmerged.
