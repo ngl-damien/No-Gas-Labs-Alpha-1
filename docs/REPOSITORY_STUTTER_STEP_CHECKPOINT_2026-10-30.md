@@ -400,3 +400,45 @@ A fresh source-level comparison of issue #17, merged PR #18, current `main`, and
 4. **The next Founder task is architectural reconciliation before integration, not reviving PR #16.** Decide which signature scheme and trust anchor is canonical for live Founder decisions (the merged Ed25519 INSTALL path, the separate P-256 event helper, or a deliberately specified bridge); then integrate it into the canonical server/reducer boundary after active `game/server.mjs` work (#205/#213/#214) settles. Keep independent key custody and human-identity proof separate. Issue #17's concurrency, crash/stale-lock recovery, and cross-process acceptance remain open.
 
 This correction supersedes earlier shorthand in this checkpoint that described the separate P-256 helper as the remaining PR #16 self-signing issue or named a PR #8/PR #18 combination without this distinction. No Founder key material was created, read, provisioned, rotated, or used in this run.
+
+
+## Stutter-step handoff — 2026-10-30 (fresh run)
+
+### Fresh Alpha 1 state
+- `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Open PR search returned **46** PRs; open issue search returned **2**.
+- Read-only branch enumeration returned **463** refs; **0** were marked protected by the branch API. This is not permission to delete or rewrite anything.
+- Worker B's Guild Hall stack is active: PR #217 head `298be1c6496aa45ad3be4127cdf457b3aae121f1` and PR #218 head `94dc0584bf339add036d39eee37562545893829b`; both have passing exact-head Verify, world-projection and playable-world checks. Avoided their gameplay paths.
+
+### Cycle 1 — Forge credential exposure boundary
+Updated draft PR #216 on `fix/forge-independent-verification-workspace-20261030`.
+- `82798d615175cee95f9e43f862701e704740dd09` expanded source-snapshot exclusions to cover common local auth stores and private-key/config paths.
+- `3245d1938270bb35c89c4fda5dc4bd5acd155b6a` added a regression covering 20 credential-bearing paths and asserting they are absent from both the source manifest and candidate workspace.
+- `c61c5bf4dd02f41378a0af5c083ba6015ee8b4b8` corrected over-escaped regex literals before verification.
+- `e66114a5e857d9cdc3b146e2bc160d150c73eb26` corrected the Node assertion matcher used for missing copied files.
+- Exact final-head checks: Verify `124008607702`, world-projection `124008792360`, playable-world `124009182613` — all **success**.
+- A local predicate probe confirmed all 20 listed credential paths are excluded and four ordinary source paths remain included. This is not a substitute for the hosted test suite.
+- Limits remain: path/name filtering cannot detect secrets embedded in ordinary source files; Forge still explicitly is not an OS sandbox.
+
+### Cycle 2 — ngl-mesh transition-test compile defect
+Updated draft ngl-mesh PR #1 on `security/pin-relay-operator-key-20261026`.
+- Current head: `874192cf3776cde1986edc8329d37f8d8c7940e7`.
+- `EvidenceAuthorizedTransitionTest.java` declared local `KeyPair outsider` twice in the same `main` method (lines 46 and 116), which is a Java compile error. A minimal `javac` reproduction confirmed the duplicate-local diagnostic.
+- Commit `874192cf3776cde1986edc8329d37f8d8c7940e7` removes the second declaration and reuses the earlier outsider key for the negative revocation test.
+- Exact-head `operator-key-trust` and `required-agent-instructions` workflows both passed. **Important coverage limit:** this workflow does not compile `EvidenceAuthorizedTransitionTest.java`; only the manual `verify_bridge.py` path compiles the full bridge/transition integration.
+- Recovered source archive was found in Damien's Library as `c82d2be0-f1b3-40d6-a1ee-1abb6564ba84.zip`, 1,514,822 bytes. Its observed SHA-256 matches the pinned `d19684e39512a11caf5fdbe5dc2fb7495dc63f9e434827b6a648393c1f2b24b9`. The archive contains `NGLRelay-v0.1.0.apk` (49,651 bytes). No RAE JSON report was located; the full `verify_bridge.py` integration run remains unexecuted. No claim of APK rebuild, device install, or source/APK behavioral equivalence.
+
+### Founder authorization and blockers
+- PR #16's original self-signing finding remains superseded by the merged PR #18 offline Ed25519 INSTALL signer; do not revive the old path.
+- Separate unmerged PR #203 still seals/audience-binds the P-256 decision helper. Current Alpha 1 main still has the caller-supplied `{valid: true}` verification-object boundary in `src/authority/decision.js`; the live `game/server.mjs` path does not import PR #203's verifier.
+- Issue #17 remains open for canonical signer choice, independent key custody, server integration, concurrency and stale-lock/crash recovery. No key material was created, read, provisioned, rotated, or used.
+- Active game/server work remains on PRs #213–#215; no conflicting edits were made.
+
+### Next ranked actions
+1. Generate a fresh RAE report from the verified RAE runtime for the exact APK, then run `python3 integration/relay/verify_bridge.py <source-archive> <reference.apk> <rae-report.json>`; report the report's provenance and hash. Do not substitute a fabricated report for RAE output.
+2. Re-run the full Java bridge/transition compile and suites after the duplicate-local fix. Add CI coverage for that integration only when the real core source can be supplied without publishing private recovered artifacts.
+3. Reconcile PR #203 with the merged Ed25519 INSTALL trust path and the live server's current actor/session model after PRs #213–#215 settle; do not create or use Founder keys.
+4. Continue the playable Guild Hall/world capability review after Worker B's #217/#218 stack settles.
+5. Continue read-only classification of the 463 branch refs; do not delete branches or change protection/permissions without Founder authorization.
+
+No merge, deployment, release, branch deletion, workflow dispatch, spending, external publication, credential/key change, or permission change occurred in this run.
