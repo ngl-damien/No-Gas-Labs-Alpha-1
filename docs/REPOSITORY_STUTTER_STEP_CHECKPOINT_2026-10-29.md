@@ -523,11 +523,17 @@ No PR was merged, no branch deleted, and no secrets/permissions/releases/deploym
 - PR #194 merged at 2026-10-30T01:32:07Z. Its exact-head Verify 40984086598, Genesis 40984086526, Browser Acceptance 40984086541 passed. It adds the shared protocol and a repository verification guard; the guard validates instruction-file presence/markers, not actual agent compliance.
 - PR #196 merged at 2026-10-30T01:36:28Z, but its post-merge Pages workflow failed as described above and was then removed by `6c8acc9`.
 
-### Founder authorization
+### Founder authorization — source reinspection and PR-number correction
 
-- PR #16 remains closed and unmerged; PR #18 is the merged replacement prototype.
-- Issue #17 remains open. The merged detached-signature prototype is not proof of Damien's real-world private-key custody, identity, or use. Concurrent-writer and stale-lock/crash-recovery acceptance remain unresolved.
-- No key was generated, read, signed, provisioned or rotated. No Founder decision or approval was made.
+- Live GitHub shows PR #16 is **not** the self-signed authorization PR: #16 is “Experiment 001: competing proposals → durable capability → restart and reuse” (closed unmerged); PR #18 rebased that experiment and merged on 2026-10-22. Earlier notes that labelled #16 as the self-signed Founder authorization work were incorrect.
+- The signed Founder-authorization work is PR #164 (“security: bind Founder authorization to verified signed decisions”), still open/draft with 27 commits and 115 commits behind current main. Its exact-head Verify 40871139407, Genesis 40871139433, and Browser Acceptance 40871139588 passed on its old head.
+- PR #180 is a newer verification-seal branch, open/draft, 6 commits ahead / 7 behind current main; exact-head Browser 40924699484, Genesis 40924699491, Verify 40924699536 passed on its old head.
+- PR #181 stacks audience binding on #180, open/draft, 20 commits ahead / 7 behind current main; exact-head Browser 40938282766, Verify 40938282790, Genesis 40938282718 passed on its old head. Neither branch has been merged or revalidated against current main.
+- PR #181's `createFounderAuthorizationVerifier` snapshots the public key and pins fingerprint plus institution audience at construction. Its source comment explicitly requires the expected fingerprint to come from trusted startup configuration, not a request. This is safer than passing arbitrary trust values to the low-level verifier, but the host still has to supply and protect the trust configuration.
+- On current main, `src/authority/decision.js` (blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b`) still exposes a low-level verifier that accepts `public_key_jwk` and `expected_fingerprint` as call arguments. The current game server does **not** import this module: `game/server.mjs` (blob `77d3b870577b1b593a6a05e0d9781ce644d9586f`) imports `openDecisions` from `src/institution/decisions.mjs` (blob `e6493e6f0b9c4e60e1acb8a58c0ef55a5a9e48c7`).
+- The production server's actual local gate is possession-based: `getFounderKey` reads `NGL_FOUNDER_KEY` or a private `.runtime/founder.key`; if neither exists it generates 32 random bytes and writes the file with mode 0600 and fsyncs it. `POST /api/login` compares the supplied key with the host-held key using `timingSafeEqual`, then rotates to a Founder session. Founder-only decision routes require an existing Founder session and re-check it inside the serialized operation queue. The current `test/game-server.test.mjs` (blob `56c8504b12d13ec1c431cc326166c28f1075298c`) covers invalid credentials, session/role injection, Founder-only routes, and persistence/durability.
+- Therefore: the live server has a local secret/session gate, not the standalone signed-decision verifier. The signed-verifier PRs are not integrated into that server, and no independent real-world identity or external Founder key custody is established. Issue #17 remains open; concurrent-writer and stale-lock/crash-recovery acceptance remain unresolved.
+- No Founder key was generated, read, signed, provisioned or rotated by this worker. No Founder decision or approval was made.
 
 ### EvidenceOS donor repair — private repository
 
