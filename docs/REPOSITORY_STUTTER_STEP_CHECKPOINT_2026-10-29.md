@@ -94,7 +94,7 @@ Recent run evidence on 2026-10-30 UTC (2026-10-29 US local):
 
 ## Open pull requests observed on Alpha 1
 
-20 open PRs were returned in the first 100-item query:
+24 open PRs were returned in the first 100-item query:
 
 - **#190** — `fix(relay): serialize shared action receipts across tabs`, open, non-draft; head `7067b4a02c31ffc63f5a0956a732a39e45adb3a6`; all three hosted workflows passed on that exact head. The PR body says no local test or physical Android-device test was performed. Awaiting review; do not merge.
 - **#189** — `fix(world): broadcast Decision Chamber unavailability`, draft; base is feature branch for #188, not main.
