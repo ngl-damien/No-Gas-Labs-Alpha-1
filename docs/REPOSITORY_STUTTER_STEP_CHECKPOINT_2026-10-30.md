@@ -781,3 +781,15 @@ Worker B's subsequent commit `83f2a8e42c5666e3c59160325a6773131b95ac68` changes 
 The source-fidelity implementation is now present in `game/collaborator-world-objects.mjs`: it validates the source-event chronology and reconstructs the expected packet from the retained earlier event slice before projecting a folio. This is a deterministic source-binding check, not proof of the external model's truth or execution. Worker B owns the game/server/world/test paths; Worker A made no edits there.
 
 Next: recheck the current PR #220 Playable-world result and inspect any final browser receipts. Preserve the exact-head distinction if another replacement commit appears.
+
+
+## Final PR #220 verification — 2026-10-30 15:04 UTC
+
+The latest Worker B PR #220 head `83f2a8e42c5666e3c59160325a6773131b95ac68` now has all three exact-head checks **success**:
+
+- Verify [41076635826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635826): success.
+- World-projection [41076635827](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635827): success.
+- Browser Acceptance [41076635917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635917): success, **13/13 journeys** with no journey errors. Journeys include offline private recovery, desktop, phone, institutional-location actions, two-session shared world, 320/360/412px toolbars, one-button 320/412, standalone file, standalone exact bytes, and shared restart.
+- Browser artifact: [12986714437](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41076635917/artifacts/12986714437).
+
+This closes the prior pending-browser note for PR #220's exact head. The PR remains draft and unmerged; browser acceptance is hosted evidence for the tested build/journeys, not deployment or external adoption.
