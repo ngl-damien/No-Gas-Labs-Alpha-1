@@ -234,7 +234,7 @@ test('Forge excludes common local credential stores and private-key files from e
   const copiedWorkspace = join(options.outDir, report.results[0].workspace);
   for (const path of Object.keys(credentialFiles)) {
     assert.ok(!included.has(path), `${path} must be excluded from the source manifest`);
-    await assert.rejects(access(join(copiedWorkspace, path)), `${path} must not reach candidate execution`);
+    await assert.rejects(access(join(copiedWorkspace, path)), { code: 'ENOENT' }, `${path} must not reach candidate execution`);
   }
   assert.ok(included.has('README.md'), 'ordinary public source remains available');
 });
