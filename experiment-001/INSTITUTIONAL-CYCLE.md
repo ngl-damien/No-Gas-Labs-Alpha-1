@@ -20,6 +20,10 @@ Run on Node.js 24 or newer (the current repository CI runtime): `node --test exp
 
 Test concurrent writers and stale-lock recovery, then compare the candidate with the real reducer/authority entry points for integration.
 
+## Bounded candidate-program acquisition
+
+`candidate-program-v1` accepts a small JSON AST using only `input`, `const`, `add`, `subtract`, `multiply`, `negate`, `abs`, `min`, and `max`. The validator rejects unknown fields/operators, accessors, custom prototypes, excessive depth/node count, unsafe constants, and arithmetic results outside safe-integer bounds. No `eval`, dynamic import, loop, file access, network access, or host callback is exposed. The proposal signature covers the normalized AST and its content-derived implementation hash; the ledger persists that AST, and a fresh process evaluates it under the same bounded interpreter. The current challenge contract is still the fixed square suite (`2→4`, `3→9`, `5→25`, `-4→16`), so a candidate must implement that contract. This demonstrates dynamic deterministic capability installation, not novel AI discovery or an independent verifier process.
+
 ## Implementation identity and ledger replay compatibility
 
 New INSTALL proposals identify a strategy with a stable, versioned semantic ID (`ngl-experiment-001:strategy:square:v1` or `ngl-experiment-001:strategy:double:v1`) rather than hashing JavaScript `Function.toString()`. This avoids rejecting historical records merely because implementation source formatting changes.
