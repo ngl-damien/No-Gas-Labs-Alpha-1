@@ -56,14 +56,13 @@ function signedReceipt(value, key = privateKey, keyFingerprint = fingerprint) {
   };
 }
 const signed = signedReceipt(payload);
-const verify = (receipt = signed, value = payload, key = jwk, pin = fingerprint, now = 0) =>
+const verify = (receipt = signed, value = payload, key = jwk, pin = fingerprint) =>
   verifyFounderDecision({
     signed: receipt,
     payload: value,
     public_key_jwk: key,
     expected_fingerprint: pin,
-    expected_audience: audience,
-    now
+    expected_audience: audience
   });
 
 test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () => {
@@ -78,17 +77,31 @@ test("audience-bound decisions use schema v2 and reject legacy v1 payloads", () 
 
 test("verification requires a host-pinned audience and rejects mismatches", () => {
   assert.deepEqual(verifyFounderDecision({
-    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, now: 0
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint
   }), {
     valid: false,
     reason: "VERIFICATION_INPUT_INVALID"
   });
   assert.deepEqual(verifyFounderDecision({
     signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint,
-    expected_audience: "ngl-alpha-1-other", now: 0
+    expected_audience: "ngl-alpha-1-other"
   }), {
     valid: false,
     reason: "AUDIENCE_MISMATCH"
+  });
+});
+
+test("public decision verifier rejects caller-controlled clock overrides", () => {
+  assert.deepEqual(verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience,
+    now: 0
+  }), {
+    valid: false,
+    reason: "VERIFICATION_INPUT_INVALID"
   });
 });
 
@@ -126,7 +139,9 @@ test("a supplied public key must actually match the enrolled fingerprint", () =>
 });
 
 test("an expired exact signature is not current authority", () => {
-  assert.deepEqual(verify(signed, payload, jwk, fingerprint, Date.parse("2100-01-01T00:00:00.000Z")), {
+  const expiredPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
+  const expiredSigned = signedReceipt(expiredPayload);
+  assert.deepEqual(verify(expiredSigned, expiredPayload), {
     valid: false,
     reason: "DECISION_EXPIRED"
   });
@@ -165,7 +180,16 @@ test("a verification result is bound to the exact payload and signed receipt", (
 test("a decision verified before expiry cannot authorize after its expiry", () => {
   const expiringPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
   const expiringSigned = signedReceipt(expiringPayload);
-  const verification = verify(expiringSigned, expiringPayload, jwk, fingerprint, 0);
+  const realNow = Date.now;
+  let verification;
+  try {
+    // The verifier uses wall-clock time. Simulate the decision's valid instant
+    // without exposing a caller-controlled clock parameter in its public API.
+    Date.now = () => 0;
+    verification = verify(expiringSigned, expiringPayload, jwk, fingerprint);
+  } finally {
+    Date.now = realNow;
+  }
   assert.equal(verification.valid, true);
   assert.throws(
     () => authorizationEvent({ signed: expiringSigned, payload: expiringPayload, verification }),
@@ -487,7 +511,7 @@ test("public decision APIs reject accessor-backed call envelopes without running
   assert.throws(() => makeDecisionPayload(decisionArgs), /own data properties/);
 
   const verificationArgs = {
-    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, expected_audience: audience, now: 0
+    signed, payload, public_key_jwk: jwk, expected_fingerprint: fingerprint, expected_audience: audience
   };
   Object.defineProperty(verificationArgs, "payload", {
     enumerable: true,
