@@ -30,6 +30,8 @@ try {
   const entry = await readFile(resolve(root, 'AGENTS.md'), 'utf8');
   for (const marker of [
     'STOP: Read this file before',
+    'First repository operation:',
+    'Do not bundle this read with branch, pull-request, issue, commit, file-search, workflow, CI, or any other repository inspection.',
     'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md',
     'Do not merge, release, deploy',
     'durable, factual record'
