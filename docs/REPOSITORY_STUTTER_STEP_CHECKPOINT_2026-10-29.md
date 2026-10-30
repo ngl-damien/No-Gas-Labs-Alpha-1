@@ -417,3 +417,40 @@ Do not treat the current checkpoint PR as fully verified until these exact-head 
 ### Failure-sample correction
 
 The Actions history is paginated while new runs are arriving, so page 2/page 3 are not stable snapshots. The current 300-record sample was re-read after the latest runs and supersedes the earlier count of 11 failures: the verified count is now 81 success / 215 cancelled / 4 failure. The seven activity-mapping failures are retained as an earlier historical observation, not counted in the current 300.
+
+
+## Continuation update — 2026-10-30 UTC
+
+### New source-backed workflow diagnoses
+
+**ngl-mesh — Relay operator-key trust**
+
+- Failed run: `40381579114`, job `121778918174`, failed at the compile step on commit `5bd56c8fc6e9348a5ba408dede880aff4bd81cf0`.
+- Exact cause in `.github/workflows/operator-key-trust.yml`: the `javac` command's line continuation was missing after `integration/relay/DurableMarkerTest.java`. The next source path, `integration/relay/RevocationAuthorization.java`, was therefore executed by the shell as a command, yielding `Permission denied` / exit 126. This was a shell syntax error, not a Java source permission or file-mode defect.
+- Verified correction already exists in follow-up commit `839f553f5255f47b3d7fcbd1272efbdeb5ac73af`, message `fix(ci): continue javac command for revocation tests`. The missing continuation is present in that commit's workflow.
+- Exact follow-up run `40381710261` on that commit concluded **success**. This is a verified resolved failure; do not make a duplicate fix.
+
+**AI-BI-Intelligence-node-gate — Core verification**
+
+- Failed run: `40981915783`, job `123823748475`, head `1600cb375163294f04663ab22ee411f58f2b1d50`, PR #1.
+- Exact cause: package.json defined `"test": "node --test tests/"`. The directory `tests/` exists and contains `deliberation-engine-provenance.test.js`, but Node 22 treats the directory argument as a module path and fails with `MODULE_NOT_FOUND`; it does not automatically discover test files from that directory argument.
+- Corrected package script on the existing PR branch to `node --test tests/*.test.js`, which expands the test-file pattern in the GitHub Actions shell.
+- Change commit: `dfc83e56ddb6e9a537afb81e04c88ed5c26c214b`. New package blob: `60cce7d3d4877fe863b810742b8de8b1b86c2d2d`.
+- PR #1 remains open and draft; its head now points to the correction commit. At the time of this update, Actions had not produced a new run for the corrected head. The source change is verified in GitHub; test success is **not yet verified**. Do not call this failure resolved until a fresh CI run passes.
+- The PR describes this repository as a partial recovery vessel, with root `index.js` missing despite the package start script referring to it. That remains a separate runtime/integration limitation, not the cause of this test failure.
+
+### Other repository Actions observations
+
+- `ngl-mesh`: 30 recent workflow runs returned; four were failures in the queried 30-run window, including repeated push/PR runs for the same commits. One failure family above is proven fixed by a subsequent commit and successful exact-head run. Continue inspecting all four failures and classify duplicate event runs separately.
+- `AI-BI-Intelligence-node-gate`: one recent failed PR run observed and corrected as above.
+- `TaskAgile`, `Damien-Featherstone`, `ngl001-def4us28`, `no-gas-labs-command-center`, `evidenceos`, and `Omnichain_Bridge_wallet`: Actions API returned zero workflow runs in this query. This does not establish that the repositories are broken or that workflows are absent; inspect workflow files and Actions settings/status separately.
+- In `TaskAgile/.github/workflows/org-ci.yml`, the three jobs call reusable workflows from `No-Gas-Labs-Official/no-gas-labs-governance`. The prior donor audit and the Command Center's inlined workflow comments describe the governance repository as private. For a caller that is public while the reusable-workflow repository is private, this is a likely access/configuration blocker; verify TaskAgile visibility, governance repository accessibility, and an actual failed run before treating it as a confirmed root cause.
+- `no-gas-labs-command-center` contains a useful documented example of prior workflow failure analysis: its `core-ci.yml` explains the private reusable-workflow access issue, pnpm cache setup ordering, and Vite Node engine range, then inlines checks. Treat those comments as repository-authored claims until independently cross-checked against run logs.
+
+### Updated next actions
+
+1. Confirm a new Actions run for AI-BI PR #1 at `dfc83e56ddb6e9a537afb81e04c88ed5c26c214b`; inspect job logs and actual test results.
+2. Inspect the remaining three ngl-mesh failed runs, group duplicate push/PR attempts by commit, and verify whether they share one root cause or multiple.
+3. Inspect TaskAgile's reusable workflow target repository visibility and current branch/run evidence; do not modify shared governance or permissions.
+4. Continue source/test/workflow inspection of the 32-repository inventory; prioritize evidenceos, TaskAgile, Command Center, ngl-mesh, and the AI-BI recovery vessel.
+5. Revisit Alpha 1 historical failures only with exact failed run IDs and logs; keep cancelled/superseded runs out of the failure count.
