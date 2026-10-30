@@ -104,7 +104,7 @@ Recent run evidence on 2026-10-30 UTC (2026-10-29 US local):
 - **#187** — `fix(storage): serialize decision writer lease mutations`, open draft; latest head `9b9c4e26d3107497973811999bbe233331f3c0fc`; adds a short-lived mutation guard, hardens game-server shutdown by closing idle connections before awaiting server close, and corrects the guard-inspector test to use a synthetic transient-guard fixture. Exact-head Verify, Genesis, and Browser Acceptance passed (runs 40969913708, 40969913707, 40969913778).
 - **#182** — `test(storage): verify decision writer lease across processes`, open draft; latest head `edd439987c2670afb4a0032d077208d64e0f2060`; exact-head Verify, Genesis, and Browser Acceptance passed (runs 40942911224, 40942911202, 40942911173). The earlier 7-second worker timeout failure on an older SHA was not reproduced on this exact head; keep the 7-second bound under observation.
 - **#174** — `feat(guild): add bounded collaborator handoff packets`, open non-draft, based on main; exact-head hosted checks passed (runs 40884124229, 40884124299, 40884124248). Review packet trust boundaries and functionality before any merge.
-- **#187**, **#182**, **#181**, **#180**, **#179**, **#178**, **#177**, **#172**, **#164**, **#76**, **#74**, **#73**, **#66**, **#63**, **#60**, **#58**, **#57**, **#49**, **#48**, **#26** — open PRs returned by the API; most are drafts, several are stacked on other feature branches, and they must be checked individually for current base/head divergence and usefulness before any closure or merge.
+- **#181**, **#180**, **#179**, **#178**, **#177**, **#172**, **#164**, **#76**, **#74**, **#73**, **#66**, **#63**, **#60**, **#58**, **#57**, **#49**, **#48**, **#26** — open PRs returned by the API; most are drafts, several are stacked on other feature branches, and they must be checked individually for current base/head divergence and usefulness before any closure or merge.
 - **#48** is a stale draft repository-assimilation checkpoint from 2026-10-26, not a complete or current inventory.
 
 The branch endpoint returned 100 branch entries, so pagination is not yet complete. It includes many experiment branches and two audit portfolio-map branches pointing at `9f83280a11a1`; no claim is made that all branches were inspected.
@@ -115,13 +115,13 @@ The branch endpoint returned 100 branch entries, so pagination is not yet comple
 
 1. Push and pull-request events create overlapping workflow runs for the same branch. The current concurrency policy intentionally cancels superseded runs; the latest PR #190 has successful exact-head checks.
 2. Cancellation is not the same as failure and should not be counted as a red test.
-3. A previous failure-filter query was not reliable; it returned success rows. Root-cause diagnosis of historical true failures is still outstanding.
+3. A previous failure-filter query was not reliable; it returned success rows. Direct pagination and job-log inspection have now identified several true failure clusters. Five representative clusters are documented below; a complete historical census and diagnosis remains outstanding.
 4. The branch-cleanup workflow is capable of deleting branches under its recorded conditions and therefore deserves a separate destructive-action review.
 5. Repository count has expanded from the older 12-repository audit to 32 connected-account repositories. Prior 12-repository audit coverage is no longer a complete account inventory.
 
 ### Not yet verified
 
-- Which of the 2,500 reported failure-conclusion records are genuine failures, and their actual job-level causes.
+- The complete historical failure census across all 9,133 Actions runs; only a recent 500-run sample and representative failures have been inspected.
 - Whether all open PRs have current green checks, valid bases, or unique non-duplicative changes.
 - Whether the current mainline is deployable or the hosted app is functioning.
 - Whether the private-key and production observation-trust blockers documented in prior audits have been remediated.
@@ -135,7 +135,7 @@ The branch endpoint returned 100 branch entries, so pagination is not yet comple
 - Inspected root contents and metadata for eight priority repositories listed above.
 - Inspected Alpha 1 README, package manifest, workflow definitions, recent Actions runs, open PRs, branch listing, and current audit/assimilation documents.
 - Verified exact-head hosted check outcomes for PR #190.
-- No application code or workflow files changed; no branches or PRs merged, closed, or deleted; no secrets, permissions, releases, or paid services altered.
+- No Alpha 1 application code or workflow files changed in this run. Separate draft source corrections were proposed in ngl001-def4us28 PR #1 and AI-BI-Intelligence-node-gate PR #1. No PRs were merged or closed; no branches were deleted; no secrets, permissions, releases, deployments, or paid services were altered.
 
 ## Next prioritized actions
 
