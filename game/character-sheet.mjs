@@ -80,6 +80,52 @@ function matchedPublications(world) {
   );
 }
 
+// Keep this set aligned with the four guide locations used by the world model and quest trail.
+const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+
+// Join denormalized activity rows to exactly one retained event. The same
+// fingerprint and ambiguity rule is used by getQuestTrail: duplicate rows or
+// duplicate events never manufacture character progress.
+function matchedActivityRecords(type, records, events, fields, viewer, predicate = () => true) {
+  const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
+  const actorRole = viewer?.role;
+  if (!actorId || !['founder', 'witness'].includes(actorRole)) return [];
+
+  const owned = rows(records).filter(record =>
+    record?.actor?.id === actorId && record.actor.role === actorRole
+  );
+  const candidates = rows(events).filter(event =>
+    event?.type === type && event?.actor?.id === actorId &&
+    event.actor.role === actorRole &&
+    typeof event.id === 'string' && event.id.length > 0
+  );
+  const fingerprint = entry => JSON.stringify([
+    entry?.actor?.id, entry?.actor?.role, entry?.at,
+    ...fields.map(field => entry?.[field])
+  ]);
+  const recordCounts = new Map();
+  const eventCounts = new Map();
+  const eventByFingerprint = new Map();
+
+  for (const record of owned) {
+    const key = fingerprint(record);
+    recordCounts.set(key, (recordCounts.get(key) || 0) + 1);
+  }
+  for (const event of candidates) {
+    const key = fingerprint(event);
+    eventCounts.set(key, (eventCounts.get(key) || 0) + 1);
+    if (!eventByFingerprint.has(key)) eventByFingerprint.set(key, event);
+  }
+
+  return owned.flatMap(record => {
+    const key = fingerprint(record);
+    const event = eventByFingerprint.get(key);
+    return recordCounts.get(key) === 1 && eventCounts.get(key) === 1 && event && predicate(event)
+      ? [{ record, event }]
+      : [];
+  });
+}
+
 export function projectCharacter(world, viewer) {
   const allEvents = uniqueEvents(world?.events);
   // Resolve append positions once. Repeated indexOf scans made challenge and
