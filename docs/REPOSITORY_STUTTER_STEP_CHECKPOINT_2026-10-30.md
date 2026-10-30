@@ -305,3 +305,12 @@ Meaningful commits on the branch: `17c60975d73fd23d93677683e4fbd55a4fe7e935` (cl
 ### Authority and result
 
 PR #216 is open, draft, and unmerged. Main remains unchanged at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred. Forge remains a trusted-local-process harness, not an OS sandbox.
+
+
+### Cycle 4 — reserved temporary-directory collision
+
+A further source review found that `src/forge/runner.mjs` always creates `.tmp` as the candidate workspace's TMPDIR, but the source snapshot exclusion list did not exclude `.tmp`. A nonignored repository `.tmp/scratch.mjs` would be copied into the workspace first; the subsequent `mkdir(workspace/.tmp)` would fail with `EEXIST`. The source exclusion now reserves `.tmp` just like `.runtime`, and the existing snapshot regression creates a nonignored `.tmp` file and asserts it is omitted. Commits: `16d22815a06dba3a2ce41e2ee1753bb03a38c52f` and `43e05b657ff71467a74002eab9bb4bfd4a348a66`.
+
+### Final code PR head after cycle 4
+
+PR #216 remains draft/open/unmerged at `43e05b657ff71467a74002eab9bb4bfd4a348a66`, base `main` at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. Exact-head Genesis Evidence Invariant run `41029826202` passed. Verify check `123976641376` passed; logs show Node tests, Python inspector, package build and institutional exercise completed with exit code 0. Latest world-projection check `123976827824` and Playable-world check `123976578118` were in progress at this checkpoint update; earlier superseded world-projection check `123976578833` was cancelled. Recheck exact-head statuses before claiming all three workflows passed.
