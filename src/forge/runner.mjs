@@ -243,10 +243,28 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const copyMs = performance.now() - started;
   const execution = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/execution`, entry: BENCHMARK, limits });
   const verificationStarted = performance.now();
+  let verificationWorkspacePath = null;
+  let verificationWorkspace = null;
+  let verificationCopyMs = 0;
   let verification = { receipt: { outcome: 'not_run', exitCode: null, signal: null, wallMs: 0 }, content: {} };
-  if (execution.receipt.outcome === 'passed') verification = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+  if (execution.receipt.outcome === 'passed') {
+    const verificationCopyStarted = performance.now();
+    verificationWorkspacePath = `candidates/${candidate.id}/verification-workspace`;
+    verificationWorkspace = join(outDir, verificationWorkspacePath);
+    for (const [path, bytes] of expected) await writeBytes(verificationWorkspace, path, bytes);
+    await mkdir(join(verificationWorkspace, '.tmp'));
+    verificationCopyMs = performance.now() - verificationCopyStarted;
+    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+  }
   const integrityStarted = performance.now();
-  const integrity = await verifyWorkspace(workspace, expected);
+  const candidateIntegrity = await verifyWorkspace(workspace, expected);
+  const verificationIntegrity = verificationWorkspace ? await verifyWorkspace(verificationWorkspace, expected) : null;
+  const integrity = {
+    passed: candidateIntegrity.passed && (verificationIntegrity?.passed ?? true),
+    changedPaths: [...new Set([...candidateIntegrity.changedPaths, ...(verificationIntegrity?.changedPaths ?? [])])],
+    candidate: candidateIntegrity,
+    verification: verificationIntegrity
+  };
   const integrityMs = performance.now() - integrityStarted;
   const actual = parseJson(execution.content.stdout);
   const verified = parseJson(verification.content.stdout);
@@ -256,7 +274,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const failure = [execution.receipt, verification.receipt].find(phase => ['timed_out', 'output_limited', 'spawn_failed'].includes(phase.outcome));
   const outcome = correct ? 'passing' : failure?.outcome ?? 'failed';
   const verificationOverheadMs = performance.now() - verificationStarted;
-  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, overlay: overlayManifest, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
+  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, verificationWorkspace: verificationWorkspacePath, overlay: overlayManifest, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, verificationCopyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
   await writeJson(join(outDir, `candidates/${candidate.id}/result.json`), result);
   return result;
 }
