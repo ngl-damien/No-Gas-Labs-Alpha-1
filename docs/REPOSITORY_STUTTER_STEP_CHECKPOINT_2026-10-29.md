@@ -199,14 +199,14 @@ Root-level content groups observed:
 
 ### Actions failure diagnosis — recent 300 completed records
 
-The most recent 300 completed Alpha 1 workflow records returned 98 successes, 191 cancellations and 11 failures. This is a bounded recent sample, not the full 9,103-run history.
+The latest paginated sample of 300 completed Alpha 1 workflow records returned 81 successes, 215 cancellations and 4 failures. This is a bounded recent sample, not the full 9,103-run history. The four failures were 40965949761, 40969240918, 40969712941 and 40957641052; the first three are the PR #187 decision-lock branch failures described below, and the fourth is the game/kernel-activity-on-world-map test-file failure.
 
 - Same-head push/PR duplication is verified: on PR #191 head `48fd91cb5e724e8486cad9f3513442836e7d9849`, push runs 40980660074/60076/60079 were cancelled while PR runs 40980665307/65314 executed on that same SHA. Cancellation is not a test failure.
 - Decision-store failures on PR #187's earlier commits were source-backed:
   - Runs 40965949761 and 40969240918 timed out at the 120-second test-stage limit with Founder-key/server teardown failures. PR #187's source notes identify the ordering defect: tests removed the temporary runtime directory before `server.closeGame()` released the decision-store lease, causing guard-directory `ENOENT`. Commit `75e0d674502140a3fec838506b3b05467699fa8e` handles only the missing-directory teardown case and closes the retained descriptor; `bb534c1eb454a1bd22d61052854e11e3d21999f1` adds a regression.
   - Run 40969712941 at `bb534c1...` failed 670/671: the lock-inspector test expected the transient `.decisions.lock.guard` directory to remain for the store lifetime; log shows `ENOENT` while scanning it. Commit `9b9c4e26d3107497973811999bbe233331f3c0fc` corrects the fixture to create a synthetic receipt for the inspector test and remove it before close. All three exact-head workflows now pass on that commit.
 - Run 40957641052 on `game/kernel-activity-on-world-map` failed five top-level test files (`game-academy`, `game-geometry`, `game-moonshot`, `game-world-institution-activity`, `moonshot-world-objects`). The retained log only reports each as 'test failed'; the underlying exception is not exposed there. Later mainline exact-head Verify passed, so this is superseded evidence; root cause remains unknown.
-- Runs 40948117466, 40948109185, 40948068527, 40948062165, 40947928001, 40947898020 and 40947853775 repeatedly failed activity-count assertions on the old `game/institution-event-mapping` branch. Logs show expected/actual count mismatches (2 vs 3, 3 vs 2, and 1 vs 2) in `test/game-world-institution-activity.test.mjs` and `test/game-geometry.test.mjs`. Current mainline Verify passes on the later PR #191 head; these old branch failures are superseded, not evidence of current-main instability. Their exact historical source cause remains unproven.
+- An earlier page-2/page-3 snapshot (before subsequent runs shifted pagination) also exposed runs 40948117466, 40948109185, 40948068527, 40948062165, 40947928001, 40947898020 and 40947853775 on the old `game/institution-event-mapping` branch. Logs show expected/actual activity-count mismatches (2 vs 3, 3 vs 2, and 1 vs 2) in `test/game-world-institution-activity.test.mjs` and `test/game-geometry.test.mjs`. Those seven runs are not in the latest 300-record sample above. Current mainline Verify passed on later heads; these old branch failures are superseded, not evidence of current-main instability. Their exact historical source cause remains unproven.
 
 ### CI improvement in progress
 
@@ -412,3 +412,8 @@ For the immediately preceding checkpoint head `18a25171e916f03ccd33e969b6b9b3eaf
 - Superseded attempts 40982077747, 40982077762, and 40982077848 were cancelled by concurrency after the newer head was pushed.
 
 Do not treat the current checkpoint PR as fully verified until these exact-head checks complete. No more changes should be pushed to this documentation branch merely to chase intermediate workflow states; capture the final outcomes in the next scheduled stutter-step run.
+
+
+### Failure-sample correction
+
+The Actions history is paginated while new runs are arriving, so page 2/page 3 are not stable snapshots. The current 300-record sample was re-read after the latest runs and supersedes the earlier count of 11 failures: the verified count is now 81 success / 215 cancelled / 4 failure. The seven activity-mapping failures are retained as an earlier historical observation, not counted in the current 300.
