@@ -10,13 +10,14 @@
     "test": "node --test",
     "build": "node scripts/build-game.mjs",
     "build:game": "node scripts/build-game.mjs",
-    "verify": "node scripts/validate-agent-governance.mjs && node scripts/verify.mjs",
+    "verify": "node scripts/validate-agent-governance.mjs && npm run check:game-syntax && node scripts/verify.mjs",
     "meteor": "node scripts/meteor-demo.mjs",
     "courier": "node scripts/courier.mjs",
     "forge": "node scripts/forge.mjs",
     "package:component": "node scripts/package-component.mjs",
     "compounding": "python3 scripts/run-compounding.py",
     "recover:institution": "node scripts/recover-institution.mjs",
-    "inspect:lock": "node scripts/inspect-writer-lock.mjs"
+    "inspect:lock": "node scripts/inspect-writer-lock.mjs",
+    "check:game-syntax": "for file in game/*.mjs; do node --check \"$file\" || exit; done"
   }
 }
