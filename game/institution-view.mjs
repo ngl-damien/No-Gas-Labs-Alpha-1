@@ -1,4 +1,59 @@
 import { projectChronicle } from "./chronicle.mjs";
+import { isStrictTimestamp } from "./timestamps.mjs";
+
+// Validate the envelope required to inspect a world snapshot. This is a
+// display-safety check, not a claim that the snapshot is canonical or true.
+// The shared Witness view intentionally omits private draft events, so the
+// full private-world validator is not applicable here.
+function denseSnapshotArray(value) {
+ try {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false;
+  const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
+  if (!Number.isSafeInteger(length) || length < 0) return false;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== length + 1) return false;
+  for (let index = 0; index < length; index += 1) {
+   const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+   if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) return false;
+  }
+  return keys.every(key => key === "length" ||
+   (typeof key === "string" && /^(0|[1-9]\\d*)$/.test(key) && Number(key) < length));
+ } catch { return false; }
+}
+
+export function isInspectableWorldSnapshot(value) {
+ try {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const field = key => {
+   const descriptor = Object.getOwnPropertyDescriptor(value, key);
+   return descriptor && descriptor.enumerable && Object.hasOwn(descriptor, "value")
+    ? descriptor.value : undefined;
+  };
+  const schema = field("schema"), id = field("id"), founderName = field("founderName");
+  const revision = field("revision"), xp = field("xp");
+  const createdAt = field("createdAt"), updatedAt = field("updatedAt");
+  if (schema !== "ngl.world.v2" || typeof id !== "string" || !id.trim() ||
+      typeof founderName !== "string" || !Number.isSafeInteger(revision) || revision < 0 ||
+      !Number.isSafeInteger(xp) || xp < 0 ||
+      !isStrictTimestamp(createdAt) || !isStrictTimestamp(updatedAt) ||
+      Date.parse(createdAt) > Date.parse(updatedAt)) return false;
+  for (const key of ["creations", "drafts", "events", "contributions", "reports", "discoveries", "methods"]) {
+   if (!denseSnapshotArray(field(key))) return false;
+  }
+  return field("creations").length <= 12 && field("drafts").length <= 24;
+ } catch { return false; }
+}
+
+// Prefer a well-shaped response; otherwise retain the last inspectable session
+// snapshot as stale/read-only. Missing or malformed data is never rendered as
+// a fresh empty register.
+export function selectWorldSnapshot(candidate, fallback) {
+ const fresh = isInspectableWorldSnapshot(candidate);
+ const retained = fresh ? candidate : isInspectableWorldSnapshot(fallback) ? fallback : null;
+ return Object.freeze({ world: retained, stale: !fresh, unavailable: !retained });
+}
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
 
