@@ -1,61 +1,171 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises';
+import { dirname, basename, resolve, relative, posix } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const root = process.cwd();
-const required = [
-  'AGENTS.md',
-  'CLAUDE.md',
-  'GEMINI.md',
-  'CODEX.md',
-  '.github/copilot-instructions.md',
-  'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'
-];
+const VENDOR_POINTERS = ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md'];
+const ENTRY_MARKERS = ['STOP: Read this file before', 'RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md', 'durable, factual record'];
+const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien'];
 
-const failures = [];
-for (const relative of required) {
-  try {
-    const body = await readFile(resolve(root, relative), 'utf8');
-    if (!body.trim()) failures.push(relative + ': file is empty');
-    if (relative !== 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md' &&
-        !body.includes('AGENTS.md') &&
-        !body.includes('RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md')) {
-      failures.push(relative + ': missing mandatory instruction pointer');
-    }
-  } catch (error) {
-    failures.push(relative + ': cannot read (' + error.code + ')');
-  }
+function insideRoot(root, candidate) {
+  const rel = relative(root, candidate);
+  return rel === '' || (!rel.startsWith('..') && !posix.isAbsolute(rel));
+}
+function safeRelativePath(value) {
+  return typeof value === 'string' && Boolean(value.trim()) && !value.includes('\\') &&
+    !posix.isAbsolute(value) && value.split('/').every(part => part !== '..' && part !== '');
+}
+function protocolFromEntry(entry) {
+  const match = entry.match(/\(([^)\n]*RALPH[^)\n]*PROTOCOL[^)\n]*)\)/i);
+  return match?.[1].replace(/^\.\//, '') ?? null;
 }
 
-try {
-  const entry = await readFile(resolve(root, 'AGENTS.md'), 'utf8');
-  for (const marker of [
-    'STOP: Read this file before',
-    'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md',
-    'Do not merge, release, deploy',
-    'durable, factual record'
-  ]) {
-    if (!entry.includes(marker)) failures.push('AGENTS.md: missing required rule: ' + marker);
-  }
-} catch {}
+export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', protocol = null, paths = [], checkpoint = null, receiptPath = null } = {}) {
+  const rootPath = await realpath(resolve(root));
+  const files = [];
+  const failures = [];
+  const warnings = [];
+  const seen = new Set();
 
-try {
-  const protocol = await readFile(resolve(root, 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'), 'utf8');
-  for (const marker of [
-    'Worker A',
-    'Worker B',
-    'Required loop on every run',
-    'Shared work coordination rules',
-    'Evidence and state rules',
-    'Founder authority remains with Damien'
-  ]) {
-    if (!protocol.includes(marker)) failures.push('protocol: missing required section marker: ' + marker);
+  async function inspect(relativePath, kind, required = true) {
+    if (!safeRelativePath(relativePath)) {
+      failures.push({ path: String(relativePath), reason: 'unsafe or invalid repository-relative path' });
+      return null;
+    }
+    const absolutePath = resolve(rootPath, relativePath);
+    if (!insideRoot(rootPath, absolutePath)) {
+      failures.push({ path: relativePath, reason: 'path escapes repository root' });
+      return null;
+    }
+    try {
+      const actualPath = await realpath(absolutePath);
+      if (!insideRoot(rootPath, actualPath)) {
+        failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
+        return null;
+      }
+      const content = await readFile(actualPath, 'utf8');
+      if (!content.trim()) {
+        failures.push({ path: relativePath, reason: 'file is empty' });
+        return null;
+      }
+      if (!seen.has(relativePath)) {
+        files.push({ path: relativePath, kind, sha256: createHash('sha256').update(content, 'utf8').digest('hex'), bytes: Buffer.byteLength(content, 'utf8') });
+        seen.add(relativePath);
+      }
+      return content;
+    } catch (error) {
+      if (required || error.code !== 'ENOENT') failures.push({ path: relativePath, reason: 'cannot read (' + (error.code ?? error.message) + ')' });
+      return null;
+    }
   }
-} catch {}
 
-if (failures.length) {
-  console.error('Agent governance validation FAILED');
-  for (const failure of failures) console.error('- ' + failure);
-  process.exitCode = 1;
-} else {
-  console.log('Agent governance validation passed: mandatory entry points and shared protocol are present.');
+  const entryText = await inspect(entry, 'root-instructions');
+  const protocolPath = protocol ?? (entryText ? protocolFromEntry(entryText) : null);
+  if (!protocolPath) failures.push({ path: entry, reason: 'no canonical shared protocol path found; pass --protocol explicitly' });
+  if (entryText) for (const marker of ENTRY_MARKERS) {
+    if (!entryText.includes(marker)) failures.push({ path: entry, reason: 'missing mandatory instruction marker: ' + marker });
+  }
+
+  const protocolText = protocolPath ? await inspect(protocolPath, 'shared-protocol') : null;
+  if (protocolText) for (const marker of PROTOCOL_MARKERS) {
+    if (!protocolText.includes(marker)) failures.push({ path: protocolPath, reason: 'missing mandatory protocol section: ' + marker });
+  }
+
+  for (const vendorPath of VENDOR_POINTERS) {
+    const vendorText = await inspect(vendorPath, 'vendor-pointer', false);
+    if (vendorText && (!vendorText.includes('AGENTS.md') || !vendorText.includes('RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md'))) {
+      failures.push({ path: vendorPath, reason: 'vendor instructions must point to root AGENTS.md and the shared protocol' });
+    }
+  }
+
+  const normalizedTargets = [];
+  for (const target of paths) {
+    if (!safeRelativePath(target)) {
+      failures.push({ path: String(target), reason: 'target must be a safe repository-relative path' });
+      continue;
+    }
+    normalizedTargets.push(target);
+    const parts = target.split('/');
+    const directories = [];
+    for (let index = 1; index < parts.length; index += 1) directories.push(parts.slice(0, index).join('/'));
+    if (parts.at(-1) === 'AGENTS.md') directories.push(parts.slice(0, -1).join('/'));
+    for (const directory of directories) if (directory) await inspect(directory + '/AGENTS.md', 'nested-instructions', false);
+  }
+
+  let checkpointRecord = null;
+  if (normalizedTargets.length && !checkpoint) {
+    failures.push({ path: '(checkpoint)', reason: 'targeted work requires --checkpoint pointing to the latest durable checkpoint' });
+  } else if (checkpoint) {
+    await inspect(checkpoint, 'durable-checkpoint');
+    checkpointRecord = files.find(file => file.path === checkpoint) ?? null;
+  }
+  if (!normalizedTargets.length) warnings.push('No target paths supplied: root-instruction validation only; this does not authorize edits to any path.');
+
+  const result = {
+    schema: 'ngl.agent-preflight.v1',
+    generatedAt: new Date().toISOString(),
+    repositoryRoot: rootPath,
+    status: failures.length ? 'blocked' : 'ready',
+    entry,
+    protocol: protocolPath,
+    targets: normalizedTargets,
+    checkpoint: checkpointRecord?.path ?? null,
+    files,
+    warnings,
+    failures
+  };
+
+  if (receiptPath) {
+    if (!safeRelativePath(receiptPath)) {
+      result.failures.push({ path: receiptPath, reason: 'receipt path must be repository-relative and cannot escape the root' });
+      result.status = 'blocked';
+    } else {
+      try {
+        const destination = resolve(rootPath, receiptPath);
+        if (!insideRoot(rootPath, destination)) throw new Error('receipt path escapes repository root');
+        await mkdir(dirname(destination), { recursive: true });
+        const realParent = await realpath(dirname(destination));
+        if (!insideRoot(rootPath, realParent)) throw new Error('receipt directory escapes repository root through a symlink');
+        await writeFile(resolve(realParent, basename(destination)), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
+      } catch (error) {
+        result.failures.push({ path: receiptPath, reason: 'cannot write receipt (' + (error.code ?? error.message) + ')' });
+        result.status = 'blocked';
+      }
+    }
+  }
+  return result;
+}
+
+function parseArgs(argv) {
+  const options = { paths: [] };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--help' || arg === '-h') options.help = true;
+    else if (['--entry', '--protocol', '--path', '--checkpoint', '--receipt', '--root'].includes(arg)) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) throw new Error(arg + ' requires a value');
+      index += 1;
+      if (arg === '--path') options.paths.push(value);
+      else if (arg === '--root') options.root = value;
+      else if (arg === '--entry') options.entry = value;
+      else if (arg === '--protocol') options.protocol = value;
+      else if (arg === '--checkpoint') options.checkpoint = value;
+      else if (arg === '--receipt') options.receiptPath = value;
+    } else throw new Error('unknown argument: ' + arg);
+  }
+  return options;
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  if (options.help) {
+    console.log('Usage: node scripts/validate-agent-governance.mjs [--path <target>]... --checkpoint <latest-checkpoint> [--receipt <output>] [--entry <path>] [--protocol <path>]');
+    return;
+  }
+  const result = await runPreflight(options);
+  console.log(JSON.stringify(result, null, 2));
+  if (result.status !== 'ready') process.exitCode = 1;
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(error => { console.error('Agent preflight failed:', error.message); process.exitCode = 1; });
 }
