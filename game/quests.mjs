@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -546,47 +547,15 @@ export function getQuestTrail(world, viewer) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
-  const collaboratorRoleIds = new Set(COLLABORATOR_ROLES.map(role => role.id));
-  const collaboratorResponseIdCounts = new Map();
-  for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
-    collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
-  const receiptMatches = (receipt, value) => receipt?.algorithm === 'sha256' &&
-    typeof receipt.digest === 'string' && /^[a-f0-9]{64}$/.test(receipt.digest) &&
-    Number.isSafeInteger(receipt.size) && receipt.size === new TextEncoder().encode(value).length;
-  // A rejected external response is still a preserved attempt. It counts as role
-  // coverage, never as correctness, provider provenance, execution or approval.
-  const collaboratorResponses = events.filter(event => {
-    if (event?.type !== 'collaborator-response-recorded' ||
-        typeof event.id !== 'string' || !uniqueMoonshotEventIds.has(event.id) ||
-        typeof event.responseId !== 'string' || !event.responseId.trim() ||
-        collaboratorResponseIdCounts.get(event.responseId) !== 1 ||
-        event.actor?.id !== actorId || event.actor?.role !== actorRole ||
-        !collaboratorRoleIds.has(event.role) || !validMoonshotIds.has(event.moonshotId) ||
-        !isStrictTimestamp(event.at) ||
-        typeof event.packetJson !== 'string' || !event.packetJson.trim() ||
-        new TextEncoder().encode(event.packetJson).length > 64 * 1024 ||
-        !receiptMatches(event.packetReceipt, event.packetJson) ||
-        typeof event.responseText !== 'string' || !event.responseText.trim() ||
-        new TextEncoder().encode(event.responseText).length > 64 * 1024 ||
-        !receiptMatches(event.responseReceipt, event.responseText) ||
-        !Array.isArray(event.sourceEventIds) || event.sourceEventIds.length < 1 || event.sourceEventIds.length > 8 ||
-        event.sourceEventIds.some(id => typeof id !== 'string' || !id.trim() ||
-          Array.from(id).length > 128 || !uniqueMoonshotEventIds.has(id)) ||
-        new Set(event.sourceEventIds).size !== event.sourceEventIds.length ||
-        event.validator !== 'ngl.collaborator-response.v1') return false;
-    const proposalPosition = proposalPositionById.get(event.moonshotId);
-    const responsePosition = eventPositionByReference.get(event);
-    const proposal = Number.isInteger(proposalPosition) ? events[proposalPosition] : null;
-    const sourceEvents = event.sourceEventIds.map(id => uniqueEventById.get(id));
-    if (!proposal || !Number.isInteger(responsePosition) || responsePosition <= proposalPosition ||
-        Date.parse(proposal.at) > Date.parse(event.at) ||
-        !event.sourceEventIds.includes(proposal.id) ||
-        sourceEvents.some(source => !source || eventPositionByReference.get(source) >= responsePosition)) return false;
-    if (event.validationStatus === 'valid-for-human-review') return event.validationReason === null;
-    return event.validationStatus === 'rejected' &&
-      typeof event.validationReason === 'string' && Boolean(event.validationReason.trim()) &&
-      Array.from(event.validationReason).length <= 128;
-  });
+  // The Guild Hall quest and the physical Relay folios must agree about what
+  // counts as a retained response. Reuse the same strict world-object projector
+  // so malformed packets, stale snapshots, broken source chains, duplicate IDs,
+  // or responses that cannot become navigable folios cannot award quest progress.
+  const collaboratorResponseObjects = projectCollaboratorResponseWorldObjects(world)
+    .filter(object => object.actorId === actorId && object.actorRole === actorRole);
+  const collaboratorResponses = collaboratorResponseObjects
+    .map(object => uniqueEventById.get(object.eventId))
+    .filter(Boolean);
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const collaboratorResponsesByRole = new Map();
   for (const event of collaboratorResponses) {

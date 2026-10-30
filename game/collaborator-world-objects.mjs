@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { COLLABORATOR_ROLES, isBoundedIdentifier } from './collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, isBoundedIdentifier, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_WORLD_EVENT_SCAN = 100_000;
@@ -103,15 +103,6 @@ function parsePacket(packetJson) {
   }
 }
 
-function validProposal(record, eventId, moonshotId) {
-  const actor = validActor(record.actor);
-  return record.type === 'moonshot-proposed' && record.id === eventId &&
-    WORLD_OBJECT_ID.test(eventId) && record.moonshotId === moonshotId &&
-    boundedText(record.title, 80) && boundedText(record.hypothesis, 1000) &&
-    boundedText(record.falsifier, 1000) && boundedText(record.evidenceNeeded, 1000) &&
-    actor && isStrictTimestamp(record.at);
-}
-
 /**
  * Project exact archived collaborator responses into small, navigable Relay
  * folios. These are retained response objects, not autonomous NPCs, approvals,
@@ -122,13 +113,13 @@ export function projectCollaboratorResponseWorldObjects(world) {
   const worldId = ownDataValue(world, 'id');
   const worldRevision = ownDataValue(world, 'revision');
   const events = ownDataArray(ownDataValue(world, 'events'), MAX_WORLD_EVENT_SCAN);
+  const creations = ownDataArray(ownDataValue(world, 'creations'), 20_000) || [];
   if (!isBoundedIdentifier(worldId) || !Number.isSafeInteger(worldRevision) ||
       worldRevision < 0 || !events) return Object.freeze([]);
 
   const entries = [];
   const eventIdCounts = new Map();
   const responseIdCounts = new Map();
-  const proposalCounts = new Map();
   const entryById = new Map();
   let visibleEventCount = 0;
 
@@ -146,9 +137,6 @@ export function projectCollaboratorResponseWorldObjects(world) {
     }
     if (record.type === 'collaborator-response-recorded' && typeof record.responseId === 'string') {
       responseIdCounts.set(record.responseId, (responseIdCounts.get(record.responseId) || 0) + 1);
-    }
-    if (record.type === 'moonshot-proposed' && typeof record.moonshotId === 'string') {
-      proposalCounts.set(record.moonshotId, (proposalCounts.get(record.moonshotId) || 0) + 1);
     }
   }
 
@@ -207,30 +195,36 @@ export function projectCollaboratorResponseWorldObjects(world) {
         omittedIds.some(id => !isBoundedIdentifier(id) || sourceIds.includes(id)) ||
         new Set(omittedIds).size !== omittedIds.length) continue;
 
-    let proposalFound = false;
-    let sourceChainValid = true;
-    for (let sourceIndex = 0; sourceIndex < sourceIds.length; sourceIndex += 1) {
-      const sourceId = sourceIds[sourceIndex];
+    const sourceChainValid = sourceIds.every(sourceId => {
       const sourceEntry = entryById.get(sourceId);
       const source = sourceEntry?.record;
-      const input = ownDataRecord(inputRecords[sourceIndex]);
-      const sourceActor = source && validActor(source.actor);
-      const inputActor = input && ownDataRecord(input.actor);
-      if (!sourceEntry || eventIdCounts.get(sourceId) !== 1 ||
-          sourceEntry.index >= entry.index || !source || !input || !sourceActor || !inputActor ||
-          source.moonshotId !== moonshotId || !isStrictTimestamp(source.at) ||
-          Date.parse(source.at) > atMs ||
-          input.eventId !== source.id || input.type !== source.type || input.at !== source.at ||
-          input.moonshotId !== source.moonshotId ||
-          inputActor.id !== sourceActor.id || inputActor.role !== sourceActor.role) {
-        sourceChainValid = false;
-        break;
-      }
-      if (source.type === 'moonshot-proposed' &&
-          proposalCounts.get(moonshotId) === 1 &&
-          validProposal(source, sourceId, moonshotId)) proposalFound = true;
-    }
-    if (!sourceChainValid || !proposalFound) continue;
+      return Boolean(sourceEntry && eventIdCounts.get(sourceId) === 1 &&
+        sourceEntry.index < entry.index && source &&
+        source.moonshotId === moonshotId && isStrictTimestamp(source.at) &&
+        Date.parse(source.at) <= atMs);
+    });
+    if (!sourceChainValid) continue;
+
+    // Rebuild the role packet from the exact earlier event slice. Checking
+    // source IDs and copied record text is not enough: a forged Synthesis Clerk
+    // packet could omit newer attempts or dissent while claiming there was no
+    // omitted history. The canonical packet builder also enforces each role's
+    // input selection, ordering, clipping, and omission disclosure.
+    const priorEvents = events.slice(0, entry.index);
+    const packetEvents = actor.role === 'founder'
+      ? priorEvents
+      : priorEvents.filter(source => {
+        const sourceRecord = ownDataRecord(source);
+        return sourceRecord && !['draft', 'repair'].includes(sourceRecord.type);
+      });
+    const expectedPacket = projectCollaboratorPackets({
+      id: worldId,
+      revision: snapshot.revision,
+      events: packetEvents,
+      creations
+    }).find(candidate => candidate.id === roleId &&
+      candidate.available === true && candidate.moonshotId === moonshotId);
+    if (!expectedPacket || expectedPacket.packetJson !== packetJson) continue;
 
     valid.push({
       id: 'collaborator-response-object:' + responseId,

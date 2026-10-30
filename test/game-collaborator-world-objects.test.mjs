@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { findRoute, WorldView } from '../game/world-view.mjs';
 
 const proposal = Object.freeze({
@@ -24,50 +25,33 @@ function receipt(value) {
   };
 }
 
+// Packet fixtures retain the complete compact source record, not just its event ID.
 function responseEvent({
   eventId = 'response-event-1',
   responseId = 'response-1',
-  role = 'adversary',
+  role = 'tutor',
   actor = { id: 'witness-1', role: 'witness' },
   at = '2026-10-30T05:01:00.000Z',
   snapshotRevision = 1,
-  suppliedEventCount = 1,
+  priorEvents = [proposal],
   validationStatus = 'valid-for-human-review',
   validationReason = null,
-  sourceEventIds = ['proposal-1'],
   packetChanges = null,
   responseText = '{"draft":"review only"}'
 } = {}) {
-  const payload = {
-    protocol: 'ngl.bounded-collaborator-packet.v1',
-    sourceSnapshot: {
-      status: 'identified',
-      worldId: 'world-1',
-      revision: snapshotRevision,
-      suppliedEventCount
-    },
-    role,
-    targetMoonshotId: 'moonshot-1',
-    authority: 'advisory-only',
-    mayWriteCanonicalState: false,
-    mayGrantAuthority: false,
-    mayAwardProgress: false,
-    mayCertifyTruthOrExecution: false,
-    inputRefs: [...sourceEventIds],
-    omittedEventIds: [],
-    omittedCount: 0,
-    omittedEventIdListTruncated: false,
-    truncatedContentFieldCount: 0,
-    inputRecords: sourceEventIds.map(id => ({
-      eventId: id,
-      type: 'moonshot-proposed',
-      at: proposal.at,
-      actor: { id: proposal.actor.id, role: proposal.actor.role },
-      moonshotId: proposal.moonshotId
-    }))
-  };
+  // The archived packet must be one the runtime itself could have issued for
+  // this exact earlier event slice. Tests may mutate its payload deliberately,
+  // but ordinary fixtures retain the builder's original bytes.
+  const packet = projectCollaboratorPackets({
+    id: 'world-1',
+    revision: snapshotRevision,
+    creations: [],
+    events: priorEvents
+  }).find(candidate => candidate.id === role && candidate.available);
+  assert.ok(packet, 'the prior event slice must provide the requested role packet');
+  const payload = JSON.parse(packet.packetJson);
   packetChanges?.(payload);
-  const packetJson = JSON.stringify(payload);
+  const packetJson = packetChanges ? JSON.stringify(payload) : packet.packetJson;
   return {
     id: eventId,
     type: 'collaborator-response-recorded',
@@ -76,7 +60,7 @@ function responseEvent({
     responseId,
     role,
     moonshotId: 'moonshot-1',
-    sourceEventIds: [...sourceEventIds],
+    sourceEventIds: [...payload.inputRefs],
     packetJson,
     packetReceipt: receipt(packetJson),
     responseText,
@@ -107,14 +91,22 @@ test('a source-bound collaborator response becomes a navigable Relay folio', () 
   }, {
     type: 'collaborator-response-object',
     responseId: 'response-1',
-    roleId: 'adversary',
-    name: 'Adversary',
+    roleId: 'tutor',
+    name: 'Polymath Tutor',
     validationStatus: 'valid-for-human-review',
     sourceEventIds: ['proposal-1'],
     mapVisible: true
   });
   assert.ok(Number.isFinite(objects[0].x) && Number.isFinite(objects[0].y));
   assert.deepEqual(world, before, 'projection must not mutate canonical history');
+});
+
+test('a recomputed packet receipt cannot detach compact source content from the retained proposal', () => {
+  const tampered = responseEvent({
+    packetChanges: payload => { payload.inputRecords[0].hypothesis = 'A substituted hypothesis'; }
+  });
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(tampered)), [],
+    'a byte-valid packet must still reproduce the exact retained source record');
 });
 
 test('rejected collaborator output remains a visible, explicitly rejected world object', () => {
@@ -144,7 +136,7 @@ test('the map exposes only the 24 newest folios while every retained folio remai
       responseId: 'response-' + index,
       at: new Date(Date.parse(proposal.at) + index * 1000).toISOString(),
       snapshotRevision: index,
-      suppliedEventCount: index
+      priorEvents: events
     }));
   }
   const objects = projectCollaboratorResponseWorldObjects(
@@ -165,7 +157,7 @@ test('Relay folio map positions are reachable without crossing the river or a cr
       responseId: 'response-' + index,
       at: new Date(Date.parse(proposal.at) + index * 1000).toISOString(),
       snapshotRevision: index,
-      suppliedEventCount: index
+      priorEvents: events
     }));
   }
   const objects = projectCollaboratorResponseWorldObjects(
@@ -225,7 +217,7 @@ test('the world map dispatches a folio interaction to the exact retained respons
   assert.deepEqual(interactions, [{
     type: 'collaborator-response',
     responseId: 'response-1',
-    roleId: 'adversary',
+    roleId: 'tutor',
     moonshotId: 'moonshot-1',
     validationStatus: 'valid-for-human-review'
   }]);
@@ -243,7 +235,7 @@ test('malformed packet scope, receipt size, chronology, and duplicate identities
     eventId: 'response-event-2',
     responseId: 'duplicate-response',
     snapshotRevision: 2,
-    suppliedEventCount: 2,
+    priorEvents: [proposal, duplicateResponseA],
     at: '2026-10-30T05:02:00.000Z'
   });
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(badAuthority)), []);
@@ -257,7 +249,7 @@ test('malformed packet scope, receipt size, chronology, and duplicate identities
 
 test('duplicate packet keys are not projected as a trustworthy source-bound folio', () => {
   const event = responseEvent();
-  event.packetJson = event.packetJson.replace('"role":"adversary"', '"role":"adversary","role":"tutor"');
+  event.packetJson = event.packetJson.replace('"role": "tutor"', '"role": "tutor", "role": "adversary"');
   event.packetReceipt = receipt(event.packetJson);
   assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(event)), []);
 });

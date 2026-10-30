@@ -81,7 +81,7 @@ export const COLLABORATOR_ROLES = Object.freeze(ROLE_SPECS.map(({ id, name, obje
   Object.freeze({ id, name, objective })
 ));
 
-function compactRecord(record) {
+export function compactCollaboratorSourceRecord(record) {
   const projection = record._projection || {};
   const actor = record.actor && typeof record.actor === 'object' ? record.actor : {};
   const truncatedFields = [];
@@ -187,7 +187,7 @@ function snapshotSource(world, events) {
 }
 
 function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot) {
-  const inputRecords = records.map(compactRecord);
+  const inputRecords = records.map(compactCollaboratorSourceRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
   const payload = {
     protocol: 'ngl.bounded-collaborator-packet.v1',
