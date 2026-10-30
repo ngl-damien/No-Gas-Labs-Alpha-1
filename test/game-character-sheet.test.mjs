@@ -888,3 +888,32 @@ test('Questkeeper map rejects matching discovery records with non-canonical time
   assert.equal(character.skills.find(skill => skill.id === 'explorer').count, 0);
   assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0);
 });
+
+
+test('Questkeeper map rejects repeat discovery events even when a record mirrors them', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    id: 'discovery-record-' + index,
+    actor: witness,
+    locationId,
+    at: new Date(Date.parse(t1) + index * 1000).toISOString()
+  }));
+  const events = discoveries.map((discovery, index) =>
+    event('discovery-event-' + index, 'discover', witness, discovery.at, {
+      locationId: discovery.locationId,
+      ...(index === 3 ? { repeat: true } : {})
+    })
+  );
+  const world = { xp: 0, creations: [], events, discoveries };
+  const trail = getQuestTrail(world, witness);
+  const map = trail.find(item => item.id === 'witness-map-grounds');
+  const character = projectCharacter(world, witness);
+  const explorer = character.skills.find(skill => skill.id === 'explorer');
+
+  assert.equal(map.progress, 3);
+  assert.equal(map.complete, false);
+  assert.equal(explorer.count, 3);
+  assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0);
+  assert.equal(map.progress, explorer.count,
+    'quest and character projections share the same first-discovery evidence rule');
+});
