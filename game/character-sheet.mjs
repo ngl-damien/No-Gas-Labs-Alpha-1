@@ -49,11 +49,10 @@ function retainedVersionIndex(world) {
   return index;
 }
 
-// A publish label alone is not a reward receipt. The event must be unique,
-// Founder-attributed, match a retained version and timestamp, and carry the
-// game's fixed publication reward. Duplicate claims for one version are
-// ambiguous, so none of them award character XP or Maker skill.
-function matchedPublications(world) {
+// A retained publication binds an event to one exact artifact version and
+// timestamp. It establishes that a place was published, not that its contents
+// are true or that it deserves game XP.
+function retainedPublicationEvents(world) {
   const events = uniqueEvents(world?.events);
   const versions = retainedVersionIndex(world);
   const candidates = [];
@@ -61,7 +60,6 @@ function matchedPublications(world) {
     if (event.type !== 'publish' ||
         typeof event.actor?.id !== 'string' || !event.actor.id.trim() ||
         event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
-        !Number.isSafeInteger(event.reward) || event.reward !== XP_PER_PUBLICATION ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
         event.version < 1 || !isStrictTimestamp(event.at)) continue;
     const key = versionKey(event.creationId, event.version);
@@ -74,56 +72,12 @@ function matchedPublications(world) {
   return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
 }
 
-
-const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
-
-// Summary arrays are convenient indexes, not independent proof of activity.
-// Count a skill only when one uniquely identified summary row joins to one
-// retained event for the same actor, timestamp and source fields.
-function matchedActivityRecords(type, records, events, fields, viewer, eventPredicate = () => true) {
-  if (typeof viewer?.id !== 'string' || !viewer.id.trim() || viewer.id.trim() !== viewer.id ||
-      !['founder', 'witness'].includes(viewer.role)) return [];
-
-  const source = rows(records);
-  const recordIdCounts = new Map();
-  for (const record of source) {
-    if (typeof record?.id === 'string' && record.id.length > 0) {
-      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
-    }
-  }
-  const owned = source.filter(record =>
-    typeof record?.id === 'string' && record.id.length > 0 && recordIdCounts.get(record.id) === 1 &&
-    record.actor?.id === viewer.id && record.actor?.role === viewer.role &&
-    isStrictTimestamp(record.at)
+// A publication is an XP receipt only when the exact fixed reward is present.
+// Invalid reward metadata does not erase a retained artifact from the world.
+function matchedPublications(world) {
+  return retainedPublicationEvents(world).filter(event =>
+    Number.isSafeInteger(event.reward) && event.reward === XP_PER_PUBLICATION
   );
-  const candidates = uniqueEvents(events).filter(event => {
-    if (event?.type !== type || event.actor?.id !== viewer.id || event.actor?.role !== viewer.role ||
-        !isStrictTimestamp(event.at)) return false;
-    try {
-      return eventPredicate(event) === true;
-    } catch {
-      return false;
-    }
-  });
-  const fingerprint = entry => JSON.stringify([
-    entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])
-  ]);
-  const recordCounts = new Map(), eventCounts = new Map(), eventByFingerprint = new Map();
-  for (const record of owned) {
-    const key = fingerprint(record);
-    recordCounts.set(key, (recordCounts.get(key) || 0) + 1);
-  }
-  for (const event of candidates) {
-    const key = fingerprint(event);
-    eventCounts.set(key, (eventCounts.get(key) || 0) + 1);
-    if (!eventByFingerprint.has(key)) eventByFingerprint.set(key, event);
-  }
-  return owned.flatMap(record => {
-    const key = fingerprint(record);
-    return recordCounts.get(key) === 1 && eventCounts.get(key) === 1
-      ? [{ record, event: eventByFingerprint.get(key) }]
-      : [];
-  });
 }
 
 export function projectCharacter(world, viewer) {
@@ -174,13 +128,17 @@ export function projectCharacter(world, viewer) {
   }
   const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
-  const canonicalPublications = matchedPublications(world);
-  const canonicalPublicationByVersion = new Map(canonicalPublications.map(event => [
+  const retainedPublications = retainedPublicationEvents(world);
+  const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
     versionKey(event.creationId, event.version), event
   ]));
-  const canonicalPublicationIds = new Set(canonicalPublications.map(event => event.id));
+  const retainedPublicationIds = new Set(retainedPublications.map(event => event.id));
+  const retainedPublishedVersionKeys = new Set(retainedPublications.map(event =>
+    versionKey(event.creationId, event.version)
+  ));
+  const canonicalPublications = matchedPublications(world);
   const hasEarlierPublication = event => {
-    const publication = canonicalPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const publication = retainedPublicationByVersion.get(versionKey(event.creationId, event.version));
     const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
     const activityPosition = positionByEvent.get(event) ?? -1;
     return publicationPosition >= 0 && activityPosition > publicationPosition &&
@@ -201,7 +159,7 @@ export function projectCharacter(world, viewer) {
   );
   const matchedMethods = matchedActivityRecords(
     'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
-    event => event.version > 1 && canonicalPublicationIds.has(event.id)
+    event => event.version > 1 && retainedPublicationIds.has(event.id)
   );
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
@@ -228,15 +186,16 @@ export function projectCharacter(world, viewer) {
       (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
     )) return false;
     if (hasEvidenceId) {
-      const version = retainedVersions.get(versionKey(event.evidenceCreationId, event.evidenceVersion));
-      if (!version || !isStrictTimestamp(version.publishedAt) ||
-          Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
+      const evidenceKey = versionKey(event.evidenceCreationId, event.evidenceVersion);
+      const version = retainedVersions.get(evidenceKey);
+      if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
+          !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
     }
     return true;
   });
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
-  const publishedStudyVersions = new Set(canonicalPublications.map(event => versionKey(event.creationId, event.version)));
+  const publishedStudyVersions = retainedPublishedVersionKeys;
   const studyEvents = events.filter(event => {
     if (event.type !== 'study' || typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
@@ -361,9 +320,7 @@ export function projectCharacter(world, viewer) {
     }
   ].map(skill => Object.freeze(skill));
 
-  const publishedVersionKeys = new Set(canonicalPublications.map(event =>
-    versionKey(event.creationId, event.version)
-  ));
+  const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string' &&
       Number.isSafeInteger(creation.version) && creation.version > 0 &&
