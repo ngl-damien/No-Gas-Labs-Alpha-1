@@ -6,6 +6,8 @@ import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
+import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
+import {validateCollaboratorResponse} from './collaborator-response.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 async function openInstitution(locationId = null) {
@@ -48,6 +50,7 @@ async function openInstitution(locationId = null) {
       await openInstitution();
     }),
   });
+  if (locationId === 'guild_hall') appendCollaboratorContracts(content, stateResult.data?.world ?? null);
 }
 
 function openInstitutionLocation(id) {
@@ -335,6 +338,62 @@ function appendContradictionClerk(content){
     clerk.append(button('Challenge '+creation.title+' · v'+creation.version+' →',()=>openCreation(creation.id,creation.version,true),{class:'list-button'}));
   }
 }
+function appendCollaboratorContracts(content, sourceWorld){
+  content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR CONTRACTS'}));
+  content.append(paragraph('Prepare source-bound work packets for an external AI collaborator. This does not call a model or change the world. Returned text remains untrusted until separately recorded and checked.','form-help'));
+  const packets=projectCollaboratorPackets(sourceWorld);
+  for(const packet of packets){
+    const card=node('article',{class:'field-card','data-collaborator-role':packet.id},[
+      node('h3',{text:packet.name}),
+      paragraph(packet.objective),
+      paragraph(packet.available?'Inputs: '+packet.inputRefs.join(' · '):packet.reason,packet.available?'form-help':'empty-note'),
+      paragraph(packet.sourceSnapshot?.status==='identified'
+        ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
+        : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
+    ]);
+    if(packet.available){
+      const details=node('details',{class:'collaborator-packet'},[
+        node('summary',{text:'Inspect hand-off packet'}),
+        node('textarea',{readonly:'',rows:'8','aria-label':packet.name+' hand-off packet',value:packet.prompt})
+      ]);
+      card.append(details);
+      card.append(button('Copy hand-off packet',guarded(async()=>{
+        try{
+          await navigator.clipboard.writeText(packet.prompt);
+          toast('Bounded packet copied. No model was called and no world state changed.');
+        }catch{
+          const field=details.querySelector('textarea');
+          field.focus();field.select();
+          toast('Packet selected. Use your device’s Copy action.');
+        }
+      }),{class:'secondary-button','data-copy-collaborator':packet.id}));
+      const responseDetails=node('details',{class:'collaborator-response'},[
+        node('summary',{text:'Validate returned response'})
+      ]);
+      const responseField=node('textarea',{rows:'8','aria-label':packet.name+' response JSON',placeholder:'Paste the external collaborator JSON response.'});
+      responseDetails.append(responseField);
+      const responseStatus=paragraph('External output remains untrusted. Validation checks structure and packet references only.','form-help');
+      responseStatus.setAttribute('data-collaborator-response-status',packet.id);
+      const responsePreview=node('pre',{class:'collaborator-response-preview','data-collaborator-response-preview':packet.id});
+      card.append(responseDetails);
+      card.append(button('Validate response for review',()=>{
+        const result=validateCollaboratorResponse(packet,responseField.value);
+        responseStatus.textContent=result.valid
+          ? 'STRUCTURE VALID · FOR HUMAN REVIEW ONLY. No claim, execution, world change, XP, or authority was verified.'
+          : 'Response rejected: '+result.reason;
+        responseStatus.className=result.valid?'form-help':'empty-note';
+        responsePreview.textContent=result.valid?JSON.stringify(result.response,null,2):'';
+      },{class:'secondary-button','data-validate-collaborator':packet.id}));
+      card.append(responseStatus,responsePreview);
+      card.append(button('Open related Moonshot →',()=>openMoonshotField(packet.moonshotId),{class:'list-button'}));
+    }else{
+      card.append(button('Visit Moonshot Field →',()=>openMoonshotField(),{class:'list-button'}));
+    }
+    content.append(card);
+  }
+}
+
+
 async function openGuildHall(){
   if(mode==='shared'){
     await openInstitution('guild_hall');
@@ -344,6 +403,7 @@ async function openGuildHall(){
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   appendContradictionClerk(content);
+  appendCollaboratorContracts(content,world);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
 function openForge(){
