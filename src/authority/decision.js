@@ -1,6 +1,9 @@
 import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
 
 const verificationSeals = new WeakMap();
+// Capture the runtime clock once at trusted module initialization. A caller that
+// can mutate the global Date.now later must not be able to revive an expired grant.
+const wallClockNow = Date.now.bind(Date);
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RESERVED_IDENTIFIERS = new Set(["constructor", "prototype"]);
 // IDs are later used as keys in ordinary projection objects. Reject every
@@ -326,7 +329,7 @@ export function verifyFounderDecision(input) {
   const args = snapshotCallArguments(input, ["signed", "payload", "public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) return rejected("VERIFICATION_INPUT_INVALID");
   const { signed, payload, public_key_jwk, expected_fingerprint, expected_audience } = args;
-  const now = Date.now();
+  const now = wallClockNow();
   const decision = snapshotDecisionPayload(payload);
   if (!decision || !isDecisionPayload(decision)) return rejected("DECISION_PAYLOAD_INVALID");
   if (!isIdentifier(expected_audience) || decision.audience !== expected_audience) return rejected("AUDIENCE_MISMATCH");
@@ -392,7 +395,7 @@ export function authorizationEvent(input) {
   const digest = decisionDigest(candidate);
   if (digest !== seal.payloadDigest || receipt.payload_sha256 !== seal.payloadDigest ||
       receipt.signature !== seal.signature || receipt.key_fingerprint !== seal.keyFingerprint ||
-      Date.now() >= Date.parse(seal.payload.expires_at)) {
+      wallClockNow() >= Date.parse(seal.payload.expires_at)) {
     throw new Error("verified Founder decision required");
   }
 
@@ -422,7 +425,7 @@ export function verifyAuthorizationEvent(event, options = {}) {
   const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) return false;
   const { public_key_jwk, expected_fingerprint, expected_audience } = args;
-  const now = Date.now();
+  const now = wallClockNow();
   // The persisted event is an untrusted boundary. Snapshot exact own data fields
   // before reading anything; accessors, inherited fields, and extras fail closed.
   const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
