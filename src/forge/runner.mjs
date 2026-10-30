@@ -202,7 +202,46 @@ async function executePhase({ workspace, outDir, prefix, entry, limits, input, p
   return { receipt: { outcome: outcome ?? (spawnError ? 'spawn_failed' : exitCode === 0 ? 'passed' : 'failed'), executable: process.execPath, args, pid: child.pid ?? null, exitCode, signal, error: spawnError, wallMs, ...receipts }, content };
 }
 async function verifyWorkspace(workspace, expected) {
-  const changed = [];
+  const changed = new Set();
+  const expectedPaths = new Set(expected.keys());
+  const expectedDirectories = new Set();
+  for (const path of expectedPaths) {
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) expectedDirectories.add(parts.slice(0, index).join('/'));
+  }
+  const allowScratch = ![...expectedPaths].some(path => path === '.tmp' || path.startsWith('.tmp/'));
+  try {
+    const rootInfo = await lstat(workspace);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error('workspace root is not a regular directory');
+  } catch {
+    return { passed: false, changedPaths: ['.'] };
+  }
+  async function inspect(directory, prefix = '') {
+    for (const name of await readdir(directory)) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      const absolute = join(directory, name);
+      let info;
+      try { info = await lstat(absolute); } catch { changed.add(path); continue; }
+      if (path === '.tmp' && allowScratch) {
+        if (info.isSymbolicLink() || !info.isDirectory()) changed.add(path);
+        continue;
+      }
+      if (info.isSymbolicLink()) { changed.add(path); continue; }
+      if (info.isDirectory()) {
+        if (!expectedDirectories.has(path)) changed.add(path);
+        await inspect(absolute, path);
+      } else if (info.isFile()) {
+        if (!expectedPaths.has(path)) changed.add(path);
+      } else changed.add(path);
+    }
+  }
+  await inspect(workspace);
+  if (allowScratch) {
+    try {
+      const scratchInfo = await lstat(join(workspace, '.tmp'));
+      if (scratchInfo.isSymbolicLink() || !scratchInfo.isDirectory()) changed.add('.tmp');
+    } catch { changed.add('.tmp'); }
+  }
   for (const [path, bytes] of expected) {
     try {
       let current = workspace;
@@ -210,10 +249,11 @@ async function verifyWorkspace(workspace, expected) {
         current = join(current, part);
         if ((await lstat(current)).isSymbolicLink()) throw new Error('link');
       }
-      if (sha256(await readFile(current)) !== sha256(bytes)) changed.push(path);
-    } catch { changed.push(path); }
+      const info = await lstat(current);
+      if (!info.isFile() || sha256(await readFile(current)) !== sha256(bytes)) changed.add(path);
+    } catch { changed.add(path); }
   }
-  return { passed: changed.length === 0, changedPaths: changed };
+  return { passed: changed.size === 0, changedPaths: [...changed].sort() };
 }
 function parseJson(text) { try { return JSON.parse(text.trim()); } catch { return null; } }
 const expectedChecksum = Array.from({ length: 10000 }, (_, index) => index % 201 - 100).reduce((a, b) => a + b, 0) * 200;
