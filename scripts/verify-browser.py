@@ -167,6 +167,35 @@ def visit(page,title):
     page.get_by_role('button',name=f'Open {title}',exact=True).click()
 
 
+def phone_toolbar_layout(browser,url,width):
+    context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True)
+    page=context.new_page()
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        toolbar=page.locator('.tool-buttons')
+        expect(toolbar).to_be_visible()
+        buttons=toolbar.locator(':scope > button')
+        assert buttons.count()==5, f'Expected five play controls at {width}px, got {buttons.count()}'
+        bounds=toolbar.bounding_box()
+        assert bounds and bounds['x']>=0 and bounds['x']+bounds['width']<=width, f'Toolbar escapes viewport at {width}px: {bounds}'
+        for index in range(buttons.count()):
+            target=buttons.nth(index)
+            expect(target).to_be_visible()
+            box=target.bounding_box()
+            assert box and box['width']>=44 and box['height']>=44, f'Control {index} is too small to tap at {width}px: {box}'
+            assert box['x']>=0 and box['x']+box['width']<=width, f'Control {index} is clipped at {width}px: {box}'
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), f'Horizontal overflow at {width}px'
+        character=page.locator('#character-button')
+        character.click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+        close_sheet(page)
+        return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44}
+    finally:
+        context.close()
+
+
 def institutional_locations(browser,url,out):
     errors=[]
     context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
@@ -584,6 +613,7 @@ def main():
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
+                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
                         page=context.new_page()
