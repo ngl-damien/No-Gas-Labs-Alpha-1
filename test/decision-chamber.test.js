@@ -519,6 +519,13 @@ test("decisionDigest rejects sparse arrays, cycles, non-finite numbers, and unbo
 
 
 test("decisionDigest rejects hidden properties and enforces the byte budget", () => {
+  // Pin the pre-existing wire representation so structural accounting does not
+  // silently change the bytes that valid decisions sign.
+  assert.equal(
+    decisionDigest({ a: 1, b: [true, "x"] }),
+    "63e8063d9dc6f0fd5a24b4706818a165fd57c3531b74466cf5dea62bff09b0b6"
+  );
+
   const symbolBacked = { visible: true };
   symbolBacked[Symbol("hidden")] = "not represented by JSON keys";
   assert.throws(() => decisionDigest(symbolBacked), /own enumerable data properties/);
@@ -531,4 +538,10 @@ test("decisionDigest rejects hidden properties and enforces the byte budget", ()
     () => decisionDigest({ text: "x".repeat(1024 * 1024) }),
     /byte limit/
   );
+
+  // 9,999 values fit the node limit, and their value bytes alone fit the old
+  // accounting. Delimiters and separators push the actual canonical bytes
+  // over 1 MiB, so the complete representation must be rejected.
+  const structuralBudgetAttack = Array.from({ length: 9999 }, () => "x".repeat(102));
+  assert.throws(() => decisionDigest(structuralBudgetAttack), /byte limit/);
 });
