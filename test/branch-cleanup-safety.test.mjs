@@ -18,8 +18,8 @@ test('branch cleanup is manual-only and blank confirmation is preview-only', () 
 });
 
 test('the default preview job has read-only repository permissions and never deletes refs', () => {
-  assert.match(preview, /permissions:\n\s+contents: read\n\s+pull-requests: read/);
-  assert.doesNotMatch(preview, /contents: write/);
+  assert.match(workflow, /^permissions:\n  contents: write\n  pull-requests: read/m);
+  assert.doesNotMatch(preview, /deleteRef/);
   assert.doesNotMatch(preview, /deleteRef/);
   assert.match(preview, /mode: 'preview-only'/);
 });
@@ -28,7 +28,7 @@ test('the deletion job requires the exact manual confirmation and a successful p
   assert.match(deletion, /if: \$\{\{ success\(\) && inputs\.confirmation == 'DELETE-ONLY-MANIFESTED-BRANCHES' \}\}/);
   assert.match(deletion, /context\.eventName !== 'workflow_dispatch'/);
   assert.match(deletion, /context\.payload\.inputs\?\.confirmation !== confirmation/);
-  assert.match(deletion, /permissions:\n\s+contents: write\n\s+pull-requests: read/);
+  assert.doesNotMatch(deletion, /permissions:/, 'no job-level permission changes are proposed');
 });
 
 test('deletion retains the manifest, exact-baseline, open-PR, protection and live-ref guards', () => {
