@@ -484,3 +484,35 @@ test("public decision APIs reject accessor-backed call envelopes without running
   assert.throws(() => createFounderAuthorizationVerifier(trustOptions), /FOUNDER_TRUST_CONFIGURATION_INVALID/);
   assert.equal(getterCalls, 0, "call-envelope getters must not execute");
 });
+
+
+test("decisionDigest preserves canonical key ordering and rejects accessor-backed values without invoking them", () => {
+  assert.equal(decisionDigest({ a: 1, b: [true, "x"] }), decisionDigest({ b: [true, "x"], a: 1 }));
+
+  let getterCalls = 0;
+  const accessorBacked = {};
+  Object.defineProperty(accessorBacked, "payload", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return "attacker-controlled";
+    }
+  });
+  assert.throws(() => decisionDigest(accessorBacked), /own enumerable data properties/);
+  assert.equal(getterCalls, 0);
+});
+
+test("decisionDigest rejects sparse arrays, cycles, non-finite numbers, and unbounded nesting", () => {
+  const sparse = new Array(1);
+  assert.throws(() => decisionDigest({ scope: sparse }), /dense/);
+
+  const cyclic = {};
+  cyclic.self = cyclic;
+  assert.throws(() => decisionDigest(cyclic), /cycles/);
+
+  assert.throws(() => decisionDigest({ amount: Number.POSITIVE_INFINITY }), /finite/);
+
+  let nested = "leaf";
+  for (let index = 0; index < 66; index += 1) nested = { next: nested };
+  assert.throws(() => decisionDigest(nested), /structural limits/);
+});
