@@ -414,10 +414,13 @@ export function authorizationEvent(input) {
 }
 
 export function verifyAuthorizationEvent(event, options = {}) {
-  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"], ["now"]);
+  // Persisted-event verification always uses this process's wall clock. Do not
+  // accept caller-controlled time at the host trust boundary; deterministic
+  // clock injection remains available only on the lower-level decision verifier.
+  const args = snapshotCallArguments(options, ["public_key_jwk", "expected_fingerprint", "expected_audience"]);
   if (!args) return false;
   const { public_key_jwk, expected_fingerprint, expected_audience } = args;
-  const now = args.now === undefined ? Date.now() : args.now;
+  const now = Date.now();
   // The persisted event is an untrusted boundary. Snapshot exact own data fields
   // before reading anything; accessors, inherited fields, and extras fail closed.
   const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
