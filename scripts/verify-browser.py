@@ -608,7 +608,7 @@ def launchpad(page,url,out,label):
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
     page.locator('#journal-button').click()
     page.locator('#recover-backup').click()
-    page.wait_for_function("""expected=>{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'));return saved?.schema==='ngl.player-position.v1'&&saved.x===expected.x&&saved.y===expected.y}""",backup_position)
+    page.wait_for_function("""expected=>{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'));return saved?.schema==='ngl.player-position.v1'&&saved.x===expected.x&&saved.y===expected.y}""",arg=backup_position)
     assert page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))") == expected_position(backup_position), 'Manual backup recovery did not restore the previous character position'
 
     # If the primary world is damaged, automatic backup recovery must restore its matching position too.
