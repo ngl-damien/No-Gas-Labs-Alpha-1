@@ -21,6 +21,9 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
  let html=(await add(join(game,'index.html'))).toString(),css=(await add(join(game,'styles.css'))).toString();
  const style=/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'](?:\.\/|\/)?styles\.css["'])[^>]*>/i,entry=/<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["'](?:\.\/|\/)?client\.mjs["'])[^>]*>\s*<\/script>/i;
  if(!style.test(html)||!entry.test(html))throw Error('Expected stylesheet and module entry tags');
+ const manifestLink=/<link\b(?=[^>]*\brel=["']manifest["'])(?=[^>]*\bhref=["'](?:\.\/|\/)?manifest\.webmanifest["'])[^>]*>/i;
+ // The standalone file has no service-worker origin or sibling manifest.
+ html=html.replace(manifestLink,'');
  const url=await bundle(join(game,'client.mjs'));
  html=html.replace(style,()=>`<style>${css.replace(/<\/style/gi,'<\\/style')}</style>`).replace(entry,()=>`<script>globalThis.NGL_ASSETS=${jsonJS(assets)};</script><script type="module" src="${url}"></script>`);
  // The downloadable workshop must retain its boundary when no HTTP server supplies headers.
