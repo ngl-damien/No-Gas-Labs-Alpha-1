@@ -630,3 +630,40 @@ No merge, PR closure, branch deletion, release, deployment, key creation/rotatio
 - PR #204: Browser Acceptance 40993528551 has now completed **success**, joining Verify 40993528425 and Genesis Evidence Invariant 40993528572. Its desktop, phone, institutional-location, two-session shared, phone-toolbar, one-button, standalone-file, exact-byte and shared-restart journeys all reported passed. PR #204 remains open and unmerged.
 - PR #197 (public-host temporary-storage warning): one documentation file changed; its branch is 1 ahead / 4 behind current main. Exact-head Verify 40988268489, Genesis Evidence Invariant 40988268512 and Browser Acceptance 40988268556 all succeeded. The current-main-only commits do not modify docs/meteor/server.md. The PR documents that shared hosted data is temporary on the configured Render Free service; this run did not independently re-open the Render workspace, so the service metadata in the PR body is not re-verified here.
 - Current checkpoint branch head after this run's update is d77147c252fcf04afe71901406660b59dde5e825; after the next correction it will be 22 commits ahead / 7 behind current main. It remains a draft handoff, not a merge candidate.
+
+
+### Further execution and exact-head status — 2026-10-30 UTC
+
+#### Private save recovery follow-up
+
+- PR #202 latest head: ca16aba1c5a73f3e560aafa93b73709176dd1a12 (15 commits ahead / 1 behind current main; GitHub reports mergeable).
+- Exact-head Verify 40994463363 **success**; Genesis Evidence Invariant 40994463331 **success**; Browser Acceptance 40994463330 **pending** with no job allocated at last inspection.
+- Two browser attempts failed for test-harness reasons, both diagnosed from the hosted logs:
+  1. Run 40993546455 asserted immediately after clicking an asynchronous backup-recovery handler; corrected to wait for the saved coordinates.
+  2. Run 40993959055 reached the wait but called Python Playwright wait_for_function with a second positional argument. The API requires the keyword arg=; corrected in the current head.
+- The latest browser attempt is queued. Do not claim the new manual/automatic/legacy backup recovery journeys passed until run 40994463330 completes.
+
+#### Founder authorization transplant — complete exact-head CI
+
+- PR #203 current-main branch head 83684f484f4045d9a4a54c534b9015b4921cfbbf has all three exact-head checks **success**: Verify 40993470387, Genesis Evidence Invariant 40993470402, Browser Acceptance 40993470367.
+- It remains draft/open/unmerged. The helper's forged-valid-flag defect is fixed on this branch, not on main. Real key custody, identity proof, and live game-server signed-verifier integration remain unresolved in Issue #17.
+
+#### Guild Hall archive — complete exact-head CI
+
+- PR #204 head 6493a36b19e7a8fcc91aeb64e64cdac80f5d0ac3 has all three exact-head checks **success**: Verify 40993528425, Genesis Evidence Invariant 40993528572, Browser Acceptance 40993528551.
+- Browser logs record successful desktop, phone, institutional-location, two-session shared, responsive toolbar, one-button, standalone-file, exact-byte and shared-restart journeys.
+- PR #204 remains open/unmerged. It shares byte-identical collaborator contract/response/model modules with PR #195 and adds archive/server revalidation/restart persistence. PR #195 remains open, 7 behind and unmergeable; no duplicate PR was closed.
+
+#### Decision writer lease — current-main transplant
+
+- Re-inspected PR #187, PR #182, their exact implementation/tests, current main since the old base, and file-level overlaps.
+- PR #187's old branch was 11 commits ahead / 7 behind current main. Current main had not changed the five decision-store/inspector/test/verifier paths since the old merge base. It had one unrelated change in game/server.mjs; only the closeGame shutdown block was transplanted, preserving the current-main change.
+- Opened draft PR #205 from a fresh current-main branch: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/205
+- Six commits ahead / zero behind current main. Five transplanted files are byte-identical to PR #187's tested versions; the server diff is limited to the keep-alive-safe closeGame ordering.
+- Exact head 03a7365ee2a5681f85e37278e2b66c335c64a04e: Verify 40994419741 **success**; Genesis Evidence Invariant 40994419828 **success**; Browser Acceptance 40994419665 **in progress** at last inspection.
+- The implementation serializes cooperating decision-writer lease pathname mutations and fails closed on an interrupted guard. It does not auto-delete stale guards, make arbitrary external filesystem mutation safe, close every crash window, or solve key custody. Issue #17 remains open.
+- PR #187 and test-only PR #182 remain open; no merge or closure was performed.
+
+#### Current authority and next action
+
+No merge, PR closure, branch deletion, release, deployment, key creation/rotation, secret/permission change, or spending occurred. PR #202's browser recovery test and PR #205's browser acceptance are the immediate verification blockers. Then reconcile checkpoint PR #191 and review the now-green PR #203/#204 branches without treating CI as authorization to merge.
