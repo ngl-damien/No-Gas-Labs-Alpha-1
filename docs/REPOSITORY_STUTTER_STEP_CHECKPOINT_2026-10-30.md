@@ -524,3 +524,32 @@ No merge, deployment, release, branch deletion, workflow dispatch, credential/ke
 - PR #216 description now reflects the latest head and current workflow statuses. Next action is to recheck the exact-head browser job, inspect its final journey results/artifact, and update this checkpoint and PR description with the final outcome.
 
 No other repository state changed. PR #216 and checkpoint PR #210 remain draft/open/unmerged; no deployment, release, deletion, permission change, key operation, or spending occurred.
+
+
+## Follow-up — canonical decision-digest input hardening
+
+### Fresh rehydration and ranked action
+- Re-read root `AGENTS.md`, the full shared Ralph-style protocol, the current checkpoint, open PRs, Issue #17, and the current Founder decision branch before editing. Main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- The highest-value safe target was a defect inside the existing Founder verifier PR, not a competing server edit: exported `decisionDigest()` called a recursive canonicalizer that read `value[key]`, so accessor-backed input could execute getters and cyclic/deep input could recurse without structural bounds.
+- The game server remains shared with open PRs #205, #213, and #214; no server edit was made.
+
+### Implemented on existing PR #203
+- Branch: `security/founder-decision-seal-main-20261030`.
+- Source commit: `1aff6145c3ab0fb1c74c629700d87b41e4b3715b`.
+- Test commit / current head: `4b85f9e53146534be160ad8af28acba3d9adfd87`.
+- Files: `src/authority/decision.js`, `test/decision-chamber.test.js`.
+- The canonical serializer now accepts bounded plain JSON data, reads own property descriptors instead of evaluating getters, rejects accessor/non-enumerable/symbol-backed object fields, sparse/extra-property arrays, cycles, non-finite numbers, depth above 64, more than 10,000 nodes, and input exceeding the 1 MiB accounted-byte budget. Normal JSON-like input retains sorted-key canonicalization.
+- New regressions verify key-order invariance, that accessors are not invoked, and rejection of sparse arrays, cycles, non-finite values, and excessive nesting.
+- The PR remains draft/open/unmerged. This closes a helper-level input-safety gap only; it does not integrate the verifier into `game/server.mjs`, establish Founder identity, or prove independent key custody.
+
+### Exact-head verification observed
+- PR #203 head `4b85f9e53146534be160ad8af28acba3d9adfd87`: Genesis Evidence Invariant passed (run [41050193677](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050193677)). The `verify` workflow was still running (run [41050183238](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41050183238)); Playable-world was not yet observed complete. Do not claim the new tests passed until the exact-head Verify run finishes and its log confirms the repository test step.
+- PR #216 Forge head `539fc6479e2621751543bb787f4e79cb892a0f2b`: Verify, Genesis Evidence Invariant, and Browser Acceptance all succeeded on the exact head (Browser Acceptance run [41043280438](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41043280438)).
+- Worker B PR #219 head `606c59401b269701947136869e5c1fd8110ce733`: Verify, Genesis Evidence Invariant, and Browser Acceptance all succeeded on the exact head (Browser Acceptance run [41046667572](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41046667572)). The previously recorded browser failure was on an older superseded head and is not the current PR #219 result.
+- PR #210 checkpoint head at start of this update was `66a62a3dc57534091060a3c655b4bd9121da6c0e`; its three primary exact-head checks had succeeded. This follow-up will trigger new checks on the checkpoint branch.
+
+### Next ranked actions
+1. Recheck PR #203's exact-head Verify, Genesis, and Playable-world checks; inspect the Verify log to confirm the new `decisionDigest` tests actually ran, and repair attributable failures.
+2. Continue Founder integration only after shared `game/server.mjs` work settles; agree on one canonical trust-anchor/signature path rather than choosing between PR #18's Ed25519 INSTALL signer and PR #203's P-256 decision helper by inference.
+3. Continue Issue #17's writer-lease/crash-recovery acceptance; do not automate stale-lock deletion or touch real key material.
+4. Preserve the missing Relay APK/source archive and RAE report as explicit integration blockers.
