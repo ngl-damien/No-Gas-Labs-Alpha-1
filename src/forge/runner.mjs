@@ -57,10 +57,10 @@ const PRIVATE_CONFIG_DIRS = new Set(['gh', 'hub', 'gcloud', 'containers', 'git']
 function excluded(path) {
   const parts = path.split('/');
   return parts.some(part =>
-    /^(?:\\.git|\\.runtime|\\.tmp|runtime|node_modules|dist|\\.aws|\\.ssh|\\.codex|\\.agents|\\.npmrc|\\.netrc|\\.pypirc|\\.docker|\\.kube|\\.azure|\\.gnupg|\\.terraform|\\.terraform\\.d|secrets?|credentials?|__pycache__)$/i.test(part) ||
-    /^\\.env/i.test(part) ||
-    /\\.(?:pem|key|p12|pfx|pyc)$/i.test(part) ||
-    /^(?:id_(?:rsa|ed25519|ecdsa|dsa)(?:_sk)?|\\.git-credentials|\\.vault-token|application_default_credentials\\.json|google_application_credentials\\.json|service-account(?:[-_][^/]*)?\\.json|.*\\.tfstate(?:\\.backup)?)$/i.test(part)
+    /^(?:\.git|\.runtime|\.tmp|runtime|node_modules|dist|\.aws|\.ssh|\.codex|\.agents|\.npmrc|\.netrc|\.pypirc|\.docker|\.kube|\.azure|\.gnupg|\.terraform|\.terraform\.d|secrets?|credentials?|__pycache__)$/i.test(part) ||
+    /^\.env/i.test(part) ||
+    /\.(?:pem|key|p12|pfx|pyc)$/i.test(part) ||
+    /^(?:id_(?:rsa|ed25519|ecdsa|dsa)(?:_sk)?|\.git-credentials|\.vault-token|application_default_credentials\.json|google_application_credentials\.json|service-account(?:[-_][^/]*)?\.json|.*\.tfstate(?:\.backup)?)$/i.test(part)
   ) || parts.some((part, index) =>
     part.toLowerCase() === '.config' &&
     PRIVATE_CONFIG_DIRS.has((parts[index + 1] ?? '').toLowerCase())
