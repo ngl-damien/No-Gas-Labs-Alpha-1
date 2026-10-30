@@ -345,19 +345,21 @@ PR #216 remains draft/open/unmerged at `43e05b657ff71467a74002eab9bb4bfd4a348a66
 - PR #203 seals verifier results in a module-private WeakMap, validates the configured public-key fingerprint, and binds decisions to an expected audience. Its exact-head checks pass, but it is still an unmerged draft and the live `game/server.mjs` does not import its verifier.
 - PRs #205/#213 own overlapping changes to `game/server.mjs`; PR #214 is a green combined validation head, not a merge. Editing that file now would duplicate Worker B/active integration work. No Founder key material was created, read, provisioned, or rotated. Real independent key custody and proof Damien controls a signing key remain unresolved.
 
-### Implemented — EvidenceOS PR #2, two source-backed HTTP boundary defects
+### Implemented — EvidenceOS PR #2, three source-backed HTTP boundary defects
 
 **Linked repository:** `ngl-damien/evidenceos`  
 **Draft PR #2:** [security(evidenceos): constrain local HTTP analysis access](https://github.com/ngl-damien/evidenceos/pull/2)  
 **Branch:** `security/evidenceos-http-bearer-20261030`  
-**Final head:** `2d7a634655f0e8ad79f21362fcbc46850d263004`  
+**Final head:** `7335e83afba294c04ea721fd24797fd8b6affaac`  
 **Base:** EvidenceOS PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b` (stacked; neither PR is merged).
 
 Cycle A — the prior allowlist admitted `localhost`. Hostname resolution is machine-configurable, so the code now permits only numeric loopback bind addresses `127.0.0.1` and `::1`; `localhost` is rejected. Regression coverage checks `0.0.0.0`, `::`, and `localhost` fail before listening.
 
 Cycle B — reinspection showed loopback-only binding did not prevent cross-site browser writes: `readBody()` parsed JSON regardless of Content-Type, and the analysis POST did not validate Origin. A browser can send a simple cross-site `text/plain` request to a loopback service. The analysis route now requires `application/json`, rejects any supplied Origin that does not exactly match the request origin, and continues to support native/local JSON clients with no Origin header. Tests assert text/plain rejection (415), cross-origin JSON rejection (403) before job creation, same-origin JSON reaches normal validation, and no-Origin native JSON reaches normal validation. README and SECURITY policy disclose the boundary.
 
-**Exact-head verification:** EvidenceOS run [41036187928](https://github.com/ngl-damien/evidenceos/actions/runs/41036187928) succeeded on `2d7a634655f0e8ad79f21362fcbc46850d263004`. Node v22.23.4 reports **16 passed, 0 failed** (8 ingestion, 2 aggregation, 6 HTTP-boundary tests); all five JavaScript syntax checks passed. The run installed declared dependencies with lifecycle scripts disabled. This is hosted CI evidence, not a browser automation test or production deployment. PR #2 remains draft/open and stacked on PR #1.
+Cycle C — checking Origin against the Host header still permits DNS rebinding if an attacker-controlled hostname resolves to loopback. The server now validates every request's Host header against the actual numeric address returned by `server.address()`, rejects host aliases and absolute-form request targets with a different origin, and performs this validation before routing local reads. A raw HTTP regression sends `attacker.example` and `localhost` Host headers plus an absolute-form attacker URL; each receives 403 before `/v1/jobs` can disclose metadata.
+
+**Exact-head verification:** EvidenceOS run [41037115712](https://github.com/ngl-damien/evidenceos/actions/runs/41037115712) succeeded on `7335e83afba294c04ea721fd24797fd8b6affaac`. Node v22.23.4 reports **17 passed, 0 failed** (8 ingestion, 2 aggregation, 7 HTTP-boundary tests); all five JavaScript syntax checks passed. The run installed declared dependencies with lifecycle scripts disabled. The HTTP tests cover numeric bind refusal, loopback health, text/plain JSON rejection, Origin enforcement, native no-Origin compatibility, DNS-rebinding Host rejection, and absolute-form target rejection. This is hosted CI evidence, not a browser automation test or production deployment. PR #2 remains draft/open and stacked on PR #1.
 
 ### Linked repository recheck
 
