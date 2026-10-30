@@ -861,3 +861,54 @@ Exact-head hosted checks on `04b66687074363c06a125ad48ec5d9407e2cb7bf`:
 5. Keep EvidenceOS loopback-only unless a separately reviewed remote-auth/TLS design is authorized.
 
 No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. PRs #203, #210, #212, #220 and #221 remain draft/unmerged where observed. Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+
+
+## Worker A stutter-step handoff — 2026-10-30 UTC (EvidenceOS exact-origin hardening)
+
+### Rehydration and coordination
+- Read Alpha 1 AGENTS.md, the complete shared Ralph-style protocol, and the latest checkpoint before acting.
+- The companion Build NGL MMORPG automation's latest recorded result was a failure with only a generic failure message; it provided no usable worker handoff. Repository PRs and exact-head checks were used as the authoritative coordination evidence.
+- Alpha 1 main remains 7d8c77367f6acb2d85e35cd9a195797555d1ac7d. Fresh search returned 50 open PRs and two open issues (#17 and #22). A complete six-page branch search returned 467 refs. The branch endpoint says protected: false; the detailed branch-protection endpoint returned 403 to this integration, so no broader protection/ruleset claim is made.
+
+### Cycle A — EvidenceOS request-origin authority correction
+Repository: ngl-damien/evidenceos; existing draft PR #2, branch security/evidenceos-http-bearer-20261030, stacked on draft PR #1.
+
+Source review of src/server.js found that requestOriginForBoundLoopback() compared only URL-parser-normalized hostnames and did not compare the Host port with the actual listening socket port. WHATWG URL parsing canonicalizes alternate IPv4 spellings such as 127.1, 2130706433, 0x7f000001, and 0177.0.0.1 to 127.0.0.1. This was an authority-consistency gap, not a demonstrated remote-access bypass; the service was already numeric-loopback-only.
+
+Changes:
+- 1d58d8b4fc997911c630a71039680094210e9b90 — compare the raw Host authority against the actual bound numeric address and port, with canonical default-port handling.
+- 3789f32f6682114ca4a5d73e8bf18700a79cb5cb — regress alternate numeric IPv4 spellings and mismatched Host ports.
+- c19bdf9c230e1d0bd5f54ad5dea050bd33705292 — regress absolute-form request targets whose loopback port differs from the listening port.
+
+Exact-head hosted verification on c19bdf9c230e1d0bd5f54ad5dea050bd33705292:
+- EvidenceOS test workflow [41084314765](https://github.com/ngl-damien/evidenceos/actions/runs/41084314765): success.
+- Hosted Node runner: 23 passed, 0 failed. The log includes the new host-alias, Host-port, and absolute-target-port cases.
+- Syntax checks and declared dependency installation also passed in the same workflow.
+
+PR #2 description now records the exact commits and result. It remains draft and stacked on draft PR #1; neither is merged. EvidenceOS remains loopback-only and has no HTTP authentication/TLS adapter. No remote exposure or deployment is claimed.
+
+### Cycle B — adversarial review of the request target
+Re-read the exact updated src/server.js and test/server.test.js after the first commit. Added a separate absolute-form target test using the correct Host header but a different port in the request target. The exact-head 23/23 result above includes this test. No further change is warranted without a distinct failing reproduction.
+
+### Rechecked Alpha 1 work and Founder boundary
+Exact current-head checks:
+- PR #203 Founder decision helper, head 04b66687074363c06a125ad48ec5d9407e2cb7bf: Verify [41080049344](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049344), world-projection [41080049246](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049246), and playable-world [41080049279](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080049279) all success.
+- PR #221 Guild Hall own-quest lookup, head 05465d7b54e852b4c84c0194af7d24a9710e3222: Verify [41080981791](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981791), world-projection [41080981732](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981732), and playable-world [41080981716](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41080981716) all success.
+- PR #222 combined Guild Hall/offline/decision-writer integration, head 3c9da5df496beec034419ce00aff951125888783: Verify [41081343921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41081343921), world-projection [41081343139](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41081343139), and playable-world [41081343404](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41081343404) all success. Superseded/cancelled duplicate runs are not counted as failures.
+- PR #212 receipt-integrity head 5b4c7426b3a1820d927997540221de9dce13b044 and PR #216 Forge head 539fc6479e2621751543bb787f4e79cb892a0f2b retain three successful exact-head checks each.
+- PR #210 prior checkpoint head 9df4e1a32c3c0172bdc66584a7a6b4af19e00fe9 had Verify, world-projection, and playable-world success before this checkpoint update.
+
+Issue #17 remains open. PR #16's original self-signing finding is superseded by merged PR #18. PR #203 is a separate P-256 helper; the current PR #222 game/server.mjs does not import createFounderAuthorizationVerifier, verifyAuthorizationEvent, or authorizationEvent. The live server still uses its separate host-key/session gate. Issue #17's real key custody, independently controlled signing, server integration, and crash/recovery acceptance remain unresolved. No real Founder key material was handled.
+
+### Linked NGL repo review
+- ngl-damien/ngl-mesh PR #1 current head 81536604a8473b8d698aa4c5d752c7d5426dab7d: required-agent-instructions and operator-key-trust hosted checks succeeded. Full APK/RAE integration remains blocked by the missing recovered source archive, reference APK, and RAE report in this repository; isolated checks are not an Android build or device test.
+- ngl-damien/evidenceos PR #1 head 7fbb4c83412e83882ea43df92532a346d524e00b: hosted test workflow succeeded. PR #2 is still stacked on it and unmerged.
+
+### Next ranked actions
+1. Rehydrate and inspect whether PR #1/#2 EvidenceOS stack remains current; do not merge either without Founder authorization.
+2. Continue Issue #17's safe stale-lock/crash-recovery acceptance against PRs #205/#215; distinguish process death from actual power-loss/filesystem durability.
+3. Revisit Founder verifier/server integration only after the shared PR #222 server stack is reconciled and the trust-anchor/key-custody model is explicitly settled. Do not provision or handle real key material.
+4. Recover the ngl-mesh source archive, reference APK, and RAE report before attempting full bridge/Android integration.
+5. Preserve the $0 constraint and continue exact-head verification; do not infer deployment from CI.
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred in this run.
