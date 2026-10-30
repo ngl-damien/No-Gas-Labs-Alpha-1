@@ -10,16 +10,13 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: read
 
 jobs:
   preview:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - name: Check out recovery manifest
         uses: actions/checkout@v4
@@ -67,9 +64,6 @@ jobs:
     needs: preview
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
-      pull-requests: read
     steps:
       - name: Check out recovery manifest
         uses: actions/checkout@v4
