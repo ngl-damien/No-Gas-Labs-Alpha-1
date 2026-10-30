@@ -8,11 +8,11 @@ function makeView(t) {
     ResizeObserver:class{observe(){}disconnect(){}}};
   const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   Object.assign(globalThis,globals);
-  const interactions=[];
+  const interactions=[],positions=[];
   const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place)});
+  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onPosition:position=>positions.push(position)});
   t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions};
+  return {view,interactions,positions};
 }
 
 test('keyboard movement cancels a pending destination without opening it',t=>{
@@ -26,13 +26,26 @@ test('keyboard movement cancels a pending destination without opening it',t=>{
 });
 
 test('touch movement cancels a pending destination without opening it',t=>{
-  const {view,interactions}=makeView(t);
+  const {view,interactions,positions}=makeView(t);
   view.goTo('workbench');
   view.setInput({x:1,y:0});
   view.update(.045,45);
   view.setInput({x:0,y:0});
   view.update(.045,90);
   assert.deepEqual(interactions,[]);
+  assert.equal(positions.length,1,'releasing touch movement immediately reports the final location');
+  assert.ok(positions[0].x>180,'the reported location is the moved player position');
+});
+
+
+test('keyboard movement reports the final player position as soon as movement stops',t=>{
+  const {view,positions}=makeView(t);
+  view.onKeyDown({key:'d',preventDefault(){}});
+  view.update(.045,45);
+  view.onKeyUp({key:'d'});
+  view.update(.045,90);
+  assert.equal(positions.length,1);
+  assert.ok(positions[0].x>180);
 });
 
 test('restoring player coordinates cancels an old arrival target',t=>{
