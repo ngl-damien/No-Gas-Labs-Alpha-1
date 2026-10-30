@@ -35,6 +35,7 @@ test('character XP and level derive from unique publications matched to retained
     [300,300,2,300,0,600]
   );
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,3);
+  assert.equal(record.worldXp, 300);
   assert.deepEqual(world,before);
 });
 
@@ -48,7 +49,7 @@ test('institution-wide XP never leaks into a Witness character level',()=>{
       publication('p3',founder,'founder-work',3,t3),
       event('w-note','contribute',witness,t3,{creationId:'founder-work',version:3})
     ],
-    contributions:[{id:'n1',actor:witness,creationId:'founder-work',version:3,text:'A real note.'}]
+    contributions:[{id:'n1',actor:witness,creationId:'founder-work',version:3,text:'A real note.',at:t3}]
   };
   const record=projectCharacter(world,witness);
   assert.deepEqual([record.xp,record.worldXp,record.level,record.xpIntoLevel],[0,300,1,0]);
@@ -88,52 +89,156 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
   const record=projectCharacter(world,founder);
   assert.equal(record.xp,100);
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,1);
+  assert.equal(record.worldXp, 100, 'world XP is projected from the one unique retained publication, not the raw summary total');
 });
 
-test('skills count activity attributed to the active character',()=>{
-  const world={
-    xp:200,
-    creations:[publishedCreation('founder-place',[t1]),publishedCreation('witness-place',[t2])],
-    events:[
-      publication('p1',founder,'founder-place',1,t1),
-      event('d1','draft',founder,t1),
-      publication('p2',witness,'witness-place',1,t2),
-      event('r1','report',founder,t2,{creationId:'founder-place',version:1})
+test('skills count only activity joined to retained events for the active character', () => {
+  const founderCreation = { ...publishedCreation('founder-place', [t1]), kind: 'custom' };
+  const world = {
+    xp: 200,
+    creations: [founderCreation, publishedCreation('witness-place', [t3])],
+    events: [
+      publication('p1', founder, 'founder-place', 1, t1),
+      event('d1', 'discover', founder, t2, { locationId: 'river' }),
+      event('n1', 'contribute', founder, t2, { creationId: 'founder-place', version: 1 }),
+      event('r1', 'report', founder, t2, { creationId: 'founder-place', version: 1 }),
+      publication('p2', witness, 'witness-place', 1, t3)
     ],
-    discoveries:[{id:'d-founder',actor:founder,locationId:'river'},{id:'d-witness',actor:witness,locationId:'relay'}],
-    contributions:[{id:'n-founder',actor:founder,creationId:'founder-place',version:1,text:'Note.'},{id:'n-witness',actor:witness,creationId:'founder-place',version:1,text:'Other note.'}],
-    reports:[{id:'r-founder',actor:founder,creationId:'founder-place',version:1,text:'Question.'}],
-    methods:[{id:'m-witness',actor:witness,creationId:'witness-place',version:1,title:'Repair',description:'',at:t2}]
-  };
-  const record=projectCharacter(world,founder);
-  assert.deepEqual(record.skills.map(skill=>[skill.id,skill.count]),[
-    ['maker',1],['explorer',1],['observer',1],['scholar',0],['retriever',0],['challenger',1],['researcher',0],['experimenter',0],['adversary',0],['questkeeper',2],['restorer',0]
-  ]);
-  assert.equal(record.xp,100);
-});
-
-test('published places are world inventory; drafts and other players’ activity are not added to the character trail',()=>{
-  const world={
-    xp:200,
-    creations:[{
-      ...publishedCreation('c1',[t1,t2]),
-      receipt:{algorithm:'sha256',digest:'b'.repeat(64),size:12}
-    }],
-    drafts:[{id:'d1',title:'Private draft'}],
-    events:[
-      publication('p1',founder,'c1',1,t1),
-      event('p2','contribute',witness,t2,{creationId:'c1',version:2})
+    discoveries: [
+      { id: 'd-founder', actor: founder, locationId: 'river', at: t2 },
+      { id: 'd-witness', actor: witness, locationId: 'relay', at: t3 }
+    ],
+    contributions: [
+      { id: 'n-founder', actor: founder, creationId: 'founder-place', version: 1, text: 'Note.', at: t2 },
+      { id: 'n-witness', actor: witness, creationId: 'founder-place', version: 1, text: 'Other note.', at: t3 }
+    ],
+    reports: [
+      { id: 'r-founder', actor: founder, creationId: 'founder-place', version: 1, text: 'Question.', at: t2 }
+    ],
+    methods: [
+      { id: 'm-witness', actor: witness, creationId: 'witness-place', version: 1, title: 'Repair', description: '', at: t3 }
     ]
   };
-  const before=structuredClone(world);
-  const record=projectCharacter(world,founder);
-  assert.deepEqual(record.inventory,[{
-    id:'c1',title:'c1',kind:'observatory',version:2,receipt:{digest:'b'.repeat(64),size:12}
+  const record = projectCharacter(world, founder);
+  assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
+    ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
+    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['questkeeper', 3], ['restorer', 0]
+  ]);
+  assert.equal(record.xp, 100);
+  assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
+});
+
+test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => {
+  const world = {
+    xp: 900,
+    creations: [publishedCreation('spoofed-place', [t1, t2])],
+    events: [],
+    discoveries: [
+      { id: 'fake-discovery', actor: founder, locationId: 'relay', at: t2 }
+    ],
+    contributions: [
+      { id: 'fake-note', actor: founder, creationId: 'spoofed-place', version: 1, text: 'Unlinked note.', at: t2 }
+    ],
+    reports: [
+      { id: 'fake-report', actor: founder, creationId: 'spoofed-place', version: 1, text: 'Unlinked report.', at: t2 }
+    ],
+    methods: [
+      { id: 'fake-method', actor: founder, creationId: 'spoofed-place', version: 2, title: 'Repair', description: 'Unlinked.', at: t2 }
+    ]
+  };
+  const record = projectCharacter(world, founder);
+  assert.deepEqual([record.xp, record.worldXp, record.level], [0, 0, 1]);
+  assert.deepEqual(record.inventory, []);
+  for (const id of ['explorer', 'observer', 'challenger', 'restorer', 'questkeeper']) {
+    assert.equal(record.skills.find(skill => skill.id === id).count, 0, id + ' requires retained matching activity');
+  }
+});
+
+test('ambiguous activity-to-event joins do not grant Explorer, Observer, or Challenger progress', () => {
+  const world = {
+    xp: 100,
+    creations: [publishedCreation('source-place', [t1])],
+    events: [
+      publication('p1', founder, 'source-place', 1, t1),
+      event('discover-a', 'discover', founder, t2, { locationId: 'relay' }),
+      event('discover-b', 'discover', founder, t2, { locationId: 'relay' }),
+      event('note-a', 'contribute', founder, t2, { creationId: 'source-place', version: 1 }),
+      event('note-b', 'contribute', founder, t2, { creationId: 'source-place', version: 1 }),
+      event('report-a', 'report', founder, t2, { creationId: 'source-place', version: 1 }),
+      event('report-b', 'report', founder, t2, { creationId: 'source-place', version: 1 })
+    ],
+    discoveries: [{ id: 'one-discovery', actor: founder, locationId: 'relay', at: t2 }],
+    contributions: [{ id: 'one-note', actor: founder, creationId: 'source-place', version: 1, text: 'Note.', at: t2 }],
+    reports: [{ id: 'one-report', actor: founder, creationId: 'source-place', version: 1, text: 'Report.', at: t2 }],
+    methods: []
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.skills.find(skill => skill.id === 'explorer').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'observer').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 0);
+});
+
+test('Restorer requires a unique repair publication matched to its method record', () => {
+  const world = {
+    xp: 200,
+    creations: [publishedCreation('repaired-place', [t1, t3])],
+    events: [
+      publication('repair-source-v1', founder, 'repaired-place', 1, t1),
+      event('repair-action', 'repair', founder, t2, {
+        creationId: 'repaired-place', draftId: 'repair-draft', baseVersion: 1
+      }),
+      publication('repair-source-v2', founder, 'repaired-place', 2, t3)
+    ],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: [{
+      id: 'repair-method',
+      actor: founder,
+      creationId: 'repaired-place',
+      version: 2,
+      title: 'Preserve the earlier version',
+      description: 'A checked repair retained version 1.',
+      at: t3
+    }]
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.skills.find(skill => skill.id === 'restorer').count, 1);
+  assert.equal(record.skills.find(skill => skill.id === 'maker').count, 2);
+  assert.equal(record.xp, 200);
+  assert.equal(record.worldXp, 200);
+  assert.equal(record.inventory[0].version, 2);
+});
+
+test('published places are world inventory; drafts and other players’ activity are not added to the character trail', () => {
+  const world = {
+    xp: 200,
+    creations: [{
+      ...publishedCreation('c1', [t1, t2]),
+      receipt: { algorithm: 'sha256', digest: 'b'.repeat(64), size: 12 }
+    }],
+    drafts: [{ id: 'd1', title: 'Private draft' }],
+    events: [
+      publication('p1', founder, 'c1', 1, t1),
+      publication('p2', founder, 'c1', 2, t2),
+      event('w-note', 'contribute', witness, t3, { creationId: 'c1', version: 2 })
+    ],
+    contributions: [{
+      id: 'w-note-record', actor: witness, creationId: 'c1', version: 2,
+      text: 'A Witness note.', at: t3
+    }]
+  };
+  const before = structuredClone(world);
+  const record = projectCharacter(world, founder);
+  assert.deepEqual(record.inventory, [{
+    id: 'c1', title: 'c1', kind: 'observatory', version: 2,
+    receipt: { digest: 'b'.repeat(64), size: 12 }
   }]);
-  assert.deepEqual(record.recentActivity.map(item=>item.type),['publish']);
-  assert.equal(record.xp,100);
-  assert.equal(record.worldXp,200);
-  assert.deepEqual(world,before);
+  assert.deepEqual(record.recentActivity.map(item => item.type), ['publish', 'publish']);
+  assert.equal(record.xp, 200);
+  assert.equal(record.worldXp, 200);
+  assert.deepEqual(world, before);
 });
 
 test('missing or malformed records fail closed to empty activity without inventing XP',()=>{
@@ -148,6 +253,8 @@ test('missing or malformed records fail closed to empty activity without inventi
 
 test('character activity fails closed when actor role is missing or unsupported', () => {
   const sharedId = 'reused-actor-id';
+  const founderActor = { id: sharedId, role: 'founder' };
+  const witnessActor = { id: sharedId, role: 'witness' };
   const world = {
     xp: 200,
     creations: [
@@ -155,14 +262,16 @@ test('character activity fails closed when actor role is missing or unsupported'
       publishedCreation('witness-work', [t2])
     ],
     events: [
-      publication('founder-pub', { id: sharedId, role: 'founder' }, 'founder-work', 1, t1),
-      event('witness-note', 'contribute', { id: sharedId, role: 'witness' }, t2, {
+      publication('founder-pub', founderActor, 'founder-work', 1, t1),
+      event('founder-discovery-event', 'discover', founderActor, t2, { locationId: 'river' }),
+      event('witness-discovery-event', 'discover', witnessActor, t2, { locationId: 'relay' }),
+      event('witness-note', 'contribute', witnessActor, t2, {
         creationId: 'witness-work', version: 1
       })
     ],
     discoveries: [
-      { id: 'founder-discovery', actor: { id: sharedId, role: 'founder' }, locationId: 'river' },
-      { id: 'witness-discovery', actor: { id: sharedId, role: 'witness' }, locationId: 'relay' }
+      { id: 'founder-discovery', actor: founderActor, locationId: 'river', at: t2 },
+      { id: 'witness-discovery', actor: witnessActor, locationId: 'relay', at: t2 }
     ]
   };
 
@@ -176,16 +285,14 @@ test('character activity fails closed when actor role is missing or unsupported'
   assert.ok(unsupported.skills.every(skill => skill.count === 0));
   assert.deepEqual(unsupported.recentActivity, []);
 
-  const founderRecord = projectCharacter(world, { id: sharedId, role: 'founder' });
+  const founderRecord = projectCharacter(world, founderActor);
   assert.equal(founderRecord.xp, 100);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 
-  const witnessRecord = projectCharacter(world, { id: sharedId, role: 'witness' });
+  const witnessRecord = projectCharacter(world, witnessActor);
   assert.equal(witnessRecord.xp, 0);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 });
-
-
 
 test('Researcher skill counts attributed falsifiable proposals without awarding XP', () => {
   const founderProposal = event('moonshot-f', 'moonshot-proposed', founder, t1, {
