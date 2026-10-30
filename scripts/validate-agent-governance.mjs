@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, realpath, stat } from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -13,7 +13,7 @@ function insideRoot(root, candidate) {
 }
 function safeRelativePath(value) {
   return typeof value === 'string' && Boolean(value.trim()) && !value.includes('\\') &&
-    !posix.isAbsolute(value) && value.split('/').every(part => part !== '..' && part !== '');
+    !posix.isAbsolute(value) && value.split('/').every(part => part !== '..' && part !== '.' && part !== '');
 }
 function protocolFromEntry(entry) {
   const match = entry.match(/\(([^)\n]*RALPH[^)\n]*PROTOCOL[^)\n]*)\)/i);
@@ -88,6 +88,9 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     const parts = target.split('/');
     const directories = [];
     for (let index = 1; index < parts.length; index += 1) directories.push(parts.slice(0, index).join('/'));
+    try {
+      if ((await stat(resolve(rootPath, target))).isDirectory()) directories.push(target);
+    } catch {}
     if (parts.at(-1) === 'AGENTS.md') directories.push(parts.slice(0, -1).join('/'));
     for (const directory of directories) if (directory) await inspect(directory + '/AGENTS.md', 'nested-instructions', false);
   }
