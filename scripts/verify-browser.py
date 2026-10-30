@@ -545,6 +545,27 @@ def shared(browser,url,data,out):
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
         close_sheet(a)
+        # A lost shared read must preserve the last received Chronicle while
+        # showing unavailable registers as unknown, never as empty or approved.
+        def fail_institution_reads(route):
+            path=route.request.url.split('?',1)[0]
+            if route.request.method=='GET' and path.endswith(('/api/projects','/api/decisions','/api/state','/api/institution')):
+                route.abort('failed')
+            else:
+                route.continue_()
+        b.route('**/api/**',fail_institution_reads)
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The institution at work.')
+        expect(b.locator('#sheet')).to_contain_text('last snapshot received by this session')
+        expect(b.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+        expect(b.locator('#sheet')).to_contain_text('No empty register is inferred')
+        expect(b.locator('#sheet')).to_contain_text('Decision ledger unavailable')
+        expect(b.locator('#sheet')).to_contain_text('Canonical work receipts could not be loaded')
+        expect(b.locator('#sheet')).not_to_contain_text('No retained record is installed')
+        expect(b.locator('#sheet')).not_to_contain_text('No operational review policy is activated')
+        b.unroute('**/api/**',fail_institution_reads)
+        close_sheet(b)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
