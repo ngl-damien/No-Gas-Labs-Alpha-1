@@ -27,7 +27,7 @@ function receipt(value) {
 function responseEvent({
   eventId = 'response-event-1',
   responseId = 'response-1',
-  role = 'adversary',
+  role = 'tutor',
   actor = { id: 'witness-1', role: 'witness' },
   at = '2026-10-30T05:01:00.000Z',
   snapshotRevision = 1,
@@ -58,12 +58,25 @@ function responseEvent({
     omittedCount: 0,
     omittedEventIdListTruncated: false,
     truncatedContentFieldCount: 0,
-    inputRecords: sourceEventIds.map(id => ({
-      eventId: id,
-      type: 'moonshot-proposed',
+    inputRecords: sourceEventIds.map(id => id === proposal.id ? ({
+      eventId: proposal.id,
+      type: proposal.type,
       at: proposal.at,
       actor: { id: proposal.actor.id, role: proposal.actor.role },
-      moonshotId: proposal.moonshotId
+      moonshotId: proposal.moonshotId,
+      title: proposal.title,
+      hypothesis: proposal.hypothesis,
+      falsifier: proposal.falsifier,
+      evidenceNeeded: proposal.evidenceNeeded,
+      source: { creationId: null, version: null, linkStatus: 'not-provided' },
+      truncatedFields: []
+    }) : ({
+      eventId: id,
+      type: 'missing',
+      at: proposal.at,
+      actor: { id: 'missing-actor', role: 'founder' },
+      moonshotId: proposal.moonshotId,
+      truncatedFields: []
     }))
   };
   packetChanges?.(payload);
@@ -107,14 +120,22 @@ test('a source-bound collaborator response becomes a navigable Relay folio', () 
   }, {
     type: 'collaborator-response-object',
     responseId: 'response-1',
-    roleId: 'adversary',
-    name: 'Adversary',
+    roleId: 'tutor',
+    name: 'Polymath Tutor',
     validationStatus: 'valid-for-human-review',
     sourceEventIds: ['proposal-1'],
     mapVisible: true
   });
   assert.ok(Number.isFinite(objects[0].x) && Number.isFinite(objects[0].y));
   assert.deepEqual(world, before, 'projection must not mutate canonical history');
+});
+
+test('a recomputed packet receipt cannot detach compact source content from the retained proposal', () => {
+  const tampered = responseEvent({
+    packetChanges: payload => { payload.inputRecords[0].hypothesis = 'A substituted hypothesis'; }
+  });
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(worldWith(tampered)), [],
+    'a byte-valid packet must still reproduce the exact retained source record');
 });
 
 test('rejected collaborator output remains a visible, explicitly rejected world object', () => {
