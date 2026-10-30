@@ -281,7 +281,7 @@ def institutional_locations(browser,url,out):
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
         prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
-        packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\\n',1)[1])
+        packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
         target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
         response={
             'targetEventId':target_event,
