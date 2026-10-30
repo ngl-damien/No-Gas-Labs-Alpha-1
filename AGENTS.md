@@ -9,6 +9,8 @@
 3. Only after both reads are complete may you inspect repository state, branches, PRs, issues, workflows, source, checkpoints, or other workers' results. Discard any pre-read observations and restart the baseline after completing the two required reads.
 4. If either required file cannot be read in full, stop. Do not continue repository inspection or make changes.
 
+## Required operating duties after bootstrap
+
 1. Read [the shared Ralph-style operating protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md) in full. It governs every AI agent, coding assistant, autonomous worker, scheduled task, and human-directed agent session working here.
 2. Read the relevant local instructions and the latest durable checkpoint before acting. Search for nested `AGENTS.md` files in the directories you touch; more specific instructions add to, but do not silently cancel, this repository contract.
 3. Identify your role (Repository Stutter-Step / institution-wide reliability, MMORPG / playable world, or bounded contributor). Inspect the other worker's latest durable result and relevant open PRs. Do not duplicate active work.
