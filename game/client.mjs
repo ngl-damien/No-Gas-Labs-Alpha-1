@@ -24,20 +24,32 @@ async function openInstitution(locationId = null) {
   const requestGeneration = ++institutionRequestGeneration;
   const principalId = viewer.id;
   const principalRole = viewer.role;
-  const [projects, gate, stateResult, institutionResult] = await Promise.all([
-    request('/api/projects'),
-    request('/api/decisions'),
-    request('/api/state').then(data => ({ data })).catch(() => ({ data: null })),
-    request('/api/institution').then(data => ({ data })).catch(() => ({ data: null })),
+  // Each institutional register is fetched independently. A failed endpoint
+  // must not prevent the player from inspecting the other available records.
+  const capture = promise => promise
+    .then(data => ({ available: true, data }))
+    .catch(() => ({ available: false, data: null }));
+  const [projectsResult, gateResult, stateResult, institutionResult] = await Promise.all([
+    capture(request('/api/projects')),
+    capture(request('/api/decisions')),
+    capture(request('/api/state')),
+    capture(request('/api/institution')),
   ]);
   if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
       viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
       content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return;
-  renderInstitution(content, projects, gate, {
+  const freshWorld = stateResult.available && stateResult.data?.world &&
+    typeof stateResult.data.world === 'object';
+  const lastWorld = freshWorld ? stateResult.data.world : world;
+  renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
-    world: stateResult.data?.world,
+    world: lastWorld,
+    worldSnapshotStale: !freshWorld,
+    worldUnavailable: !lastWorld || typeof lastWorld !== 'object',
+    projectsUnavailable: !projectsResult.available,
+    decisionsUnavailable: !gateResult.available,
     kernel: institutionResult.data?.kernel,
-    kernelUnavailable: !institutionResult.data?.kernel,
+    kernelUnavailable: !institutionResult.available || !institutionResult.data?.kernel,
     onOpenArtifact: (id, version) => openCreation(id, version),
     onChoice: guarded(async (decision, action) => {
       await request('/api/decisions/choose', {
