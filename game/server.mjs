@@ -322,7 +322,7 @@ function validateHistory(world) {
       if (packet?.protocol !== 'ngl.bounded-collaborator-packet.v1' || packet.role !== event.role || packet.targetMoonshotId !== event.moonshotId ||
           packet.authority !== 'advisory-only' || packet.mayWriteCanonicalState !== false || packet.mayGrantAuthority !== false ||
           packet.mayAwardProgress !== false || packet.mayCertifyTruthOrExecution !== false ||
-          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== index ||
+          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== world.events.slice(0, index).filter(source => event.actor.role === 'founder' || !['draft', 'repair'].includes(source.type)).length ||
           !Array.isArray(packet.inputRefs) || JSON.stringify(packet.inputRefs) !== JSON.stringify(event.sourceEventIds) ||
           !Array.isArray(packet.inputRecords) || packet.inputRecords.length !== event.sourceEventIds.length ||
           !Array.isArray(packet.omittedEventIds) || !Number.isSafeInteger(packet.omittedCount) || packet.omittedCount < packet.omittedEventIds.length ||
