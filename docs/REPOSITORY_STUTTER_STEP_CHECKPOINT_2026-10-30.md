@@ -575,3 +575,36 @@ No other repository state changed. PR #216 and checkpoint PR #210 remain draft/o
 - Final linked-repo recheck: `ngl-mesh` PR #1's Relay operator-key trust and agent-governance workflows passed on head `81536604a8473b8d698aa4c5d752c7d5426dab7d`. EvidenceOS PR #1 and #2 verification workflows passed on heads `7fbb4c83412e83882ea43df92532a346d524e00b` and `7335e83afba294c04ea721fd24797fd8b6affaac` respectively.
 - Current inventory: 47 open Alpha 1 PRs, 464 branch refs, 0 refs marked protected by the API. Main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
 - Founder integration is still the next high-value blocker, but no safe server edit was made while PRs #205/#213/#214 own overlapping server paths. Issue #17 remains open for real key custody, canonical verifier integration, and recovery acceptance. Do not create/rotate Founder key material or select between the existing Ed25519 INSTALL and P-256 decision paths by inference.
+
+
+## Stutter-step loop addendum — 2026-10-30 12:44 UTC
+
+### Rehydration and current baseline
+- Re-read `AGENTS.md` and the full shared Ralph-style protocol before action.
+- Latest prior checkpoint inspected at PR #210 head `1302aa68f876b049a0bbfd0644c3ca9490ef8c88`.
+- Alpha 1 `main` rechecked at `7d8c77367f6acb2d85e35cd9a195797555d1ac7d` before and after implementation; unchanged.
+- Fresh inventory: 48 open PRs, 2 open issues (#17 Founder custody/concurrency/recovery; #22 hybrid-cognition challenge), 465 branch refs. Branch API reports zero refs protected; this is not a complete ruleset audit.
+- Worker B's latest PR #220 (offline Guild Hall shell) head `61f7e520946b09827b1e97b33d19ae559f3e1391` has exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance successes. Browser evidence records 13/13 journeys, including private offline recovery; shared API remains network-only.
+- Linked exact-head checks re-observed: `ngl-mesh` PR #1 operator-key-trust and required-agent-instructions passed at `81536604a8473b8d698aa4c5d752c7d5426dab7d`; EvidenceOS PR #1 test passed at `7fbb4c83412e83882ea43df92532a346d524e00b`; EvidenceOS PR #2 test passed at `7335e83afba294c04ea721fd24797fd8b6affaac`. All remain unmerged.
+
+### Chosen improvement and implementation cycles
+The highest-value safe source-backed defect within the active Founder-authentication branch was an inaccurate canonical-input byte cap. The canonical serializer counted keys and values but omitted object/array punctuation and separators, so an input could exceed the declared 1 MiB encoded limit while passing the old counter.
+
+1. Commit `71da590e4aac35dc345f5fef376e8b1217c916a7` — `src/authority/decision.js`: account for `[`, `]`, `{`, `}`, commas, and colons as part of the exact canonical UTF-8 byte count.
+2. Commit `0f7b8d6d45b384e2cb5b9f71114c0782c3686d01` — `test/decision-chamber.test.js`: pin a known canonical digest vector and add a 9,999-element regression whose values alone fit the old counter but whose full canonical representation is 1,049,896 bytes, over the 1 MiB limit.
+3. Re-read the changed source/test diff and re-fetched PR #203/current main before verification and checkpointing. No shared game-server path was edited.
+
+### Exact-head verification
+- PR #203 head: `0f7b8d6d45b384e2cb5b9f71114c0782c3686d01`.
+- Verify [41057310476](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057310476): success. Hosted log confirms `npm run verify`; Node `--test`, Python inspector tests, package build, and bounded institutional exercise each exited 0. No total Node test count was emitted.
+- Genesis Evidence Invariant [41057310682](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057310682): success.
+- Browser Acceptance [41057310481](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057310481): in progress as of 12:44 UTC; the next run must recheck exact-head final status.
+- The known digest vector is intended to preserve the existing canonical/signature wire representation; hosted tests passed the full Node test command, but browser verification is still pending.
+- PR #203 remains draft/open/unmerged. No local full-suite run is claimed.
+
+### Founder authority boundary and next action
+- PR #16's old `demonstrate()` self-signing finding remains superseded by merged PR #18. Do not revive it.
+- PR #203 hardens a separate P-256 decision helper; current `main` still contains the caller-supplied `{valid: true}` boundary in `src/authority/decision.js`, and live `game/server.mjs` still uses its separate host-key/ephemeral-session gate without importing this verifier.
+- PRs #205, #213, and #214 continue to overlap on `game/server.mjs`. Do not edit the shared server concurrently or select between the existing Ed25519 INSTALL and P-256 decision paths by inference.
+- Issue #17 remains open for independently controlled key custody, canonical verifier/server integration, concurrent-writer acceptance, and crash/stale-lock recovery. No key material was created, read, provisioned, or rotated.
+- Next: recheck PR #203's Browser Acceptance on the exact head; then resume a narrow verifier-to-server integration design after the shared server stack settles, with a regression that proves forged caller-supplied verification objects cannot authorize a persisted or live action.
