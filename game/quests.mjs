@@ -379,6 +379,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'collaborator-response-recorded' ? {
+        collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {})
     }));
   }
   const complete = evidence.length >= target;
