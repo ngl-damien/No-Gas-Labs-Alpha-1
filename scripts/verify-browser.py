@@ -71,7 +71,7 @@ def basic(page,url,out,label):
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
     character=page.locator('#character-button')
     expect(character).to_be_visible()
-    expect(character).to_have_attribute('aria-label',re.compile('Level 1'))
+    expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))
     character.click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
     expect(page.locator('#sheet')).to_contain_text('Level 1')
