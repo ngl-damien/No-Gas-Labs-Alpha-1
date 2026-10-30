@@ -694,3 +694,72 @@ A subsequent exact-head check-run poll found a third workflow on PR #212 head `5
 - Browser evidence artifact: [12983291351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059570/artifacts/12983291351).
 
 This supersedes the earlier note in this run addendum that no browser workflow had been triggered. PR #212's latest exact head now has all three distinct checks green: Verify 41067059453, world-projection 41067059559, and Playable-world 41067059570. The PR remains draft/unmerged.
+
+
+## Worker A repository stutter-step run — 2026-10-30 14:56 UTC
+
+### Rehydration and cross-worker observation
+
+- Re-read root `AGENTS.md` and the full shared `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`.
+- Prior durable checkpoint: branch `audit/repository-stutter-step-checkpoint-2026-10-30`, head `19fc58c78e2ce97a8dc0964bb05d50c9fb614a5f`.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Fresh search: **48 open Alpha 1 PRs** and **2 open issues** (#17 Founder custody/concurrency/recovery; #22 hybrid-cognition falsification proposal).
+- Worker B's latest result is PR #220, head `d5083ea81368ed4997e1117f7d086973cb157bd8`. Its exact-head Verify passed; world-projection and playable-world checks were still in progress at inspection. PR #220 owns the offline Guild Hall/game-server/browser paths. Its body also stages a source-fidelity regression at `47872f1cfe337077a69ebeae3212bfad5cc7b342`; the implementation follow-up is pending. No Worker B files were edited.
+
+### Alpha 1 current exact-head rechecks
+
+- PR #212 receipt resolver/event snapshot branch, head `5b4c7426b3a1820d927997540221de9dce13b044`: Verify [41067059453](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059453), world-projection [41067059559](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059559), and playable-world [41067059570](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41067059570) all **success**. Browser run reports 12/12 journeys. The positive control awards 500 XP from two authentic receipts; the adversarial resolver mutation/rewrite/delete path awards 0 XP and preserves the pre-verification receipt/event snapshot.
+- PR #203 Founder decision helper, head `ac3fac9406b1f2ab303fa7b22363b0fb49fb80f6`: Verify [41057772336](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772336), world-projection [41057772403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772403), and playable-world [41057772346](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41057772346) all **success**.
+- PR #214 shared writer-lease/offline-shell integration, head `6e33dcf8e656c2d59470ec84592eeee2b9463565`: Verify [41026432465](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432465), world-projection [41026432328](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432328), and playable-world [41026432371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41026432371) all **success**. These PRs remain unmerged; green checks do not resolve Founder key custody or server trust-root selection.
+
+### Linked-repository implementation — EvidenceOS HTTP boundary
+
+Continued existing draft EvidenceOS PR #2, stacked on PR #1's exact base `7fbb4c83412e83882ea43df92532a346d524e00b`. No competing branch or PR was created.
+
+Changed paths: `src/server.js`, `test/server.test.js`.
+
+Substantive fixes and commits:
+
+1. **Oversized body response correctness**
+   - `f7415196e23996dcc8b71532a85771a7c8ec1497` — stop destroying the request socket on the 64 KiB overflow path; stop retaining chunks, drain the rest without buffering, and return 413 with `Connection: close`.
+   - `f425d652286f783f63376cfbe2289eb7f8e7a41f` — chunked oversized-body regression.
+   - `37236217169b8df529e387b6c2e410b8ca08a1a2` and `c55f4d6586b4a8e6aa9a5f808d4a4c62a3a6a2ec` — numeric Content-Length preflight and declared-length regression. Source reinspection caught an over-escaped digit regex before final verification; the final branch contains the corrected `/^\d+$/` expression.
+
+2. **Configuration fail-closed behavior**
+   - An intermediate config-helper commit `dc6763a66ef4f1538e1eb9370027d19458246b4a` contained malformed escaped template syntax. It was caught by immediate source reinspection and corrected in `fddfeb07aeb8073dbfaecec95386fe1bf41c4a4c`; no passing result is attributed to the malformed intermediate.
+   - `01703fcd4f45ad6eb75b554b74a9464e526dc9d9` adds tests. `MAX_CONCURRENT_JOBS` and `RESULT_TTL_MS` now require non-negative safe-integer strings; invalid `NaN`, negative, or unsafe values fail before listen. Explicit zero remains supported.
+
+3. **Result TTL on direct polling**
+   - `d8e905cc0e62f0e70d430f5316e0c9937e72299b` — direct `GET /v1/jobs/:trace_id` lookup now evicts expired completed/failed records rather than returning them until a later sweep.
+   - `cd5bf08916211b77331f5c77a37c3bf313de2050` — regression coverage for expired, failed, running, fresh, and missing job records.
+
+Final EvidenceOS PR #2 head: `cd5bf08916211b77331f5c77a37c3bf313de2050`.
+
+- Exact-head hosted verification [41075713717](https://github.com/ngl-damien/evidenceos/actions/runs/41075713717): **success**.
+- Node v22.23.4 test runner: **22 passed, 0 failed**. This includes 8 ingestion, 2 aggregation, and 12 HTTP/server tests.
+- The tests use locally spawned HTTP servers and fake/test paths; they do not make live GitHub API calls or establish deployment.
+- EvidenceOS PR #2 remains draft/open/unmerged and stacked on PR #1. PR #1 current head `7fbb4c83412e83882ea43df92532a346d524e00b` has its exact-head test workflow [40999488401](https://github.com/ngl-damien/evidenceos/actions/runs/40999488401) **success**. The service remains numeric-loopback-only and has no remote authentication/TLS adapter.
+
+### Other linked NGL work rechecked
+
+- ngl-mesh PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d`: `required-agent-instructions` and `operator-key-trust` checks succeeded (runs 41041610303 and 41041610180). Full APK/RAE integration remains blocked by the missing recovered source archive, reference APK, and RAE report.
+- No evidence establishes a merged Relay integration, installed Android build, or independent real-world operator identity.
+
+### Founder authority and unresolved blockers
+
+- Issue #17 confirms the old PR #16 self-signing `demonstrate()` finding is superseded by the merged PR #18 Ed25519 INSTALL signer. PR #203's separate P-256 `QUEST_AUTHORIZED` helper is green but is not wired into live `game/server.mjs`.
+- PRs #205/#213/#214 still overlap on shared game-server and writer-lease work; PR #220 also owns the latest game-server/offline-shell path. Do not edit those files concurrently.
+- Real independent Founder key custody/control, canonical Ed25519-vs-P-256 trust-root choice, server integration, and Issue #17 concurrency/crash/stale-lock acceptance remain unresolved. No key material was created, read, provisioned, or rotated.
+- Issue #22 remains a falsifiable proposed hybrid-cognition experiment, not evidence of superiority or external collaboration.
+
+### Next ranked actions
+
+1. Recheck PR #220's exact-head world-projection and playable-world runs; inspect the source-fidelity regression at its current head and hand off the bounded implementation to Worker B (it owns those paths).
+2. Once the #205/#213/#214/#220 server stack settles, define one canonical signed-decision verifier/trust-anchor contract and test that a caller-supplied `{valid:true}` object cannot authorize persisted/live actions. Do not handle real Founder keys.
+3. Review PR #2 with PR #1's base/stacking relationship visible; keep both draft until the Founder reviews them. The loop has not merged either.
+4. Recover the missing ngl-mesh archive/APK/RAE report before attempting broader integration.
+5. Continue read-only branch hygiene; do not infer deletion safety from identical tips or unprotected branch metadata.
+
+### Authority and result
+
+No merge, release, deployment, branch deletion, workflow dispatch, permission/credential/key change, spending, or external publication occurred. Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #210 remains a draft checkpoint proposal.
