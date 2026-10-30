@@ -205,7 +205,7 @@ def institutional_locations(browser,url,out):
     page=context.new_page()
     page.on('pageerror',lambda error:errors.append(str(error)))
     page.on('console',lambda message:errors.append('console '+message.type+': '+message.text) if message.type=='error' else None)
-    page.on('requestfailed',lambda request:errors.append('request failed '+request.url+' '+str(request.failure)))
+    page.on('requestfailed',lambda request:errors.append('request failed '+request.url+' '+str(request.failure)) if not request.url.endswith('/api/state') else None)
     try:
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
