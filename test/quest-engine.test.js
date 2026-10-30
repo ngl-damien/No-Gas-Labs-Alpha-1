@@ -215,3 +215,48 @@ test("an explicitly matching quest revocation still blocks later executions", ()
   assert.deepEqual(result.executions, ["e0"]);
   assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, false]);
 });
+
+
+test("a later verified retry advances the current quest status without erasing a failed attempt", () => {
+  const failedAttempt = execution("e0", ["mesh-protocol"], "FAILED");
+  const successfulRetry = execution("e1", ["mesh-protocol"], "SUCCEEDED");
+  const events = [auth, failedAttempt, successfulRetry];
+  const before = structuredClone(events);
+  const result = projectQuest(quest, events, trust);
+
+  assert.equal(result.status, QUEST_STATUS.IN_PROGRESS);
+  assert.deepEqual(result.executions, ["e0", "e1"]);
+  assert.deepEqual(result.execution_outcomes, [
+    { event_id: "e0", outcome: "FAILED" },
+    { event_id: "e1", outcome: "SUCCEEDED" }
+  ]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, false]);
+  assert.deepEqual(events, before);
+});
+
+test("a later verified failure is the current attempt status while earlier success remains recorded", () => {
+  const successfulAttempt = execution("e0", ["mesh-protocol"], "SUCCEEDED");
+  const failedRetry = execution("e1", ["adversarial-tests"], "FAILED");
+  const result = projectQuest(quest, [auth, successfulAttempt, failedRetry], trust);
+
+  assert.equal(result.status, QUEST_STATUS.FAILED);
+  assert.deepEqual(result.executions, ["e0", "e1"]);
+  assert.deepEqual(result.execution_outcomes, [
+    { event_id: "e0", outcome: "SUCCEEDED" },
+    { event_id: "e1", outcome: "FAILED" }
+  ]);
+  assert.deepEqual(result.acceptance.map(item => item.satisfied), [true, false]);
+});
+
+test("revocation blocks retries but preserves the last failed attempt in quest history", () => {
+  const failedAttempt = execution("e0", ["mesh-protocol"], "FAILED");
+  const result = projectQuest(quest, [auth, failedAttempt, revokeGrant()], trust);
+
+  assert.equal(result.status, QUEST_STATUS.REVOKED);
+  assert.equal(result.authorized, false);
+  assert.equal(result.revoked, true);
+  assert.deepEqual(result.executions, ["e0"]);
+  assert.deepEqual(result.execution_outcomes, [
+    { event_id: "e0", outcome: "FAILED" }
+  ]);
+});
