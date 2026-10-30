@@ -813,3 +813,78 @@ test('Questkeeper and the active HUD invitation share immutable evidence-backed 
   assert.deepEqual(reopened, active, 'reopening the invitation is deterministic');
   assert.deepEqual(matureWorld, matureBefore, 'navigation never manufactures progress');
 });
+
+
+test('Questkeeper map rejects reused discovery record IDs across distinct locations', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    id: 'reused-discovery-record',
+    actor: witness,
+    locationId,
+    at: new Date(Date.parse(t1) + index * 1000).toISOString()
+  }));
+  const events = discoveries.map((discovery, index) =>
+    event('unique-discovery-event-' + index, 'discover', witness, discovery.at, {
+      locationId: discovery.locationId
+    })
+  );
+  const world = { xp: 0, creations: [], events, discoveries };
+  const trail = getQuestTrail(world, witness);
+  const map = trail.find(item => item.id === 'witness-map-grounds');
+  const character = projectCharacter(world, witness);
+
+  assert.equal(map.progress, 0,
+    'four distinct event fingerprints cannot turn one reused record identity into four visits');
+  assert.equal(map.complete, false);
+  assert.equal(character.skills.find(skill => skill.id === 'explorer').count, 0);
+  assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0,
+    'the Questkeeper projection must agree with the stricter Explorer activity projection');
+});
+
+test('Questkeeper map requires every discovery record to carry its own retained identity', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    ...(index === 2 ? {} : { id: 'discovery-record-' + index }),
+    actor: witness,
+    locationId,
+    at: new Date(Date.parse(t1) + index * 1000).toISOString()
+  }));
+  const events = discoveries.map((discovery, index) =>
+    event('discovery-event-' + index, 'discover', witness, discovery.at, {
+      locationId: discovery.locationId
+    })
+  );
+  const world = { xp: 0, creations: [], events, discoveries };
+  const trail = getQuestTrail(world, witness);
+  const map = trail.find(item => item.id === 'witness-map-grounds');
+  const character = projectCharacter(world, witness);
+
+  assert.equal(map.progress, 3);
+  assert.equal(map.complete, false);
+  assert.equal(character.skills.find(skill => skill.id === 'explorer').count, 3);
+  assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0);
+});
+
+test('Questkeeper map rejects matching discovery records with non-canonical timestamps', () => {
+  const locations = ['relay', 'river', 'overlook', 'ruins'];
+  const discoveries = locations.map((locationId, index) => ({
+    id: 'date-only-discovery-' + index,
+    actor: witness,
+    locationId,
+    at: '2026-10-25'
+  }));
+  const events = discoveries.map((discovery, index) =>
+    event('date-only-event-' + index, 'discover', witness, discovery.at, {
+      locationId: discovery.locationId
+    })
+  );
+  const world = { xp: 0, creations: [], events, discoveries };
+  const trail = getQuestTrail(world, witness);
+  const map = trail.find(item => item.id === 'witness-map-grounds');
+  const character = projectCharacter(world, witness);
+
+  assert.equal(map.progress, 0);
+  assert.equal(map.complete, false);
+  assert.equal(character.skills.find(skill => skill.id === 'explorer').count, 0);
+  assert.equal(character.skills.find(skill => skill.id === 'questkeeper').count, 0);
+});
