@@ -48,15 +48,18 @@ function canonical(value, state = { active: new Set(), nodes: 0, bytes: 0 }, dep
           keys.length !== length + 1 || !keys.includes("length")) {
         throw new TypeError("canonical arrays must be dense and contain no extra properties");
       }
-      const items = [];
+      // Count delimiters and separators too: the byte limit applies to the
+      // complete canonical UTF-8 representation, not just its values.
+      let encoded = account("[");
       for (let index = 0; index < length; index += 1) {
         const descriptor = descriptors[String(index)];
         if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) {
           throw new TypeError("canonical arrays must contain own enumerable data elements");
         }
-        items.push(canonical(descriptor.value, state, depth + 1));
+        if (index > 0) encoded += account(",");
+        encoded += canonical(descriptor.value, state, depth + 1);
       }
-      return "[" + items.join(",") + "]";
+      return encoded + account("]");
     }
 
     const prototype = Object.getPrototypeOf(value);
@@ -72,9 +75,15 @@ function canonical(value, state = { active: new Set(), nodes: 0, bytes: 0 }, dep
       throw new TypeError("canonical objects must contain only own enumerable data properties");
     }
     keys.sort();
-    return "{" + keys.map(key =>
-      account(JSON.stringify(key)) + ":" + canonical(descriptors[key].value, state, depth + 1)
-    ).join(",") + "}";
+    let encoded = account("{");
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index];
+      if (index > 0) encoded += account(",");
+      encoded += account(JSON.stringify(key));
+      encoded += account(":");
+      encoded += canonical(descriptors[key].value, state, depth + 1);
+    }
+    return encoded + account("}");
   } finally {
     state.active.delete(value);
   }
