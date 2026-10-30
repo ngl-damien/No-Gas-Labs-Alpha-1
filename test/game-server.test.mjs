@@ -64,6 +64,28 @@ async function publish(founder, title = 'Observed bytes') {
 }
 
 
+test('PWA metadata and the offline shell are served without exposing API responses to the cache', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const manifest = await client.request('/manifest.webmanifest');
+  assert.equal(manifest.response.status, 200);
+  assert.match(manifest.response.headers.get('content-type'), /application\\/manifest\\+json/);
+  assert.equal(manifest.body.start_url, './');
+  assert.equal(manifest.body.display, 'standalone');
+  assert.equal(manifest.body.icons[0].src, './assets/app-icon.svg');
+
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  assert.match(worker.response.headers.get('content-type'), /javascript/);
+  assert.match(worker.body, /url\\.pathname === '\/api' \\|\\| url\\.pathname\\.startsWith\\('\/api\\/'\\)/);
+  assert.match(worker.body, /const CORE_SHELL =/);
+
+  const icon = await client.request('/assets/app-icon.svg');
+  assert.equal(icon.response.status, 200);
+  assert.match(icon.response.headers.get('content-type'), /image\\/svg\\+xml/);
+  assert.match(icon.body, /<svg\\b/);
+});
+
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
   const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
   limiter.failure('::ffff:192.0.2.44', 0);
