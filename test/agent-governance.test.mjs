@@ -35,6 +35,16 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight fails closed when sequential bootstrap order is removed', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\\nLeave a durable, factual record.\\n');
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === 'AGENTS.md' && item.reason.includes('First repository operation:')));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('targeted work is blocked unless a durable checkpoint is supplied', async () => {
   const root = await fixture();
   try {
