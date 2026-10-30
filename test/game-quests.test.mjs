@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
-import { COLLABORATOR_ROLES } from '../game/collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord } from '../game/collaborator-contracts.mjs';
+import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
 
@@ -646,22 +647,22 @@ test('quest trail does not unlock research progress from incomplete or unattribu
 function collaboratorArchiveEvent({
   world, id, role, actor = founder, responseId = 'response-' + id,
   validationStatus = 'valid-for-human-review', at = '2026-10-28T17:04:00.000Z',
-  sourceEventIds = ['proposal-1']
+  sourceEventIds = null
 }) {
-  const inputRecords = sourceEventIds.map(sourceId => {
-    const source = world.events.find(event => event?.id === sourceId);
-    return source ? {
-      eventId: source.id,
-      type: source.type,
-      at: source.at,
-      actor: { id: source.actor?.id, role: source.actor?.role },
-      moonshotId: source.moonshotId
-    } : {
+  const refs = sourceEventIds ?? (role === 'tutor'
+    ? ['proposal-1']
+    : ['proposal-1', 'report-event-1']);
+  const projectedById = new Map(projectResearchRecords(world.events, world.creations)
+    .map(record => [record.id, record]));
+  const inputRecords = refs.map(sourceId => {
+    const source = projectedById.get(sourceId);
+    return source ? compactCollaboratorSourceRecord(source) : {
       eventId: sourceId,
       type: 'missing',
       at,
       actor: { id: 'missing-actor', role: 'founder' },
-      moonshotId: 'moon-1'
+      moonshotId: 'moon-1',
+      truncatedFields: []
     };
   });
   const payload = {
@@ -680,7 +681,7 @@ function collaboratorArchiveEvent({
     mayGrantAuthority: false,
     mayAwardProgress: false,
     mayCertifyTruthOrExecution: false,
-    inputRefs: [...sourceEventIds],
+    inputRefs: [...refs],
     omittedEventIds: [],
     omittedCount: 0,
     omittedEventIdListTruncated: false,
@@ -696,7 +697,7 @@ function collaboratorArchiveEvent({
   });
   return {
     id, type: 'collaborator-response-recorded', responseId, role, moonshotId: 'moon-1',
-    sourceEventIds, packetJson, packetReceipt: receipt(packetJson),
+    sourceEventIds: refs, packetJson, packetReceipt: receipt(packetJson),
     responseText, responseReceipt: receipt(responseText),
     validationStatus,
     validationReason: validationStatus === 'rejected' ? 'RESPONSE_SCHEMA_OR_SCOPE_INVALID' : null,
@@ -711,6 +712,10 @@ function appendCollaboratorArchive(world, options) {
   world.events.push(event);
   world.revision = world.events.length;
   return event;
+}
+
+function refreshPacketReceipt(event) {
+  refreshPacketReceipt(event);
 }
 
 test('Guild Hall role-coverage quest counts only source-bound folios and routes to the next NPC', () => {
@@ -793,6 +798,43 @@ test('Guild Hall quest progress and Relay folio navigation share the same strict
     .find(item => item.id === 'founder-guild-council-coverage');
   assert.equal(coverage.progress, 0,
     'the same mismatched archive must not advance the quest');
+});
+
+test('Guild Hall folios and quest progress reject byte-valid packets that substitute retained source content', () => {
+  const cases = [
+    { id: 'proposal-content-substitution', role: 'archivist', sourceId: 'proposal-1', field: 'hypothesis' },
+    { id: 'report-content-substitution', role: 'adversary', sourceId: 'report-event-1', field: 'observation' }
+  ];
+  for (const item of cases) {
+    const world = experimentQuestWorld();
+    const event = appendCollaboratorArchive(world, { id: item.id, role: item.role });
+    const payload = JSON.parse(event.packetJson);
+    const source = payload.inputRecords.find(record => record.eventId === item.sourceId);
+    assert.ok(source, item.id + ' source input exists');
+    source[item.field] = 'Substituted text that was never retained in the source event.';
+    event.packetJson = JSON.stringify(payload);
+    refreshPacketReceipt(event);
+
+    assert.deepEqual(projectCollaboratorResponseWorldObjects(world), [],
+      item.id + ' must not create a Relay folio even with a recomputed byte receipt');
+    const coverage = getQuestTrail(world, founder)
+      .find(milestone => milestone.id === 'founder-guild-council-coverage');
+    assert.equal(coverage.progress, 0,
+      item.id + ' must not advance the Guild Hall quest');
+  }
+});
+
+test('Adversary folio requires a retained experiment report, not merely a Moonshot proposal', () => {
+  const world = experimentQuestWorld();
+  appendCollaboratorArchive(world, {
+    id: 'adversary-without-report',
+    role: 'adversary',
+    sourceEventIds: ['proposal-1']
+  });
+  assert.deepEqual(projectCollaboratorResponseWorldObjects(world), []);
+  const coverage = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(coverage.progress, 0);
 });
 
 test('Witness Guild Hall role coverage counts only the Witness own preserved role response', () => {
