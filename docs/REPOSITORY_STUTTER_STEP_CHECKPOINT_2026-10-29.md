@@ -692,3 +692,11 @@ PR #205 exact head 03a7365ee2a5681f85e37278e2b66c335c64a04e now has all three ho
 - PR #203 and PR #204 have all three exact-head workflows successful.
 - PR #205 has all three exact-head workflows successful, including Browser Acceptance 40994419665. It remains draft/open/unmerged.
 - Main remains 7d8c77367f6acb2d85e35cd9a195797555d1ac7d; open PR count remains 33. No mainline merge or deployment occurred.
+
+
+### PR #202 latest browser-harness diagnosis — 2026-10-30 UTC
+
+- PR #202 head is now 4789b080e1cd2dc2134e6be317fe4dc2e8093609 (16 commits ahead / 1 behind current main). Its exact-head comparison still shows only the previously documented unrelated mainline-only change in game/world-view.mjs and test/game-geometry.test.mjs; GitHub's mergeability flag was false while recalculating after the new push.
+- Browser run 40994463330 passed desktop, phone, institutional-location, two-session shared and responsive-toolbar journeys, then timed out because the test tried to click #caveman-launch after entering the private world. That button belongs to the now-hidden doorway. The test now uses the visible in-world #launch-shortcut.
+- New attempts were triggered: Verify 40995043987 was in progress and Browser Acceptance 40995044132 was in progress; replacement attempts Verify 40995048834 and Browser Acceptance 40995048945 were queued, while Genesis Evidence Invariant 40995048805 was in progress. The earlier Genesis attempt 40995044114 was cancelled by the replacement. No exact-head full pass is claimed.
+- This third failure is another test-harness selector problem, not a product assertion. The recovery feature still needs a successful browser run before it is considered verified.
