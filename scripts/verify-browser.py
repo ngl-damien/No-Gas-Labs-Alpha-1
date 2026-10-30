@@ -247,6 +247,7 @@ def institutional_locations(browser,url,out):
             expect(role_card).to_be_focused()
             assert page.locator('#creation-count').text_content()=='0', 'Speaking to a collaborator must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Speaking to a collaborator must not award XP'
+        close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
