@@ -126,3 +126,48 @@ No merge, release, deployment, branch deletion, workflow dispatch, permission/se
 - Fresh search observed **40 open PRs** and **2 open issues**.
 - `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. PR #212 remains draft/open/unmerged; no merge or deployment occurred.
 - Next run should recheck PR #210's browser job, inspect review feedback or new checks on PR #212, and rehydrate before choosing any further code change.
+
+## Run addendum — 2026-10-30 08:0x UTC (Worker A)
+
+### Fresh baseline and coordination
+
+- Re-read root `AGENTS.md` and the complete shared Ralph scheduler protocol before repository writes.
+- Fresh `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; this run did not write to `main`.
+- Fresh open-PR search: **41 open PRs**. Fresh issue search: **2 open issues**. Full branch pagination: **458 branch refs** (100, 100, 100, 100, 58, then 0); **0 refs marked protected** by the GitHub branch-list API. These supersede earlier 38/40 PR and 455/457 branch counts. No branch was deleted.
+- PR #205 and PR #213 both touch `game/server.mjs`: #205's `closeGame` shutdown ordering versus #213's service-worker/manifest routes. The edits are in distinct regions, but require combined-head validation before any merge. Neither was merged.
+
+### Implemented — decision-store process-crash acceptance and guard inspection
+
+**PR #205:** [fix(storage): transplant guarded decision-writer lease to current main](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/205)
+
+- Branch `fix/decision-lock-guard-main-20261030`; final head `54c54a5660ab799476d48871dc9d0fbb5c59f93c`; base remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`.
+- Added a child-process `SIGKILL` regression at the exact post-rename / pre-directory-sync boundary. It proves the visible replacement can exist while durability remains unconfirmed, the writer lease remains and blocks a new opener with `DECISIONS_LOCKED`, and only explicit test-fixture offline recovery after child exit permits a fresh validated replay.
+- Extended the read-only lock inspector to accept the exact `.decisions.lock.guard` directory path. An empty interrupted guard is reported as `owner-receipt-missing`; a single owner receipt is validated. The inspector never sets `safeToRemove` to true.
+- Added one process-crash test and two guard-directory inspector tests. These cover a process death after rename, not power loss or filesystem-specific crash durability. No automatic stale-lock recovery was added.
+- Exact-head hosted verification on `54c54a5660ab799476d48871dc9d0fbb5c59f93c`: Verify/world-projection run [41022753029](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022753029) **success** (`npm run verify`; Node test suite, Python inspector tests, package build, and bounded institutional exercise exited 0; report `passed: true`); Genesis Evidence Invariant run [41022753159](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022753159) **success**; Browser Acceptance run [41022753170](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022753170) **success** with all 12 journeys passing.
+- PR #205 remains open and unmerged. Its description was updated with the new tests and current exact-head evidence.
+
+### Worker B handoff — offline private-world reload test
+
+- PR #213 current head `cf45cd8c31dcec1b08aa42a490e342c3eff5ee80`. Verify run [41022803962](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022803962) and Genesis Evidence Invariant run [41022803968](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022803968) **success**; Browser Acceptance run [41022803966](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41022803966) **failure**.
+- The failed wait is line 628, after the second offline reload at line 626. The first private-start wait at line 615 did not fail. After reload, `game/client.mjs` initializes `mode=null`; the browser test waits for `private` without clicking `#start-private` again. The current doorway flow requires the player to re-enter the saved private world. This is a test-flow defect unless automatic mode restoration is separately chosen as a product requirement; no product defect is established by this failure.
+- Updated PR #213 handoff comment [6517701269](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/213#issuecomment-6517701269) with the line-level correction. No Worker B files were edited. Recheck their next head and rerun the full browser journey after the second reload includes the private-start action.
+
+### Founder authority and linked-repository status
+
+- PR #203 sealed verifier/audience-binding branch remains at `861fd38b7e08c4af96e1e1bb5c3f353a7e2fb901`; Verify, Genesis Evidence Invariant, and Browser Acceptance runs 40999308626, 40999308640, and 40999308607 all succeeded. The live `game/server.mjs` still does not import this verifier. Main `src/authority/decision.js` still has the caller-supplied `{ valid: true }` trust boundary. Issue #17 remains open. PR #16's original finding is superseded by the PR #8 / PR #18 history recorded in issue #17. Real independent Founder key custody and identity proof remain unresolved; no key material was touched.
+- **ngl-mesh PR #1** exact head `d10fe10fee8924d085afbd513f162dae8e4fb734`: agent-governance run 40996304479 and Relay operator-key trust run 40996304779 succeeded. Full APK/RAE integration remains blocked by the missing recovered source archive, reference APK, and RAE report.
+- **evidenceos PR #1** exact head `7fbb4c83412e83882ea43df92532a346d524e00b`: EvidenceOS verification run 40999488401 succeeded. The incomplete-scan fix remains unmerged. The non-loopback HTTP authentication boundary in `src/server.js` remains a separate follow-up; PR #1 owns that file, so no concurrent edit was made.
+
+### Next prioritized work
+
+1. Recheck Worker B's PR #213 after the second-reload private-start test flow is corrected; verify the full browser journey and ensure the failure artifact or diagnostics are actually retained.
+2. Extend issue #17 acceptance to the **pre-rename process-death** window. The current PR #205 test covers post-rename/pre-directory-sync only; do not claim complete crash-window coverage yet.
+3. Design the narrowest verifier-to-server integration for PR #203 without creating, reading, provisioning, or rotating real Founder keys. Require a separately controlled signing operation and keep Founder decisions reserved.
+4. Reconcile PR #205's `game/server.mjs` shutdown change with PR #213's service-worker routes on a combined validation head before review/merge.
+5. After EvidenceOS PR #1 settles, enforce an explicit loopback-only or authenticated non-loopback HTTP configuration contract with tests.
+6. Recover the missing APK/source/report inputs before claiming full ngl-mesh RAE integration.
+
+### Authority boundary
+
+No merge, release, deployment, branch deletion, workflow dispatch, secret/key/credential change, permission change, spending, or external service operation occurred. No changes were made to `main`. PR #205 and PR #210 remain open/unmerged; PR #213 remains open/draft with one failing browser check.
