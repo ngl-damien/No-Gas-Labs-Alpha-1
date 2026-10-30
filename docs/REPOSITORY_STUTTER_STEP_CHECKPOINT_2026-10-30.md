@@ -1155,3 +1155,9 @@ No merge, release, deployment, branch deletion, permission/credential/key operat
 5. Keep main branch protection/ruleset review separate; no permission or protection settings were changed.
 
 No merge, release, deployment, branch deletion, permission/credential/key operation, spending, provider call, workflow dispatch, or external announcement occurred in this run.
+
+
+### Run 12 final verification update — 2026-10-30 UTC
+- EvidenceOS PR #1 final head eea29797c80bab41428476ca7ba9f519b43b742e completed hosted run [41125011030](https://github.com/ngl-damien/evidenceos/actions/runs/41125011030): **success**. Exact log shows Node 22.23.4 test runner **12 passed, 0 failed**, including the new test rejecting a recursive Git tree response with no explicit truncation/completeness flag. All five JavaScript entry-point syntax checks passed.
+- Alpha 1 PR #227 was rechecked at head 8370920d45accb9209ca6e6da3d2605ed2d22f9e. Its Verify, Genesis, and Browser Acceptance runs remain successful; browser job completed the 13-journey exercise and preserved artifact 13010180880. The integrated character-sheet source imports getLocationAction and contains no duplicate GUIDE_LOCATIONS set, confirming that the #226 branch edit is superseded rather than needed in #227.
+- Checkpoint update commit d46be95c6e72328ee634490c9e25cbda388ffe49 triggered Verify [41125220403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220403), Genesis [41125220238](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220238), and Browser Acceptance [41125220197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41125220197). These were queued at the final status read; do not count them as passed until rechecked.
