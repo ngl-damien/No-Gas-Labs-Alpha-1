@@ -442,3 +442,10 @@ Updated draft ngl-mesh PR #1 on `security/pin-relay-operator-key-20261026`.
 5. Continue read-only classification of the 463 branch refs; do not delete branches or change protection/permissions without Founder authorization.
 
 No merge, deployment, release, branch deletion, workflow dispatch, spending, external publication, credential/key change, or permission change occurred in this run.
+
+
+### Follow-up — Gitless Forge credential coverage
+- PR #216 advanced to `0788923a096ab329ae873d4229ac6656aeb6a929`.
+- Added three service-account / cloud credential JSON fixtures to the Gitless public-source snapshot regression. The same exclusion function is exercised for Git-backed and Gitless snapshots.
+- Exact-head Verify `124012244500` and world-projection `124012376231` passed. Playable-world `124012823662` was still in progress at this checkpoint; do not count the earlier cancelled run as a failure or a pass.
+- The previous Forge head `e66114a5e857d9cdc3b146e2bc160d150c73eb26` had all three checks pass. The new head's Playable-world check remains pending.
