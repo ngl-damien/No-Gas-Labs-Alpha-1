@@ -354,7 +354,7 @@ function worldEntry(event, index, creations, notes) {
       : "REJECTED · PRESERVED";
     entry.title = `Collaborator response preserved · ${role} · ${status}`;
     entry.category = "GUILD HALL";
-    entry.summary = "An actor-attributed external response and its exact source packet were preserved. Structural/scope validation does not establish truth, evidence, execution, approval, mastery or authority.";
+    entry.summary = "An actor-attributed pasted collaborator response and its exact source packet were preserved. Structural/scope validation does not establish truth, evidence, execution, approval, mastery or authority.";
     entry.detail = [
       `Moonshot: ${text(event?.moonshotId) || "not identified"}`,
       `Source events: ${Array.isArray(event?.sourceEventIds) ? event.sourceEventIds.join(", ") : "not identified"}`,
