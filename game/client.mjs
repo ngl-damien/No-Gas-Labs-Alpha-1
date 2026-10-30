@@ -340,7 +340,7 @@ function appendContradictionClerk(content){
 }
 function appendCollaboratorContracts(content, sourceWorld){
   content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR CONTRACTS'}));
-  content.append(paragraph('Prepare source-bound work packets for an external AI collaborator. This does not call a model or change the world. Returned text remains untrusted even after structural validation. Archiving preserves its exact bytes and source packet; it does not endorse claims.','form-help'));
+  content.append(paragraph('Prepare source-bound work packets for an external AI collaborator. Preparing or copying does not call a model or change the world. Only the explicit archive action appends an attributed record. Pasted text remains untrusted even after structural validation; archiving preserves its exact bytes and source packet without endorsing claims.','form-help'));
   const packets=projectCollaboratorPackets(sourceWorld);
   for(const packet of packets){
     const card=node('article',{class:'field-card','data-collaborator-role':packet.id},[
@@ -372,7 +372,7 @@ function appendCollaboratorContracts(content, sourceWorld){
       ]);
       const responseField=node('textarea',{rows:'8','aria-label':packet.name+' response JSON',placeholder:'Paste the external collaborator JSON response.'});
       responseDetails.append(responseField);
-      const responseStatus=paragraph('External output remains untrusted. Validation checks structure and packet references only.','form-help');
+      const responseStatus=paragraph('Pasted output remains untrusted. Validation checks structure and packet references only.','form-help');
       responseStatus.setAttribute('data-collaborator-response-status',packet.id);
       const responsePreview=node('pre',{class:'collaborator-response-preview','data-collaborator-response-preview':packet.id});
       card.append(responseDetails);
@@ -431,7 +431,7 @@ function openForge(){
 function openEvidenceArchive(){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, and exact external collaborator packets and responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
@@ -569,7 +569,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
       node('textarea',{readonly:'',rows:'8','aria-label':'Archived collaborator packet',value:entry.packetJson})
     ]);
     const responseDetails=node('details',{class:'collaborator-response'},[
-      node('summary',{text:'Inspect exact returned response'}),
+      node('summary',{text:'Inspect exact pasted response'}),
       node('textarea',{readonly:'',rows:'8','aria-label':'Archived collaborator response',value:entry.responseText})
     ]);
     card.append(packetDetails,responseDetails,button('Open related Moonshot →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
