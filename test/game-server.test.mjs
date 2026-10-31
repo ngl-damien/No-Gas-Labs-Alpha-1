@@ -394,10 +394,10 @@ test('existing Founder key files fail closed when UID verification is missing, t
     const dataDir = await mkdtemp(join(tmpdir(), `ngl-key-owner-${label}-`));
     t.after(() => rm(dataDir, { recursive: true, force: true }));
     const keyPath = join(dataDir, 'founder.key');
-    await writeFile(keyPath, KEY + '\\n');
+    await writeFile(keyPath, KEY + '\n');
     await chmod(keyPath, 0o600);
     const preload = join(dataDir, 'uid-override.mjs');
-    await writeFile(preload, override + '\\n');
+    await writeFile(preload, override + '\n');
     const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir };
     delete env.NGL_FOUNDER_KEY;
     const child = spawn(process.execPath, ['--import', preload, 'game/server.mjs'], {
@@ -412,7 +412,7 @@ test('existing Founder key files fail closed when UID verification is missing, t
     assert.equal(signal, null, `${label} UID lookup must fail before the server starts: ${output}`);
     assert.equal(code, 1, `${label} UID lookup must fail startup: ${output}`);
     assert.match(output, /Local world startup failed/);
-    assert.equal(await readFile(keyPath, 'utf8'), KEY + '\\n', 'The existing key must not be replaced or regenerated');
+    assert.equal(await readFile(keyPath, 'utf8'), KEY + '\n', 'The existing key must not be replaced or regenerated');
   }
 });
 
