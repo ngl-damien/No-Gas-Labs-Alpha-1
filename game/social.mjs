@@ -35,9 +35,47 @@ export function hiddenCommonsMessageIds(world) {
  * Posts are conversation, not evidence, approval, authority, XP, or verified work.
  * Reports are visible only to their author and the authenticated Founder.
  */
-export function projectTownSquare(world, viewer) {
+function commonsActorKey(actor) {
+  return actor && typeof actor.id === 'string' && actor.id &&
+    ['founder', 'witness'].includes(actor.role)
+    ? JSON.stringify([actor.id, actor.role])
+    : null;
+}
+
+function normalizeMutedAuthors(value, viewer) {
+  if (!Array.isArray(value)) return [];
+  const viewerKey = commonsActorKey(viewer);
+  const seen = new Set();
+  const result = [];
+  for (const candidate of value.slice(0, 100)) {
+    if (!candidate || typeof candidate.id !== 'string' || !candidate.id.trim() ||
+        Array.from(candidate.id).length > 128 ||
+        !['founder', 'witness'].includes(candidate.role) ||
+        typeof candidate.name !== 'string' || !candidate.name.trim() ||
+        Array.from(candidate.name).length > 80) continue;
+    const key = JSON.stringify([candidate.id, candidate.role]);
+    if (key === viewerKey || seen.has(key)) continue;
+    seen.add(key);
+    result.push(Object.freeze({
+      id: candidate.id, role: candidate.role, name: candidate.name
+    }));
+  }
+  return result;
+}
+
+/**
+ * A bounded, read-only projection of the append-only Commons history.
+ * Posts are conversation, not evidence, approval, authority, XP, or verified work.
+ * Reports are visible only to their author and the authenticated Founder.
+ * Device-local mutes filter only this viewer's presentation; they never mutate
+ * shared history, suppress another player's feed, or create a world event.
+ */
+export function projectTownSquare(world, viewer, options = {}) {
   const events = eventsOf(world);
   const founder = viewer?.role === 'founder';
+  const viewerKey = commonsActorKey(viewer);
+  const mutedAuthors = normalizeMutedAuthors(options?.mutedAuthors, viewer);
+  const mutedKeys = new Set(mutedAuthors.map(commonsActorKey));
   const latest = latestModerationRecords(world);
   const posts = [];
   const postsById = new Map();
@@ -60,34 +98,43 @@ export function projectTownSquare(world, viewer) {
     }
   }
 
-  const messages = posts.slice(-50).reverse().map(({ event }) => {
-    const moderation = latest.get(event.messageId);
-    const hidden = moderation?.event.disposition === 'hide';
-    const messageReports = reportsByMessage.get(event.messageId) || [];
-    const lastModerationIndex = moderation?.index ?? -1;
-    const pendingReportCount = founder
-      ? messageReports.filter(report => report.index > lastModerationIndex).length
-      : 0;
-    const reportedByMe = messageReports.some(report => report.event.actor?.id === viewer?.id);
-    return {
-      messageId: event.messageId,
-      eventId: event.id,
-      text: hidden && !founder
-        ? 'This message was hidden after human review.'
-        : event.text,
-      hidden,
-      author: {
-        id: event.actor?.id ?? '',
-        name: event.actor?.name ?? 'Unknown actor',
-        role: event.actor?.role ?? 'unknown'
-      },
-      at: event.at,
-      reportCount: founder ? messageReports.length : 0,
-      pendingReportCount,
-      canReport: !hidden && event.actor?.id !== viewer?.id && !reportedByMe,
-      moderationReason: moderation?.event.reason ?? null
-    };
-  });
+  const recentPosts = posts.slice(-50).reverse();
+  const mutedMessageCount = recentPosts.filter(({ event }) =>
+    mutedKeys.has(commonsActorKey(event.actor))
+  ).length;
+  const messages = recentPosts
+    .filter(({ event }) => !mutedKeys.has(commonsActorKey(event.actor)))
+    .map(({ event }) => {
+      const authorKey = commonsActorKey(event.actor);
+      const moderation = latest.get(event.messageId);
+      const hidden = moderation?.event.disposition === 'hide';
+      const messageReports = reportsByMessage.get(event.messageId) || [];
+      const lastModerationIndex = moderation?.index ?? -1;
+      const pendingReportCount = founder
+        ? messageReports.filter(report => report.index > lastModerationIndex).length
+        : 0;
+      const reportedByMe = messageReports.some(report => report.event.actor?.id === viewer?.id);
+      return {
+        messageId: event.messageId,
+        eventId: event.id,
+        text: hidden && !founder
+          ? 'This message was hidden after human review.'
+          : event.text,
+        hidden,
+        author: {
+          id: event.actor?.id ?? '',
+          name: event.actor?.name ?? 'Unknown actor',
+          role: event.actor?.role ?? 'unknown'
+        },
+        at: event.at,
+        reportCount: founder ? messageReports.length : 0,
+        pendingReportCount,
+        canReport: !hidden && event.actor?.id !== viewer?.id && !reportedByMe,
+        canMute: !hidden && Boolean(authorKey) && authorKey !== viewerKey &&
+          !mutedKeys.has(authorKey),
+        moderationReason: moderation?.event.reason ?? null
+      };
+    });
 
   const pending = founder ? reports.filter(report => {
     const moderation = latest.get(report.event.messageId);
@@ -117,9 +164,11 @@ export function projectTownSquare(world, viewer) {
 
   return {
     messages,
+    mutedAuthors,
+    mutedMessageCount,
     pendingReports,
     totalMessages: posts.length,
-    omittedMessageCount: Math.max(0, posts.length - messages.length),
+    omittedMessageCount: Math.max(0, posts.length - recentPosts.length),
     pendingReportTotal: pending.length,
     omittedPendingReportCount: Math.max(0, pending.length - pendingReports.length),
     canPost: true,
