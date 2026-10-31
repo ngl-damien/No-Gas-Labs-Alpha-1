@@ -1277,3 +1277,72 @@ test('field loadout writes an idempotent actor-owned event without awarding XP',
   assert.equal((await witnessClient.request('/api/action',{type:'unequip-field-item',slotId:'not-a-slot'})).response.status,400);
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
 });
+
+
+test('Commons shared posts are idempotent, reports are private, and Founder moderation preserves history without XP', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const other = f.client();
+
+  const witnessPostAction = { type: 'post-message', text: 'Witness hello.', requestId: 'commons-witness-post-001' };
+  const firstPost = await witness.request('/api/action', witnessPostAction);
+  assert.equal(firstPost.response.status, 200, JSON.stringify(firstPost.body));
+  assert.equal(firstPost.body.idempotentReplay, false);
+  const replay = await witness.request('/api/action', witnessPostAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.messageId, firstPost.body.result.messageId);
+
+  const founderPost = await founder.request('/api/action', {
+    type: 'post-message', text: 'Founder message for a moderation fixture.', requestId: 'commons-founder-post-001'
+  });
+  assert.equal(founderPost.response.status, 200, JSON.stringify(founderPost.body));
+  const messageId = founderPost.body.result.messageId;
+
+  const report = await witness.request('/api/action', {
+    type: 'report-message', messageId, reason: 'privacy', details: 'Fixture-only private report detail.',
+    requestId: 'commons-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  const secondReport = await other.request('/api/action', {
+    type: 'report-message', messageId, reason: 'other', details: 'Second reporter fixture detail.',
+    requestId: 'commons-report-002'
+  });
+  assert.equal(secondReport.response.status, 200, JSON.stringify(secondReport.body));
+
+  const witnessState = await witness.request('/api/state');
+  const witnessReports = witnessState.body.world.events.filter(event => event.type === 'message-reported');
+  assert.equal(witnessReports.length, 1);
+  assert.equal(witnessReports[0].actor.id, witnessState.body.viewer.id);
+  assert.equal(JSON.stringify(witnessState.body).includes('Second reporter fixture detail.'), false);
+  const denied = await witness.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy', requestId: 'commons-witness-hide-001'
+  });
+  assert.equal(denied.response.status, 403);
+
+  const hidden = await founder.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy', requestId: 'commons-founder-hide-001'
+  });
+  assert.equal(hidden.response.status, 200, JSON.stringify(hidden.body));
+  const publicState = await witness.request('/api/state');
+  const publicPost = publicState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId);
+  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(JSON.stringify(publicState.body).includes('Founder message for a moderation fixture.'), false);
+  assert.equal(publicState.body.world.xp, 0);
+
+  const founderState = await founder.request('/api/state');
+  const retainedPost = founderState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId);
+  assert.equal(retainedPost.text, 'Founder message for a moderation fixture.');
+  assert.equal(founderState.body.world.events.filter(event => event.type === 'message-reported').length, 2);
+  assert.equal(founderState.body.world.events.find(event => event.type === 'message-moderated').actor.id, 'damien');
+  assert.equal(founderState.body.world.xp, 0);
+
+  const restored = await founder.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'restore', reason: 'other', requestId: 'commons-founder-restore-001'
+  });
+  assert.equal(restored.response.status, 200, JSON.stringify(restored.body));
+  const restoredPublicState = await witness.request('/api/state');
+  assert.equal(restoredPublicState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId).text, 'Founder message for a moderation fixture.');
+});

@@ -71,8 +71,8 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
-test('the playable map exposes all eight institutional functions as real destinations',()=>{
- const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+test('the playable map exposes all nine institutional functions as real destinations',()=>{
+ const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','commons','academy','moonshot_field','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
@@ -112,13 +112,14 @@ test('institution activity labels are deterministic projections of uniquely iden
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
   {id:'e-report',type:'report'},{id:'e-decision',type:'decision'},{id:'e-contribute',type:'contribute'},
-  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'}
+  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'},{id:'e-commons-post',type:'message-posted'},{id:'e-commons-report',type:'message-reported'},{id:'e-commons-mod',type:'message-moderated'}
  ]};
  assert.equal(institutionActivityCount('guild_hall',world),1);
  assert.equal(institutionActivityCount('forge',world),3,'Forge includes publication as the final artifact-lifecycle step');
  assert.equal(institutionActivityCount('evidence_archive',world),3,'archive includes contributions, reports and retained publications');
  assert.equal(institutionActivityCount('decision_chamber',world),1);
  assert.equal(institutionActivityCount('town-square',world),2,'TownSquare includes contributions and public reports');
+ assert.equal(institutionActivityCount('commons',world),3,'The Commons counts retained posts, reports, and moderation decisions.');
  assert.equal(institutionActivityCount('academy',world),1);
  assert.equal(institutionActivityCount('moonshot_field',world),1);
  assert.equal(institutionActivityCount('publication_house',world),1);
