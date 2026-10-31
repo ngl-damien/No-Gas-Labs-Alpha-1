@@ -250,8 +250,32 @@ async function unlinkOwnedLock(path, identity) {
   return true;
 }
 
+// Verify that a pathname still names the lock inode opened by this process.
+// This catches replacement before/after hard-link publication; it cannot make
+// the subsequent unlink atomic against a hostile same-UID process.
+async function assertOwnedLockPath(path, identity, label) {
+  let current;
+  try { current = await lstat(path); }
+  catch (error) {
+    if (error.code === 'ENOENT') {
+      throw storeReadError('SERVICE_LOCK_CHANGED', `${label} disappeared while publishing the writer lease`);
+    }
+    throw error;
+  }
+  if (current.isSymbolicLink() || !current.isFile() ||
+      current.dev !== identity.dev || current.ino !== identity.ino) {
+    throw storeReadError('SERVICE_LOCK_CHANGED', `${label} no longer refers to this process's writer lease`);
+  }
+  if ((current.mode & 0o077) !== 0) {
+    throw storeReadError('SERVICE_LOCK_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other access (0600)`);
+  }
+  if (current.uid !== currentProcessUid('SERVICE_LOCK')) {
+    throw storeReadError('SERVICE_LOCK_OWNER_MISMATCH', `${label} must be owned by the current process user`);
+  }
+}
+
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
-export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory }) {
+export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory, linkFile = link }) {
   dataDir = resolve(dataDir);
   await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -269,8 +293,9 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     await lease.writeFile(canonicalStringify({ schema: 'ngl.service-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lease.sync();
     await assertPrivateDirectory(dataDir, directoryIdentity);
+    await assertOwnedLockPath(lockTemporaryPath, leaseIdentity, 'Service writer lock temporary path');
     try {
-      await link(lockTemporaryPath, lockPath);
+      await linkFile(lockTemporaryPath, lockPath);
       lockPublished = true;
     } catch (error) {
       if (error.code === 'EEXIST') {
@@ -278,11 +303,15 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       }
       throw error;
     }
-    await unlink(lockTemporaryPath);
+    await assertOwnedLockPath(lockPath, leaseIdentity, 'Service writer lock path');
+    await assertOwnedLockPath(lockTemporaryPath, leaseIdentity, 'Service writer lock temporary path');
+    if (!await unlinkOwnedLock(lockTemporaryPath, leaseIdentity)) {
+      throw storeReadError('SERVICE_LOCK_CHANGED', 'Service writer lock temporary path changed before cleanup');
+    }
     await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
     await lease?.close().catch(() => {});
-    await unlink(lockTemporaryPath).catch(() => {});
+    await unlinkOwnedLock(lockTemporaryPath, leaseIdentity).catch(() => {});
     if (lockPublished) await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
     throw error;
   }
