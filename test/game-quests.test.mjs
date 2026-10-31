@@ -557,14 +557,16 @@ test('main quest ignores fabricated and foreign objective arrays', () => {
 });
 
 
-test('an empty objective list does not imply that the current quest trail is complete', () => {
+test('an empty caller-supplied trail is recomputed and cannot imply completion', () => {
   const founderWorld = {
     creations: [{ id: 'first' }, { id: 'second' }],
     discoveries: [{ actor: founder, locationId: 'relay' }],
-    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }],
+    events: []
   };
+  const firstUnfinished = getQuestTrail(founderWorld, founder).find(item => !item.complete);
   const quest = getActiveQuest(founderWorld, founder, []);
-  assert.equal(quest.id, 'founder-connect');
+  assert.equal(quest.id, firstUnfinished.id, 'an untrusted empty array cannot hide or fabricate the retained objective trail');
   assert.notEqual(quest.id, 'founder-current-trail-recorded');
 });
 
