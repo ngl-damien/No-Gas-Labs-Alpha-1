@@ -1350,3 +1350,57 @@ No merge, release, deployment, workflow dispatch, branch deletion, credential/se
 4. Continue reviewing Worker B's #227/#229 stack for integration blockers without duplicating owned gameplay/server files.
 5. Reproduce the ngl-mesh Relay/RAE bridge from the current pinned inputs, then pursue Android/device acceptance only when the full source/toolchain and device evidence are available.
 6. Design the Issue #22 hybrid-cognition comparison as a preregistered falsifiable experiment; do not describe superiority as established before independent scoring.
+
+
+## Worker A stutter-step run — 2026-10-31 UTC (bounded Command Center health probes)
+
+### Rehydration and Alpha 1 authority state
+- Read Alpha 1 root `AGENTS.md` first and the complete canonical shared protocol second, before Alpha 1 inventory or source inspection. Root instruction blob: `c94f9cf4d922699908971a00a9a502cd179187b9`; protocol blob: `a1bd788885865c887ae0fc64b1718c30ce040556`.
+- Alpha 1 main remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. Fresh PR search returned **57 open PRs**; fresh issue search returned **2 open issues (#17, #22)**.
+- Re-read current main `src/authority/decision.js` (blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b`): the legacy `authorizationEvent()` still accepts caller-supplied `verification.valid`. PR #203 remains the isolated sealed-verifier proposal at `47029ebe5993736111ba23a4fb10cf61cf698f73`; exact-head Verify `41152198910`, Genesis `41152198885`, and Browser Acceptance `41152198969` all passed. It is still draft/unmerged and not wired into live `game/server.mjs`.
+- Issue #17 still records that the original PR #16 self-signing `demonstrate()` finding was superseded by merged PR #18's detached Ed25519 INSTALL signature. Remaining acceptance is real key custody/identity, concurrency, crash/stale-lock recovery, and integration. No Founder key was generated, enrolled, or handled.
+- Latest Worker B result: PR #227 head `26c05fd047c072d4192c2f707a3b0c51ead8ca5b`; Verify `41155521218`, Genesis `41155521203`, and Browser Acceptance `41155521238` passed; browser suite recorded 13/13 journeys. The new eight-slot field kit is a read-only projection of retained activity, not canonical item ownership, player equip/unequip, trade, combat, or stat bonuses; G4 remains partial. PR #229's completion/agent contract checks also passed but remain draft/unmerged.
+- No Alpha 1 gameplay, authority, or server code was changed. Active PR #222/#223/#225/#227 server/client ancestry remains owned by the MMORPG worker; no duplicate edits were made.
+
+### Cycle A — reject false-positive Node-Gate health
+- Source defect: `NodeGateClient.health()` parsed JSON without checking `response.ok`. A non-success HTTP response whose body claimed `status: "OPERATIONAL"` could be treated as a healthy upstream by the capability endpoint.
+- Updated existing Command Center PR #3 branch `fix/command-center-dev-api-proxy-20261030-r2`. Implementation commit: `b3b254223065090fef61db0fa719bcb39424c9f5`. Added a regression test in `565c567f6e0cd349824b9e396290ab6d6b01746c`.
+
+### Cycle B — bound health probes and preserve the failed test attempt
+- Added a 3,000 ms default timeout to Node-Gate and EvidenceOS health requests, configurable only within 1–30,000 ms. Both use `AbortSignal.timeout()`; Node-Gate also now rejects non-2xx health responses with a typed upstream error.
+- Implementation commits: `a26253c4472550f2d718a79b27782d76d7eb6fd4` (Node-Gate timeout), `f6513d303b1ffba1c51eb94ec27a473380123040` (EvidenceOS timeout).
+- The first combined test head `99566dbb9489a339fcc48865ca45e356840fb6df` failed: **29 passed, 1 failed** because the success-path test still expected fetch to receive only a URL, while the new implementation correctly passed an abort-signal options object. This was a test expectation defect, not a probe implementation failure. Corrected in `57eb85a5214ed281754f3a0c80b45a93c47636b4`; the failed run is preserved here rather than counted as green.
+
+### Cycle C — probe both upstreams concurrently
+- Added `server/capability-health.ts` to start both upstream health probes concurrently, preserve independent per-upstream failures, retain each probe's completion timestamp, and classify malformed successful health bodies as DEGRADED rather than OPERATIONAL.
+- Added deterministic tests for concurrent start, independent outage handling, and malformed health bodies.
+- Wired `GET /api/capabilities` in `server/index.ts` to the helper. The per-client timeout bounds each probe; a stalled Node-Gate request no longer prevents the EvidenceOS probe from starting.
+- Commits: `a9e9ba3937aa31bc4078f361bc1e53a9e8c2b85d` (helper), `b0118a9096c494b2d95ab27df3c9cfae3f1fcfd7` (tests), `5188e7b3f10db008f82ae1ea5188714a13f1df07` (route integration).
+- Changed paths: `server/node-gate-client.ts`, `server/evidenceos-client.ts`, `server/node-gate-client.test.ts`, `server/capability-health.ts`, `server/capability-health.test.ts`, and `server/index.ts`.
+
+### Exact-head verification — Command Center PR #3
+- PR: https://github.com/ngl-damien/no-gas-labs-command-center/pull/3
+- Branch: `fix/command-center-dev-api-proxy-20261030-r2`
+- Final exact head: `5188e7b3f10db008f82ae1ea5188714a13f1df07`; PR remains **draft/open/unmerged**.
+- CI run `41157498782`: success. Node 20 and Node 22 each passed **33/33 tests**, production build, and install/lint steps.
+- Core CI run `41157499101`: success. Node 20 and Node 22 each passed type-check, **33/33 tests**, and production build.
+- Security Core `41157498853`, Repo Classification `41157498843`, and agent-governance `41157498946`: success.
+- Hosted logs include a dependency-originated `url.parse()` deprecation warning; no failing check resulted. No local test execution, live Node-Gate/EvidenceOS smoke test, or deployment is claimed.
+
+### Linked repository state rechecked
+- EvidenceOS PR #1 remains open/draft at `eea29797c80bab41428476ca7ba9f519b43b742e`; verification run `41125011030` passed (12 tests). PR #2 remains open/draft at `c19bdf9c230e1d0bd5f54ad5dea050bd33705292`, still based on the older PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b`; verification `41084314765` passed (23 tests). Both touch `src/server.js`; do not merge or rebase blindly. EvidenceOS root `AGENTS.md` returned 404; no EvidenceOS code was modified.
+- ngl-mesh PR #1 remains open/draft at `81536604a8473b8d698aa4c5d752c7d5426dab7d`; Relay operator-key trust `41041610180` and agent-governance `41041610303` passed. PR #3 remains open/draft at `7847c0fd7eb334d4bed726f12703567bdff9de42`; Relay bridge input-contract `41110544604` and agent-governance `41110544499` passed. Full APK/RAE reproduction, Android rebuild, physical-device validation, and live provider integration remain unverified.
+
+### Procedural compliance, limits, and authority
+- Alpha 1 root instructions and the complete canonical protocol were read sequentially before Alpha 1 inspection. Command Center root `AGENTS.md` was read before its source inspection/edits; its canonical shared protocol had already been read. ngl-mesh root `AGENTS.md` was read before source inspection; no ngl-mesh edits occurred. EvidenceOS root instructions were unavailable (404); no EvidenceOS edits occurred.
+- Alpha 1 and Command Center code-search attempts found no nested `AGENTS.md` applicable to the paths changed. No Alpha 1 source code was changed; only this checkpoint artifact was advanced.
+- All reported green results are hosted GitHub Actions on the exact stated heads. No local checkout/test or live cross-service smoke test occurred.
+- No merge, release, deployment, workflow dispatch, branch deletion, credential/secret/key/permission change, spending, provider call, or external publication occurred.
+
+### Next ranked actions
+1. **Founder authorization:** decide the canonical trust/key-custody model (Ed25519 INSTALL versus P-256 decision signing) and provide independently controlled key-custody evidence before any live-server integration. Keep PR #203 draft; do not generate or enroll a key for Damien.
+2. **EvidenceOS stack:** reconcile PR #2 onto current PR #1 head with a reviewed three-way diff of `src/server.js`, then rerun exact-head verification.
+3. **Command Center:** perform a real local smoke test with Node-Gate and EvidenceOS running; verify both health probes, API proxy behavior, timeout behavior, and graceful shutdown. No deployment.
+4. **MMORPG:** continue from Worker B's PR #227 field-kit handoff only after the active server stack is reconciled; the next G4 slice requires a server-validated, event-backed non-combat equipment choice and actor ownership/idempotency.
+5. **ngl-mesh:** recover the pinned source archive, reference APK, and fresh RAE report before full bridge reproduction or Android/device acceptance.
+6. **Hybrid cognition:** turn Issue #22 into a preregistered falsifiable comparison; do not claim multi-model superiority before independent scoring.
