@@ -158,7 +158,7 @@ function openCharacterSheet(){const record=currentCharacterRecord||projectCharac
       toast('Loadout selection recorded. No XP or combat statistics changed.');
       openCharacterSheet();
     }),{class:'list-button','data-equip-button':slot.id}));
-client move reset control    if(slot.choicesOmittedCount>0)children.push(paragraph('Showing '+slot.choices.length+' source options; '+slot.choicesOmittedCount+' older or unlisted options are omitted from this selector.','form-help'));
+    if(slot.choicesOmittedCount>0)children.push(paragraph('Showing '+slot.choices.length+' source options; '+slot.choicesOmittedCount+' older or unlisted options are omitted from this selector.','form-help'));
   }
   if(slot.mode==='pinned'||slot.mode==='unequipped')children.push(button('Use newest source',guarded(async()=>{
     await act({type:'equip-field-item',slotId:slot.id,sourceEventId:null});
