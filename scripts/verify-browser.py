@@ -643,6 +643,7 @@ def shared(browser,url,data,out):
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
         # The character's field satchel is a navigable projection of the exact retained dissent event.
+        close_sheet(a)
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
