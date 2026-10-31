@@ -113,3 +113,61 @@ Also inspected PR #227 (Questkeeper + snapshot-safe reads + Moonshot flow), whos
 2. Reconcile PR #228's overlapping governance change; do not merge either proposal without full diff/base review and explicit Founder authorization.
 3. Worker B: perform the G0–G9 baseline audit and maintain the ledger while continuing the highest-value game delivery work.
 4. Worker A: resume institution-wide reliability work only after checking the new ledger for cross-cutting blockers; do not duplicate Worker B's game implementation.
+
+
+## Repository Stutter-Step run — 2026-10-31 UTC (Worker A)
+
+### Rehydration and fresh evidence
+
+- Read current Alpha-1 root `AGENTS.md` alone first, then the complete canonical shared protocol alone second. Read the current MMORPG completion contract, ledger, and durable bootstrap checkpoint. The connector-only session had no repository checkout, so local `npm run agent:preflight` and local tests were unavailable; no local receipt or test pass is claimed.
+- Current Alpha-1 `main`: `93bc9157dca95f7d4f552a88e8570823b30c11aa`. Exact-main hosted workflows passed: Verify run **41173616029**, Genesis Evidence Invariant **41173616027**, Browser Acceptance **41173616025**.
+- Latest Worker B automation result inspected (run `7776c93b-4a94-8326-a1f5-386419d27efc`): PR #243 head `fbf9b01c61f291db8abd2cf774df06dfea12ece9`, stacked on PR #227 head `4f7b2f97cf2b5d2f109822bfb70207ffdd57132b`; Verify **41192699576**, Genesis **41192699661**, Browser Acceptance **41192699569** all passed, with 15/15 browser journeys. PR #243 changes server/client/social and tests, not `game/service-store.mjs`. Worker B's next player-facing target is the in-world Guild Hall expedition board; no duplicate gameplay implementation was started.
+- PR #244 is the current-main transplant for helper-level Founder decision sealing/context binding, draft and unmerged at `90d9a04bf28bcd641dc4e2c6fa287b9f534774d9`; its exact-head Verify **41192611281**, Genesis **41192611309**, and Browser Acceptance **41192611368** passed. It is not live `game/server.mjs` integration and does not establish real Founder identity/key custody.
+- The original PR #16 is closed unmerged; PR #18 is merged as `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. Current-main source still pins `NGL_FOUNDER_KEY_FINGERPRINT` at module import and rejects caller-selected fingerprints. Issue #17 remains open for separately controlled Founder key custody, concurrency/crash recovery, and live integration. Do not reimplement the already-integrated PR #16 fix.
+- Nested `game/AGENTS.md` and `test/AGENTS.md` probes returned 404 on the selected base branch. No edits were made under `.github`.
+
+### Ranked objective and challenge
+
+1. **Selected:** fail closed in the standalone service-store when current-user ownership cannot be established. Current `game/service-store.mjs` had three conditional checks that silently skipped ownership comparison when `process.getuid` was absent: data-directory ownership, persisted-envelope path ownership, and opened-file descriptor ownership. This remains distinct from Worker B's server-level check in PR #243.
+2. **Not duplicated:** PR #244 owns the active sealed Founder-decision helper transplant; PR #241 owns offline signer and lock-inspector UID hardening. Both are separate active branches.
+3. **Not duplicated:** Worker B owns the Guild Hall expedition board and the active PR #227/#243 gameplay stack.
+
+Immediately before editing, rechecked main, PR #243/#227, PR #244, and the changed-file lists. Neither PR #243 nor PR #244 changes `game/service-store.mjs`; PR #241 does not change that file either. The new branch is based on PR #244 so its improved byte-exact scoped preflight can verify this target. PR #241 and PR #244 both independently modify `package.json` and `test/agent-governance.test.mjs`; consolidate their preflight-target additions before any future merge.
+
+### Implementation on a safe dependent branch
+
+- Branch: `security/service-store-owner-verification-20261031`
+- Base: PR #244 head `90d9a04bf28bcd641dc4e2c6fa287b9f534774d9` (itself based on current main).
+- Source commit: `2219c197bd9983b774e8d3b091841be6efefa7cb` — add a fail-closed UID verifier; missing, throwing, or invalid UID lookup now raises structured errors rather than skipping owner checks. Apply it to directory, persisted-envelope path, and opened descriptor ownership checks.
+- Regression commit: `e8ece9a73d93a192035170d99ff8122dfe919e14` — add child-process tests for unavailable/throwing/invalid UID and failures at persisted-envelope path/descriptor checks.
+- Fixture correction: `7f1bdbfe53cd384cbcec30d7b29c368f644d43e9` — correct the newline written to child-process preload modules after source review.
+- Scoped preflight commit: `2188027b7e5e50fd2d841763f1f1005331c4cdc5` — include `game/service-store.mjs` and `test/service-store-durability.test.mjs` in `agent:preflight:ci`.
+- Governance regression commit: `14daaca81be0c34f18343eec35798e46719179c6` — require both paths to remain in the scoped preflight list.
+- Changed paths: `game/service-store.mjs`, `test/service-store-durability.test.mjs`, `package.json`, `test/agent-governance.test.mjs`.
+- Compare before this checkpoint append: 5 commits ahead / 0 behind PR #244 base. No force update or branch deletion.
+
+### Verification, risks, and limits
+
+- No local test or local portable-preflight execution is claimed. The PR will trigger hosted Verify, Genesis Evidence Invariant, and Browser Acceptance; report only exact-head results after observing them.
+- The tests exercise fail-closed startup before lock publication and release of an acquired writer lock when later owner verification fails. A passing test proves only those paths; it does not eliminate filesystem TOCTOU risks.
+- Standard Windows Node lacks `process.getuid`; this store now intentionally fails closed there until an ACL-aware owner verifier is implemented. This is a compatibility limitation, not a Windows test result.
+- Existing symlink/path checks remain best-effort, not an atomic `openat` boundary.
+- No key material was read/generated/enrolled. No merge, release, deployment, external publication, spending, credential/permission change, or branch deletion occurred.
+
+### Linked-repository recheck
+
+- Command Center main remains `28a131ca0448c4fdd11b196ae6e2ae4549274698`. Draft PR #5 keeps the high-severity audit fail-closed and uploads machine-readable JSON; exact-head CI run **41190656532** failed only at the audit gate as intended. Its artifact reports 167 vulnerabilities: 5 critical, 56 high, 92 moderate, 14 low. No lockfile was changed because a real patched pnpm/lockfile regeneration environment was unavailable; do not hand-edit lockfile integrity data. Draft PR #3's dev API proxy/capability-health changes passed exact-head CI run **41192204493** (build), **41192204561** (build/test), and **41192204489** (security scan); it remains a worker-owned PR with older base ancestry.
+- ngl-mesh main remains `b4d17f38fab4a38cfd23bd17ef33016c844a63c1`. PR #1 operator-key/durable-marker checks and PR #3 strict UTF-8 report-import checks passed on their exact heads. The recovered-source archive, reference APK, and RAE report remain unavailable; full bridge/APK rebuild and device validation are not established. No Mesh source was changed.
+
+### Next actions
+
+1. Finish this dependent PR's exact-head hosted Verify/preflight, Genesis, and Browser checks; fix attributable failures and re-inspect the final diff.
+2. Keep this PR draft/unmerged. Reconcile the overlapping preflight path lists in PR #241 and PR #244 before any integration.
+3. Worker B: continue the Guild Hall expedition-board capability on its existing game stack; keep the G0–G9 ledger distinct between current main and proposed branches.
+4. Worker A: after this PR's checks, inspect the service-store and server owner-verification boundaries together for any remaining independent fail-open paths; do not invent an ACL-based Windows verifier.
+5. Command Center: regenerate the dependency lockfile with a real patched pnpm toolchain, then rerun frozen install/tests/build/audit. Mesh: resume full integration only when the missing recovered archive, reference APK, and RAE report are supplied.
+
+
+### Additional negative-path refinement — 2026-10-31 UTC
+
+After the first hosted Verify/Genesis passes, a review of the UID helper found two branches that deserved direct regression coverage: a throwing `process.getuid` property getter and a valid-but-mismatched current UID. Added both child-process cases in commit `451049ac6606a9660a46bc7ab329737ff652e7d1`. The directory-startup matrix now covers missing UID, throwing getter, throwing function, invalid UID, and mismatched UID; the persisted-envelope matrix still injects failure before path ownership comparison and after descriptor open, checking that the writer lock is released. The new commit invalidates the earlier exact-head CI results; rerun all three workflows on the updated PR head before reporting final verification.

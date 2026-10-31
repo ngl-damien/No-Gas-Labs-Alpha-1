@@ -23,6 +23,28 @@ function immutableSnapshot(value) {
 }
 const storeReadError = (code, message) => Object.assign(new Error(message), { code });
 
+function currentProcessUid(subject) {
+  // Private mode bits do not establish ownership. Missing or unreliable UID
+  // verification must fail closed; Windows needs a separate ACL-aware verifier.
+  let getuid;
+  try { getuid = process.getuid; }
+  catch {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_UNAVAILABLE`, `${subject} owner verification is unavailable`);
+  }
+  if (typeof getuid !== 'function') {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_UNAVAILABLE`, `${subject} owner verification is unavailable`);
+  }
+  let uid;
+  try { uid = getuid.call(process); }
+  catch {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_FAILED`, `${subject} owner verification failed`);
+  }
+  if (!Number.isSafeInteger(uid) || uid < 0) {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_INVALID`, `${subject} owner verification returned an invalid UID`);
+  }
+  return uid;
+}
+
 // Best-effort path walk: reject symlinked ancestors before recursive creation,
 // then validate the final directory's identity, owner and privacy. This is not
 // an atomic openat-style boundary against a hostile process racing path changes.
@@ -56,7 +78,7 @@ async function assertPrivateDirectory(path, expectedIdentity) {
   if ((stat.mode & 0o077) !== 0) {
     throw storeReadError('SERVICE_DIRECTORY_PERMISSIONS_TOO_BROAD', 'Service store directories must exclude group and other access (0700)');
   }
-  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+  if (stat.uid !== currentProcessUid('SERVICE_DIRECTORY')) {
     throw storeReadError('SERVICE_DIRECTORY_OWNER_MISMATCH', 'Service store directory must be owned by the current process user');
   }
   if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) {
@@ -81,7 +103,7 @@ async function readBoundedStoreEnvelope(path) {
   if ((before.mode & 0o077) !== 0) {
     throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
   }
-  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+  if (before.uid !== currentProcessUid('SERVICE_STORE')) {
     throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
   }
   if (before.size > MAX_SERVICE_STORE_BYTES) {
@@ -109,7 +131,7 @@ async function readBoundedStoreEnvelope(path) {
     if ((opened.mode & 0o077) !== 0) {
       throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
     }
-    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+    if (opened.uid !== currentProcessUid('SERVICE_STORE')) {
       throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
     }
     if (opened.size > MAX_SERVICE_STORE_BYTES) {
@@ -228,8 +250,32 @@ async function unlinkOwnedLock(path, identity) {
   return true;
 }
 
+// Verify that a pathname still names the lock inode opened by this process.
+// This catches replacement before/after hard-link publication; it cannot make
+// the subsequent unlink atomic against a hostile same-UID process.
+async function assertOwnedLockPath(path, identity, label) {
+  let current;
+  try { current = await lstat(path); }
+  catch (error) {
+    if (error.code === 'ENOENT') {
+      throw storeReadError('SERVICE_LOCK_CHANGED', `${label} disappeared while publishing the writer lease`);
+    }
+    throw error;
+  }
+  if (current.isSymbolicLink() || !current.isFile() ||
+      current.dev !== identity.dev || current.ino !== identity.ino) {
+    throw storeReadError('SERVICE_LOCK_CHANGED', `${label} no longer refers to this process's writer lease`);
+  }
+  if ((current.mode & 0o077) !== 0) {
+    throw storeReadError('SERVICE_LOCK_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other access (0600)`);
+  }
+  if (current.uid !== currentProcessUid('SERVICE_LOCK')) {
+    throw storeReadError('SERVICE_LOCK_OWNER_MISMATCH', `${label} must be owned by the current process user`);
+  }
+}
+
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
-export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory }) {
+export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory, linkFile = link, renameFile: renameFileFn = rename }) {
   dataDir = resolve(dataDir);
   await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -247,8 +293,9 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     await lease.writeFile(canonicalStringify({ schema: 'ngl.service-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lease.sync();
     await assertPrivateDirectory(dataDir, directoryIdentity);
+    await assertOwnedLockPath(lockTemporaryPath, leaseIdentity, 'Service writer lock temporary path');
     try {
-      await link(lockTemporaryPath, lockPath);
+      await linkFile(lockTemporaryPath, lockPath);
       lockPublished = true;
     } catch (error) {
       if (error.code === 'EEXIST') {
@@ -256,11 +303,15 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       }
       throw error;
     }
-    await unlink(lockTemporaryPath);
+    await assertOwnedLockPath(lockPath, leaseIdentity, 'Service writer lock path');
+    await assertOwnedLockPath(lockTemporaryPath, leaseIdentity, 'Service writer lock temporary path');
+    if (!await unlinkOwnedLock(lockTemporaryPath, leaseIdentity)) {
+      throw storeReadError('SERVICE_LOCK_CHANGED', 'Service writer lock temporary path changed before cleanup');
+    }
     await assertPrivateDirectory(dataDir, directoryIdentity);
   } catch (error) {
     await lease?.close().catch(() => {});
-    await unlink(lockTemporaryPath).catch(() => {});
+    await unlinkOwnedLock(lockTemporaryPath, leaseIdentity).catch(() => {});
     if (lockPublished) await unlinkOwnedLock(lockPath, leaseIdentity).catch(() => {});
     throw error;
   }
@@ -269,6 +320,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let closePromise;
   let durabilityUncertainState = false;
   let directoryUncertainState = false;
+  let leaseUncertainError = null;
   // Serialize all commits made through this lease. The HTTP server has its own
   // action queue, but the store primitive must also be safe for direct callers.
   let commitQueue = Promise.resolve();
@@ -282,7 +334,16 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       if (released) return;
       released = true;
       await lease.close();
-      await unlinkOwnedLock(lockPath, leaseIdentity);
+      if (leaseUncertainError) throw leaseUncertainError;
+      const removed = await unlinkOwnedLock(lockPath, leaseIdentity);
+      if (!removed) {
+        leaseUncertainError = storeReadError(
+          'SERVICE_LOCK_CHANGED',
+          'Service writer lease changed before close; the replacement lock was preserved for inspection'
+        );
+        leaseUncertainError.status = 503;
+        throw leaseUncertainError;
+      }
     })();
     return closePromise;
   }
@@ -290,7 +351,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let raw;
   try { raw = await readBoundedStoreEnvelope(path); }
   catch (error) {
-    if (error.code !== 'ENOENT') { await close(); throw error; }
+    if (error.code !== 'ENOENT') { await close().catch(() => {}); throw error; }
   }
   if (raw !== undefined) {
     try {
@@ -300,10 +361,10 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       }
       if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
       current = immutableSnapshot(await validate(envelope.payload));
-    } catch (error) { await close(); throw error; }
+    } catch (error) { await close().catch(() => {}); throw error; }
   } else {
     try { current = immutableSnapshot(await validate(initial)); await persist(current); }
-    catch (error) { await close(); throw error; }
+    catch (error) { await close().catch(() => {}); throw error; }
   }
   async function assertStableDirectory() {
     try { await assertPrivateDirectory(dataDir, directoryIdentity); }
@@ -312,10 +373,27 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
     }
   }
+  async function assertStableLease({ afterRename = false } = {}) {
+    if (leaseUncertainError) throw leaseUncertainError;
+    await assertStableDirectory();
+    try {
+      await assertOwnedLockPath(lockPath, leaseIdentity, 'Service writer lock path');
+    } catch (cause) {
+      leaseUncertainError = storeReadError(
+        afterRename ? 'COMMIT_LEASE_LOST' : 'SERVICE_LOCK_CHANGED',
+        afterRename
+          ? 'Service writer lease changed after the store envelope was renamed; commit outcome is uncertain and offline validation is required'
+          : 'Service writer lease changed; close and inspect the lock before continuing'
+      );
+      leaseUncertainError.status = 503;
+      leaseUncertainError.cause = cause;
+      throw leaseUncertainError;
+    }
+  }
   async function persist(payload) {
     // The caller may retain this store while the directory pathname is replaced.
     // Revalidate its identity before any path-based write.
-    await assertStableDirectory();
+    await assertStableLease();
     const pending = join(dataDir, `.service-${randomUUID()}.tmp`);
     let file;
     let renamed = false;
@@ -326,15 +404,17 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       await file.close(); file = null;
       // Do not replace the envelope if the directory changed while the temp
       // file was being written.
-      await assertStableDirectory();
-      await rename(pending, path);
+      await assertStableLease();
+      await renameFileFn(pending, path);
       renamed = true;
       try {
-        // A post-rename path change is itself an uncertain durability boundary:
+        // A post-rename path or lease change makes the commit outcome uncertain:
         // never expose stale in-memory state or permit another write.
-        await assertPrivateDirectory(dataDir, directoryIdentity);
+        await assertStableLease({ afterRename: true });
         await syncDirectoryFn(dataDir);
+        await assertStableLease({ afterRename: true });
       } catch (error) {
+        if (error.code === 'COMMIT_LEASE_LOST') throw error;
         durabilityUncertainState = true;
         throw durabilityUncertain(error);
       }
@@ -348,6 +428,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   }
   return {
     get value() {
+      if (leaseUncertainError) throw leaseUncertainError;
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
       return current;
@@ -355,6 +436,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     close,
     async commit(candidate) {
       if (released || closing) throw closedStoreError();
+      if (leaseUncertainError) throw leaseUncertainError;
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
       // Snapshot as strict canonical JSON at call time. This rejects accessors,
@@ -363,6 +445,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       const snapshot = JSON.parse(canonicalStringify(candidate));
       const operation = commitQueue.then(async () => {
         if (released) throw closedStoreError();
+        if (leaseUncertainError) throw leaseUncertainError;
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
         const valid = immutableSnapshot(await validate(snapshot));

@@ -878,8 +878,20 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     closePromise = (async () => {
       for (const stream of streams) stream.response.end();
       await serial;
-      try { if (server.listening) await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose())); }
-      finally{server.closeAllConnections();try{await decisions.close();}finally{await store.close();}}
+      try {
+        let stopped = Promise.resolve();
+        if (server.listening) {
+          stopped = new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()));
+        }
+        // Stop accepting new work first, then terminate active HTTP connections
+        // before awaiting the close callback. Awaiting first can deadlock on a
+        // client that never finishes its request body or a long-lived response.
+        server.closeAllConnections();
+        await stopped;
+      } finally {
+        try { await decisions.close(); }
+        finally { await store.close(); }
+      }
     })();
     return closePromise;
   };

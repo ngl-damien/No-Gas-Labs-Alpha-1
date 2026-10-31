@@ -1,9 +1,11 @@
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, rename, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, link, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
+import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 
 const validate = async value => {
   if (!value || !Number.isInteger(value.revision)) throw new Error('invalid test store state');
@@ -193,7 +195,13 @@ test('service-store fails closed when its directory path is replaced after open'
   const original = JSON.parse(await readFile(join(moved, 'service.json'), 'utf8'));
   assert.deepEqual(original.payload, { revision: 0 });
   await assert.rejects(lstat(join(replacement, 'service.json')), error => error.code === 'ENOENT');
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.equal((await lstat(join(moved, '.service.lock'))).isFile(), true,
+    'the original writer lock must remain with the moved directory for offline inspection');
+  await assert.rejects(lstat(join(replacement, '.service.lock')), { code: 'ENOENT' });
 });
 
 test('service-store serializes concurrent commits and rejects a stale revision', async t => {
@@ -392,4 +400,558 @@ test('service-store preserves explicit top-level revision mode when world has no
   assert.equal(store.value.revision, 1);
   assert.equal(store.value.world.label, 'updated legacy payload');
   await store.close();
+});
+
+
+test('service-store fails closed when current UID verification is unavailable, throws, or is invalid', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_UNAVAILABLE'],
+    ['getter-throws', "Object.defineProperty(process, 'getuid', { get() { throw new Error('fixture UID getter failure'); }, configurable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_UNAVAILABLE'],
+    ['wrong-owner', "const original = process.getuid.bind(process); Object.defineProperty(process, 'getuid', { value: () => original() + 1, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_MISMATCH'],
+    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_FAILED'],
+    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_INVALID']
+  ];
+
+  for (const [label, override, expectedCode] of cases) {
+    const dataDir = join(root, label);
+    const preload = join(root, label + '.mjs');
+    await writeFile(preload, override + '\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        console.log(JSON.stringify({ unexpected: 'store opened' }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, message: error.message }));
+        if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir, NGL_EXPECTED_ERROR_CODE: expectedCode },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} UID probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} UID probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, expectedCode);
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+    await assert.rejects(lstat(join(dataDir, 'service.json')), { code: 'ENOENT' });
+  }
+});
+
+test('service-store rechecks persisted-envelope ownership before and after opening the file', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('persisted-envelope owner probes require a platform UID API');
+    return;
+  }
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-envelope-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dataDir = join(root, 'store');
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+
+  for (const [label, failAt] of [['path', 7], ['descriptor', 8]]) {
+    const preload = join(root, label + '-uid-failure.mjs');
+    const override = `
+      const original = process.getuid.bind(process);
+      let calls = 0;
+      Object.defineProperty(process, 'getuid', {
+        value: () => {
+          calls += 1;
+          if (calls === ${failAt}) throw new Error('injected UID failure');
+          return original();
+        },
+        configurable: true,
+        writable: true
+      });
+      globalThis.__nglUidCalls = () => calls;
+    `;
+    await writeFile(preload, override + '\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        const store = await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        await store.close();
+        console.log(JSON.stringify({ unexpected: 'store opened', calls: globalThis.__nglUidCalls() }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, calls: globalThis.__nglUidCalls() }));
+        if (error.code !== 'SERVICE_STORE_OWNER_VERIFICATION_FAILED') process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} envelope UID probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} envelope UID probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, 'SERVICE_STORE_OWNER_VERIFICATION_FAILED');
+    assert.equal(outcome.calls, failAt, 'the injected failure must occur at the intended owner-check boundary');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' }, 'failed reopen must release its writer lock');
+  }
+});
+
+
+test('service-store rejects persisted-envelope owner mismatches at path and descriptor boundaries', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('persisted-envelope owner probes require a platform UID API');
+    return;
+  }
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-envelope-owner-mismatch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dataDir = join(root, 'store');
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+  const originalBytes = await readFile(join(dataDir, 'service.json'));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+
+  for (const [label, mismatchAt] of [['path', 7], ['descriptor', 8]]) {
+    const preload = join(root, label + '-uid-mismatch.mjs');
+    const override = `
+      const original = process.getuid.bind(process);
+      let calls = 0;
+      Object.defineProperty(process, 'getuid', {
+        value: () => {
+          calls += 1;
+          const uid = original();
+          return calls === ${mismatchAt} ? uid + 1 : uid;
+        },
+        configurable: true,
+        writable: true
+      });
+      globalThis.__nglUidCalls = () => calls;
+    `;
+    await writeFile(preload, override + '\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        const store = await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        await store.close();
+        console.log(JSON.stringify({ unexpected: 'store opened', calls: globalThis.__nglUidCalls() }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, calls: globalThis.__nglUidCalls() }));
+        if (error.code !== 'SERVICE_STORE_OWNER_MISMATCH') process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} owner mismatch probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} owner mismatch probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, 'SERVICE_STORE_OWNER_MISMATCH');
+    assert.equal(outcome.calls, mismatchAt, 'the injected mismatch must occur at the intended ownership boundary');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' }, 'rejected reopen must release its writer lock');
+    assert.deepEqual(await readFile(join(dataDir, 'service.json')), originalBytes, 'rejected reopen must not rewrite persisted state');
+  }
+});
+
+test('service-store enforces its writer lease across independent processes', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-cross-process-lock-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const lockBefore = await lstat(lockPath);
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const probe = `
+    const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      const childStore = await createServiceStore({
+        dataDir: process.env.NGL_TEST_DATA_DIR,
+        initial: { revision: 0 },
+        validate: async value => value
+      });
+      await childStore.close();
+      console.log(JSON.stringify({ opened: true }));
+    } catch (error) {
+      console.log(JSON.stringify({ opened: false, code: error.code }));
+      if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+    }
+  `;
+  const contender = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(contender.error, undefined, `independent contender must complete: ${contender.error?.message}`);
+  assert.equal(contender.status, 0, `independent contender failed: ${contender.stderr}`);
+  assert.deepEqual(JSON.parse(contender.stdout.trim()), { opened: false, code: 'SERVICE_LOCKED' });
+  const lockAfter = await lstat(lockPath);
+  assert.equal(lockAfter.dev, lockBefore.dev);
+  assert.equal(lockAfter.ino, lockBefore.ino, 'a rejected contender must not remove or replace the live writer lock');
+
+  await store.close();
+  const successor = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(successor.error, undefined, `successor writer must complete: ${successor.error?.message}`);
+  assert.equal(successor.status, 0, `successor writer failed: ${successor.stderr}`);
+  assert.deepEqual(JSON.parse(successor.stdout.trim()), { opened: true });
+  const persisted = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.deepEqual(persisted.payload, { revision: 0 }, 'the successor must reopen the same validated store');
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' }, 'the successor must release its own writer lock');
+});
+
+test('service-store leaves an abruptly terminated writer lock for read-only inspection', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('service-store owner verification requires a platform UID API');
+    return;
+  }
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-abrupt-writer-exit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const probe = `
+    const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      await createServiceStore({
+        dataDir: process.env.NGL_TEST_DATA_DIR,
+        initial: { revision: 0 },
+        validate: async value => value
+      });
+      process.stdout.write(JSON.stringify({ opened: true }) + '\\n', () => process.exit(0));
+    } catch (error) {
+      console.log(JSON.stringify({ opened: false, code: error.code }));
+      if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+    }
+  `;
+  const crashedOwner = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: { ...process.env, NGL_TEST_DATA_DIR: dataDir, NGL_EXPECTED_ERROR_CODE: '' },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(crashedOwner.error, undefined, `writer process must terminate: ${crashedOwner.error?.message}`);
+  assert.equal(crashedOwner.status, 0, `writer process failed: ${crashedOwner.stderr}`);
+  assert.deepEqual(JSON.parse(crashedOwner.stdout.trim()), { opened: true });
+
+  const lockPath = join(dataDir, '.service.lock');
+  const lockAfterExit = await lstat(lockPath);
+  const inspection = await inspectWriterLock(lockPath);
+  assert.equal(inspection.status, 'present');
+  assert.equal(inspection.format, 'owner-metadata');
+  assert.equal(inspection.owner.schema, 'ngl.service-lock.v1');
+  assert.equal(inspection.safeToRemove, false, 'a dead PID must never authorize automatic lock deletion');
+
+  const contender = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(contender.error, undefined, `post-crash contender must complete: ${contender.error?.message}`);
+  assert.equal(contender.status, 0, `post-crash contender failed: ${contender.stderr}`);
+  assert.deepEqual(JSON.parse(contender.stdout.trim()), { opened: false, code: 'SERVICE_LOCKED' });
+  const lockAfterContender = await lstat(lockPath);
+  assert.equal(lockAfterContender.dev, lockAfterExit.dev);
+  assert.equal(lockAfterContender.ino, lockAfterExit.ino, 'inspection and rejected reopen must preserve the stale lock for offline recovery');
+});
+
+
+
+test('service-store refuses to publish a lock when its temporary pathname is replaced before linking', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lock-replaced-before-link-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let temporaryPath;
+  const linkFile = async (source, target) => {
+    temporaryPath = source;
+    await rename(source, movedOriginal);
+    await writeFile(source, 'replacement lock path', { mode: 0o600 });
+    await link(source, target);
+  };
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate, linkFile }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  const [published, temporary, original] = await Promise.all([
+    lstat(lockPath), lstat(temporaryPath), lstat(movedOriginal)
+  ]);
+  assert.equal(published.dev, temporary.dev);
+  assert.equal(published.ino, temporary.ino);
+  assert.notEqual(published.ino, original.ino, 'the published replacement must not be mistaken for the opened lease inode');
+  assert.equal(await readFile(lockPath, 'utf8'), 'replacement lock path');
+  assert.equal(await readFile(temporaryPath, 'utf8'), 'replacement lock path');
+});
+
+test('service-store removes only its own published lock when the temporary pathname changes after linking', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lock-replaced-after-link-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let temporaryPath;
+  const linkFile = async (source, target) => {
+    temporaryPath = source;
+    await link(source, target);
+    await rename(source, movedOriginal);
+    await writeFile(source, 'replacement temporary path', { mode: 0o600 });
+  };
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate, linkFile }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' }, 'cleanup must release the inode opened by this process');
+  assert.equal(await readFile(temporaryPath, 'utf8'), 'replacement temporary path', 'cleanup must not unlink a replacement temporary path');
+  assert.equal((await lstat(movedOriginal)).isFile(), true, 'the original opened inode remains reachable for inspection');
+});
+
+
+test('service-store close preserves a replacement lock even when its metadata is identical', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-close-replaced-lock-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const originalBytes = await readFile(lockPath);
+  const original = await lstat(lockPath);
+
+  await rename(lockPath, movedOriginal);
+  await writeFile(lockPath, originalBytes, { mode: 0o600 });
+  const replacement = await lstat(lockPath);
+  assert.notEqual(replacement.ino, original.ino, 'replacement must be a different inode');
+  assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the same owner metadata');
+
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.dev, replacement.dev);
+  assert.equal(afterClose.ino, replacement.ino, 'close must not unlink a replacement lock based only on matching contents');
+  assert.deepEqual(await readFile(lockPath), originalBytes);
+  assert.equal((await lstat(movedOriginal)).ino, original.ino, 'the original lease inode remains available for inspection');
+});
+
+
+
+
+test('service-store close reports lost lease before any commit and preserves a successor', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-close-lost-lease-before-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const former = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+
+  await rm(lockPath);
+  const successor = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await successor.commit({ revision: 1, writer: 'successor' });
+  const successorLock = await lstat(lockPath);
+
+  await assert.rejects(
+    former.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  const afterFormerClose = await lstat(lockPath);
+  assert.equal(afterFormerClose.dev, successorLock.dev);
+  assert.equal(afterFormerClose.ino, successorLock.ino, 'former close must not unlink the successor lock');
+
+  await successor.commit({ revision: 2, writer: 'successor' });
+  await successor.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, { revision: 2, writer: 'successor' });
+  await reopened.close();
+});
+
+
+test('service-store preserves the original initialization error when lease cleanup detects replacement', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-cleanup-error-provenance-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const expected = new Error('INITIAL_VALIDATION_FAILED');
+  let replacement;
+
+  await assert.rejects(
+    createServiceStore({
+      dataDir,
+      initial: { revision: 0 },
+      validate: async () => {
+        const originalBytes = await readFile(lockPath);
+        const original = await lstat(lockPath);
+        await rename(lockPath, movedOriginal);
+        await writeFile(lockPath, originalBytes, { mode: 0o600 });
+        replacement = await lstat(lockPath);
+        assert.notEqual(replacement.ino, original.ino, 'replacement must be a distinct lock inode');
+        throw expected;
+      }
+    }),
+    error => error === expected
+  );
+
+  const afterFailure = await lstat(lockPath);
+  assert.equal(afterFailure.ino, replacement.ino, 'cleanup must preserve the replacement lock');
+  assert.equal((await lstat(movedOriginal)).isFile(), true, 'the original lease remains available for inspection');
+});
+
+test('service-store refuses commits after the published writer lock pathname is replaced', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lost-lease-before-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const originalBytes = await readFile(lockPath);
+  const original = await lstat(lockPath);
+
+  await rename(lockPath, movedOriginal);
+  await writeFile(lockPath, originalBytes, { mode: 0o600 });
+  const replacement = await lstat(lockPath);
+  assert.notEqual(replacement.ino, original.ino, 'replacement must have a different inode');
+  assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the original metadata');
+
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.throws(
+    () => store.value,
+    error => error.code === 'SERVICE_LOCK_CHANGED',
+    'a store that lost its writer lease must not expose a possibly stale projection'
+  );
+  const retained = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.equal(retained.payload.revision, 0, 'a lost writer must not persist a new revision');
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  await assert.rejects(store.close(), error => error.code === 'SERVICE_LOCK_CHANGED');
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock');
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED',
+    'the replacement lock must continue to exclude another writer'
+  );
+});
+
+test('service-store marks a commit uncertain when the writer lease is replaced during atomic rename', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lost-lease-during-rename-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let replacement;
+  const store = await createServiceStore({
+    dataDir,
+    initial: { revision: 0 },
+    validate,
+    renameFile: async (pending, target) => {
+      const originalBytes = await readFile(lockPath);
+      await rename(lockPath, movedOriginal);
+      await writeFile(lockPath, originalBytes, { mode: 0o600 });
+      replacement = await lstat(lockPath);
+      await rename(pending, target);
+    }
+  });
+
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'COMMIT_LEASE_LOST' && error.status === 503
+  );
+  assert.throws(
+    () => store.value,
+    error => error.code === 'COMMIT_LEASE_LOST',
+    'a renamed envelope with a lost lease must not be exposed as a confirmed commit'
+  );
+  const onDisk = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.equal(onDisk.payload.revision, 1, 'the atomic rename may have committed before lease loss was detected');
+  await assert.rejects(
+    store.commit({ revision: 2 }),
+    error => error.code === 'COMMIT_LEASE_LOST'
+  );
+
+  await assert.rejects(store.close(), error => error.code === 'COMMIT_LEASE_LOST');
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock after an uncertain commit');
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED',
+    'no successor may open while the replacement lock remains'
+  );
+});
+
+
+test('a former writer cannot overwrite a successor after its published lock path disappears', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-successor-after-lock-loss-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const former = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+
+  await rm(lockPath);
+  const successor = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await successor.commit({ revision: 1, writer: 'successor' });
+
+  await assert.rejects(
+    former.commit({ revision: 1, writer: 'former' }),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.throws(
+    () => former.value,
+    error => error.code === 'SERVICE_LOCK_CHANGED',
+    'the former writer must not expose a projection after losing its pathname lease'
+  );
+  const retained = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.deepEqual(retained.payload, { revision: 1, writer: 'successor' });
+
+  await assert.rejects(former.close(), error => error.code === 'SERVICE_LOCK_CHANGED');
+  const successorLock = await lstat(lockPath);
+  await successor.close();
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' });
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, { revision: 1, writer: 'successor' });
+  await reopened.close();
+  assert.ok(successorLock.ino > 0, 'the successor lock inode was observed before its owner closed');
 });

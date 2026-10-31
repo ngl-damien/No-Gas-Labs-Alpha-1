@@ -12,13 +12,16 @@ import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
-async function fixture(t, dataDir, options = {}) {
+async function fixture(t, dataDir, options = {}, { cleanupDataDir = true } = {}) {
   dataDir ??= await mkdtemp(join(tmpdir(), 'ngl-http-'));
   const server = await createGameServer({ dataDir, founderKey: KEY, ...options });
   const game = { server, closeGame: () => server.closeGame() };
   await new Promise(resolve => game.server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${game.server.address().port}`;
-  t.after(async () => { await game.closeGame(); await rm(dataDir, { recursive: true, force: true }); });
+  t.after(async () => {
+    await game.closeGame();
+    if (cleanupDataDir) await rm(dataDir, { recursive: true, force: true });
+  });
   function client() {
     let cookie = '';
     return {
@@ -248,15 +251,24 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
 });
 
 test('published world and accepted kernel history survive restart; generated key stays private', async t => {
-  const f = await fixture(t); const founder = f.client(); await founder.login(); const result = await publish(founder);
+  const f = await fixture(t, undefined, {}, { cleanupDataDir: false });
+  let restarted, generated, secretDir;
+  t.after(async () => {
+    try { await restarted?.closeGame(); await generated?.closeGame(); }
+    finally {
+      await rm(f.dataDir, { recursive: true, force: true });
+      if (secretDir) await rm(secretDir, { recursive: true, force: true });
+    }
+  });
+  const founder = f.client(); await founder.login(); const result = await publish(founder);
   await f.closeGame();
-  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY }); t.after(() => restarted.closeGame());
+  restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
   await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
   const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
-  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
-  t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
+  secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-'));
+  generated = await createGameServer({ dataDir: secretDir });
   const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
   await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
   const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
@@ -273,6 +285,35 @@ test('failed atomic persistence adopts neither world nor institutional acceptanc
   assert.equal(current.world.creations.length, 0); assert.equal(current.institution.kernel.accepted.length, 0);
   await rm(file, { recursive: true }); await rename(file + '.saved', file);
   assert.equal((await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 })).response.status, 200);
+});
+
+test('closeGame terminates an incomplete HTTP request before awaiting server shutdown', async t => {
+  const f = await fixture(t);
+  const accepted = once(f.server, 'request');
+  const request = http.request(f.url, {
+    method: 'POST',
+    path: '/api/action',
+    headers: {
+      'content-type': 'application/json',
+      'content-length': '100',
+      origin: f.url
+    }
+  });
+  request.on('error', () => {});
+  request.flushHeaders();
+  await accepted;
+  request.write('{"type":');
+
+  const closing = f.closeGame();
+  let timer;
+  const finished = await Promise.race([
+    closing.then(() => true),
+    new Promise(resolve => { timer = setTimeout(() => resolve(false), 1000); })
+  ]);
+  clearTimeout(timer);
+  request.destroy();
+  await closing;
+  assert.equal(finished, true, 'closeGame must terminate active HTTP connections before awaiting server.close');
 });
 
 test('serves every first-party module imported by the playable game client', async t => {
@@ -352,10 +393,16 @@ test('recomputed envelope checksums cannot conceal version, retained-byte or act
 
 
 test('an exclusive store lease rejects a second writer and is released by closeGame', async t => {
-  const f = await fixture(t); const founder = f.client(); await founder.login(); await publish(founder);
+  const f = await fixture(t, undefined, {}, { cleanupDataDir: false });
+  let next;
+  t.after(async () => {
+    try { await next?.closeGame(); }
+    finally { await rm(f.dataDir, { recursive: true, force: true }); }
+  });
+  const founder = f.client(); await founder.login(); await publish(founder);
   await assert.rejects(createGameServer({ dataDir: f.dataDir, founderKey: KEY }), /exclusive|lock|writer/i);
   await f.closeGame();
-  const next = await createGameServer({ dataDir: f.dataDir, founderKey: KEY }); t.after(() => next.closeGame());
+  next = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
   await new Promise(resolve => next.listen(0, '127.0.0.1', resolve));
   const state = await (await fetch(`http://127.0.0.1:${next.address().port}/api/state`)).json();
   assert.equal(state.world.creations.length, 1); assert.equal(state.institution.kernel.accepted.length, 1);
@@ -1118,7 +1165,6 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
 
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const world = createWorld({ id: 'indexed-server-history', now: '2026-10-01T00:00:00.000Z' });
   const actor = { id: 'history-witness', name: 'History witness', role: 'witness' };
   const events = [];
@@ -1153,5 +1199,8 @@ test('server startup indexes large interleaved retained proposal/report history'
   };
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
-  t.after(() => server.closeGame());
+  t.after(async () => {
+    try { await server.closeGame(); }
+    finally { await rm(dataDir, { recursive: true, force: true }); }
+  });
 });

@@ -24,3 +24,12 @@ jobs:
           node-version: 24
       - name: Execute tests, package and bounded institutional exercise
         run: npm run verify
+      - name: Preserve verification diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-diagnostics-${{ github.sha }}
+          path: .runtime/verification-*/
+          if-no-files-found: warn
+          retention-days: 7
+          include-hidden-files: true

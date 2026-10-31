@@ -22,8 +22,9 @@ if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory() || (runtimeInfo.m
 const out = await mkdtemp(join(runtimeRoot, 'verification-'));
 const stages = [];
 
-for (const [name, bin, args, cwd] of [
-  ['tests', process.execPath, ['--test'], ROOT],
+for (const [name, bin, args, cwd, timeoutMs = 120000] of [
+  ['game-server-tests', process.execPath, ['--test', '--test-reporter=tap', '--test-timeout=45000', 'test/game-server.test.mjs'], ROOT, 60000],
+  ['tests', process.execPath, ['--test', '--test-reporter=tap', '--test-timeout=45000'], ROOT],
   ['python-inspector', 'python3', ['-m', 'unittest', '-v', 'test_engine.py'], join(ROOT, 'experiments/AOTA-FEATHERSTONIAN-ENGINE')],
   ['package', process.execPath, ['scripts/build-game.mjs'], ROOT],
   ['institutional-exercise', process.execPath, ['scripts/meteor-demo.mjs', '--out', join(out, 'exercise')], ROOT]
@@ -31,7 +32,7 @@ for (const [name, bin, args, cwd] of [
   const at = performance.now();
   let stdout = '', stderr = '', exitCode = 0;
   try {
-    ({ stdout, stderr } = await exec(bin, args, { cwd, timeout: 120000, maxBuffer: 8 * 1024 * 1024 }));
+    ({ stdout, stderr } = await exec(bin, args, { cwd, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }));
   } catch (error) {
     stdout = error.stdout || '';
     stderr = error.stderr || error.message;
@@ -39,7 +40,7 @@ for (const [name, bin, args, cwd] of [
   }
   await writeFile(join(out, name + '.stdout.log'), stdout, { mode: 0o600 });
   await writeFile(join(out, name + '.stderr.log'), stderr, { mode: 0o600 });
-  const record = { name, command: [bin, ...args], exitCode, wallMs: performance.now() - at };
+  const record = { name, command: [bin, ...args], timeoutMs, exitCode, wallMs: performance.now() - at };
   stages.push(record);
   console.log(JSON.stringify(record));
   if (exitCode) {
@@ -53,7 +54,7 @@ for (const [name, bin, args, cwd] of [
 const report = {
   schema: 'ngl.verification-run.v1',
   observedAt: new Date().toISOString(),
-  passed: stages.length === 4 && stages.every(stage => stage.exitCode === 0),
+  passed: stages.length === 5 && stages.every(stage => stage.exitCode === 0),
   stages,
   wallMs: performance.now() - started,
   limitations: [
