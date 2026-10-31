@@ -627,8 +627,8 @@ function renderGuildExpeditionDocket(projection,container){
       const item=node('div',{class:'expedition-docket-entry','data-expedition-attempt-id':attempt.id});
       item.append(
         node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED · '+attempt.reportedOutcome.toUpperCase()}),
-        paragraph('Procedure: '+attempt.procedure),
-        paragraph('Observation: '+attempt.observation),
+        paragraph('Procedure: '+(typeof attempt.procedure==='string'&&attempt.procedure.trim()?attempt.procedure:'not recorded')),
+        paragraph('Observation: '+(typeof attempt.observation==='string'&&attempt.observation.trim()?attempt.observation:'not recorded')),
         paragraph('Evidence link: '+statusLabel(attempt.evidenceStatus)+'. This is linkage only, not independent observation.','form-help'),
         paragraph('By '+(attempt.actorRole||'unknown')+' '+(attempt.actorId||'unknown')+' · '+attempt.at,'attribution'),
         node('code',{text:attempt.id}),
