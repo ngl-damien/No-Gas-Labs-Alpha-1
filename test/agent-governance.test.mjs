@@ -35,6 +35,17 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects invalid UTF-8 instead of hashing replacement-decoded text', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'CLAUDE.md'), Buffer.from([0x52, 0x65, 0x61, 0x64, 0xff]));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === 'CLAUDE.md' && item.reason.includes('valid UTF-8')));
+    assert.ok(!result.files.some(file => file.path === 'CLAUDE.md'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight fails closed when sequential bootstrap order is removed', async () => {
   const root = await fixture();
   try {
