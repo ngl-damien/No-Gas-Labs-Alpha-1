@@ -477,6 +477,142 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   });
 }
 
+
+const EXPEDITION_DOCKET_LIMIT = 3;
+const EXPEDITION_ACTIVITY_LIMIT = 3;
+const EXPEDITION_RESPONSE_LIMIT = 4;
+const DOCKET_RESEARCH_TYPES = new Set([
+  'moonshot-proposed', 'experiment-reported', 'experiment-challenged'
+]);
+const DOCKET_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
+const DOCKET_CHALLENGE_TYPES = new Set([
+  'missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'
+]);
+
+function newestDocketRecordFirst(left, right) {
+  const leftAt = isStrictTimestamp(left?.at) ? Date.parse(left.at) : Number.NEGATIVE_INFINITY;
+  const rightAt = isStrictTimestamp(right?.at) ? Date.parse(right.at) : Number.NEGATIVE_INFINITY;
+  return rightAt - leftAt ||
+    (right?._projection?.index ?? -1) - (left?._projection?.index ?? -1);
+}
+
+/**
+ * Read-only Guild Hall dossier assembled from the existing retained research
+ * ledger and exact, source-bound Relay folios. Reports stay self-reported,
+ * challenges stay dissent, and collaborator replies stay untrusted even when
+ * their structure is valid. Ambiguous links are counted, never guessed.
+ */
+export function getExpeditionDocket(world, options = null) {
+  const events = Array.isArray(world?.events) ? world.events : [];
+  const creations = Array.isArray(world?.creations) ? world.creations : [];
+  const records = projectResearchRecords(events, creations);
+  const suppliedResponses = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const responseObjects = isCollaboratorResponseProjection(suppliedResponses, world)
+    ? suppliedResponses
+    : projectCollaboratorResponseWorldObjects(world);
+
+  const proposals = records.filter(record =>
+    record.type === 'moonshot-proposed' &&
+    record._projection?.proposalStatus === 'unique'
+  );
+  const expeditions = proposals.slice(0, EXPEDITION_DOCKET_LIMIT).map(proposal => {
+    const related = records.filter(record =>
+      record.moonshotId === proposal.moonshotId &&
+      record._projection?.proposalStatus === 'linked'
+    );
+    const reports = related
+      .filter(record => record.type === 'experiment-reported')
+      .sort(newestDocketRecordFirst);
+    const challenges = related
+      .filter(record => record.type === 'experiment-challenged')
+      .sort(newestDocketRecordFirst);
+    const responses = responseObjects
+      .filter(record => record.moonshotId === proposal.moonshotId)
+      .slice()
+      .sort((left, right) =>
+        Date.parse(right.at) - Date.parse(left.at) ||
+        right.responseId.localeCompare(left.responseId)
+      );
+
+    return Object.freeze({
+      eventId: proposal.id,
+      moonshotId: proposal.moonshotId,
+      title: proposal.title,
+      hypothesis: proposal.hypothesis,
+      falsifier: proposal.falsifier,
+      evidenceNeeded: proposal.evidenceNeeded,
+      actorId: proposal.actor.id,
+      actorRole: proposal.actor.role,
+      at: proposal.at,
+      sourceStatus: proposal._projection.sourceStatus,
+      attemptCount: reports.length,
+      attempts: Object.freeze(reports.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
+        Object.freeze({
+          id: record.id,
+          reportId: record.reportId,
+          at: record.at,
+          actorId: record.actor?.id ?? null,
+          actorRole: record.actor?.role ?? null,
+          procedure: record.procedure,
+          observation: record.observation,
+          reportedOutcome: DOCKET_OUTCOMES.has(record.reportedOutcome)
+            ? record.reportedOutcome : 'unclassified',
+          evidenceStatus: record._projection.evidenceStatus
+        })
+      )),
+      omittedAttemptCount: Math.max(0, reports.length - EXPEDITION_ACTIVITY_LIMIT),
+      challengeCount: challenges.length,
+      challenges: Object.freeze(challenges.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
+        Object.freeze({
+          id: record.id,
+          challengeId: record.challengeId ?? null,
+          reportId: record.reportId ?? null,
+          at: record.at,
+          actorId: record.actor?.id ?? null,
+          actorRole: record.actor?.role ?? null,
+          challengeType: DOCKET_CHALLENGE_TYPES.has(record.challengeType)
+            ? record.challengeType : 'other',
+          challengeText: typeof record.challengeText === 'string' ? record.challengeText : '',
+          targetReportStatus: record._projection.targetReportStatus,
+          evidenceStatus: record._projection.evidenceStatus
+        })
+      )),
+      omittedChallengeCount: Math.max(0, challenges.length - EXPEDITION_ACTIVITY_LIMIT),
+      responseCount: responses.length,
+      responses: Object.freeze(responses.slice(0, EXPEDITION_RESPONSE_LIMIT).map(record =>
+        Object.freeze({
+          responseId: record.responseId,
+          eventId: record.eventId,
+          roleId: record.roleId,
+          name: record.name,
+          actorId: record.actorId,
+          actorRole: record.actorRole,
+          at: record.at,
+          validationStatus: record.validationStatus,
+          validationReason: record.validationReason,
+          sourceEventIds: Object.freeze([...record.sourceEventIds])
+        })
+      )),
+      omittedResponseCount: Math.max(0, responses.length - EXPEDITION_RESPONSE_LIMIT)
+    });
+  });
+
+  const unlinkedResearchRecordCount = records.filter(record =>
+    DOCKET_RESEARCH_TYPES.has(record.type) &&
+    !['unique', 'linked'].includes(record._projection?.proposalStatus)
+  ).length;
+
+  return Object.freeze({
+    worldId: typeof world?.id === 'string' ? world.id : null,
+    worldRevision: Number.isSafeInteger(world?.revision) ? world.revision : null,
+    proposalCount: proposals.length,
+    omittedProposalCount: Math.max(0, proposals.length - EXPEDITION_DOCKET_LIMIT),
+    unlinkedResearchRecordCount,
+    expeditions: Object.freeze(expeditions)
+  });
+}
+
 export function getQuestTrail(world, viewer, options = null) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
@@ -974,140 +1110,4 @@ export function getQuestTrail(world, viewer, options = null) {
       'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
     ),
   ]);
-}
-
-
-const EXPEDITION_DOCKET_LIMIT = 3;
-const EXPEDITION_ACTIVITY_LIMIT = 3;
-const EXPEDITION_RESPONSE_LIMIT = 4;
-const DOCKET_RESEARCH_TYPES = new Set([
-  'moonshot-proposed', 'experiment-reported', 'experiment-challenged'
-]);
-const DOCKET_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
-const DOCKET_CHALLENGE_TYPES = new Set([
-  'missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'
-]);
-
-function newestDocketRecordFirst(left, right) {
-  const leftAt = isStrictTimestamp(left?.at) ? Date.parse(left.at) : Number.NEGATIVE_INFINITY;
-  const rightAt = isStrictTimestamp(right?.at) ? Date.parse(right.at) : Number.NEGATIVE_INFINITY;
-  return rightAt - leftAt ||
-    (right?._projection?.index ?? -1) - (left?._projection?.index ?? -1);
-}
-
-/**
- * Read-only Guild Hall dossier assembled from the existing retained research
- * ledger and exact, source-bound Relay folios. Reports stay self-reported,
- * challenges stay dissent, and collaborator replies stay untrusted even when
- * their structure is valid. Ambiguous links are counted, never guessed.
- */
-export function getExpeditionDocket(world, options = null) {
-  const events = Array.isArray(world?.events) ? world.events : [];
-  const creations = Array.isArray(world?.creations) ? world.creations : [];
-  const records = projectResearchRecords(events, creations);
-  const suppliedResponses = options && typeof options === 'object'
-    ? options.collaboratorResponseObjects : null;
-  const responseObjects = isCollaboratorResponseProjection(suppliedResponses, world)
-    ? suppliedResponses
-    : projectCollaboratorResponseWorldObjects(world);
-
-  const proposals = records.filter(record =>
-    record.type === 'moonshot-proposed' &&
-    record._projection?.proposalStatus === 'unique'
-  );
-  const expeditions = proposals.slice(0, EXPEDITION_DOCKET_LIMIT).map(proposal => {
-    const related = records.filter(record =>
-      record.moonshotId === proposal.moonshotId &&
-      record._projection?.proposalStatus === 'linked'
-    );
-    const reports = related
-      .filter(record => record.type === 'experiment-reported')
-      .sort(newestDocketRecordFirst);
-    const challenges = related
-      .filter(record => record.type === 'experiment-challenged')
-      .sort(newestDocketRecordFirst);
-    const responses = responseObjects
-      .filter(record => record.moonshotId === proposal.moonshotId)
-      .slice()
-      .sort((left, right) =>
-        Date.parse(right.at) - Date.parse(left.at) ||
-        right.responseId.localeCompare(left.responseId)
-      );
-
-    return Object.freeze({
-      eventId: proposal.id,
-      moonshotId: proposal.moonshotId,
-      title: proposal.title,
-      hypothesis: proposal.hypothesis,
-      falsifier: proposal.falsifier,
-      evidenceNeeded: proposal.evidenceNeeded,
-      actorId: proposal.actor.id,
-      actorRole: proposal.actor.role,
-      at: proposal.at,
-      sourceStatus: proposal._projection.sourceStatus,
-      attemptCount: reports.length,
-      attempts: Object.freeze(reports.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
-        Object.freeze({
-          id: record.id,
-          reportId: record.reportId,
-          at: record.at,
-          actorId: record.actor?.id ?? null,
-          actorRole: record.actor?.role ?? null,
-          procedure: record.procedure,
-          observation: record.observation,
-          reportedOutcome: DOCKET_OUTCOMES.has(record.reportedOutcome)
-            ? record.reportedOutcome : 'unclassified',
-          evidenceStatus: record._projection.evidenceStatus
-        })
-      )),
-      omittedAttemptCount: Math.max(0, reports.length - EXPEDITION_ACTIVITY_LIMIT),
-      challengeCount: challenges.length,
-      challenges: Object.freeze(challenges.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
-        Object.freeze({
-          id: record.id,
-          challengeId: record.challengeId ?? null,
-          reportId: record.reportId ?? null,
-          at: record.at,
-          actorId: record.actor?.id ?? null,
-          actorRole: record.actor?.role ?? null,
-          challengeType: DOCKET_CHALLENGE_TYPES.has(record.challengeType)
-            ? record.challengeType : 'other',
-          challengeText: typeof record.challengeText === 'string' ? record.challengeText : '',
-          targetReportStatus: record._projection.targetReportStatus,
-          evidenceStatus: record._projection.evidenceStatus
-        })
-      )),
-      omittedChallengeCount: Math.max(0, challenges.length - EXPEDITION_ACTIVITY_LIMIT),
-      responseCount: responses.length,
-      responses: Object.freeze(responses.slice(0, EXPEDITION_RESPONSE_LIMIT).map(record =>
-        Object.freeze({
-          responseId: record.responseId,
-          eventId: record.eventId,
-          roleId: record.roleId,
-          name: record.name,
-          actorId: record.actorId,
-          actorRole: record.actorRole,
-          at: record.at,
-          validationStatus: record.validationStatus,
-          validationReason: record.validationReason,
-          sourceEventIds: Object.freeze([...record.sourceEventIds])
-        })
-      )),
-      omittedResponseCount: Math.max(0, responses.length - EXPEDITION_RESPONSE_LIMIT)
-    });
-  });
-
-  const unlinkedResearchRecordCount = records.filter(record =>
-    DOCKET_RESEARCH_TYPES.has(record.type) &&
-    !['unique', 'linked'].includes(record._projection?.proposalStatus)
-  ).length;
-
-  return Object.freeze({
-    worldId: typeof world?.id === 'string' ? world.id : null,
-    worldRevision: Number.isSafeInteger(world?.revision) ? world.revision : null,
-    proposalCount: proposals.length,
-    omittedProposalCount: Math.max(0, proposals.length - EXPEDITION_DOCKET_LIMIT),
-    unlinkedResearchRecordCount,
-    expeditions: Object.freeze(expeditions)
-  });
 }
