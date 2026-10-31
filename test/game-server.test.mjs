@@ -275,6 +275,35 @@ test('failed atomic persistence adopts neither world nor institutional acceptanc
   assert.equal((await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 })).response.status, 200);
 });
 
+test('closeGame terminates an incomplete HTTP request before awaiting server shutdown', async t => {
+  const f = await fixture(t);
+  const accepted = once(f.server, 'request');
+  const request = http.request(f.url, {
+    method: 'POST',
+    path: '/api/action',
+    headers: {
+      'content-type': 'application/json',
+      'content-length': '100',
+      origin: f.url
+    }
+  });
+  request.on('error', () => {});
+  request.flushHeaders();
+  await accepted;
+  request.write('{"type":');
+
+  const closing = f.closeGame();
+  let timer;
+  const finished = await Promise.race([
+    closing.then(() => true),
+    new Promise(resolve => { timer = setTimeout(() => resolve(false), 1000); })
+  ]);
+  clearTimeout(timer);
+  request.destroy();
+  await closing;
+  assert.equal(finished, true, 'closeGame must terminate active HTTP connections before awaiting server.close');
+});
+
 test('serves every first-party module imported by the playable game client', async t => {
   const f = await fixture(t); const client = f.client();
   const source = await client.request('/client.mjs');
