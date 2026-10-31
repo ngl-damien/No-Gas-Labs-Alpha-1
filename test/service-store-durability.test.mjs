@@ -403,6 +403,10 @@ test('service-store fails closed when current UID verification is unavailable, t
   const cases = [
     ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });",
       'SERVICE_DIRECTORY_OWNER_VERIFICATION_UNAVAILABLE'],
+    ['getter-throws', "Object.defineProperty(process, 'getuid', { get() { throw new Error('fixture UID getter failure'); }, configurable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_UNAVAILABLE'],
+    ['wrong-owner', "const original = process.getuid.bind(process); Object.defineProperty(process, 'getuid', { value: () => original() + 1, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_MISMATCH'],
     ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });",
       'SERVICE_DIRECTORY_OWNER_VERIFICATION_FAILED'],
     ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });",
