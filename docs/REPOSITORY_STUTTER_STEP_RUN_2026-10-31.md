@@ -782,3 +782,12 @@ PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173
 - Current open branch drift after merge: PR #238 is 6 ahead / 1 behind; PR #239 is 1 ahead / 1 behind; PR #227 remains stacked and 151 ahead / 10 behind. Added current-main rehydration handoffs #6539710485, #6539710813, and #6539711206 respectively.
 - PR #238 remains all-green on prior exact head 0cac61b..., but preflight target list still omits the Forge source/test paths. PR #239 remains green documentation audit. PR #227 remains Worker B's stacked game integration.
 - No merge was performed by Worker A. PR #237 merge was independently observed in GitHub. No permissions, secrets, Founder keys, or release/deployment state were changed. No branch deletion was performed.
+
+
+### Cross-repository merge and post-merge verification — monorepo PR #2 (2026-10-31 UTC)
+- After re-reading the monorepo root `AGENTS.md`, the full canonical Alpha-1 shared protocol, the monorepo README, and the recovered tree, I re-reviewed PR #2's four-file diff and exact-head governance run #41172542360.
+- PR #2 was squash-merged under the standing authorization for suitable verified routine maintenance PRs. Merge commit and monorepo main: `f12e6a9f095f614f389ed64e95bad611bfd81c56`.
+- Post-merge push workflow #41173924194 succeeded on that exact main commit.
+- Re-fetched mainline `CLAUDE.md`, `CODEX.md`, `GEMINI.md`, and `.github/workflows/agent-governance.yml`: all three provider entry points are present and the workflow requires all five entry points (root AGENTS, Claude, Gemini, Codex, Copilot).
+- Scope remains declarative agent pointers plus a governance presence check. No recovered source/application/runtime behavior was changed. The repository remains a recovered 127-file snapshot; no source test, build, or recovered-runtime execution is claimed because this workflow only validates instruction presence.
+- No permission, credential, release, deployment, spending, or external-publication change occurred.
