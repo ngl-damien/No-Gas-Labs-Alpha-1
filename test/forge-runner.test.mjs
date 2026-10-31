@@ -536,3 +536,56 @@ test('Forge does not disguise corrupt Git metadata as a public-source package', 
   await assert.rejects(compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] }), /git|invalid/i);
   await assert.rejects(access(options.outDir));
 });
+
+test('Forge uses fresh unpredictable benchmark and verification challenges on every run', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const first = await compareCandidates({ ...options, candidates: [{ id: 'first', overlay: {} }] });
+  const second = await compareCandidates({ ...options, outDir: options.outDir + '-second', candidates: [{ id: 'second', overlay: {} }] });
+  assert.equal(first.results[0].correct, true);
+  assert.equal(second.results[0].correct, true);
+  assert.notEqual(first.results[0].benchmarkChallengeId, second.results[0].benchmarkChallengeId);
+  assert.notEqual(first.results[0].verificationChecks.challengeId, second.results[0].verificationChecks.challengeId);
+});
+
+test('Forge rejects a candidate that memorizes the former fixed challenge and checksum', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const memorizer = [
+    'export function sum(values) {',
+    '  if (values.length === 0) return 0;',
+    '  if (values.length === 1 && values[0] === 1) return 1;',
+    '  if (values.length === 2 && values[0] === -10 && values[1] === -20) return -30;',
+    '  if (values.length === 3 && values[0] === -1 && values[1] === 0 && values[2] === 1) return 0;',
+    '  if (values.length === 3 && values[0] === 2 && values[1] === 3 && values[2] === 4) return 9;',
+    '  if (values.length === 3 && values[0] === 0.5 && values[1] === 0.25 && values[2] === -0.125) return 0.625;',
+    '  if (values.length === 10000) return -3775;',
+    '  return 0;',
+    '}'
+  ].join('\\n');
+  const report = await compareCandidates({
+    ...options,
+    candidates: [{ id: 'memorized-static-vectors', overlay: { [target]: memorizer } }]
+  });
+  const result = report.results[0];
+  assert.equal(result.execution.outcome, 'passed');
+  assert.equal(result.outputCorrect, false);
+  assert.equal(result.verificationChecks.passed, false);
+  assert.ok(result.verificationChecks.failedCases.includes(6));
+  assert.equal(result.correct, false);
+  assert.equal(result.outcome, 'failed');
+});
+
+test('runCandidate rejects accessor-backed wrapper fields before invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  const { runCandidate } = await api();
+  let getterInvoked = false;
+  const request = { sourceDir: options.sourceDir, outDir: options.outDir, workloadId: 'vector-sum-v1' };
+  Object.defineProperty(request, 'candidate', {
+    enumerable: true,
+    get() { getterInvoked = true; return { id: 'correct', overlay: {} }; }
+  });
+  await assert.rejects(runCandidate(request), /data properties/i);
+  assert.equal(getterInvoked, false);
+  await assert.rejects(access(options.outDir), { code: 'ENOENT' });
+});
