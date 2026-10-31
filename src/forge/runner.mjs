@@ -337,7 +337,7 @@ function createVerificationChallenge() {
     Array.from({ length: 10000 }, (_, index) => challengeInteger(seed, 4, index))
   ];
   // Keep the large case's expected result non-zero for a regression that
-  // deliberately hard-codes the deterministic benchmark's zero checksum.
+  // deliberately hard-codes the deterministic benchmark's fixed result.
   vectors[5][0] += 20_000_000;
   const cases = vectors.map(values => ({ values, expected: values.reduce((a, b) => a + b, 0) }));
   const challenge = { schema: 'ngl.forge-challenge.v2', generator: 'sha256-seeded-integer-v1', seed, cases };
