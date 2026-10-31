@@ -911,6 +911,15 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(retry.body.idempotentReplay, true);
   assert.equal(retry.body.result.challengeId, first.body.result.challengeId);
 
+  const secondRequest = await founder.request('/api/action', {
+    ...challengeAction,
+    challengeType: 'methodology',
+    challengeText: 'A different request ID cannot turn the same report into a second XP-bearing encounter.',
+    requestId: 'experiment-challenge-second-attempt'
+  });
+  assert.equal(secondRequest.response.status, 409, JSON.stringify(secondRequest.body));
+  assert.equal(secondRequest.body.error.code, 'REPORT_ALREADY_CHALLENGED');
+
   const selfChallenge = await witness.request('/api/action', {
     ...challengeAction,
     requestId: 'experiment-self-challenge-001'
