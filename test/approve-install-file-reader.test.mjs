@@ -306,3 +306,45 @@ test('bounded reader rejects unsafe configured limits before filesystem access',
     /BOUNDED_FILE_READER_INVALID_CONFIG/
   );
 });
+
+
+const boundedReaderUrl = new URL('../src/bounded-file-reader.mjs', import.meta.url).href;
+
+function runOwnershipCheck(path, setup, expectedError) {
+  const code = `
+    import { readBoundedRegularFile } from ${JSON.stringify(boundedReaderUrl)};
+    ${setup}
+    try {
+      await readBoundedRegularFile(${JSON.stringify(path)}, 100, 'TEST', { requireCurrentUserOwnership: true });
+      process.exitCode = 1;
+    } catch (error) {
+      if (error?.message !== ${JSON.stringify(expectedError)}) {
+        console.error(error);
+        process.exitCode = 2;
+      }
+    }
+  `;
+  return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    encoding: 'utf8',
+    timeout: 5000
+  });
+}
+
+test('bounded reader fails closed when current-user ownership verification is unavailable', async t => {
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_UNAVAILABLE');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader rejects a file owned by a different process user when ownership is required', async t => {
+  if (typeof process.getuid !== 'function') return t.skip('POSIX process UID ownership is unavailable');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `const actualGetuid = process.getuid.bind(process); Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => actualGetuid() + 1 });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_MISMATCH');
+  assert.equal(result.status, 0, result.stderr);
+});

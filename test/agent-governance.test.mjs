@@ -201,3 +201,16 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+
+test('CI preflight scopes the offline Founder signer ownership implementation, regression, and operator contract', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  for (const path of [
+    'src/bounded-file-reader.mjs',
+    'test/approve-install-file-reader.test.mjs',
+    'experiment-001/FOUNDER-APPROVAL.md'
+  ]) {
+    assert.ok(command.includes('--path ' + path), 'missing Founder signer preflight target: ' + path);
+  }
+});

@@ -12,8 +12,9 @@ function checkPermissions(stat, label, { requirePrivatePermissions, requireCurre
   if (requirePrivatePermissions && process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
     fail('FOUNDER_KEY_PERMISSIONS_TOO_BROAD');
   }
-  if (requireCurrentUserOwnership && typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-    fail(`${label}_OWNER_MISMATCH`);
+  if (requireCurrentUserOwnership) {
+    if (typeof process.getuid !== 'function') fail(`${label}_OWNER_VERIFICATION_UNAVAILABLE`);
+    if (stat.uid !== process.getuid()) fail(`${label}_OWNER_MISMATCH`);
   }
 }
 
