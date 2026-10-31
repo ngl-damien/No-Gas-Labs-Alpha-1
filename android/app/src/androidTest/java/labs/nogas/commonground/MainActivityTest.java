@@ -71,7 +71,7 @@ public final class MainActivityTest {
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitJavaScript(recreated,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         assertEquals("the stable appassets origin retains DOM storage across activity recreation",
                 "\"persisted\"",
                 evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
@@ -84,7 +84,7 @@ public final class MainActivityTest {
         assertTrue("Android WebView must support the origin-scoped file bridge",
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
@@ -107,9 +107,10 @@ public final class MainActivityTest {
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
         try {
+            awaitJavaScript(activity, "typeof document.getElementById('journal-button')?.onclick === 'function'");
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
             awaitJavaScript(activity,
-                    "!!document.getElementById('export-world') && !!document.getElementById('import-world')");
+                    "!document.getElementById('sheet').hidden && !!document.getElementById('export-world') && !!document.getElementById('import-world')");
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
             awaitMonitor(createMonitor);
             awaitNonEmptyFile(exportFile);
@@ -139,7 +140,7 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); " +
                 "location.reload(); 'cleared'");
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(activity, "document.getElementById('start-private').click(); 'new private world'");
         awaitJavaScript(activity,
                 "document.getElementById('play-ui').hidden === false && " +
@@ -150,8 +151,9 @@ public final class MainActivityTest {
         Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
                 Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(exportFile));
         try {
+            awaitJavaScript(activity, "typeof document.getElementById('journal-button')?.onclick === 'function'");
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
-            awaitJavaScript(activity, "!!document.getElementById('import-world')");
+            awaitJavaScript(activity, "!document.getElementById('sheet').hidden && !!document.getElementById('import-world')");
             evaluate(activity, "document.getElementById('import-world').click(); 'import'");
             awaitMonitor(openMonitor);
             awaitJavaScript(activity,
@@ -174,7 +176,7 @@ public final class MainActivityTest {
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitJavaScript(recreated,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(recreated, "document.getElementById('start-private').click(); 'resume'");
         awaitJavaScript(recreated,
                 "document.getElementById('play-ui').hidden === false && " +
