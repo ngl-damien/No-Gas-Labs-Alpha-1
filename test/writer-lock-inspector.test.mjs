@@ -295,7 +295,7 @@ test('lock inspector reports failed UID ownership lookups as unsafe instead of t
       setup,
       'const result = await inspectWriterLock(' + JSON.stringify(path) + ');',
       'process.stdout.write(JSON.stringify(result));'
-    ].join('\\n');
+    ].join('\n');
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
       encoding: 'utf8',
       timeout: 5000
