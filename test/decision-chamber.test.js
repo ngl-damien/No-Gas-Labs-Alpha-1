@@ -793,3 +793,42 @@ test("browser signing page rejects identifiers rejected by the server verifier",
     assert.equal(browser.isIdentifier(reserved), false, `${reserved} must be rejected by the browser signer`);
   }
 });
+
+test("browser signer enforces a bounded, explicit local lease", async () => {
+  const html = await readFile(new URL("../authority/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, "signing page must contain its inline script");
+  const end = script.indexOf("function openDb()");
+  assert.notEqual(end, -1, "signer validation helpers must precede storage initialization");
+
+  const browser = {};
+  runInNewContext(script.slice(0, end), browser);
+  const now = Date.parse("2026-10-30T12:00:00.000Z");
+  const valid = {
+    schema: "ngl.agp.authority-lease.v1",
+    subject: "Damien Featherstone",
+    key_fingerprint: "a".repeat(64),
+    issued_at: "2026-10-30T11:59:00.000Z",
+    expires_at: "2026-10-30T12:59:00.000Z",
+    max_duration_seconds: 3600,
+    renewal: "EXPLICIT_ONLY",
+    auto_renew: false
+  };
+  assert.equal(browser.isActiveLease(valid, valid.key_fingerprint, now), true);
+  assert.equal(browser.isActiveLease({ ...valid, expires_at: "2026-10-30T13:00:00.000Z" }, valid.key_fingerprint, now), false,
+    "lease duration must not exceed one hour");
+  assert.equal(browser.isActiveLease({ ...valid, issued_at: "2026-10-30T12:01:00.000Z" }, valid.key_fingerprint, now), false,
+    "future-issued leases must fail closed");
+  assert.equal(browser.isActiveLease({ ...valid, expires_at: "2026-10-30T11:59:59.000Z" }, valid.key_fingerprint, now), false,
+    "expired leases must fail closed");
+  assert.equal(browser.isActiveLease({ ...valid, auto_renew: true }, valid.key_fingerprint, now), false,
+    "automatic renewal must be rejected");
+  assert.equal(browser.isActiveLease({ ...valid, extra: true }, valid.key_fingerprint, now), false,
+    "unknown lease fields must be rejected");
+  assert.equal(browser.isActiveLease(valid, "b".repeat(64), now), false,
+    "the lease must remain bound to the current public-key fingerprint");
+  assert.match(script, /if\(!isActiveLease\(l,fingerprint,now\)\)/,
+    "signing must revalidate the lease at click time");
+  assert.match(script, /active=has&&isActiveLease\(l,fingerprint,Date\.now\(\)\)/,
+    "the UI must use the same lease predicate");
+});
