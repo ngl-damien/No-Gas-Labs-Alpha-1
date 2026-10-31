@@ -12,6 +12,12 @@ function sealQuestTrail(world, viewer, entries) {
     eventCount: Array.isArray(world?.events) ? world.events.length : 0,
     creations: world?.creations,
     creationCount: Array.isArray(world?.creations) ? world.creations.length : 0,
+    discoveries: world?.discoveries,
+    discoveryCount: Array.isArray(world?.discoveries) ? world.discoveries.length : 0,
+    contributions: world?.contributions,
+    contributionCount: Array.isArray(world?.contributions) ? world.contributions.length : 0,
+    reports: world?.reports,
+    reportCount: Array.isArray(world?.reports) ? world.reports.length : 0,
     actorId: viewer?.id ?? null,
     actorRole: viewer?.role ?? null
   });
@@ -25,6 +31,12 @@ export function isQuestTrailProjection(value, world, viewer) {
     context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
     context.creations === world?.creations &&
     context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0) &&
+    context.discoveries === world?.discoveries &&
+    context.discoveryCount === (Array.isArray(world?.discoveries) ? world.discoveries.length : 0) &&
+    context.contributions === world?.contributions &&
+    context.contributionCount === (Array.isArray(world?.contributions) ? world.contributions.length : 0) &&
+    context.reports === world?.reports &&
+    context.reportCount === (Array.isArray(world?.reports) ? world.reports.length : 0) &&
     context.actorId === viewer?.id && context.actorRole === viewer?.role);
 }
 

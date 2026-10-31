@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -892,4 +892,19 @@ test('Witness Guild Hall role coverage counts only the Witness own preserved rol
   assert.equal(coverage.progress, 1);
   assert.deepEqual(coverage.evidence.map(item => item.collaboratorRole), ['tutor']);
   assert.deepEqual(coverage.action, { type: 'location', id: 'guild-npc-archivist' });
+});
+
+
+test('a quest trail becomes stale when activity arrays change in place', () => {
+  const world = {
+    id: 'mutable-test-world', revision: 0,
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [], reports: [], events: []
+  };
+  const trail = getQuestTrail(world, founder);
+  assert.equal(isQuestTrailProjection(trail, world, founder), true);
+  world.contributions.push({ actor: founder, creationId: 'first', version: 1 });
+  assert.equal(isQuestTrailProjection(trail, world, founder), false,
+    'same-object activity mutations invalidate the precomputed trail');
 });
