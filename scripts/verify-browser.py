@@ -926,6 +926,26 @@ def town_square_social(browser,url,out):
         founder_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
         expect(founder_message).to_be_visible()
 
+        revision_before_mute=visitor.request.get(url+'api/state').json()['world']['revision']
+        founder_message.get_by_role('button',name='Mute author on this device',exact=True).click()
+        expect(witness_page.locator('#commons-muted-authors')).to_contain_text('Damien')
+        expect(witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_have_count(0)
+        expect(founder_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_be_visible()
+        assert visitor.request.get(url+'api/state').json()['world']['revision']==revision_before_mute, 'A local mute must not append a shared-world event'
+
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').click()
+        witness_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(witness_page.locator('#commons-muted-authors')).to_contain_text('Damien')
+        expect(witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_have_count(0)
+        witness_page.locator('#commons-muted-authors').get_by_role('button',name='Unmute on this device',exact=True).click()
+        founder_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_message).to_be_visible()
+        assert visitor.request.get(url+'api/state').json()['world']['revision']==revision_before_mute, 'Mute and unmute are device preferences, not world actions'
+
         founder_message.locator('details.commons-report summary').click()
         founder_message.locator('[data-commons-report-reason]').select_option('privacy')
         founder_message.locator('[data-commons-report-details]').fill('Fixture-only private report detail.')
