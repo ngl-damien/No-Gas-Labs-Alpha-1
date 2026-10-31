@@ -878,8 +878,21 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
     closePromise = (async () => {
       for (const stream of streams) stream.response.end();
       await serial;
-      try { if (server.listening) await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose())); }
-      finally{server.closeAllConnections();try{await decisions.close();}finally{await store.close();}}
+      try {
+        if (server.listening) {
+          // Stop accepting new connections, then destroy keep-alive sockets before
+          // awaiting the close callback. Waiting first can deadlock shutdown when
+          // clients retain idle HTTP connections.
+          const stopped = new Promise((resolveClose, reject) =>
+            server.close(error => error ? reject(error) : resolveClose())
+          );
+          server.closeAllConnections();
+          await stopped;
+        }
+      } finally {
+        server.closeAllConnections();
+        try { await decisions.close(); } finally { await store.close(); }
+      }
     })();
     return closePromise;
   };
