@@ -115,7 +115,10 @@ test('service-store close preserves a replacement lock even when it copies the o
   const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   const lockPath = join(dataDir, '.service.lock');
   const replacement = await replaceLockWithIdenticalBytes(lockPath);
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
   assert.deepEqual(await readFile(lockPath), replacement);
 });
 
@@ -263,7 +266,10 @@ test('service-store close preserves a symlink replacement lock', async t => {
   const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
   const lockPath = join(dataDir, '.service.lock');
   const replacement = await replaceLockWithSymlink(lockPath);
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
   assert.equal((await lstat(lockPath)).isSymbolicLink(), true);
   assert.deepEqual(await readFile(lockPath), replacement);
 });
