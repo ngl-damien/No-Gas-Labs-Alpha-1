@@ -246,7 +246,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,8);
+  assert.equal(institutions.length,9);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});
