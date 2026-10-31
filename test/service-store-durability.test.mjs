@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -392,4 +393,112 @@ test('service-store preserves explicit top-level revision mode when world has no
   assert.equal(store.value.revision, 1);
   assert.equal(store.value.world.label, 'updated legacy payload');
   await store.close();
+});
+
+
+test('service-store fails closed when current UID verification is unavailable, throws, or is invalid', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_UNAVAILABLE'],
+    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_FAILED'],
+    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });",
+      'SERVICE_DIRECTORY_OWNER_VERIFICATION_INVALID']
+  ];
+
+  for (const [label, override, expectedCode] of cases) {
+    const dataDir = join(root, label);
+    const preload = join(root, label + '.mjs');
+    await writeFile(preload, override + '\\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        console.log(JSON.stringify({ unexpected: 'store opened' }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, message: error.message }));
+        if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir, NGL_EXPECTED_ERROR_CODE: expectedCode },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} UID probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} UID probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, expectedCode);
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' });
+    await assert.rejects(lstat(join(dataDir, 'service.json')), { code: 'ENOENT' });
+  }
+});
+
+test('service-store rechecks persisted-envelope ownership before and after opening the file', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('persisted-envelope owner probes require a platform UID API');
+    return;
+  }
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-envelope-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dataDir = join(root, 'store');
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+
+  for (const [label, failAt] of [['path', 4], ['descriptor', 5]]) {
+    const preload = join(root, label + '-uid-failure.mjs');
+    const override = `
+      const original = process.getuid.bind(process);
+      let calls = 0;
+      Object.defineProperty(process, 'getuid', {
+        value: () => {
+          calls += 1;
+          if (calls === ${failAt}) throw new Error('injected UID failure');
+          return original();
+        },
+        configurable: true,
+        writable: true
+      });
+      globalThis.__nglUidCalls = () => calls;
+    `;
+    await writeFile(preload, override + '\\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        const store = await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        await store.close();
+        console.log(JSON.stringify({ unexpected: 'store opened', calls: globalThis.__nglUidCalls() }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, calls: globalThis.__nglUidCalls() }));
+        if (error.code !== 'SERVICE_STORE_OWNER_VERIFICATION_FAILED') process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} envelope UID probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} envelope UID probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, 'SERVICE_STORE_OWNER_VERIFICATION_FAILED');
+    assert.equal(outcome.calls, failAt, 'the injected failure must occur at the intended owner-check boundary');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' }, 'failed reopen must release its writer lock');
+  }
 });
