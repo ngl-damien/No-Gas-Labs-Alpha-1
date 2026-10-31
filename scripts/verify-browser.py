@@ -469,7 +469,7 @@ def shared(browser,url,data,out):
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
         close_sheet(b)
-        b.wait_for_function("async()=>{const state=await fetch('/api/state').then(response=>response.json());return state.world.events.some(event=>event.type==='discover'&&event.actor?.id===state.viewer.id&&event.locationId==='relay');}")
+        b.wait_for_function("async()=>{const state=await fetch('/api/state').then(response=>response.json());return state.world.events.some(event=>event.type==='discover'&&event.actor?.id===state.viewer.id&&event.locationId==='relay');}",timeout=15000)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
