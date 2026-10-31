@@ -5,6 +5,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, rename, rm, sy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
+import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 
 const validate = async value => {
   if (!value || !Number.isInteger(value.revision)) throw new Error('invalid test store state');
@@ -626,5 +627,63 @@ test('service-store enforces its writer lease across independent processes', asy
   const persisted = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
   assert.deepEqual(persisted.payload, { revision: 0 }, 'the successor must reopen the same validated store');
   await assert.rejects(lstat(lockPath), { code: 'ENOENT' }, 'the successor must release its own writer lock');
+});
+
+test('service-store leaves an abruptly terminated writer lock for read-only inspection', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('service-store owner verification requires a platform UID API');
+    return;
+  }
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-abrupt-writer-exit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const probe = `
+    const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      await createServiceStore({
+        dataDir: process.env.NGL_TEST_DATA_DIR,
+        initial: { revision: 0 },
+        validate: async value => value
+      });
+      process.stdout.write(JSON.stringify({ opened: true }) + '\\n', () => process.exit(0));
+    } catch (error) {
+      console.log(JSON.stringify({ opened: false, code: error.code }));
+      if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+    }
+  `;
+  const crashedOwner = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: { ...process.env, NGL_TEST_DATA_DIR: dataDir, NGL_EXPECTED_ERROR_CODE: '' },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(crashedOwner.error, undefined, `writer process must terminate: ${crashedOwner.error?.message}`);
+  assert.equal(crashedOwner.status, 0, `writer process failed: ${crashedOwner.stderr}`);
+  assert.deepEqual(JSON.parse(crashedOwner.stdout.trim()), { opened: true });
+
+  const lockPath = join(dataDir, '.service.lock');
+  const lockAfterExit = await lstat(lockPath);
+  const inspection = await inspectWriterLock(lockPath);
+  assert.equal(inspection.status, 'present');
+  assert.equal(inspection.format, 'owner-metadata');
+  assert.equal(inspection.owner.schema, 'ngl.service-lock.v1');
+  assert.equal(inspection.safeToRemove, false, 'a dead PID must never authorize automatic lock deletion');
+
+  const contender = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(contender.error, undefined, `post-crash contender must complete: ${contender.error?.message}`);
+  assert.equal(contender.status, 0, `post-crash contender failed: ${contender.stderr}`);
+  assert.deepEqual(JSON.parse(contender.stdout.trim()), { opened: false, code: 'SERVICE_LOCKED' });
+  const lockAfterContender = await lstat(lockPath);
+  assert.equal(lockAfterContender.dev, lockAfterExit.dev);
+  assert.equal(lockAfterContender.ino, lockAfterExit.ino, 'inspection and rejected reopen must preserve the stale lock for offline recovery');
 });
 
