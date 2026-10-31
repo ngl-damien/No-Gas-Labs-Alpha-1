@@ -334,7 +334,20 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       if (released) return;
       released = true;
       await lease.close();
-      await unlinkOwnedLock(lockPath, leaseIdentity);
+      if (leaseUncertainError) throw leaseUncertainError;
+      if (!await unlinkOwnedLock(lockPath, leaseIdentity)) {
+        let currentLock;
+        try { currentLock = await lstat(lockPath); }
+        catch (error) {
+          if (error.code === 'ENOENT') return;
+          throw error;
+        }
+        if (currentLock.isSymbolicLink() || currentLock.dev !== leaseIdentity.dev || currentLock.ino !== leaseIdentity.ino) {
+          leaseUncertainError = storeReadError('SERVICE_LOCK_CHANGED', 'Service writer lock was replaced before close; replacement preserved');
+          leaseUncertainError.status = 503;
+          throw leaseUncertainError;
+        }
+      }
     })();
     return closePromise;
   }
