@@ -7,6 +7,7 @@ import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
 
@@ -34,6 +35,10 @@ public final class MainActivityTest {
     @Test
     public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed() throws Exception {
         MainActivity activity = activity();
+        assertEquals("offline Alpha-1 APK must not request INTERNET permission",
+                PackageManager.PERMISSION_DENIED,
+                activity.getPackageManager().checkPermission(
+                        android.Manifest.permission.INTERNET, activity.getPackageName()));
         awaitJavaScript(activity, "document.readyState === 'complete' && !!document.getElementById('start-shared')");
 
         assertEquals("\"https://appassets.androidplatform.net\"",
