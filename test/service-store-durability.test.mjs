@@ -195,7 +195,13 @@ test('service-store fails closed when its directory path is replaced after open'
   const original = JSON.parse(await readFile(join(moved, 'service.json'), 'utf8'));
   assert.deepEqual(original.payload, { revision: 0 });
   await assert.rejects(lstat(join(replacement, 'service.json')), error => error.code === 'ENOENT');
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.equal((await lstat(join(moved, '.service.lock'))).isFile(), true,
+    'the original writer lock must remain with the moved directory for offline inspection');
+  await assert.rejects(lstat(join(replacement, '.service.lock')), { code: 'ENOENT' });
 });
 
 test('service-store serializes concurrent commits and rejects a stale revision', async t => {
