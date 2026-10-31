@@ -421,6 +421,29 @@ def institutional_locations(browser,url,out):
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
         close_sheet(page)
+
+        # Guild Hall now joins the retained Moonshot, self-reported attempt and
+        # exact Relay folio in one read-only in-world dossier.
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        docket=page.locator('#guild-expedition-docket')
+        expect(docket).to_be_visible()
+        expect(docket).to_contain_text('Can this claim be falsified?')
+        expect(docket).to_contain_text('SELF-REPORTED · NOT ADJUDICATED · CONTRADICTS')
+        expect(docket).to_contain_text('RELAY FOLIOS · 1 RETAINED')
+        expect(docket).to_contain_text('Adversary · STRUCTURE VALID · HUMAN REVIEW ONLY')
+        expect(docket.locator('[data-expedition-docket-id]')).to_have_count(1)
+        docket_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp}}")
+        docket_response=docket.get_by_role('button',name='Inspect retained folio →',exact=True)
+        expect(docket_response).to_be_visible()
+        docket_response.click()
+        page.wait_for_function("(id)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&Array.from(sheet.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id&&card===document.activeElement)}",arg=response_id)
+        expect(page.locator('[data-collaborator-response-id="'+response_id+'"]')).to_be_focused()
+        docket_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp}}")
+        assert docket_after==docket_before, 'Opening a retained dossier or folio must not create events, revision or XP'
+        close_sheet(page)
+
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
         attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
