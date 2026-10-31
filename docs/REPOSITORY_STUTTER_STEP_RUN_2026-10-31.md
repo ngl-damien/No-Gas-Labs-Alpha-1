@@ -565,3 +565,44 @@ No branch was deleted. No release, deployment, credential/key change, permission
 - PR #237 new read-only-only head Verify #41173118283 success and Genesis #41173118308 success; preflight receipt targets include the exact workflow and regression test. Browser Acceptance #41173118285 was still in progress at last poll (job #124455359809 executing the desktop/mobile/shared-world/recovery journeys). Do not mark fully verified or merge until exact-head browser run completes.
 - The earlier destructive workflow proposal is superseded by the read-only-only branch. Current live inventory: 489 refs, all 80 manifested names absent. No deletion action is needed or authorized.
 
+
+
+## Ralph loop restart — checkpoint and next-cycle rehydration (2026-10-31 UTC)
+
+### Mandatory bootstrap completed
+- Read current main root AGENTS.md first, alone.
+- Read the complete canonical docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md second, alone.
+- Re-read this durable checkpoint and current-main Worker B bootstrap checkpoint.
+- Current main at rehydration: bb1aa833130b7e5399d7b84d1041b1c26c49cc16.
+- Current checkpoint branch: audit/repository-stutter-step-checkpoint-2026-10-30.
+- Manual nested-instruction search for the documentation target found no docs/AGENTS.md or docs/operations/AGENTS.md; for the storage review paths, no src/AGENTS.md, src/institution/AGENTS.md, or test/AGENTS.md was found.
+- Portable local preflight remains unavailable: the session has GitHub repository connectors but no working local clone/command runner (the previous clone attempt failed resolving github.com). No local preflight receipt or local test pass is claimed. Exact hosted CI and manual instruction inspection are recorded separately; a hosted preflight step is not represented as a local portable receipt.
+
+### Worker B latest durable result — PR #239
+- PR #239, docs/mmorpg-evidence-ledger-audit-20261031, exact head 907b84abce119d4bc8b48e6841da4ff1cbe7d1c9, base current main, one documentation file changed.
+- Re-read MMORPG_COMPLETION_CONTRACT.md, current-main MMORPG_COMPLETION_LEDGER.md, and proposed ledger. G0–G8 are IN PROGRESS with concrete missing acceptance boundaries; G9 NOT STARTED. Proposed #227 work is explicitly separated from current-main capability.
+- Cross-checked material claims against current-main game/server.mjs, game/model.mjs, game/quests.mjs, game/character-sheet.mjs, and game/service-store.mjs. The ledger correctly distinguishes browser two-client evidence from production scale, process-memory sessions from durable world state, published-creation inventory from full equipment/economy, and recovered Mesh Android references from an Alpha-1 native app.
+- Exact-head Verify #41173021081 success; Genesis Evidence Invariant #41173021072 success; Browser Acceptance #41173021061 success, 12/12 journeys. Browser artifact #13032455765, SHA-256 17fcca2d92a16a1c8e4cae29c3120525a9a8959ceed6555be07c6e6dab8e55ba.
+- Added independent review comment #6539647618. No factual correction identified. This is a documentation proposal, not merged capability or Founder acceptance.
+
+### PR #237 — current-main branch inventory safety
+- Exact head 96589b98cb63bc6c93a052b6a629b6cec3b2bca7, three files: .github/workflows/branch-cleanup.yml, package.json, test/branch-cleanup-safety.test.mjs.
+- Current workflow has manual-only workflow_dispatch, one preview job, no delete job, no confirmation input, and no Git-ref mutation API calls. The live branch inventory previously returned 489 refs; all 80 names in the recovery manifest were absent.
+- Exact-head Verify #41173118283 success; Genesis #41173118308 success. Browser Acceptance #41173118285 remained in progress at last poll (playable-world journey step running; artifact preservation pending). Do not call all checks green yet.
+- Review identified residual least-privilege issue: workflow token still has contents: write although preview makes no mutation calls. No permission change was made; the root contract requires explicit authority for permission changes. Keep draft until browser completes and the permission issue is resolved through the proper authority boundary.
+
+### PR #238 — Forge challenge hardening, active owner lane
+- Exact head 914cb66756691ec2680906a15120a59469b6e0e2, two Forge files; Verify #41172555053, Genesis #41172555421, Browser Acceptance #41172555345 all succeeded.
+- PR body now correctly describes the -3,775 per-call fixed benchmark result and preserves the failed first test attempt. The active PR's current review comments additionally identify a distinct input-boundary issue: runCandidate() destructures/spreads caller-controlled input before normalization; compareCandidates() also reads source/output paths from the original object after validation. An accessor or Proxy can therefore execute/change values across the boundary.
+- Left findings in comments #6539633478 and #6539638513. This is the active Forge owner's lane; do not edit the same files concurrently. PR still does not include its two changed paths in the scoped preflight target list; owner must add them and rerun exact-head checks before claiming preflight coverage.
+
+### PR #215 — pre-rename process-death regression
+- Rehydrated the active PR #215 and its exact diff. It adds a renameFile injection seam and a child-process SIGKILL regression proving that a fully fsynced temp envelope does not become canonical before rename, and that the writer lease blocks reopening.
+- The PR is stacked on #205; its branch is 14 ahead / 9 behind current main across six paths, so it is not independently mergeable. Earlier review comment #6539588731 recommended transplanting only the test seam/regression onto current main, but no transplant was made in this run. This remains a high-value storage-reliability follow-up; inspect ownership/current branch activity before any implementation.
+
+### Current next-ranked loop actions
+1. Re-poll PR #237 Browser Acceptance #41173118285; inspect exact-head journey logs and artifact. If successful, retain the least-privilege blocker; do not change workflow permissions or merge without explicit authority.
+2. Recheck PR #238 for owner response, changed head, and whether the accessor/Proxy boundary and scoped preflight paths are fixed. Review only; avoid concurrent Forge edits.
+3. Continue storage crash-consistency work only after checking whether PR #215/#205 owners have rebased or handed off the narrow current-main test transplant. Preserve the rule that stale locks require explicit offline recovery; do not automate stale-lock deletion.
+4. Keep Worker B's MMORPG ledger and #227 game stack separate. PR #239 is green evidence documentation; #227 remains stacked and not integrated.
+5. Repeat the loop while useful session budget remains. No claim of background execution after this host session.
