@@ -62,3 +62,11 @@ test('saved JSON must contain exactly its schema and two coordinate fields',()=>
     assert.equal(readPrivatePlayerPosition(storage({[key]:JSON.stringify(saved)})),null);
   }
 });
+
+test('runtime player identity is accepted as input but never persisted',()=>{
+  const store=storage();
+  assert.equal(writePrivatePlayerPosition({id:'private-founder',x:425,y:730},store),true);
+  const raw=store.values.get(key);
+  assert.deepEqual(JSON.parse(raw),{schema:'ngl.player-position.v1',x:425,y:730});
+  assert.equal(Object.hasOwn(JSON.parse(raw),'id'),false);
+});
