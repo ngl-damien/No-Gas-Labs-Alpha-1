@@ -908,3 +908,61 @@ test('a quest trail becomes stale when activity arrays change in place', () => {
   assert.equal(isQuestTrailProjection(trail, world, founder), false,
     'same-object activity mutations invalidate the precomputed trail');
 });
+
+test('Contradiction encounters repeat once per distinct report and reopen when new reports arrive', () => {
+  const world = experimentQuestWorld({ reportActor: founder });
+  const objective = () => getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  const firstReport = world.events.find(event => event.type === 'experiment-reported');
+  let encounter = objective();
+  assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [1, 0, false]);
+  assert.equal(encounter.action.activityId, firstReport.reportId);
+
+  world.events.push({
+    id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
+    reportId: firstReport.reportId, moonshotId: firstReport.moonshotId, actor: witness,
+    at: '2026-10-28T17:04:00.000Z', challengeType: 'missing-evidence',
+    challengeText: 'The attempt does not retain the required measurement settings.',
+    evidenceCreationId: null, evidenceVersion: null
+  });
+  encounter = objective();
+  assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [1, 1, true]);
+
+  const proposal = world.events.find(event => event.type === 'moonshot-proposed');
+  const secondProposal = {
+    ...proposal, id: 'proposal-2', moonshotId: 'moon-2', at: '2026-10-28T17:05:00.000Z'
+  };
+  const secondReport = {
+    ...firstReport, id: 'report-event-2', reportId: 'report-2', moonshotId: 'moon-2',
+    at: '2026-10-28T17:06:00.000Z'
+  };
+  world.events.push(secondProposal, secondReport);
+  encounter = objective();
+  assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [2, 1, false],
+    'a newly retained report creates another real encounter instead of leaving the quest permanently complete');
+  assert.equal(encounter.action.activityId, 'report-2',
+    'the next action targets the newest unchallenged report');
+
+  world.events.push({
+    id: 'challenge-event-duplicate', type: 'experiment-challenged', challengeId: 'challenge-duplicate',
+    reportId: firstReport.reportId, moonshotId: firstReport.moonshotId, actor: witness,
+    at: '2026-10-28T17:07:00.000Z', challengeType: 'methodology',
+    challengeText: 'A second category against the same report is not a new encounter.',
+    evidenceCreationId: null, evidenceVersion: null
+  });
+  encounter = objective();
+  assert.deepEqual([encounter.target, encounter.progress], [2, 1],
+    'a second challenge against one report cannot advance the encounter trail twice');
+  assert.deepEqual(encounter.evidenceIds, ['challenge-event-1']);
+
+  world.events.push({
+    id: 'challenge-event-2', type: 'experiment-challenged', challengeId: 'challenge-2',
+    reportId: secondReport.reportId, moonshotId: secondReport.moonshotId, actor: witness,
+    at: '2026-10-28T17:08:00.000Z', challengeType: 'reproducibility',
+    challengeText: 'The second attempt cannot be reproduced from its retained procedure.',
+    evidenceCreationId: null, evidenceVersion: null
+  });
+  encounter = objective();
+  assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [2, 2, true]);
+  assert.equal(encounter.action, null);
+});
