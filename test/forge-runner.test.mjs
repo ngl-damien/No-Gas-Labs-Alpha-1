@@ -59,6 +59,29 @@ test('Forge runs actual correct and incorrect candidates in disjoint copies and 
   assert.equal(JSON.parse(await readFile(join(options.outDir, 'report.json'), 'utf8')).taskId, report.taskId);
 });
 
+test('Forge fresh verification challenge rejects a candidate hardcoded for the deterministic benchmark checksum', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const benchmarkOnly = `export function sum(values) {
+    if (values.length === 10000) return 0;
+    return values.reduce((total, value) => total + value, 0);
+  }`;
+  const report = await compareCandidates({
+    ...options,
+    candidates: [{ id: 'benchmark-only', overlay: { [target]: benchmarkOnly } }]
+  });
+  const result = report.results[0];
+  assert.equal(result.execution.outcome, 'passed');
+  assert.equal(result.outputCorrect, true);
+  assert.equal(result.verificationChecks.passed, false);
+  assert.ok(result.verificationChecks.failedCases.includes(5));
+  assert.equal(result.correct, false);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(report.verificationChallenge.schema, 'ngl.forge-challenge.v2');
+  assert.match(report.verificationChallenge.seed, /^[a-f0-9]{64}$/);
+  assert.ok(report.verificationChallenge.caseLengths[5] === 10000);
+});
+
 test('Forge enforces real child timeout and output limits with retained bounded logs', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
@@ -130,6 +153,11 @@ test('Forge task identities are deterministic for source bytes and overlays and 
   const second = await compareCandidates({ ...options, outDir: options.outDir + '-again', candidates });
   assert.equal(first.taskId, second.taskId);
   assert.deepEqual(first.results.map(r => r.taskId), second.results.map(r => r.taskId));
+  assert.notEqual(first.verificationChallenge.seed, second.verificationChallenge.seed);
+  assert.notEqual(first.verificationChallenge.challengeId, second.verificationChallenge.challengeId);
+  assert.deepEqual(first.verificationChallenge.caseLengths, [0, 1, 3, 11, 9, 10000]);
+  assert.equal(first.results[0].verificationChecks.challengeSeed, first.verificationChallenge.seed);
+  assert.equal(first.results[0].verificationChecks.challengeId, first.verificationChallenge.challengeId);
   assert.deepEqual(first.comparison.eligibleCandidateIds, ['loop', 'reduce']);
   assert.ok(first.comparison.speedup >= 1);
   assert.ok(['loop', 'reduce'].includes(first.comparison.winner));
