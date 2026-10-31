@@ -174,6 +174,29 @@ test("a change to the canonical output set invalidates an otherwise valid signed
   assert.equal(createVerifier({ resolveOutputs: () => ["different-output"] })(event), false);
 });
 
+test("output membership is order-independent but remains an exact set", () => {
+  const multiOutputPayload = { ...payload, outputs: ["review-packet", "audit-trail"] };
+  const event = signedEventFor(multiOutputPayload);
+  assert.equal(createVerifier({
+    resolveOutputs: () => ["audit-trail", "review-packet"]
+  })(event), true);
+});
+
+test("output policy is not resolved when canonical proposal or quest lookup fails", () => {
+  const event = signedEventFor(payload);
+  let outputLookups = 0;
+  const resolveOutputs = () => { outputLookups += 1; return ["review-packet"]; };
+  assert.equal(createVerifier({ resolveProposal: () => null, resolveOutputs })(event), false);
+  assert.equal(createVerifier({ resolveQuest: () => null, resolveOutputs })(event), false);
+  assert.equal(outputLookups, 0);
+});
+
+test("asynchronous proposal and quest resolvers fail closed", () => {
+  const event = signedEventFor(payload);
+  assert.equal(createVerifier({ resolveProposal: async () => proposal })(event), false);
+  assert.equal(createVerifier({ resolveQuest: async () => quest })(event), false);
+});
+
 test("an asynchronous output resolver is rejected rather than awaited implicitly", () => {
   const event = signedEventFor(payload);
   assert.equal(createVerifier({ resolveOutputs: async () => ["review-packet"] })(event), false);
