@@ -343,3 +343,35 @@ This run delivered an additional two-file source/test correction on current-main
 2. Recheck Worker B PR #227 and #208 for fresh heads/comments/checks; do not assume old state.
 3. Address the branch-cleanup workflow risk only through a current-main, exact-head verified proposal and preserve the human authority boundary around destructive execution and token permission scope.
 4. Continue the institution-wide reliability audit, avoiding duplicate ownership and prioritizing real high-risk defects over status-only work.
+
+
+## Ralph continuation — destructive cleanup workflow safety proposal (2026-10-31 UTC)
+
+### Current-main rehydration after Forge merge
+- Current main was independently observed at bb1aa833130b7e5399d7b84d1041b1c26c49cc16 after PR #236.
+- Rechecked stale PR #208 against that main: 7 ahead / 9 behind, diverged; only .github/workflows/branch-cleanup.yml and test/branch-cleanup-safety.test.mjs differ. Existing main still has a push trigger on the cleanup workflow file and workflow-level contents: write.
+- Re-read the exact PR #208 workflow and test. Its manual preview/delete split is a worthwhile safety improvement, but a manual dispatch can select a non-default branch's workflow definition unless the workflow checks context.ref.
+
+### Current-main transplant — PR #237
+- Created branch safety/manualize-branch-cleanup-current-main-20261031 from main bb1aa833...
+- Transplanted the two intended files from PR #208 and added a further guard to both preview and delete jobs: require context.ref to equal refs/heads/<repository default branch>. This prevents a stale or non-default branch workflow definition from being used for a destructive dispatch.
+- Added a regression asserting both jobs contain the default-branch guard.
+- Re-read the resulting workflow and test; compare reports exactly two intended files, 5 commits ahead / 0 behind main. No other source paths changed.
+- Opened draft PR [#237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/237), head 50f545928cf38b945084d97069be67f7b60a9362, base bb1aa833130b7e5399d7b84d1041b1c26c49cc16.
+- Exact-head Verify #41171992611: success. Genesis #41171992670: success. Browser Acceptance #41171992647: in progress at latest poll; browser journey step had started. Do not mark fully verified until it completes.
+- PR #237 explicitly preserves the existing workflow-level contents: write permission scope. The preview script makes no write API calls, but its token remains write-capable. No permission-scope change was made because that is a human-authority boundary.
+- No workflow dispatch, branch deletion, release, deployment, credential/permission setting change, or spending occurred.
+
+### Prior iteration integrated
+- PR #236 merged as bb1aa833130b7e5399d7b84d1041b1c26c49cc16; details and exact-head checks are recorded in the preceding section.
+- Historical PR #235 and PR #216 were closed unmerged as superseded by #236.
+
+### Cross-worker status
+- Worker B PR #227 remains at bb799237ea2b58595095ae84ac52961b5685ab2d at latest poll; Browser Acceptance #41170972505 failed because #sheet-backdrop intercepted the encounter objective click. Worker B handoff comment #6539378035 records the exact failure. No game paths edited by Worker A.
+- PR #208 remains open/draft and is superseded in intent by current-main PR #237; close it only after #237 is verified and integrated.
+
+### Next actions
+1. Finish PR #237 Browser Acceptance #41171992647; inspect exact logs and journey count. If green, recheck exact head, diff, and mergeability; mark ready and consider squash merge under standing routine-maintenance authorization.
+2. Close PR #208 unmerged as superseded after #237 lands; preserve its historical branch and CI evidence.
+3. Continue to treat workflow-level contents: write as an unresolved least-privilege risk; do not alter permissions or dispatch deletion without Damien's explicit authority.
+4. Recheck Worker B #227 for a new exact head and current browser evidence; do not duplicate its game work.
