@@ -75,6 +75,7 @@ def basic(page,url,out,label):
     character.click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
     expect(page.locator('#sheet')).to_contain_text('Questkeeper')
+    expect(page.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
     expect(page.locator('#sheet')).to_contain_text('Level 1')
     close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
@@ -195,6 +196,7 @@ def phone_toolbar_layout(browser,url,width):
         character.click()
         expect(page.locator('#sheet-title')).to_have_text('Character & field record')
         expect(page.locator('#sheet')).to_contain_text('Questkeeper')
+        expect(page.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
         close_sheet(page)
         return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44}
     finally:
