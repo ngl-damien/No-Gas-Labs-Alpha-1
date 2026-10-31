@@ -977,9 +977,9 @@ export function getQuestTrail(world, viewer, options = null) {
 }
 
 
-const EXPEDITION_DOCKET_LIMIT = 8;
-const EXPEDITION_ACTIVITY_LIMIT = 4;
-const EXPEDITION_RESPONSE_LIMIT = 8;
+const EXPEDITION_DOCKET_LIMIT = 3;
+const EXPEDITION_ACTIVITY_LIMIT = 3;
+const EXPEDITION_RESPONSE_LIMIT = 4;
 const DOCKET_RESEARCH_TYPES = new Set([
   'moonshot-proposed', 'experiment-reported', 'experiment-challenged'
 ]);
