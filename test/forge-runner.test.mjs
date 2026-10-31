@@ -87,11 +87,26 @@ test('Forge rejects protected paths, traversal, arbitrary commands and unbounded
   await assert.rejects(access(options.outDir));
 });
 
+test('Forge rejects sparse and accessor-backed candidate inputs before creating outputs', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  await assert.rejects(compareCandidates({ ...options, candidates: new Array(1) }), /dense|candidate/i);
+  await assert.rejects(access(options.outDir));
+  let getterInvoked = false;
+  const overlay = {};
+  Object.defineProperty(overlay, target, { enumerable: true, get() { getterInvoked = true; return correct; } });
+  const accessorOut = options.outDir + '-accessor';
+  await assert.rejects(compareCandidates({ ...options, outDir: accessorOut, candidates: [{ id: 'accessor', overlay }] }), /data|overlay/i);
+  assert.equal(getterInvoked, false);
+  await assert.rejects(access(accessorOut));
+});
 test('Forge snapshots tracked and nonignored source bytes, omits runtime and credentials, refuses symlinks', async t => {
   const options = await fixture(t);
   await writeFile(join(options.sourceDir, 'ignored.txt'), 'ignored runtime');
   await mkdir(join(options.sourceDir, '.runtime'));
   await writeFile(join(options.sourceDir, '.runtime/session.json'), 'secret runtime');
+  await mkdir(join(options.sourceDir, '.tmp'));
+  await writeFile(join(options.sourceDir, '.tmp/scratch.mjs'), 'temporary workspace file');
   await writeFile(join(options.sourceDir, '.env'), 'SECRET=not-copied');
   await writeFile(join(options.sourceDir, 'identity.key'), 'not-copied');
   await writeFile(join(options.sourceDir, 'new-source.mjs'), 'export const dirty = true;');
@@ -102,6 +117,7 @@ test('Forge snapshots tracked and nonignored source bytes, omits runtime and cre
   const paths = report.source.files.map(file => file.path);
   assert.ok(paths.includes('new-source.mjs'));
   assert.ok(!paths.some(path => /ignored|runtime|\.env|identity\.key/.test(path)));
+  assert.ok(!paths.some(path => path.startsWith('.tmp/')));
   await symlink('/etc/passwd', join(options.sourceDir, 'linked-source'));
   await assert.rejects(compareCandidates({ ...options, outDir: options.outDir + '-symlink', candidates: [{ id: 'correct', overlay: {} }] }), /symbolic|symlink/i);
 });
@@ -120,6 +136,29 @@ test('Forge task identities are deterministic for source bytes and overlays and 
   await assert.rejects(compareCandidates({ ...options, candidates }), /exist|fresh/i);
 });
 
+test('Forge verification uses a fresh copy and cannot inherit files created only during candidate execution', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const overlay = [
+    "import { writeFileSync } from 'node:fs';",
+    "if (process.argv[1].endsWith('/benchmark.mjs')) {",
+    "  writeFileSync(new URL('./helper.mjs', import.meta.url), 'export const sum = values => values.reduce((a, b) => a + b, 0);');",
+    "}",
+    "const { sum } = await import('./helper.mjs');",
+    "export { sum };"
+  ].join('\n');
+  const report = await compareCandidates({ ...options, candidates: [{ id: 'execution-only-helper', overlay: { [target]: overlay } }] });
+  const result = report.results[0];
+  assert.equal(result.execution.outcome, 'passed');
+  assert.equal(result.verification.outcome, 'failed');
+  assert.equal(result.correct, false);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.verificationWorkspace, 'candidates/execution-only-helper/verification-workspace');
+  assert.notEqual(result.verificationWorkspace, result.workspace);
+  assert.equal(result.integrity.passed, false);
+  assert.ok(result.integrity.changedPaths.includes('fixtures/forge/workload/helper.mjs'));
+  assert.deepEqual(result.integrity.verification.changedPaths, []);
+});
 test('Forge CLI demo executes fixture candidates and writes a report without a shell', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngl-forge-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -164,6 +203,115 @@ test('Forge excludes tracked ignored files and common credential configuration n
   for (const path of ['.npmrc', '.envrc', 'ignored.txt']) assert.ok(!paths.includes(path), `${path} must not be copied`);
 });
 
+test('Forge excludes common local credential stores and private-key files from every copy', async t => {
+  const options = await fixture(t);
+  const credentialFiles = {
+    '.git-credentials': 'https://user:token@github.com\\n',
+    '.docker/config.json': '{"auths":{"registry":{"auth":"secret"}}}',
+    '.kube/config': 'users: [private-token]',
+    '.azure/azureProfile.json': '{"accessTokens":["secret"]}',
+    '.gnupg/private-keys-v1.d/key': 'private-key-bytes',
+    '.terraform/terraform.tfstate': '{"secret":"state-token"}',
+    '.terraform.d/credentials.tfrc.json': '{"credentials":{"registry":{"token":"secret"}}}',
+    '.config/gh/hosts.yml': 'github.com: oauth_token: secret',
+    '.config/hub': 'github.com: token secret',
+    '.config/gcloud/application_default_credentials.json': '{"refresh_token":"secret"}',
+    '.config/containers/auth.json': '{"auths":{"registry":{"auth":"secret"}}}',
+    '.config/git/credentials': 'https://user:secret@example.invalid',
+    'id_ecdsa': 'private-key',
+    'id_dsa': 'private-key',
+    'id_ed25519_sk': 'private-key',
+    '.vault-token': 'secret-token',
+    'application_default_credentials.json': '{"refresh_token":"secret"}',
+    'google_application_credentials.json': '{"private_key":"secret"}',
+    'service-account-production.json': '{"private_key":"secret"}',
+    'terraform.tfstate': '{"secret":"state-token"}'
+  };
+  await repositoryTestFiles(options.sourceDir, credentialFiles);
+  const { compareCandidates } = await api();
+  const report = await compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] });
+  const included = new Set(report.source.files.map(file => file.path));
+  const copiedWorkspace = join(options.outDir, report.results[0].workspace);
+  for (const path of Object.keys(credentialFiles)) {
+    assert.ok(!included.has(path), `${path} must be excluded from the source manifest`);
+    await assert.rejects(access(join(copiedWorkspace, path)), { code: 'ENOENT' }, `${path} must not reach candidate execution`);
+  }
+  assert.ok(included.has('README.md'), 'ordinary public source remains available');
+});
+
+test('Forge rejects recognizable embedded credentials before candidate copying or repository test execution', async t => {
+  const options = await fixture(t);
+  const file = 'src/embedded-credential.mjs';
+  const { compareCandidates, verifyRepository } = await api();
+  const samples = [
+    ['github-token', 'ghp_' + 'A'.repeat(36)],
+    ['github-token', 'github_pat_' + 'A'.repeat(24)],
+    ['aws-access-key', 'AKIA' + 'A'.repeat(16)],
+    ['google-api-key', 'AIza' + 'A'.repeat(35)],
+    ['slack-token', 'xoxb-' + 'A'.repeat(20)],
+    ['stripe-live-secret', 'sk_live_' + 'A'.repeat(24)],
+    ['npm-token', 'npm_' + 'A'.repeat(36)],
+    ['gitlab-token', 'glpat-' + 'A'.repeat(24)]
+  ];
+  for (const [index, [rule, secret]] of samples.entries()) {
+    const outDir = options.outDir + '-' + index;
+    await repositoryTestFiles(options.sourceDir, { [file]: 'export const token = ' + JSON.stringify(secret) + ';' });
+    let failure;
+    try {
+      await compareCandidates({ ...options, outDir, candidates: [{ id: 'correct', overlay: {} }] });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error, rule + ' must fail closed');
+    assert.ok(failure.message.includes('Credential-like content detected in source file: src/embedded-credential.mjs (' + rule + ')'), rule);
+    assert.equal(failure.message.includes(secret), false, 'errors must not echo matched credential bytes');
+    await assert.rejects(access(outDir), { code: 'ENOENT' }, 'candidate workspace must not be created');
+    await rm(join(options.sourceDir, file));
+  }
+
+  const privateKeyBlocks = [
+    ['plain', ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' redacted-test-fixture'],
+    ['encrypted', ['-----BEGIN ', 'ENCRYPTED PRIVATE KEY-----'].join('') + ' redacted-test-fixture']
+  ];
+  for (const [index, [kind, keyText]] of privateKeyBlocks.entries()) {
+    const outDir = options.outDir + '-verify-' + index;
+    await repositoryTestFiles(options.sourceDir, { [file]: 'export const key = ' + JSON.stringify(keyText) + ';' });
+    const report = await verifyRepository({ ...options, outDir });
+    assert.equal(report.outcome, 'source_failed', kind);
+    assert.equal(report.correct, false, kind);
+    assert.ok(report.reason.includes('private-key-block'), kind);
+    await assert.rejects(access(join(outDir, 'workspace')), { code: 'ENOENT' }, 'repository tests must not receive a copied workspace');
+    await rm(join(options.sourceDir, file));
+  }
+});
+test('Forge rejects recognizable credentials in candidate overlays before creating workspaces', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const samples = [
+    ['github-token', 'ghp_' + 'B'.repeat(36)],
+    ['aws-access-key', 'AKIA' + 'B'.repeat(16)],
+    ['private-key-block', ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' synthetic-fixture']
+  ];
+  for (const [index, [rule, secret]] of samples.entries()) {
+    const outDir = options.outDir + '-overlay-' + index;
+    const overlaySource = 'export const credential = ' + JSON.stringify(secret) + ';';
+    let failure;
+    try {
+      await compareCandidates({
+        ...options,
+        outDir,
+        candidates: [{ id: 'credential-overlay', overlay: { [target]: overlaySource } }]
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error, rule + ' must fail closed');
+    assert.ok(failure.message.includes('Credential-like content detected in candidate overlay: ' + target + ' (' + rule + ')'));
+    assert.equal(failure.message.includes(secret), false, 'errors must not echo matched credential bytes');
+    await assert.rejects(access(outDir), { code: 'ENOENT' }, 'no workspace may be created for a credential-bearing overlay');
+  }
+});
+
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
@@ -201,6 +349,38 @@ async function repositoryTestFiles(sourceDir, files) {
     await writeFile(join(sourceDir, path), contents);
   }
 }
+
+test('Repository Forge rejects accessor-backed request fields without invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  const { verifyRepository } = await api();
+  for (const field of ['sourceDir', 'outDir']) {
+    let getterInvoked = false;
+    const outDir = options.outDir + '-request-' + field;
+    const request = { sourceDir: options.sourceDir, outDir, limits: {} };
+    Object.defineProperty(request, field, {
+      enumerable: true,
+      get() { getterInvoked = true; return field === 'sourceDir' ? options.sourceDir : outDir; }
+    });
+    await assert.rejects(verifyRepository(request), /data properties/i);
+    assert.equal(getterInvoked, false, field + ' getter must not execute');
+    await assert.rejects(access(outDir), { code: 'ENOENT' });
+  }
+});
+
+test('Repository Forge rejects accessor-backed limits without invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  const { verifyRepository } = await api();
+  let getterInvoked = false;
+  const limits = {};
+  Object.defineProperty(limits, 'timeoutMs', {
+    enumerable: true,
+    get() { getterInvoked = true; return 1000; }
+  });
+  const outDir = options.outDir + '-limits-accessor';
+  await assert.rejects(verifyRepository({ ...options, outDir, limits }), /data properties/i);
+  assert.equal(getterInvoked, false);
+  await assert.rejects(access(outDir), { code: 'ENOENT' });
+});
 
 test('Repository Forge executes explicit copied tests and retains actual TAP counts without recursive Forge discovery', async t => {
   const options = await fixture(t);
@@ -277,6 +457,9 @@ test('Repository Forge supports bounded public-source packages without fabricati
     'private/credential.json': '{"must":"not be copied"}',
     '.runtime/session.json': '{"must":"not be copied"}',
     'game/operator.key': 'must not be copied',
+    'service-account-production.json': '{"private_key":"must not be copied"}',
+    'application_default_credentials.json': '{"refresh_token":"must not be copied"}',
+    'google_application_credentials.json': '{"private_key":"must not be copied"}',
     'docs/meteor/notes.md': 'Public build notes'
   });
   const { verifyRepository } = await api();
@@ -288,7 +471,7 @@ test('Repository Forge supports bounded public-source packages without fabricati
   assert.equal(report.source.revision.dirty, null);
   const paths = report.source.files.map(file => file.path);
   assert.ok(paths.includes('docs/meteor/notes.md'));
-  assert.ok(!paths.some(path => /private|runtime|operator\.key/.test(path)));
+  assert.ok(!paths.some(path => /private|runtime|operator\.key|service-account|application_default_credentials|google_application_credentials/.test(path)));
 });
 
 test('Repository Forge CLI verifies only a disposable repository fixture and preserves failure exit status', async t => {
