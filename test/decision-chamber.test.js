@@ -832,3 +832,36 @@ test("browser signer enforces a bounded, explicit local lease", async () => {
   assert.match(script, /active=has&&isActiveLease\(l,fingerprint,Date\.now\(\)\)/,
     "the UI must use the same lease predicate");
 });
+
+test("verifier and browser signer reject multi-capability payloads even when signed", async () => {
+  const overbroad = { ...payload, capabilities: ["repository.write", "repository.admin"] };
+  const receipt = signedReceipt(overbroad);
+  assert.deepEqual(verify(receipt, overbroad), {
+    valid: false,
+    reason: "DECISION_PAYLOAD_INVALID"
+  });
+
+  assert.throws(() => authorizationEventFromEnvelope({
+    envelope: {
+      schema: "ngl.agp.founder-decision-envelope.v2",
+      payload: overbroad,
+      signed: receipt
+    },
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  }), /FOUNDER_DECISION_DECISION_PAYLOAD_INVALID/);
+
+  const html = await readFile(new URL("../authority/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, "signing page must contain its inline script");
+  const end = script.indexOf("function openDb()");
+  const browser = {};
+  runInNewContext(script.slice(0, end), browser);
+  const encoded = JSON.stringify(overbroad);
+  const browserPayload = runInNewContext("JSON.parse(" + JSON.stringify(encoded) + ")", browser);
+  assert.throws(
+    () => browser.validateDecisionPayload(browserPayload, Date.parse("2100-01-01T00:00:00.000Z")),
+    /Capabilities must contain exactly one entry/
+  );
+});
