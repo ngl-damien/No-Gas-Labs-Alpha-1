@@ -6,7 +6,7 @@
 **Current main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`  
 **Active proposal:** [PR #248](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/248), draft/open/unmerged  
 **Branch:** `ops/canonical-checkpoint-preflight-20261031-run10`  
-**Code head verified before this checkpoint refresh:** `8ca2a43dd6afae077f1cbe3143e4e3109f3c9d2e`
+**PR #248 head at run-10 checkpoint refresh:** `4172b61ed793943948b7534a771cb262e56da48c` (Verify and Genesis passed; Browser Acceptance was still running at the time of this refresh).
 
 ## Cycle 1 — canonical checkpoint and hosted preflight repair
 
@@ -65,3 +65,53 @@ No merge, release, deployment, external publication, spending, credential/permis
 5. Continue issue #17's Founder key-custody and live-server authorization acceptance without generating or enrolling credentials.
 
 The chronological cross-run history and longer handoffs remain on [PR #210](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/210).
+
+
+## Run 10 follow-up — checkpoint provenance and Android acceptance diagnostics
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Run timestamp:** 2026-10-31 UTC.  
+**Prior checkpoint inspected:** PR #210 comment 6549935064 and the then-current PR #248 `LATEST_CHECKPOINT.md`.  
+**Other worker inspected:** Worker B automation latest completed run `de705ad0-73fc-832b-9231-79cacc81a5c4` (completed 2026-10-31T23:39:18Z); current PR #249 head and exact Android run rechecked. Its recorded status does not imply background liveness.
+
+### Bootstrap and preflight evidence
+
+- Read root `AGENTS.md` alone, then the complete canonical shared protocol alone. Re-read the local Windows checkout copies sequentially.
+- Read the universal agent contract, MMORPG completion contract and ledger, 2026-10-30 bootstrap checkpoint, all four vendor pointers, and applicable nested-instruction paths. `docs/AGENTS.md`, `docs/operations/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, `.github/AGENTS.md`, and `.github/workflows/AGENTS.md` returned 404 on the current main/PR #248 branch; no paths beneath those directories were changed.
+- Ran the portable preflight from `C:\Users\desti\source\No-Gas-Labs-Alpha-1` using `npm.cmd` from `cmd.exe` with the intended targets and canonical checkpoint. It returned `status: blocked`, `checkpoint: null`, and one failure: `docs/operations/LATEST_CHECKPOINT.md` `ENOENT`. It did hash the local root instructions, shared protocol, and four vendor pointers. This checkout is based on main, where the canonical checkpoint is absent; no local ready receipt or local test pass is claimed. The `git` command is not available in PATH on this Windows snapshot, so branch/diff inspection used GitHub's repository API.
+- The hosted preflight on PR #248's branch later returned `status: ready`, `warnings: []`, `failures: []` on exact head `4172b61...`.
+
+### Cycle 1 — strengthen checkpoint provenance regression
+
+- Reinspected PR #248 before editing: branch `ops/canonical-checkpoint-preflight-20261031-run10`, base `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`, open/draft.
+- Claimed the bounded objective in PR #248 comment 6550767368.
+- Added an assertion in `test/latest-checkpoint-contract.test.mjs` that the historical `NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md` remains a separately hashed `--path` input while `LATEST_CHECKPOINT.md` remains the canonical `--checkpoint`.
+- First commit `5c988f7635c47bec6bf9a81e137c4478f4fb1ad4` contained over-escaped regex tokens. Exact-head Verify `41254088362` failed in `test/latest-checkpoint-contract.test.mjs` because the root-instruction checkpoint regex did not match. This failure is preserved; it was not attributed to the repository base.
+- Repaired the regex escaping in commit `4172b61ed793943948b7534a771cb262e56da48c`. The exact file was re-fetched and inspected after the repair; it now contains `/--checkpoint\s+([^\s]+)/` and `split(/\s+/)`.
+- Exact-head Verify [41254148602](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254148602): **passed**. Hosted preflight was `ready` with zero warnings/failures; Node tests, Python inspector tests, package build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant [41254148581](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254148581): **passed**.
+- Browser Acceptance [41254148598](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254148598): **in progress** at this checkpoint refresh; its `playable-world` job had completed checkout, setup, dependency installation and standalone build, while desktop/mobile/shared-world/recovery journeys were still running. Do not transfer earlier Browser results to this head.
+- PR #248 remains open, draft, unmerged. No local test or local preflight success is claimed.
+
+### Cycle 2 — independent Android artifact and failure diagnosis
+
+- Rechecked PR #249 exact head `a07c0afa59e167f42704450f6e134ba5bfde74fa`, still open/draft and stacked on PR #247 head `811e61dafbac064e37547e41baf5f9d513117a5e`.
+- Android Alpha-1 run [41252413717](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41252413717) failed in the pre-instrumentation package-verifier readback guard, not in a game assertion. The emulator eventually booted (`sys.boot_completed=1`); `adb shell settings put global package_verifier_enable 0` was followed by a readback and `test "$verifier_enabled" = "0"`, which exited 1. The actual readback value is not logged, so its value and cause remain unknown. Gradle instrumentation did not run.
+- The `always()` artifact upload succeeded: artifact [13062441418](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41252413717/artifacts/13062441418). Downloaded ZIP size 2,019,221 bytes; ZIP SHA-256 `d9b471f79cf5db501c2a679183678bc530d66fc4d1cb670a489a8045ea76da1e`. Extracted `app-debug.apk` size 2,052,653 bytes; SHA-256 `4eb7e2299ba81c0080c0f8112edbb0d413efbd5ac7bf2ab6b2c3affb784c8886`. Archive inspection found `AndroidManifest.xml`, DEX files, and bundled game modules/assets including `assets/game/player-position.mjs`. This establishes an APK artifact was built and uploaded; it does not establish emulator installation, instrumentation, or device acceptance.
+- Posted diagnostic handoff on [PR #249 comment 6550772790](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/249#issuecomment-6550772790): log the actual verifier setting readback and inspect global/secure/system verifier namespaces on the disposable emulator only; keep the gate fail-closed. Worker A did not edit Android/game source, workflow, or PR #249's `package.json`.
+
+### Cycle 3 — challenge Founder authorization and security-stack priorities
+
+- Re-read current-main `experiment-001/institutional-cycle.mjs` (blob `b104c6256ebfba7a507bfb3c40aa8075435b6481`) and `scripts/approve-install.mjs` (blob `c1b079c377f6fac4e94cd3d90a2369b614781653`). The module requires a startup-pinned `NGL_FOUNDER_KEY_FINGERPRINT`; approval uses a detached Ed25519 signature. The signing CLI explicitly says key possession does not identify the human operating the process.
+- PR #16 remains closed/unmerged and superseded by merged PR #18. Issue #17 remains open. No real Founder key custody, independent human identity proof, or production-wide live-server integration is established. No key was generated, enrolled, or changed.
+- Rechecked PR #241 head `55f4b105a5cf209192fec92168e7a9229775503e`, PR #244 head `90d9a04bf28bcd641dc4e2c6fa287b9f534774d9`, and PR #245 head `8e93f75c9be1d07e471e42c39d974113387a3218`. Their exact-head Verify, Genesis, and Browser workflows are green, but PR #241 and #244/#245 overlap in `package.json` and `test/agent-governance.test.mjs`; PR #245 is stacked on #244. No integration branch is verified and no merge is authorized.
+- PR #249's preflight still uses the historical bootstrap checkpoint as `--checkpoint` and adds Android/game targets. PR #248 uses the canonical checkpoint and governance regression. Preserve both target sets when a later integration proposal is built; do not add Android paths to PR #248's main-based branch where those files are absent.
+
+### Next prioritized actions
+
+1. Re-observe Browser Acceptance run 41254148598 on exact PR #248 head `4172b61...`; if it fails, inspect the job log and repair only an attributable defect.
+2. Worker B: diagnose the exact `package_verifier_enable` readback value on PR #249's disposable emulator, keep the guard fail-closed, then rerun instrumentation. Update MMORPG ledger PR #239 with the failure and artifact evidence.
+3. Once PR #249's Android journey is green, prepare a separate integration proposal that preserves PR #248's canonical checkpoint/test and PR #249's Android/game preflight targets. Do not merge.
+4. Reconcile PR #241/#244/#245 only after exact heads and overlapping target lists are re-observed; keep issue #17's real Founder custody/identity boundary explicit.
+
+No merges, releases, deployments, spending, external publication, credential/permission changes, branch deletion, physical-device setting changes, or Founder acceptance occurred.
