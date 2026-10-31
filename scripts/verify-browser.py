@@ -46,7 +46,7 @@ def stop_server(process):
 def character_xp_components(page):
     page.locator('#character-button').click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
-    match=re.search(r'(\\d+) character XP \\((\\d+) publication XP \\+ (\\d+) quest-activity XP',page.locator('#sheet').inner_text())
+    match=re.search(r'(\d+) character XP \((\d+) publication XP \+ (\d+) quest-activity XP',page.locator('#sheet').inner_text())
     assert match, 'Character sheet must expose the deterministic XP breakdown'
     result=tuple(int(value) for value in match.groups())
     close_sheet(page)
@@ -485,7 +485,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#character-button')).to_be_visible()
         b.locator('#character-button').click()
         sheet_text=b.locator('#sheet').inner_text()
-        xp_match=re.search(r'(\\d+) character XP \\((\\d+) publication XP \\+ (\\d+) quest-activity XP',sheet_text)
+        xp_match=re.search(r'(\d+) character XP \((\d+) publication XP \+ (\d+) quest-activity XP',sheet_text)
         assert xp_match and int(xp_match.group(1))==int(xp_match.group(3)) and int(xp_match.group(2))==0 and int(xp_match.group(3))>=25, 'Witness XP must derive from their own retained discovery, not the Founder publication'
         expect(b.locator('#sheet')).to_contain_text('100 institution-wide publication XP across the world.')
         close_sheet(b)
@@ -517,14 +517,12 @@ def shared(browser,url,data,out):
         b.locator('#portal-close').click()
         visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
-        b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
-        a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
-        assert a.locator('#creation-notes script').count()==0
         close_sheet(b)
         before_xp=character_xp_components(b)
         visit(b,'The shared observatory')
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
         a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
+        assert a.locator('#creation-notes script').count()==0
         close_sheet(b)
         after_xp=character_xp_components(b)
         assert after_xp[2] >= before_xp[2] + 25, 'a source-linked contribution must add quest-activity XP without certifying its claim'
