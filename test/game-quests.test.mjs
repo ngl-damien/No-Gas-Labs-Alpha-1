@@ -909,6 +909,37 @@ test('a quest trail becomes stale when activity arrays change in place', () => {
     'same-object activity mutations invalidate the precomputed trail');
 });
 
+test('a quest trail becomes stale when a retained record changes without changing array identity or length', () => {
+  const world = {
+    id: 'mutated-record-world', revision: 0,
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ id: 'discovery-1', actor: founder, locationId: 'relay' }],
+    contributions: [], reports: [], events: []
+  };
+  const trail = getQuestTrail(world, founder);
+  assert.equal(isQuestTrailProjection(trail, world, founder), true);
+  world.discoveries[0].locationId = 'ruins';
+  assert.equal(isQuestTrailProjection(trail, world, founder), false,
+    'mutating a source record in place must invalidate the sealed projection');
+});
+
+test('quest-trail freshness checks reject accessor-backed source records without invoking getters', () => {
+  let getterCalls = 0;
+  const world = {
+    id: 'accessor-record-world', revision: 0,
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ id: 'discovery-1', actor: founder, locationId: 'relay' }],
+    contributions: [], reports: [], events: []
+  };
+  const trail = getQuestTrail(world, founder);
+  Object.defineProperty(world.discoveries[0], 'locationId', {
+    enumerable: true,
+    get() { getterCalls += 1; return 'ruins'; }
+  });
+  assert.equal(isQuestTrailProjection(trail, world, founder), false);
+  assert.equal(getterCalls, 0, 'freshness validation must inspect data descriptors, not invoke getters');
+});
+
 test('Contradiction encounters repeat once per distinct report and reopen when new reports arrive', () => {
   const world = experimentQuestWorld({ reportActor: founder });
   const objective = () => getQuestTrail(world, witness)
