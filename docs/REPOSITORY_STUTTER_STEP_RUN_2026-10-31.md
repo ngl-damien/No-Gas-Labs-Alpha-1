@@ -526,3 +526,32 @@ No branch was deleted. No release, deployment, credential/key change, permission
 3. PR #227 has green checks on its latest child head but remains stacked and substantially diverged; integration must reconcile its full parent stack.
 4. PR #208 remains superseded in intent by #237 but must not be closed as superseded until a safe replacement is accepted/integrated.
 5. Local checkout and local test/preflight execution remain unavailable in this connector-only session; no local pass is claimed.
+
+
+## Continuation — retire unnecessary branch deletion capability (2026-10-31 UTC)
+
+### New evidence and decision
+- Independently re-paginated the live GitHub branch inventory across five pages: 489 refs. Parsed all 80 entries from `recovery/BRANCH-CLEANUP-2026-10-17.md`; **all 80 were absent** from the current live inventory. This independently confirms the earlier PR #208 observation with a newer, larger inventory.
+- Since no manifested ref currently exists to clean up, retaining a deletion job would preserve unnecessary destructive capability. Replaced the proposed manual delete workflow with a manual read-only inventory only. The delete job and typed-confirmation path are removed entirely; no Git-ref mutation API appears in the workflow. The preview still checks default-branch dispatch, exact baseline, branch protection, open PR heads, and reports eligible/skipped candidates.
+- Deliberately did not change workflow token permissions: current `contents: write` / `pull-requests: read` scope remains as pre-existing configuration. The read-only preview makes no write API calls, but its runner still receives a write-capable token. Narrowing scope is a separate permission change and was not authorized in this run. The regression test does not lock in this broad permission scope.
+
+### Current PR #237 state
+- Branch: `safety/manualize-branch-cleanup-current-main-20261031`.
+- Current head: `96589b98cb63bc6c93a052b6a629b6cec3b2bca7`; base main `bb1aa833130b7e5399d7b84d1041b1c26c49cc16`; 13 ahead / 0 behind.
+- Exactly three changed paths: `.github/workflows/branch-cleanup.yml`, `package.json`, `test/branch-cleanup-safety.test.mjs`.
+- Workflow has one `workflow_dispatch` preview job, no delete job, no confirmation input, and no delete/create/update-ref API calls.
+- Exact-head Verify #41173118283 completed success. Hosted preflight status ready, failures []; target list explicitly contains both changed workflow and regression test. Node test suite, Python inspector tests, package build, and bounded institutional exercise all exited 0.
+- Exact-head Genesis Evidence Invariant #41173118308 success.
+- Exact-head Browser Acceptance #41173118285 pending/no job exposed at latest poll; not a pass yet. Prior head's all-green checks do not transfer to this new head.
+- PR #237 remains draft/open/unmerged. No workflow dispatch or branch deletion occurred.
+
+### Related worker results
+- PR #238 exact head `914cb66756691ec2680906a15120a59469b6e0e2`: Verify #41172555053, Genesis #41172555421, and Browser Acceptance #41172555345 all succeeded. Browser artifact: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172555345/artifacts/13032295541. Review comment #6539554411 remains: PR description must correct the fixed-checksum exploit wording (-3775 per 10,000-element single sum; -755000 across 200 iterations), and CI preflight target list must include `src/forge/runner.mjs` and `test/forge-runner.test.mjs`. Follow-up comment #6539618823 records browser success. No Forge edits made.
+- PR #227 exact head `4f1f04a76b0715765965ec70419b4091d61225eb`: Verify #41172456018, Genesis #41172456020, Browser Acceptance #41172456015 all succeeded. Browser journeys include offline private recovery, desktop, phone, institutional-location actions, two-session shared-world, mobile toolbar widths, one-button layouts, standalone file/exact-byte checks, and shared restart. Artifact: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172456015/artifacts/13031374178. Still stacked on #225 at `42a5832...`, 151 ahead / 9 behind main, 41 paths; handoff comment #6539568494 requests full-stack reconciliation.
+- PR #215's pre-rename crash test remains a real current-main gap: current main uses the same write+fsync-temp, rename, directory-sync sequence but lacks a pre-rename SIGKILL regression. PR #215 is stacked on #205 and compares 14 ahead / 9 behind main across six paths, so it cannot merge independently. Handoff comment #6539588731 recommends transplanting only the test seam and regression onto current main; no edit made.
+
+### Next actions
+1. Wait for exact-head Browser Acceptance #41173118285; inspect all journey logs and artifact.
+2. If all three checks pass, review the new read-only-only diff and consider moving PR #237 out of draft; do not change permissions or merge without the appropriate authorization boundary.
+3. Recheck whether the owner of PR #238 has added Forge paths to preflight and corrected description before relying on that proposal.
+4. Continue current-main reliability audit without duplicating Worker B's stacked game work.
