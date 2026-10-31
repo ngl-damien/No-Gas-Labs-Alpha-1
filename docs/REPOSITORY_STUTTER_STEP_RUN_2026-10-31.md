@@ -79,3 +79,16 @@ For PR #203 head `bd914218d9658f6b3cb82270fd2e44a67dd92ebd`:
 6. Keep Founder identity/key custody, trust-root choice, concurrency and crash recovery separate. Do not create/enroll keys or merge/deploy.
 
 **Safe to proceed?** Only after the receiving worker independently rehydrates and reconciles the current server stack. This is a handoff, not permission to merge or deploy.
+
+
+## CI recheck — final exact-head result (2026-10-31 UTC)
+
+This section supersedes the earlier pending Browser Acceptance note above.
+
+All three hosted workflows completed successfully on PR #203 branch head `bd914218d9658f6b3cb82270fd2e44a67dd92ebd` (the workflow checkout used merge ref `1b027a8e502754ae91bd69af3e1ef72e3eb4c4e0`, merging that exact head into main `7d8c773...`):
+
+- Verify [41165471472](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471472): **success**. `npm run verify` passed; hosted log explicitly reports Node `--test`, Python inspector, game package build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant [41165471450](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471450): **success**.
+- Browser Acceptance [41165471445](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471445): **success, 12/12 journeys**, no journey errors. The journeys cover desktop, phone, institutional location actions, two-session shared world, three phone widths, two one-button layouts, standalone file/exact bytes, and shared restart. Receipt/screenshot artifact [13029152741](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471445/artifacts/13029152741), SHA-256 `ebe5560d3aa439c95e01de923f66f2cd4fd010a646023f35b5f88bd45f62893a`.
+
+These results verify the proposed branch/merge-ref tests, not production deployment or live-server integration. No local test run is claimed. PR #203 remains draft/unmerged, and the live Founder authority boundary remains unresolved.
