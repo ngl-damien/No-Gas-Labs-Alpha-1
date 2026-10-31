@@ -166,3 +166,8 @@ Immediately before editing, rechecked main, PR #243/#227, PR #244, and the chang
 3. Worker B: continue the Guild Hall expedition-board capability on its existing game stack; keep the G0–G9 ledger distinct between current main and proposed branches.
 4. Worker A: after this PR's checks, inspect the service-store and server owner-verification boundaries together for any remaining independent fail-open paths; do not invent an ACL-based Windows verifier.
 5. Command Center: regenerate the dependency lockfile with a real patched pnpm toolchain, then rerun frozen install/tests/build/audit. Mesh: resume full integration only when the missing recovered archive, reference APK, and RAE report are supplied.
+
+
+### Additional negative-path refinement — 2026-10-31 UTC
+
+After the first hosted Verify/Genesis passes, a review of the UID helper found two branches that deserved direct regression coverage: a throwing `process.getuid` property getter and a valid-but-mismatched current UID. Added both child-process cases in commit `451049ac6606a9660a46bc7ab329737ff652e7d1`. The directory-startup matrix now covers missing UID, throwing getter, throwing function, invalid UID, and mismatched UID; the persisted-envelope matrix still injects failure before path ownership comparison and after descriptor open, checking that the writer lock is released. The new commit invalidates the earlier exact-head CI results; rerun all three workflows on the updated PR head before reporting final verification.
