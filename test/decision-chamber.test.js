@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import { createHash, generateKeyPairSync, sign, webcrypto } from "node:crypto";
 import { defineQuest } from "../src/quest/engine.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
@@ -776,4 +777,19 @@ test("persisted host verifier uses wall clock and rejects caller-controlled cloc
   assert.equal(hostVerifier(expiredEvent), false, "expired persisted decisions must fail at the host trust boundary");
   assert.equal(verifyAuthorizationEvent(expiredEvent, { ...options, now: 0 }), false,
     "the persisted-event API must not accept a caller-controlled clock");
+});
+
+test("browser signing page rejects identifiers rejected by the server verifier", async () => {
+  const html = await readFile(new URL("../authority/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+  assert.ok(script, "signing page must contain its inline script");
+  const end = script.indexOf("function openDb()");
+  assert.notEqual(end, -1, "signer validation helpers must precede storage initialization");
+
+  const browser = {};
+  runInNewContext(script.slice(0, end), browser);
+  assert.equal(browser.isIdentifier("quest-alpha"), true);
+  for (const reserved of ["constructor", "prototype", "toString", "__proto__"]) {
+    assert.equal(browser.isIdentifier(reserved), false, `${reserved} must be rejected by the browser signer`);
+  }
 });
