@@ -1444,7 +1444,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         paragraph('Reported outcome: '+(report.reportedOutcome||'not supplied')),
         paragraph('Submitted by '+(report.actor?.name||report.actor?.id||'unknown actor')+' · '+(report.at||'time unavailable'),'form-help')
       ]);
-      if(report.reportId===focusActivityId)focusedActivity=reportCard;
+      if(report.reportId===focusActivityId||report.id===focusActivityId)focusedActivity=reportCard;
       const evidenceCreation=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===report.evidenceCreationId);
       const evidenceExists=evidenceCreation&&Number.isInteger(report.evidenceVersion)&&
         (evidenceCreation.version===report.evidenceVersion||(Array.isArray(evidenceCreation.versions)&&evidenceCreation.versions.some(version=>version.version===report.evidenceVersion)));
@@ -1471,7 +1471,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
           paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
           paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
         ]);
-        if(challenge.challengeId===focusActivityId)focusedActivity=challengeCard;
+        if(challenge.challengeId===focusActivityId||challenge.id===focusActivityId)focusedActivity=challengeCard;
         if(challenge.evidenceCreationId){
           const evidenceExists=(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===challenge.evidenceCreationId&&(creation.version===challenge.evidenceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===challenge.evidenceVersion))));
           if(evidenceExists)challengeCard.append(button('Inspect challenge evidence v'+challenge.evidenceVersion+' →',()=>openCreation(challenge.evidenceCreationId,challenge.evidenceVersion),{class:'list-button'}));
