@@ -10,6 +10,7 @@ import { createGameServer } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { projectPlayerGuilds } from '../game/social.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -382,6 +383,78 @@ test('the direct CLI starts the HTTP service and releases its exclusive writer l
   const reopened = await createGameServer({ dataDir, founderKey: KEY }); await reopened.closeGame();
 });
 
+
+test('existing Founder key files fail closed when UID verification is missing, throws, or returns an invalid value', async t => {
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });"],
+    ...(typeof process.getuid === 'function' ? [
+      ['throwing', "const original = process.getuid.bind(process); let calls = 0; Object.defineProperty(process, 'getuid', { value: () => { calls += 1; if (calls === 1) return original(); throw new Error('fixture UID failure'); }, configurable: true, writable: true });"],
+      ['invalid', "const original = process.getuid.bind(process); let calls = 0; Object.defineProperty(process, 'getuid', { value: () => { calls += 1; return calls === 1 ? original() : -1; }, configurable: true, writable: true });"]
+    ] : [])
+  ];
+  for (const [label, override] of cases) {
+    const dataDir = await mkdtemp(join(tmpdir(), `ngl-key-owner-${label}-`));
+    t.after(() => rm(dataDir, { recursive: true, force: true }));
+    const keyPath = join(dataDir, 'founder.key');
+    await writeFile(keyPath, KEY + '\n');
+    await chmod(keyPath, 0o600);
+    const preload = join(dataDir, 'uid-override.mjs');
+    await writeFile(preload, override + '\n');
+    const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir };
+    delete env.NGL_FOUNDER_KEY;
+    const probe = "import { createGameServer } from './game/server.mjs'; try { const server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR }); await server.closeGame(); process.exitCode = 0; } catch (error) { console.error(error.message); process.exitCode = 1; }";
+    const child = spawn(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+    const [code, signal] = await once(child, 'exit');
+    clearTimeout(timeout);
+    assert.equal(signal, null, `${label} UID lookup must fail before the server starts: ${output}`);
+    assert.equal(code, 1, `${label} UID lookup must fail startup: ${output}`);
+    assert.match(output, /Founder (?:key|data directory) owner verification (?:is unavailable|failed|returned an invalid UID)/);
+    assert.equal(await readFile(keyPath, 'utf8'), KEY + '\n', 'The existing key must not be replaced or regenerated');
+  }
+});
+
+test('Founder data directory requires UID verification when a provided key bypasses file-backed key loading', async t => {
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });",
+      /Founder data directory owner verification is unavailable/],
+    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });",
+      /Founder data directory owner verification failed/],
+    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });",
+      /Founder data directory owner verification returned an invalid UID/]
+  ];
+  for (const [label, override, expected] of cases) {
+    const dataDir = await mkdtemp(join(tmpdir(), `ngl-provided-key-owner-${label}-`));
+    t.after(() => rm(dataDir, { recursive: true, force: true }));
+    const preload = join(dataDir, 'uid-override.mjs');
+    await writeFile(preload, override + '\n');
+    const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY };
+    const probe = "import { createGameServer } from './game/server.mjs'; try { const server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR, founderKey: process.env.NGL_FOUNDER_KEY }); await server.closeGame(); process.exitCode = 0; } catch (error) { console.error(error.message); process.exitCode = 1; }";
+    const child = spawn(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+    const [code, signal] = await once(child, 'exit');
+    clearTimeout(timeout);
+    assert.equal(signal, null, `${label} UID lookup must fail before server startup: ${output}`);
+    assert.equal(code, 1, `${label} UID lookup must fail even when a provided key bypasses file loading: ${output}`);
+    assert.match(output, expected);
+    await assert.rejects(readFile(join(dataDir, 'founder.key'), 'utf8'), { code: 'ENOENT' },
+      'provided-key startup must not create or replace a key file');
+    await assert.rejects(readFile(join(dataDir, 'service.json'), 'utf8'), { code: 'ENOENT' },
+      'owner verification must fail before creating persistent world state');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' },
+      'owner verification must fail before acquiring a service-store writer lock');
+  }
+});
 
 test('the host CSP permits authored srcdoc instrument scripts while its iframe remains opaque', async t => {
   const f = await fixture(t); const guest = f.client(); const page = await guest.request('/');
@@ -1276,4 +1349,171 @@ test('field loadout writes an idempotent actor-owned event without awarding XP',
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'not-a-slot',sourceEventId:null})).response.status,400);
   assert.equal((await witnessClient.request('/api/action',{type:'unequip-field-item',slotId:'not-a-slot'})).response.status,400);
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
+});
+
+
+test('Commons shared posts are idempotent, reports are private, and Founder moderation preserves history without XP', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const other = f.client();
+
+  const witnessPostAction = { type: 'post-message', text: 'Witness hello.', requestId: 'commons-witness-post-001' };
+  const firstPost = await witness.request('/api/action', witnessPostAction);
+  assert.equal(firstPost.response.status, 200, JSON.stringify(firstPost.body));
+  assert.equal(firstPost.body.idempotentReplay, false);
+  const replay = await witness.request('/api/action', witnessPostAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.messageId, firstPost.body.result.messageId);
+
+  const founderPost = await founder.request('/api/action', {
+    type: 'post-message', text: 'Founder message for a moderation fixture.', requestId: 'commons-founder-post-001'
+  });
+  assert.equal(founderPost.response.status, 200, JSON.stringify(founderPost.body));
+  const messageId = founderPost.body.result.messageId;
+
+  const report = await witness.request('/api/action', {
+    type: 'report-message', messageId, reason: 'privacy', details: 'Fixture-only private report detail.',
+    requestId: 'commons-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  const secondReport = await other.request('/api/action', {
+    type: 'report-message', messageId, reason: 'other', details: 'Second reporter fixture detail.',
+    requestId: 'commons-report-002'
+  });
+  assert.equal(secondReport.response.status, 200, JSON.stringify(secondReport.body));
+
+  const witnessState = await witness.request('/api/state');
+  const witnessReports = witnessState.body.world.events.filter(event => event.type === 'message-reported');
+  assert.equal(witnessReports.length, 1);
+  assert.equal(witnessReports[0].actor.id, witnessState.body.viewer.id);
+  assert.equal(JSON.stringify(witnessState.body).includes('Second reporter fixture detail.'), false);
+  const denied = await witness.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy', requestId: 'commons-witness-hide-001'
+  });
+  assert.equal(denied.response.status, 403);
+
+  const hidden = await founder.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy', requestId: 'commons-founder-hide-001'
+  });
+  assert.equal(hidden.response.status, 200, JSON.stringify(hidden.body));
+  const publicState = await witness.request('/api/state');
+  const publicPost = publicState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId);
+  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(JSON.stringify(publicState.body).includes('Founder message for a moderation fixture.'), false);
+  assert.equal(publicState.body.world.xp, 0);
+
+  const founderState = await founder.request('/api/state');
+  const retainedPost = founderState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId);
+  assert.equal(retainedPost.text, 'Founder message for a moderation fixture.');
+  assert.equal(founderState.body.world.events.filter(event => event.type === 'message-reported').length, 2);
+  assert.equal(founderState.body.world.events.find(event => event.type === 'message-moderated').actor.id, 'damien');
+  assert.equal(founderState.body.world.xp, 0);
+
+  const restored = await founder.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'restore', reason: 'other', requestId: 'commons-founder-restore-001'
+  });
+  assert.equal(restored.response.status, 200, JSON.stringify(restored.body));
+  const restoredPublicState = await witness.request('/api/state');
+  assert.equal(restoredPublicState.body.world.events.find(event => event.type === 'message-posted' && event.messageId === messageId).text, 'Founder message for a moderation fixture.');
+});
+
+test('shared player guilds reconcile across independent sessions with idempotent append-only history', async t => {
+  const f = await fixture(t);
+  const leader = f.client();
+  const member = f.client();
+  const observer = f.client();
+  const [leaderInitial, memberInitial, observerInitial] = await Promise.all([
+    leader.request('/api/state'),
+    member.request('/api/state'),
+    observer.request('/api/state')
+  ]);
+  assert.equal(leaderInitial.body.viewer.role, 'witness');
+  assert.equal(memberInitial.body.viewer.role, 'witness');
+  assert.notEqual(leaderInitial.body.viewer.id, memberInitial.body.viewer.id);
+  const baselineXp = observerInitial.body.world.xp;
+
+  const createAction = {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.',
+    requestId: 'shared-guild-create-001'
+  };
+  const created = await leader.request('/api/action', createAction);
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.idempotentReplay, false);
+  const replayedCreate = await leader.request('/api/action', createAction);
+  assert.equal(replayedCreate.response.status, 200, JSON.stringify(replayedCreate.body));
+  assert.equal(replayedCreate.body.idempotentReplay, true);
+  assert.equal(replayedCreate.body.result.guildId, created.body.result.guildId);
+  const guildId = created.body.result.guildId;
+
+  const joinAction = { type: 'join-guild', guildId, requestId: 'shared-guild-join-001' };
+  const joined = await member.request('/api/action', joinAction);
+  assert.equal(joined.response.status, 200, JSON.stringify(joined.body));
+  const replayedJoin = await member.request('/api/action', joinAction);
+  assert.equal(replayedJoin.response.status, 200, JSON.stringify(replayedJoin.body));
+  assert.equal(replayedJoin.body.idempotentReplay, true);
+  assert.equal(replayedJoin.body.result.guildId, guildId);
+
+  const observerState = await observer.request('/api/state');
+  const projection = projectPlayerGuilds(observerState.body.world, observerState.body.viewer);
+  assert.equal(projection.guilds.length, 1);
+  assert.equal(projection.guilds[0].memberCount, 2);
+  assert.equal(projection.guilds[0].leader.id, leaderInitial.body.viewer.id);
+  assert.equal(projection.guilds[0].members.some(actor => actor.id === memberInitial.body.viewer.id), true);
+  assert.equal(observerState.body.world.xp, baselineXp);
+
+  const duplicateJoin = await member.request('/api/action', {
+    type: 'join-guild', guildId, requestId: 'shared-guild-duplicate-join-001'
+  });
+  assert.equal(duplicateJoin.response.status, 409);
+  assert.equal(duplicateJoin.body.error.code, 'GUILD_MEMBERSHIP_EXISTS');
+
+  const leaderLeave = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leader-leave-001'
+  });
+  assert.equal(leaderLeave.response.status, 409);
+  assert.equal(leaderLeave.body.error.code, 'GUILD_LEADER_CANNOT_LEAVE');
+
+  const earlyDisband = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-early-disband-001'
+  });
+  assert.equal(earlyDisband.response.status, 409);
+  assert.equal(earlyDisband.body.error.code, 'GUILD_NOT_EMPTY');
+
+  const left = await member.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leave-001'
+  });
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  const disbanded = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-disband-001'
+  });
+  assert.equal(disbanded.response.status, 200, JSON.stringify(disbanded.body));
+
+  const finalState = await observer.request('/api/state');
+  const finalProjection = projectPlayerGuilds(finalState.body.world, finalState.body.viewer);
+  assert.equal(finalProjection.guilds.length, 0);
+  assert.equal(finalProjection.history[0].status, 'disbanded');
+  assert.deepEqual(finalState.body.world.events.map(event => event.type), [
+    'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+  ]);
+  assert.equal(finalState.body.world.xp, baselineXp);
+
+  // The same event history must remain valid after a full service restart.
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+    const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
+    assert.deepEqual(restoredState.world.events.map(event => event.type), [
+      'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+    ]);
+    assert.equal(projectPlayerGuilds(restoredState.world).history[0].status, 'disbanded');
+    assert.equal(restoredState.world.xp, baselineXp);
+  } finally {
+    await restarted.closeGame();
+  }
 });

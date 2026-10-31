@@ -79,6 +79,10 @@ def basic(page,url,out,label):
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    expect(page.locator('#world')).to_have_attribute('data-quest-marker','visible')
+    expect(page.locator('#world')).to_have_attribute('data-quest-target-id','workbench')
+    expect(page.locator('#world')).to_have_attribute('data-quest-title','Founder Quest 1 · Make your first place')
+    expect(page.locator('#world')).to_have_attribute('data-quest-destination','The Making Bench')
     character=page.locator('#character-button')
     expect(character).to_be_visible()
     expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))
@@ -146,6 +150,16 @@ def basic(page,url,out,label):
     page.locator('#places-button').click()
     page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    expedition=page.locator('#guild-expedition-board')
+    expect(expedition).to_be_visible()
+    expect(expedition).to_contain_text('Your Founder objective trail')
+    expect(expedition.locator('[data-expedition-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    expect(expedition.locator('[data-expedition-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
+    expect(expedition.locator('#guild-expedition-summary')).to_contain_text('2 recorded')
+    close_sheet(page)
+    page.locator('#places-button').click()
+    page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -241,22 +255,43 @@ def institutional_locations(browser,url,out):
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        expedition=page.locator('#guild-expedition-board')
+        expect(expedition).to_be_visible()
+        expect(expedition).to_contain_text('Your Founder objective trail')
+        first=expedition.locator('[data-expedition-objective-id="founder-first-place"]')
+        expect(first).to_contain_text('OPEN')
+        expect(first).to_contain_text('0/1')
+        before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        route=first.get_by_role('button',name='Go do this →',exact=True)
+        expect(route).to_be_visible()
+        bounds=route.bounding_box()
+        assert bounds and bounds['height']>=44, f'Expedition route is not a 44px touch target: {bounds}'
+        route.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Give an idea a place.'")
+        after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert after==before, 'Following an expedition route must not create an event, revision, or XP'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+        expect(page.locator('[data-collaborator-role="archivist"]')).to_be_visible()
+        expect(page.locator('[data-collaborator-role="adversary"]')).to_be_visible()
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
         expect(page.locator('#contradiction-clerk-npc button')).to_have_count(0)
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
-        for role,name in [
-            ('archivist','Hostile Archivist'),
-            ('adversary','Adversary'),
-            ('synthesizer','Synthesis Clerk'),
-            ('tutor','Polymath Tutor')
+        for role,name,location in [
+            ('archivist','Hostile Archivist','Evidence Archive'),
+            ('adversary','Adversary','Evidence Archive'),
+            ('synthesizer','Synthesis Clerk','Guild Hall'),
+            ('tutor','Polymath Tutor','Polymath Academy')
         ]:
             close_sheet(page)
             page.locator('#places-button').click()
             page.get_by_role('button',name=f'Walk to {name}',exact=True).click()
-            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
             role_card=page.locator(f'[data-collaborator-role="{role}"]')
             expect(role_card).to_be_visible()
             expect(role_card).to_be_focused()
@@ -305,9 +340,9 @@ def institutional_locations(browser,url,out):
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
-        for role in ('archivist','adversary','synthesizer','tutor'):
+        page.get_by_role('button',name='Walk to Adversary',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        for role in ('archivist','adversary'):
             expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
@@ -355,7 +390,7 @@ def institutional_locations(browser,url,out):
         expect(council_coverage).to_contain_text('OPEN')
         expect(council_coverage).to_contain_text('1/4')
         council_coverage.get_by_role('button',name='Go do this →',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         next_role=page.locator('[data-collaborator-role="archivist"]')
         expect(next_role).to_be_visible()
         expect(next_role).to_be_focused()
@@ -381,7 +416,7 @@ def institutional_locations(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
-        page.locator('details.collaborator-response summary').click()
+        page.locator('[data-collaborator-response-id] details.collaborator-response summary').click()
         archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
@@ -566,10 +601,10 @@ def shared(browser,url,data,out):
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
         b.unroute('**/api/action',lose_report_response)
-        # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
+        # Safe retry closes the Journal; reach the bounded adversary through the world Evidence Archive.
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
@@ -867,6 +902,88 @@ def launchpad(page,url,out,label):
     return {'journey':label,'passed':True,'artifacts':3,'checks':6,'errors':errors}
 
 
+def town_square_social(browser,url,out):
+    errors=[]
+    owner=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    visitor=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    try:
+        founder_page,witness_page=owner.new_page(),visitor.new_page()
+        for page in [founder_page,witness_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url,wait_until='networkidle')
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        founder_page.locator('#login-button').click()
+        founder_page.locator('#founder-key').fill(KEY)
+        founder_page.locator('#verify-founder').click()
+        founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        baseline_xp=owner.request.get(url+'api/state').json()['world']['xp']
+
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        witness_page.locator('#commons-message').fill('Witness message for the Commons.')
+        witness_page.locator('#commons-post-message').click()
+        witness_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Witness message for the Commons.')
+        expect(witness_message).to_be_visible()
+
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(founder_page.locator('[data-commons-message-id]').filter(has_text='Witness message for the Commons.')).to_be_visible()
+        founder_page.locator('#commons-message').fill('Founder message for the moderation fixture.')
+        founder_page.locator('#commons-post-message').click()
+        founder_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_message).to_be_visible()
+
+        revision_before_mute=visitor.request.get(url+'api/state').json()['world']['revision']
+        founder_message.get_by_role('button',name='Mute author on this device',exact=True).click()
+        expect(witness_page.locator('#commons-muted-authors')).to_contain_text('Damien')
+        expect(witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_have_count(0)
+        expect(founder_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_be_visible()
+        assert visitor.request.get(url+'api/state').json()['world']['revision']==revision_before_mute, 'A local mute must not append a shared-world event'
+
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').click()
+        witness_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(witness_page.locator('#commons-muted-authors')).to_contain_text('Damien')
+        expect(witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')).to_have_count(0)
+        witness_page.locator('#commons-muted-authors').get_by_role('button',name='Unmute on this device',exact=True).click()
+        founder_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_message).to_be_visible()
+        assert visitor.request.get(url+'api/state').json()['world']['revision']==revision_before_mute, 'Mute and unmute are device preferences, not world actions'
+
+        founder_message.locator('details.commons-report summary').click()
+        founder_message.locator('[data-commons-report-reason]').select_option('privacy')
+        founder_message.locator('[data-commons-report-details]').fill('Fixture-only private report detail.')
+        founder_message.get_by_role('button',name='Submit report',exact=True).click()
+        expect(founder_page.locator('#commons-pending-reports')).to_contain_text('Fixture-only private report detail.')
+        report_card=founder_page.locator('[data-commons-report-id]').filter(has_text='Fixture-only private report detail.')
+        report_card.locator('[data-commons-moderation-reason]').select_option('privacy')
+        report_card.get_by_role('button',name='Hide for Witnesses',exact=True).click()
+        hidden_message=witness_page.locator('[data-commons-message-id]').filter(has_text='This message was hidden after human review.')
+        expect(hidden_message).to_be_visible()
+        assert 'Founder message for the moderation fixture.' not in witness_page.locator('#sheet').inner_text()
+        founder_hidden=founder_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_hidden).to_contain_text('HIDDEN FROM WITNESSES')
+
+        public_state=visitor.request.get(url+'api/state').json()
+        public_post=next(event for event in public_state['world']['events'] if event.get('type')=='message-posted' and event.get('text')=='[Message hidden by human moderation.]')
+        assert public_post['messageId']
+        assert all(event.get('type')!='message-reported' or event.get('actor',{}).get('id')==public_state['viewer']['id'] for event in public_state['world']['events'])
+        founder_state=owner.request.get(url+'api/state').json()
+        assert any(event.get('type')=='message-posted' and event.get('text')=='Founder message for the moderation fixture.' for event in founder_state['world']['events'])
+        assert founder_state['world']['xp']==public_state['world']['xp']==baseline_xp, 'Commons messages must not award world XP'
+        assert not errors,errors
+        return {'journey':'town-square-social-moderation','passed':True,'sharedMessages':2,'privateReports':1,'moderation':'hidden-with-retained-founder-history','worldXp':baseline_xp,'errors':errors}
+    finally:
+        owner.close()
+        visitor.close()
+
+
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
@@ -897,6 +1014,13 @@ def offline_pwa(browser,url,out):
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        page.locator('#commons-message').fill('Offline message survives reload.')
+        page.locator('#commons-post-message').click()
+        expect(page.locator('[data-commons-message-id]').filter(has_text='Offline message survives reload.')).to_be_visible()
+        assert page.locator('#xp-count').text_content()=='100', 'Social messages must not award world XP'
         api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
         page.reload(wait_until='networkidle')
@@ -906,10 +1030,76 @@ def offline_pwa(browser,url,out):
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(page.locator('[data-commons-message-id]').filter(has_text='Offline message survives reload.')).to_be_visible()
+        assert page.locator('#xp-count').text_content()=='100', 'The message must not change world XP'
         assert not errors,errors
-        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'shared_api':'network-only'}
+        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'private_commons_messages':1,'shared_api':'network-only'}
     finally:
         context.close()
+
+
+def player_guild_membership(browser,url,out):
+    errors=[]
+    founder_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    member_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    try:
+        founder_page,member_page=founder_context.new_page(),member_context.new_page()
+        for page in [founder_page,member_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url,wait_until='networkidle')
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        baseline_world=founder_context.request.get(url+'api/state').json()['world']
+        baseline_xp=baseline_world['xp']
+
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        founder_board=founder_page.locator('#guild-expedition-board')
+        expect(founder_board).to_be_visible()
+        expect(founder_board).to_contain_text('Your Witness objective trail')
+        assert 'Publish a first place' not in founder_board.inner_text(), 'A Witness must not see Founder-only objectives'
+        after_board=founder_context.request.get(url+'api/state').json()['world']
+        assert (after_board['revision'],after_board['events'],after_board['xp'])==(baseline_world['revision'],baseline_world['events'],baseline_world['xp']), 'Opening the shared expedition board must not mutate canonical world state'
+        founder_page.locator('#player-guild-name').fill('Field Researchers')
+        founder_page.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        founder_page.locator('#player-guild-create').click()
+        founder_guild=founder_page.locator('[data-player-guild-id]')
+        expect(founder_guild).to_contain_text('Field Researchers')
+        expect(founder_guild).to_contain_text('MEMBERS 1/25')
+
+        member_page.locator('#places-button').click()
+        member_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        member_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        member_board=member_page.locator('#guild-expedition-board')
+        expect(member_board).to_be_visible()
+        expect(member_board).to_contain_text('Your Witness objective trail')
+        assert 'Publish a first place' not in member_board.inner_text(), 'The second Witness must not see Founder-only objectives'
+        member_guild=member_page.locator('[data-player-guild-id]')
+        expect(member_guild).to_contain_text('Field Researchers')
+        member_page.locator('[data-player-guild-join]').click()
+        expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
+        expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
+
+        member_page.locator('[data-player-guild-leave]').click()
+        expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
+        expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
+        founder_page.locator('[data-player-guild-disband]').click()
+        expect(founder_page.locator('[data-player-guild-id]')).to_have_count(0)
+
+        state=founder_context.request.get(url+'api/state').json()
+        events=[event for event in state['world']['events'] if event.get('type','').startswith('guild-')]
+        assert [event['type'] for event in events]==['guild-created','guild-joined','guild-left','guild-disbanded']
+        assert state['world']['xp']==baseline_xp, 'Guild membership must not award world XP'
+        assert not errors,errors
+        return {'journey':'player-guild-membership','passed':True,'sessions':2,'guildEvents':len(events),'worldXp':baseline_xp,'errors':errors}
+    finally:
+        founder_context.close()
+        member_context.close()
+
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
@@ -934,6 +1124,8 @@ def main():
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
+                    record(town_square_social(browser,url,out))
+                    record(player_guild_membership(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)

@@ -3,6 +3,7 @@ import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
+import {COMMONS_CHANNEL,COMMONS_MESSAGE_LIMIT,COMMONS_POSTS_PER_MINUTE,COMMONS_RATE_WINDOW_MS,COMMONS_REASONS,COMMONS_DISPOSITIONS,hiddenCommonsMessageIds,projectPlayerGuilds,normalizePlayerGuildName,playerGuildNameKey,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT,PLAYER_GUILD_LIMIT} from './social.mjs';
 const encoder=new TextEncoder();
 const kinds=new Set(['comic','loom','observatory','custom']);
 const challengeTypes=new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
@@ -20,7 +21,7 @@ function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
-  if(['draft','publish','repair'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
+  if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
   const world=clone(original),at=date(now);const previousAt=Date.parse(original?.updatedAt);if(!isStrictTimestamp(original?.updatedAt)||!Number.isFinite(previousAt)||Date.parse(at)<previousAt)fail('INVALID_CHRONOLOGY','Action time cannot precede the current world update time.',409);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
@@ -217,6 +218,99 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       recordEvent('field-item-unequipped',{slotId});
       break;
     }
+    case 'post-message':{
+      const message=text(action.text,COMMONS_MESSAGE_LIMIT,'Message');
+      const cutoff=Date.parse(at)-COMMONS_RATE_WINDOW_MS;
+      let recent=0;
+      for(let index=world.events.length-1;index>=0;index--){
+        const candidate=world.events[index],candidateAt=Date.parse(candidate.at);
+        if(Number.isFinite(candidateAt)&&candidateAt<=cutoff)break;
+        if(candidate.type==='message-posted'&&candidate.actor?.id===who.id&&candidate.actor?.role===who.role)recent++;
+      }
+      if(recent>=COMMONS_POSTS_PER_MINUTE)fail('COMMONS_RATE_LIMITED','Five Commons posts per minute are allowed per actor.',429);
+      const messageId=uid('message');
+      result={messageId};
+      recordEvent('message-posted',{messageId,channel:COMMONS_CHANNEL,text:message});
+      break;
+    }
+    case 'report-message':{
+      const messageId=text(action.messageId,128,'Message ID');
+      const matches=world.events.filter(e=>e.type==='message-posted'&&e.messageId===messageId);
+      if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier Commons message is required.',404);
+      const source=matches[0];
+      if(source.actor.id===who.id)fail('SELF_REPORT','You cannot report your own message.',409);
+      if(!COMMONS_REASONS.includes(action.reason))fail('INVALID_MESSAGE_REASON','Choose a bounded report reason.');
+      const details=text(action.details,500,'Report details');
+      let latest=null;
+      for(let index=world.events.length-1;index>=0;index--){const e=world.events[index];if(e.type==='message-moderated'&&e.messageId===messageId){latest=e;break;}}
+      if(latest?.disposition==='hide')fail('MESSAGE_HIDDEN','A hidden message cannot receive new reports.',409);
+      if(world.events.some(e=>e.type==='message-reported'&&e.messageId===messageId&&e.actor?.id===who.id&&e.actor?.role===who.role))fail('MESSAGE_ALREADY_REPORTED','This actor already reported that message.',409);
+      const reportId=uid('message-report');
+      result={reportId};
+      recordEvent('message-reported',{reportId,messageId,reason:action.reason,details});
+      break;
+    }
+    case 'moderate-message':{
+      const messageId=text(action.messageId,128,'Message ID');
+      const matches=world.events.filter(e=>e.type==='message-posted'&&e.messageId===messageId);
+      if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier Commons message is required.',404);
+      if(!COMMONS_DISPOSITIONS.includes(action.disposition))fail('INVALID_MESSAGE_DISPOSITION','Choose hide or restore.');
+      if(!COMMONS_REASONS.includes(action.reason))fail('INVALID_MESSAGE_REASON','Choose a bounded moderation reason.');
+      let latest=null,latestIndex=-1;
+      for(let index=world.events.length-1;index>=0;index--){const e=world.events[index];if(e.type==='message-moderated'&&e.messageId===messageId){latest=e;latestIndex=index;break;}}
+      if(action.disposition==='hide'){
+        if(latest?.disposition==='hide')fail('MESSAGE_ALREADY_HIDDEN','This message is already hidden.',409);
+        const pending=world.events.some((e,index)=>index>latestIndex&&e.type==='message-reported'&&e.messageId===messageId);
+        if(!pending)fail('MESSAGE_NOT_REPORTED','A pending player report is required before hiding a message.',409);
+      }else if(latest?.disposition!=='hide')fail('MESSAGE_NOT_HIDDEN','Only a hidden message can be restored.',409);
+      const moderationId=uid('message-moderation');
+      result={moderationId,disposition:action.disposition};
+      recordEvent('message-moderated',{moderationId,messageId,disposition:action.disposition,reason:action.reason});
+      break;
+    }
+    case 'create-guild':{
+      const name=normalizePlayerGuildName(text(action.name,PLAYER_GUILD_NAME_LIMIT,'Guild name'));
+      if(!name||Array.from(name).length>PLAYER_GUILD_NAME_LIMIT)fail('INVALID_GUILD_NAME','Guild name is empty or too long.');
+      const charter=text(action.charter,PLAYER_GUILD_CHARTER_LIMIT,'Guild charter');
+      const projection=projectPlayerGuilds(original,who);
+      if(projection.viewerGuildId)fail('GUILD_MEMBERSHIP_EXISTS','Leave your current guild before founding another.',409);
+      if(projection.guilds.length>=PLAYER_GUILD_LIMIT)fail('GUILD_LIMIT','The world has reached its active player-guild limit.',409);
+      if(projection.guilds.some(guild=>playerGuildNameKey(guild.name)===playerGuildNameKey(name)))fail('GUILD_NAME_TAKEN','An active guild already uses that name.',409);
+      const guildId=uid('guild');
+      result={guildId};
+      recordEvent('guild-created',{guildId,name,charter});
+      break;
+    }
+    case 'join-guild':{
+      const guildId=text(action.guildId,128,'Guild ID');
+      const projection=projectPlayerGuilds(original,who);
+      if(projection.viewerGuildId)fail('GUILD_MEMBERSHIP_EXISTS','Leave your current guild before joining another.',409);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(!guild)fail('GUILD_NOT_FOUND','That player guild is not open.',404);
+      if(guild.memberCount>=PLAYER_GUILD_MEMBER_LIMIT)fail('GUILD_MEMBER_LIMIT','That guild has reached its member limit.',409);
+      result={guildId};
+      recordEvent('guild-joined',{guildId});
+      break;
+    }
+    case 'leave-guild':{
+      const guildId=text(action.guildId,128,'Guild ID');
+      const projection=projectPlayerGuilds(original,who);
+      if(projection.viewerGuildId!==guildId)fail('GUILD_NOT_MEMBER','You are not a member of that guild.',409);
+      if(projection.viewerIsLeader)fail('GUILD_LEADER_CANNOT_LEAVE','The leader cannot leave while holding the leadership role.',409);
+      result={guildId};
+      recordEvent('guild-left',{guildId});
+      break;
+    }
+    case 'disband-guild':{
+      const guildId=text(action.guildId,128,'Guild ID');
+      const projection=projectPlayerGuilds(original,who);
+      if(projection.viewerGuildId!==guildId||!projection.viewerIsLeader)fail('FORBIDDEN','Only the guild leader may close this guild.',403);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(!guild||guild.memberCount!==1)fail('GUILD_NOT_EMPTY','Other members must leave before the leader can close the guild.',409);
+      result={guildId};
+      recordEvent('guild-disbanded',{guildId});
+      break;
+    }
     case 'discover':{
       if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
       if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId)){result={discovered:false};recordEvent('discover',{locationId:action.locationId,repeat:true});break;}
@@ -226,7 +320,22 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
   }
   world.revision++;world.updatedAt=at;return {world,result};
 }
-export function publicWorld(world,actor){const copy=clone(world);if(actor?.role!=='founder'){copy.drafts=[];copy.events=copy.events.filter(e=>!['draft','repair'].includes(e.type));}return copy;}
+export function publicWorld(world,actor){
+  const copy=clone(world);
+  if(actor?.role!=='founder'){
+    copy.drafts=[];
+    const hidden=hiddenCommonsMessageIds(copy);
+    copy.events=copy.events
+      .filter(e=>!['draft','repair'].includes(e.type)&&(e.type!=='message-reported'||e.actor?.id===actor?.id))
+      .map(e=>{
+        if(e.type!=='message-posted'||!hidden.has(e.messageId))return e;
+        const safe={...e,text:'[Message hidden by human moderation.]'};
+        delete safe.actionFingerprint;
+        return safe;
+      });
+  }
+  return copy;
+}
 export async function validateWorld(raw) {
   const invalid=message=>fail('INVALID_WORLD',message);
   try{if(encoder.encode(JSON.stringify(raw)).length>32*1024*1024)invalid('World import exceeds 32 MiB.');}catch(error){if(error.code)throw error;invalid('World must be serializable JSON.');}
@@ -254,8 +363,50 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
+  const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
+  const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
+  const allowedCommonsModerationKeys=new Set(['id','type','actor','at','semantics','moderationId','messageId','disposition','reason','requestId','actionFingerprint','actionResult']);
+  const commonsPosts=new Map(),commonsReportsByMessage=new Map(),commonsReportKeys=new Set(),commonsLatestModeration=new Map(),commonsTimesByActor=new Map();
+  const validCommonsId=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];
+    if(e.type==='message-posted'){
+      if(Object.keys(e).some(key=>!allowedCommonsPostKeys.has(key)))invalid('Commons post contains unsupported fields.');
+      unique(e.messageId);
+      if(!validCommonsId(e.messageId)||e.channel!==COMMONS_CHANNEL||typeof e.text!=='string'||!e.text.trim()||Array.from(e.text).length>COMMONS_MESSAGE_LIMIT)invalid('Malformed Commons message.');
+      const actorKey=JSON.stringify([e.actor.id,e.actor.role]),times=commonsTimesByActor.get(actorKey)||[],eventAt=Date.parse(e.at);
+      while(times.length&&times[0]<=eventAt-COMMONS_RATE_WINDOW_MS)times.shift();
+      if(times.length>=COMMONS_POSTS_PER_MINUTE)invalid('Commons post rate limit exceeded in retained history.');
+      times.push(eventAt);commonsTimesByActor.set(actorKey,times);
+      commonsPosts.set(e.messageId,{event:e,index});
+    }else if(e.type==='message-reported'){
+      if(Object.keys(e).some(key=>!allowedCommonsReportKeys.has(key)))invalid('Commons report contains unsupported fields.');
+      unique(e.reportId);
+      const source=commonsPosts.get(e.messageId);
+      if(!validCommonsId(e.reportId)||!validCommonsId(e.messageId)||!source||source.index>=index||source.event.actor.id===e.actor.id||
+         !COMMONS_REASONS.includes(e.reason)||typeof e.details!=='string'||!e.details.trim()||Array.from(e.details).length>500||
+         (commonsLatestModeration.get(e.messageId)?.event.disposition==='hide'))invalid('Malformed Commons report.');
+      const reportKey=JSON.stringify([e.messageId,e.actor.id,e.actor.role]);
+      if(commonsReportKeys.has(reportKey))invalid('Duplicate actor report for one Commons message.');
+      commonsReportKeys.add(reportKey);
+      const list=commonsReportsByMessage.get(e.messageId)||[];
+      list.push({event:e,index});commonsReportsByMessage.set(e.messageId,list);
+    }else if(e.type==='message-moderated'){
+      if(Object.keys(e).some(key=>!allowedCommonsModerationKeys.has(key)))invalid('Commons moderation contains unsupported fields.');
+      unique(e.moderationId);
+      const source=commonsPosts.get(e.messageId),latest=commonsLatestModeration.get(e.messageId);
+      if(!validCommonsId(e.moderationId)||!validCommonsId(e.messageId)||!source||source.index>=index||e.actor.role!=='founder'||
+         !COMMONS_DISPOSITIONS.includes(e.disposition)||!COMMONS_REASONS.includes(e.reason))invalid('Malformed Commons moderation event.');
+      const latestIndex=latest?.index??-1;
+      const hasPendingReport=(commonsReportsByMessage.get(e.messageId)||[]).some(report=>report.index>latestIndex);
+      if(e.disposition==='hide'&&(latest?.event.disposition==='hide'||!hasPendingReport))invalid('Commons hide requires a pending report and a visible message.');
+      if(e.disposition==='restore'&&latest?.event.disposition!=='hide')invalid('Commons restore requires a prior hide.');
+      commonsLatestModeration.set(e.messageId,{event:e,index});
+    }
+  }
+
   for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=publicationsByVersion.get(historyKey(version.id,version.version))||[];if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
   for(const e of raw.events)if(e.type==='moonshot-proposed'){
     unique(e.moonshotId);
@@ -431,5 +582,7 @@ export async function validateWorld(raw) {
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))invalid('Malformed attributed note.');}
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!isStrictTimestamp(method.at))invalid('Invalid earned game method.');}
+  try{projectPlayerGuilds(raw);}catch{invalid('Malformed player-guild history.');}
+  for(const e of raw.events)if(e.type==='guild-created')unique(e.guildId);
   return clone(raw);
 }

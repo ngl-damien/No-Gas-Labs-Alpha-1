@@ -3,19 +3,146 @@ import assert from 'node:assert/strict';
 import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
+import {createWorld} from '../game/model.mjs';
+import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
+
+const viewFixtures = new WeakMap();
 
 function makeView(t) {
-  const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
-    addEventListener:()=>{},removeEventListener:()=>{},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{},
-    ResizeObserver:class{observe(){}disconnect(){}}};
-  const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
-  Object.assign(globalThis,globals);
-  const interactions=[],positions=[];
-  const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onPosition:position=>positions.push(position)});
-  t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions,positions};
+  let fixture = viewFixtures.get(t);
+  if (!fixture) {
+    const globals = {
+      document: { body: { classList: { contains: () => false } } },
+      devicePixelRatio: 1,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+      ResizeObserver: class { observe() {} disconnect() {} },
+    };
+    const previous = new Map(Object.keys(globals).map(key => [
+      key, Object.getOwnPropertyDescriptor(globalThis, key),
+    ]));
+    Object.assign(globalThis, globals);
+    fixture = { previous, views: [] };
+    viewFixtures.set(t, fixture);
+    t.after(() => {
+      for (const view of fixture.views.reverse()) view.destroy();
+      for (const [key, descriptor] of fixture.previous) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else delete globalThis[key];
+      }
+      viewFixtures.delete(t);
+    });
+  }
+  const interactions = [], positions = [], discoveries = [], attributes = new Map();
+  const canvas = {
+    getContext: () => ({}),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 700 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    setAttribute: (key, value) => attributes.set(key, String(value)),
+    getAttribute: key => attributes.get(key) ?? null,
+    removeAttribute: key => attributes.delete(key),
+    focus: () => {},
+  };
+  const view = new WorldView(canvas, {
+    onInteract: place => interactions.push(place),
+    onDiscover: id => discoveries.push(id),
+    onPosition: position => positions.push(position),
+  });
+  fixture.views.push(view);
+  return { view, interactions, positions, discoveries, canvas };
 }
+
+test('discovery de-duplication resets when the actor or world scope changes', t => {
+  const { view, discoveries } = makeView(t);
+  const relay = PLACES.find(place => place.id === 'relay');
+  assert.ok(relay, 'Relay must be a real map destination');
+  view.setPlayer({ x: relay.x, y: relay.y });
+  view.setDiscoveryScope(JSON.stringify(['world-a', 'founder-a', 'founder']));
+  view.update(0.045, 0);
+  assert.deepEqual(discoveries, ['relay']);
+  view.setDiscoveryScope(JSON.stringify(['world-a', 'witness-b', 'witness']));
+  view.update(0.045, 45);
+  assert.deepEqual(discoveries, ['relay', 'relay'],
+    'a different actor must be able to discover the same location');
+  view.setDiscoveryScope(JSON.stringify(['world-b', 'witness-b', 'witness']));
+  view.update(0.045, 90);
+  assert.deepEqual(discoveries, ['relay', 'relay', 'relay'],
+    'a different world must not inherit local discovery suppression');
+});
+
+test('the map pennant projects the next actor-scoped Questkeeper objective without changing the world',t=>{
+ const world=createWorld({id:'quest-map-world',now:'2026-10-31T12:40:00.000Z'});
+ const fixtures=[
+  {viewer:{id:'founder-map',role:'founder'},target:'workbench',destination:'The Making Bench'},
+  {viewer:{id:'witness-map',role:'witness'},target:'relay',destination:'The Relay'}
+ ];
+ for(const fixture of fixtures){
+  const before=structuredClone(world),trail=getQuestTrail(world,fixture.viewer),quest=getActiveQuest(world,fixture.viewer,trail);
+  const action=quest.action==='trail'?quest.nextAction:trail.find(item=>!item.complete)?.action||null;
+  const {view,canvas}=makeView(t);
+  view.setWorld(world);view.setQuestAction(action,quest.title);
+  assert.equal(view.questMarker?.targetId,fixture.target);
+  assert.equal(canvas.getAttribute('data-quest-marker'),'visible');
+  assert.equal(canvas.getAttribute('data-quest-target-id'),fixture.target);
+  assert.equal(canvas.getAttribute('data-quest-title'),quest.title);
+  assert.equal(canvas.getAttribute('data-quest-destination'),fixture.destination);
+  assert.match(canvas.getAttribute('aria-label'),new RegExp(fixture.destination));
+  assert.deepEqual(world,before,'map projection must not mutate retained world state');
+  view.setQuestAction(null,'');
+  assert.equal(view.questMarker,null);
+  assert.equal(canvas.getAttribute('data-quest-target-id'),null);
+  assert.match(canvas.getAttribute('aria-label'),/^The Common Ground\./);
+ }
+});
+
+test('tapping the active quest pennant routes to the real destination but does not itself record discovery',t=>{
+ const world=createWorld({id:'quest-map-route-world',now:'2026-10-31T12:40:00.000Z'});
+ const viewer={id:'witness-map-route',role:'witness'},trail=getQuestTrail(world,viewer),quest=getActiveQuest(world,viewer,trail);
+ const action=quest.action==='trail'?quest.nextAction:trail.find(item=>!item.complete)?.action||null;
+ const {view,canvas,discoveries,interactions}=makeView(t);
+ view.setWorld(world);view.setQuestAction(action,quest.title);view.setPlayer({x:650,y:330});
+ const marker=view.questMarker,rect=canvas.getBoundingClientRect();
+ const pointer={clientX:rect.left+view.width/2+(marker.x-view.camera.x)*view.zoom,
+  clientY:rect.top+view.height/2+(marker.y-view.camera.y)*view.zoom};
+ view.onPointer(pointer);
+ assert.equal(view.target,'relay');
+ assert.deepEqual(discoveries,[],'the marker tap is navigation, not discovery');
+ assert.deepEqual(interactions,[]);
+ assert.deepEqual(world.events,[]);
+ for(let step=0;step<60&&(view.route.length||view.target);step++)view.update(.045,step*45);
+ assert.deepEqual(discoveries,['relay'],'discovery occurs only after the player physically approaches the location');
+ assert.deepEqual(interactions,[{type:'discovery',id:'relay'}]);
+ assert.deepEqual(world.events,[],'the map renderer dispatches activity but never appends canonical events');
+});
+
+test('quest pennants resolve retained creations and only map-visible research or collaborator records',t=>{
+ const world=createWorld({id:'quest-map-objects-world',now:'2026-10-31T12:40:00.000Z'});
+ world.creations.push({id:'retained-place',title:'A retained place',kind:'comic',version:1,position:{x:700,y:520}});
+ const {view}=makeView(t);view.setWorld(world);
+ view.setQuestAction({type:'creation',id:'retained-place',version:1},'Leave a field note');
+ assert.equal(view.questMarker?.targetId,'retained-place');
+ assert.equal(view.questMarker?.destination,'A retained place');
+ view.researchObjects=[{id:'moonshot-object',moonshotId:'moonshot-1',title:'A falsifiable question',x:900,y:400}];
+ view.setQuestAction({type:'research-object',id:'moonshot-object',moonshotId:'moonshot-1'},'Record an experiment attempt');
+ assert.equal(view.questMarker?.targetId,'moonshot-object');
+ assert.equal(view.questMarker?.targetType,'research-object');
+ view.researchActivityObjects=[{id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1',title:'Attempt report',x:980,y:440,mapVisible:true}];
+ view.setQuestAction({type:'research-activity',id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1'},'Link a retained artifact');
+ assert.equal(view.questMarker?.targetId,'attempt-object');
+ assert.equal(view.questMarker?.targetType,'research-activity');
+ view.researchActivityObjects[0].mapVisible=false;
+ assert.equal(view.setQuestAction({type:'research-activity',id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1'},'Link a retained artifact'),null);
+ view.collaboratorResponseObjects=[{id:'response-object',responseId:'response-1',name:'Rejected response',x:220,y:220,mapVisible:true}];
+ view.setQuestAction({type:'collaborator-response',id:'response-1'},'Preserve a bounded response');
+ assert.equal(view.questMarker?.targetId,'response-object');
+ assert.equal(view.questMarker?.targetType,'collaborator-response');
+ view.collaboratorResponseObjects[0].mapVisible=false;
+ assert.equal(view.setQuestAction({type:'collaborator-response',id:'response-1'},'Preserve a bounded response'),null);
+ assert.deepEqual(world.events,[],'map object projection must not create research, response, or progress events');
+});
 
 test('keyboard movement cancels a pending destination without opening it',t=>{
   const {view,interactions}=makeView(t);
@@ -71,22 +198,34 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
-test('the playable map exposes all eight institutional functions as real destinations',()=>{
- const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+test('the playable map exposes all nine institutional functions as real destinations',()=>{
+ const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','commons','academy','moonshot_field','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
 });
 
-test('Guild Hall NPCs are the exact bounded collaborator roles and stay within the playable map',()=>{
+test('institutional collaborator NPCs retain exact roles and stand beside their work',()=>{
  assert.deepEqual(GUILD_NPCS.map(npc=>npc.roleId),COLLABORATOR_ROLES.map(role=>role.id));
  assert.equal(new Set(GUILD_NPCS.map(npc=>npc.id)).size,GUILD_NPCS.length);
  assert.ok(GUILD_NPCS.every(npc=>npc.id==='guild-npc-'+npc.roleId&&npc.name&&npc.objective));
  assert.ok(GUILD_NPCS.every(npc=>npc.x>24&&npc.x<1576&&npc.y>28&&npc.y<972));
+ const destinations={
+  archivist:PLACES.find(place=>place.id==='evidence_archive'),
+  adversary:PLACES.find(place=>place.id==='evidence_archive'),
+  synthesizer:PLACES.find(place=>place.id==='guild_hall'),
+  tutor:PLACES.find(place=>place.id==='academy')
+ };
+ for(const npc of GUILD_NPCS){
+  const destination=destinations[npc.roleId];
+  assert.equal(npc.locationLabel,destination.name.toUpperCase());
+  assert.ok(Math.hypot(npc.x-destination.x,npc.y-destination.y)<200,
+    npc.name+' must stand beside the institution whose work its contract supports');
+ }
 });
 
-test('each Guild Hall NPC is a reachable map destination and dispatches only its own role',t=>{
+test('each institutional collaborator NPC is a reachable map destination and dispatches only its own role',t=>{
  const {view,interactions}=makeView(t);
  for(const npc of GUILD_NPCS){
   view.setPlayer({x:180,y:640});
@@ -99,7 +238,7 @@ test('each Guild Hall NPC is a reachable map destination and dispatches only its
  }
 });
 
-test('a nearby Guild Hall NPC can be spoken to without recording discovery or progress',t=>{
+test('a nearby collaborator NPC can be spoken to without recording discovery or progress',t=>{
  const {view,interactions}=makeView(t);
  const npc=GUILD_NPCS[0];
  view.setPlayer({x:npc.x,y:npc.y+10});
@@ -112,13 +251,14 @@ test('institution activity labels are deterministic projections of uniquely iden
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
   {id:'e-report',type:'report'},{id:'e-decision',type:'decision'},{id:'e-contribute',type:'contribute'},
-  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'}
+  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'},{id:'e-commons-post',type:'message-posted'},{id:'e-commons-report',type:'message-reported'},{id:'e-commons-mod',type:'message-moderated'}
  ]};
  assert.equal(institutionActivityCount('guild_hall',world),1);
  assert.equal(institutionActivityCount('forge',world),3,'Forge includes publication as the final artifact-lifecycle step');
  assert.equal(institutionActivityCount('evidence_archive',world),3,'archive includes contributions, reports and retained publications');
  assert.equal(institutionActivityCount('decision_chamber',world),1);
  assert.equal(institutionActivityCount('town-square',world),2,'TownSquare includes contributions and public reports');
+ assert.equal(institutionActivityCount('commons',world),3,'The Commons counts retained posts, reports, and moderation decisions.');
  assert.equal(institutionActivityCount('academy',world),1);
  assert.equal(institutionActivityCount('moonshot_field',world),1);
  assert.equal(institutionActivityCount('publication_house',world),1);
@@ -245,7 +385,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,8);
+  assert.equal(institutions.length,9);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});
