@@ -606,3 +606,20 @@ test('compareCandidates uses its normalized request snapshot instead of rereadin
   assert.equal(getTrapCalls, 0);
   assert.equal(report.results[0].correct, true);
 });
+
+
+test('Verify workflow scopes preflight to Forge source, regression, and workflow paths', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/verify.yml', import.meta.url), 'utf8');
+  for (const path of [
+    'src/forge/runner.mjs',
+    'test/forge-runner.test.mjs',
+    '.github/workflows/verify.yml'
+  ]) {
+    assert.ok(workflow.includes('--path ' + path), 'missing scoped preflight target: ' + path);
+  }
+  assert.ok(workflow.includes('--checkpoint docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md'));
+  assert.ok(workflow.includes('--receipt .runtime/agent-preflight-forge.json'));
+  const preflight = workflow.indexOf('name: Preflight Forge implementation, regression test, and workflow');
+  const verification = workflow.indexOf('name: Execute tests, package and bounded institutional exercise');
+  assert.ok(preflight >= 0 && verification > preflight, 'scoped preflight must run before repository verification');
+});
