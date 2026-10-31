@@ -238,3 +238,49 @@ This continuation completed one merge and one additional substantive current-mai
 - PR #231 and #233 are merged; superseded #230 and #212 are closed unmerged.
 - PR #227 remains a Worker B handoff: 97 ahead / 5 behind the earlier `b76f007...` baseline, requiring fresh recompare against the now-newer main before integration.
 - Next Worker A candidate: inspect the current-main Forge independent-workspace boundary (historical PR #216) for remaining source-backed gaps, but first rehydrate current instructions/checkpoint and recheck active ownership. Do not alter Worker B's game/server stack or Founder-authority paths.
+
+
+## Ralph continuation — adversarial Forge review and Worker B CI handoff (2026-10-31 UTC)
+
+**Worker:** Repository Stutter-Step / Worker A.
+
+### Sequential bootstrap and preflight boundary
+- Read current-main root AGENTS.md alone, then read the complete canonical shared protocol alone in a separate sequential repository operation.
+- Re-read this durable checkpoint before inspecting PR inventory or implementation paths.
+- The portable local command npm run agent:preflight could not be executed in this connector-only session: no checked-out repository/terminal workspace was available, and the earlier local clone attempt in this session family failed DNS resolution to GitHub. This is recorded as a limitation, not a successful preflight receipt. Manual sequential instruction reads and checkpoint rehydration were performed.
+- Checked current-main nested instruction paths src/AGENTS.md, src/forge/AGENTS.md, and test/AGENTS.md; each returned 404 (not present).
+
+### Current repository and worker state
+- Current main at rehydration: 0ef6791b241d224b6647a291f039cf079f948db4, containing the signed PR #234 change rejecting Windows drive-qualified paths in agent preflight.
+- Worker B PR #227 has advanced to head bb799237ea2b58595095ae84ac52961b5685ab2d, still stacked on PR #225 head 42a5832a93671974ad330a2d3fda24b5fbf5caaa. Its body still describes older head 8370920...; treat that evidence as stale for the new head.
+- Fresh compare of #227 head against current main reports 145 ahead / 8 behind, diverged, with a broad stacked game/runtime diff. This is not a safe Worker A transplant target; Worker B owns these paths.
+- Current Worker A Forge proposal is PR #235, head d17044b597bfafb872d8c9d9bb7d022ee0c92d51, base ed1d960..., 5 ahead / 1 behind current main. It touches only src/forge/runner.mjs and test/forge-runner.test.mjs. Historical PR #216 is its superseded older-base source proposal; no parallel Forge code was created.
+
+### Worker B handoff — exact browser failure
+- Latest #227 head bb799237... Verify #41170972526: success; Genesis #41170972513: success; Browser Acceptance #41170972505: failure.
+- Inspected exact failing browser job #124448696370. Offline recovery, desktop, phone, and institutional-location journeys passed. Shared-world journey timed out at scripts/verify-browser.py:760 clicking the encounter objective button Go do this → for founder-challenge-experiment-report.
+- Playwright's diagnostic: #sheet-backdrop intercepted pointer events. This is an observed overlay/sheet collision, not an inferred failure.
+- Artifact 13030972913 preserved the browser evidence: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41170972505/artifacts/13030972913
+- Posted Worker B handoff comment #6539378035 to PR #227 with exact head, workflow IDs, stack trace, and suggested dismiss/assert overlay before clicking. Worker A did not edit game code.
+
+### Independent review finding on PR #235
+PR #235 is an active current-main Forge hardening proposal. It improves source/candidate credential scanning, clean independent verifier workspaces, unmanifested artifact inventory, and descriptor-based validation for compareCandidates(). Exact-head hosted Verify #41171085560 and Genesis #41171085694 both succeeded; Browser Acceptance #41171085571 remained in progress at latest poll.
+
+Independent source review found a remaining API inconsistency:
+- compareCandidates() uses descriptor-based dataRecord() to reject accessor-backed request/candidate/overlay values.
+- verifyRepository() still uses exactKeys(options, ...), then directly reads options.sourceDir, options.outDir, and options.limits.
+- repositoryLimits() also uses object spread on the supplied limits object.
+- Therefore getters on repository request fields or limits.timeoutMs can execute during validation. The API's accessor rejection is incomplete even though no child process has started yet.
+- Suggested bounded repair: use descriptor-based data-record validation for repository request and limits; add negative tests asserting getters are not invoked and no output directory is created.
+- Posted finding as PR #235 conversation comment #6539371662. Formal REQUEST_CHANGES review was attempted but GitHub rejected it because the authenticated owner cannot request changes on their own PR. The finding is a conversation comment, not a formal blocking review state.
+- Do not edit the same Forge files on a competing branch while PR #235 owns them. Re-review after the owner addresses the comment.
+
+### Exact state and next actions
+1. Worker B: fix the #sheet-backdrop interception at the shared-world encounter click, update PR #227 body with the new exact head, and rerun all three required workflows. Treat prior 13/13 evidence on 8370920... as stale for bb799...
+2. Worker A / PR #235: address the verifyRepository() accessor gap, add no-getter/no-output negative tests, then rerun exact-head Verify, Genesis, and Browser Acceptance. PR #235 remains draft/open; do not mark ready or merge while Browser Acceptance is pending or the review finding is unaddressed.
+3. PR #235 base is one commit behind current main due to #234. Reconcile that base after the code correction; do not assume mergeability from mergeable=true while checks are running.
+4. Keep the disclosed Forge boundary accurate: trusted local child processes, not an OS sandbox; secret scanning is best-effort, not comprehensive.
+5. No source files changed in this iteration. Actions taken were two evidence-based PR conversation handoffs/review comments. No merge, release, deployment, credential/permission change, spending, or external publication occurred.
+
+### Execution boundary
+This run completed an adversarial review and an exact-head game CI failure handoff. It did not exhaust Compute or run after the host session. Continue from the exact branch/PR state above and repeat while safe useful work remains.
