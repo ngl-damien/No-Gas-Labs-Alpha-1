@@ -1,6 +1,6 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -587,6 +587,114 @@ function renderPlayerGuildBoard(board, sourceWorld){
     }
   }
 }
+function renderGuildExpeditionDocket(projection,container){
+  const active=document.activeElement;
+  const focusedKey=container.contains(active)?active.getAttribute('data-expedition-docket-focus'):null;
+  container.replaceChildren();
+  container.append(node('h3',{id:'guild-expedition-docket-heading',class:'section-title',text:'RETAINED EXPEDITION DOSSIER'}));
+  container.append(paragraph('This in-world docket joins retained Moonshot proposals to self-reported attempts, preserved challenges and exact Relay folios. It is a navigation aid, not an adjudication: reports remain reports, dissent remains dissent, and structurally valid collaborator text is still untrusted.','form-help'));
+  if(projection.unlinkedResearchRecordCount){
+    container.append(paragraph(projection.unlinkedResearchRecordCount+' retained proposal, attempt or challenge record(s) have missing or ambiguous links. They remain in the Evidence Archive; no target is guessed.','evidence-warning'));
+  }
+  if(projection.omittedProposalCount){
+    container.append(paragraph('Showing the newest '+projection.expeditions.length+' uniquely linked proposals. '+projection.omittedProposalCount+' older proposal(s) remain inspectable in the Evidence Archive.','form-help'));
+  }
+  if(!projection.expeditions.length){
+    container.append(paragraph('No uniquely identified Moonshot proposal is available for a dossier yet. Frame a falsifiable question at the Moonshot Field. Ambiguous or rejected records are not erased.','empty-note'));
+  }
+  const statusLabel=value=>String(value||'unknown').replaceAll('-',' ').toUpperCase();
+  for(const expedition of projection.expeditions){
+    const card=node('article',{class:'field-card','data-expedition-docket-id':expedition.moonshotId});
+    card.append(
+      node('h4',{text:expedition.title}),
+      node('span',{class:'pill',text:'RETAINED PROPOSAL · NOT ADJUDICATED'}),
+      paragraph('Moonshot '+expedition.moonshotId+' · proposal '+expedition.eventId+' · '+expedition.actorRole+' '+expedition.actorId+' · '+expedition.at,'attribution'),
+      paragraph('Hypothesis: '+expedition.hypothesis),
+      paragraph('Falsifier: '+expedition.falsifier),
+      paragraph('Evidence needed: '+expedition.evidenceNeeded),
+      paragraph('Source link: '+statusLabel(expedition.sourceStatus)+'. A link identifies a retained version; it does not verify the hypothesis.','form-help'),
+      button('Open Moonshot Field →',()=>openMoonshotField(expedition.moonshotId),{
+        class:'list-button','data-expedition-docket-focus':'proposal:'+expedition.moonshotId
+      })
+    );
+
+    const attempts=node('section',{class:'expedition-docket-section','aria-label':'Retained attempt reports'});
+    attempts.append(node('h5',{text:'ATTEMPT REPORTS · '+expedition.attemptCount+' RETAINED'}));
+    if(!expedition.attempts.length){
+      attempts.append(paragraph('No uniquely linked attempt report is retained for this proposal.','empty-note'));
+    }
+    for(const attempt of expedition.attempts){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-attempt-id':attempt.id});
+      item.append(
+        node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED · '+attempt.reportedOutcome.toUpperCase()}),
+        paragraph('Procedure: '+attempt.procedure),
+        paragraph('Observation: '+attempt.observation),
+        paragraph('Evidence link: '+statusLabel(attempt.evidenceStatus)+'. This is linkage only, not independent observation.','form-help'),
+        paragraph('By '+(attempt.actorRole||'unknown')+' '+(attempt.actorId||'unknown')+' · '+attempt.at,'attribution'),
+        node('code',{text:attempt.id}),
+        button('Inspect attempt →',()=>openMoonshotField(expedition.moonshotId,attempt.id),{
+          class:'list-button','data-expedition-docket-focus':'attempt:'+attempt.id
+        })
+      );
+      attempts.append(item);
+    }
+    if(expedition.omittedAttemptCount)attempts.append(paragraph(expedition.omittedAttemptCount+' older attempt report(s) remain in the Evidence Archive.','form-help'));
+    card.append(attempts);
+
+    const challenges=node('section',{class:'expedition-docket-section','aria-label':'Preserved challenges and dissent'});
+    challenges.append(node('h5',{text:'PRESERVED CHALLENGES · '+expedition.challengeCount+' RETAINED'}));
+    if(!expedition.challenges.length){
+      challenges.append(paragraph('No challenge record is linked to this proposal yet. The absence of a challenge is not a finding that a report is sound.','empty-note'));
+    }
+    for(const challenge of expedition.challenges){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-challenge-id':challenge.id});
+      item.append(
+        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+        paragraph('Challenge type: '+challenge.challengeType.replaceAll('-',' ')),
+        paragraph('Target report link: '+statusLabel(challenge.targetReportStatus)+(challenge.targetReportStatus==='linked'?'':' · no target was inferred.'),'form-help'),
+        paragraph(challenge.challengeText||'No challenge text retained.'),
+        paragraph('By '+(challenge.actorRole||'unknown')+' '+(challenge.actorId||'unknown')+' · '+challenge.at,'attribution'),
+        node('code',{text:challenge.id}),
+        button('Inspect challenge →',()=>openMoonshotField(expedition.moonshotId,challenge.id),{
+          class:'list-button','data-expedition-docket-focus':'challenge:'+challenge.id
+        })
+      );
+      challenges.append(item);
+    }
+    if(expedition.omittedChallengeCount)challenges.append(paragraph(expedition.omittedChallengeCount+' older challenge(s) remain in the Evidence Archive.','form-help'));
+    card.append(challenges);
+
+    const responses=node('section',{class:'expedition-docket-section','aria-label':'Retained collaborator folios'});
+    responses.append(node('h5',{text:'RELAY FOLIOS · '+expedition.responseCount+' RETAINED'}));
+    if(!expedition.responses.length){
+      responses.append(paragraph('No source-bound collaborator response is retained for this proposal. A prompt or an unarchived provider reply does not count.','empty-note'));
+    }
+    for(const response of expedition.responses){
+      const status=response.validationStatus==='valid-for-human-review'
+        ?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED';
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-response-id':response.responseId});
+      item.append(
+        node('span',{class:'pill',text:response.name+' · '+status}),
+        paragraph('By '+response.actorRole+' '+response.actorId+' · '+response.at,'attribution'),
+        paragraph('Source events: '+response.sourceEventIds.join(' · ')),
+        response.validationReason?paragraph('Structural result: '+response.validationReason,'evidence-warning'):paragraph('Structural validation is not truth, provider provenance, execution, approval or authority.','form-help'),
+        node('code',{text:response.responseId}),
+        button('Inspect retained folio →',()=>openEvidenceArchive(response.responseId),{
+          class:'list-button','data-expedition-docket-focus':'response:'+response.responseId
+        })
+      );
+      responses.append(item);
+    }
+    if(expedition.omittedResponseCount)responses.append(paragraph(expedition.omittedResponseCount+' older folio(s) remain in the Evidence Archive.','form-help'));
+    card.append(responses);
+    container.append(card);
+  }
+  if(focusedKey){
+    const target=Array.from(container.querySelectorAll('[data-expedition-docket-focus]'))
+      .find(item=>item.getAttribute('data-expedition-docket-focus')===focusedKey);
+    target?.focus({preventScroll:true});
+  }
+}
 function attachGuildHallExpeditionBoard(content){
   const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
   const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
@@ -594,7 +702,8 @@ function attachGuildHallExpeditionBoard(content){
   const intro=paragraph(`Your ${scope} objective trail is a read-only projection of retained, actor-matched world activity. Follow an actionable route to the real activity; the route itself records nothing. Player-guild membership does not assign or authorize institutional work. Recorded activity is not a truth or mastery verdict.`,'form-help');
   const summary=node('p',{id:'guild-expedition-summary',class:'form-help','aria-live':'polite'});
   const list=node('ol',{id:'guild-expedition-objectives',class:'quest-trail','aria-label':'Current Questkeeper objectives'});
-  board.append(heading,intro,summary,list);
+  const docket=node('section',{id:'guild-expedition-docket','aria-labelledby':'guild-expedition-docket-heading'});
+  board.append(heading,intro,summary,list,docket);
   content.append(board);
   const render=()=>{
     if(!board.isConnected||$('sheet').hidden)return;
@@ -604,6 +713,9 @@ function attachGuildHallExpeditionBoard(content){
     const waiting=objectives.length-recorded-actionable;
     summary.textContent=`${recorded} recorded · ${objectives.length} total · ${actionable} actionable · ${waiting} waiting on prerequisites or another actor.`;
     renderQuestTrail(objectives,list,'data-expedition-objective-id');
+    renderGuildExpeditionDocket(getExpeditionDocket(world,{
+      collaboratorResponseObjects:currentCollaboratorResponseObjects
+    }),docket);
   };
   const previous=activeNoteRenderer;
   activeNoteRenderer=()=>{if(previous)previous();render();};
