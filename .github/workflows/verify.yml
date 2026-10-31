@@ -22,5 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Preflight Forge implementation, regression test, and workflow
+        run: npm run agent:preflight -- --path src/forge/runner.mjs --path test/forge-runner.test.mjs --path .github/workflows/verify.yml --checkpoint docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md --receipt .runtime/agent-preflight-forge.json
       - name: Execute tests, package and bounded institutional exercise
         run: npm run verify
