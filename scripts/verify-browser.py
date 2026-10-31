@@ -744,6 +744,9 @@ def shared(browser,url,data,out):
 
         # Re-enter as the same Founder session to read the newly expanded objective.
         a.reload()
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Witness')")
+        expect(a.locator('#login-button')).to_be_visible()
         a.locator('#login-button').click()
         a.locator('#founder-key').fill(KEY)
         a.locator('#verify-founder').click()
