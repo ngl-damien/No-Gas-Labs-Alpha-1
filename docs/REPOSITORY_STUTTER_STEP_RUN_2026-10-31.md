@@ -762,3 +762,12 @@ PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173
 - I independently fetched `.github/workflows/branch-cleanup.yml` from the new main. It is a manual-only, read-only inventory preview with no Git-ref mutation calls. It still declares workflow-level `contents: write` and `pull-requests: read`; that privilege mismatch remains visible and was not changed in the merge.
 - This supersedes the preceding statement that PR #237 remained unmerged. The exact-head verification already recorded above remains valid for the merged source tree; no post-merge workflow run was checked in this correction.
 - This merge was performed by another worker, not by the current continuation. No permission change, workflow dispatch, or branch deletion was observed.
+
+
+### Post-merge verification — PR #237 mainline commit (2026-10-31 UTC)
+- Current main after PR #237 squash merge: `93bc9157dca95f7d4f552a88e8570823b30c11aa`.
+- Push-triggered exact-merge-commit workflows all succeeded: Verify #41173616029, Genesis Evidence Invariant #41173616027, Browser Acceptance #41173616025.
+- Verify job #124456528666 ran scoped preflight with `.github/workflows/branch-cleanup.yml` and `test/branch-cleanup-safety.test.mjs` explicitly included; preflight status `ready`, failures empty. Node tests, Python inspector tests, package build, and institutional exercise all exited 0; report `passed: true`.
+- Browser job #124456528731 passed all 12 journeys, including desktop, phone, institutional actions, two-session shared world, mobile widths, one-button layouts, exact-byte standalone checks, and shared restart. Artifact #13031737646: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173616025/artifacts/13031737646 (archive SHA-256 `869ee93d44ccc56a855d8d3f97f42a3bb3a17e2036d2f84d75360e27a5645858`).
+- The merged workflow source still declares `contents: write` / `pull-requests: read`, despite having no Git-ref mutation calls. This remains a least-privilege mismatch to address through a separately authorized permission change; this continuation did not change permissions.
+- This post-merge evidence supersedes any earlier statement that PR #237 had not been integrated or that its post-merge checks were unknown.
