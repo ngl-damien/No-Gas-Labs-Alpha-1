@@ -54,7 +54,12 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: gradle -p android :app:connectedDebugAndroidTest
+          script: |
+            set -e
+            adb shell settings put global package_verifier_enable 0
+            verifier_enabled="$(adb shell settings get global package_verifier_enable | tr -d '\r')"
+            test "$verifier_enabled" = "0"
+            gradle -p android :app:connectedDebugAndroidTest
       - name: Preserve debug APK
         if: always()
         uses: actions/upload-artifact@v4
