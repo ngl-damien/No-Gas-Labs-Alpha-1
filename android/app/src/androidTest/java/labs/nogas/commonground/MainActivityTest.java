@@ -134,7 +134,7 @@ public final class MainActivityTest {
             assertEquals("the imported objective is projected from the retained publication",
                     "true",
                     evaluate(activity,
-                            "document.querySelector('[data-objective-id=\\"founder-first-place\\"]')?.textContent.includes('RECORDED')"));
+                            "document.querySelector('[data-objective-id=\"founder-first-place\"]')?.textContent.includes('RECORDED')"));
             assertEquals("the import remains a private world", "true",
                     evaluate(activity, "document.getElementById('mode-label').textContent.includes('Private')"));
         } finally {
