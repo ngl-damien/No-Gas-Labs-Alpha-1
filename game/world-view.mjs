@@ -11,20 +11,20 @@ export const PLACES=[
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
  {id:'commons',name:'The Commons',x:600,y:500,type:'institution',purpose:'Share bounded player messages, report abuse, and inspect human moderation history.',glyph:'C',color:'#6b805d'},
- {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Inspect actor-scoped Questkeeper objectives, found player groups, prepare bounded collaborator packets, preserve attributed responses, and review collaborator limits.',glyph:'G',color:'#356e62'},
+ {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Inspect actor-scoped Questkeeper objectives, coordinate player groups, synthesize proposals and dissent, and review collaborator limits.',glyph:'G',color:'#356e62'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
- {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts; challenge real published artifacts.',glyph:'E',color:'#6b805d'},
+ {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent and exact collaborator responses; audit source chains and challenge published artifacts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
- {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
+ {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work with bounded tutoring prompts; visits and explanations do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
 ];
 
 const GUILD_NPC_POSITIONS = Object.freeze([
-  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A', locationLabel: 'GUILD HALL' },
+  { roleId: 'archivist', x: 890, y: 95, accent: '#6b805d', sigil: 'A', locationLabel: 'EVIDENCE ARCHIVE' },
   { roleId: 'adversary', x: 1120, y: 95, accent: '#af5138', sigil: '!', locationLabel: 'EVIDENCE ARCHIVE' },
   { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S', locationLabel: 'GUILD HALL' },
-  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T', locationLabel: 'GUILD HALL' }
+  { roleId: 'tutor', x: 275, y: 360, accent: '#9a8b5b', sigil: 'T', locationLabel: 'POLYMATH ACADEMY' }
 ]);
 
 // These authored, role-bound entry points live beside the institutional work they support.
