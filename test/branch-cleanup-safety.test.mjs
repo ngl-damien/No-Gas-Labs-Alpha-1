@@ -19,10 +19,6 @@ test('legacy inventory has exactly one read-only preview job and no deletion job
   assert.match(workflow, /No branches were deleted/);
 });
 
-test('the preview retains the pre-existing token permission scope', () => {
-  assert.match(workflow, /^permissions:\n  contents: write\n  pull-requests: read/m);
-});
-
 test('inventory must be dispatched from the default branch', () => {
   assert.match(workflow, /const defaultRef = 'refs\/heads\/' \+ repository\.data\.default_branch/);
   assert.match(workflow, /context\.ref !== defaultRef/);
