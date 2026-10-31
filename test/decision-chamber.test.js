@@ -9,6 +9,7 @@ import {
   decisionDigest,
   verifyFounderDecision,
   authorizationEvent,
+  authorizationEventFromEnvelope,
   verifyAuthorizationEvent,
   createFounderAuthorizationVerifier
 } from "../src/authority/decision.js";
@@ -123,6 +124,64 @@ test("Founder signing page emits the verifier-compatible v2 envelope", async () 
   assert.ok(html.includes("signature.length!==64"));
   assert.ok(html.includes("schema:'ngl.agp.founder-decision-envelope.v2'"));
   assert.ok(html.includes("payload_sha256:digest,key_fingerprint:fingerprint,signature:b64url(signature)"));
+});
+
+test("browser-exported Founder decision envelopes verify and build canonical authorization events", () => {
+  const trust = {
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  };
+  const envelope = {
+    schema: "ngl.agp.founder-decision-envelope.v2",
+    payload,
+    signed
+  };
+  const event = authorizationEventFromEnvelope({ envelope, ...trust });
+  assert.equal(event.type, "QUEST_AUTHORIZED");
+  assert.equal(event.proposal_id, payload.proposal_id);
+  assert.equal(event.grant_id, signed.payload_sha256);
+  assert.equal(verifyAuthorizationEvent(event, trust), true);
+});
+
+test("Founder envelope verification rejects tampering, extra fields, and accessors", () => {
+  const trust = {
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  };
+  const envelope = {
+    schema: "ngl.agp.founder-decision-envelope.v2",
+    payload,
+    signed
+  };
+  assert.throws(
+    () => authorizationEventFromEnvelope({
+      envelope: { ...envelope, payload: { ...payload, outputs: ["substituted"] } },
+      ...trust
+    }),
+    /FOUNDER_DECISION_PAYLOAD_DIGEST_MISMATCH/
+  );
+  assert.throws(
+    () => authorizationEventFromEnvelope({ envelope: { ...envelope, extra: true }, ...trust }),
+    /FOUNDER_ENVELOPE_INVALID/
+  );
+
+  let getterCalls = 0;
+  const accessorEnvelope = { schema: envelope.schema, payload, signed };
+  Object.defineProperty(accessorEnvelope, "signed", {
+    enumerable: true,
+    get() { getterCalls += 1; return signed; }
+  });
+  assert.throws(
+    () => authorizationEventFromEnvelope({ envelope: accessorEnvelope, ...trust }),
+    /FOUNDER_ENVELOPE_INVALID/
+  );
+  assert.equal(getterCalls, 0);
+  assert.throws(
+    () => authorizationEventFromEnvelope({ envelope, ...trust, verification: { valid: true } }),
+    /FOUNDER_ENVELOPE_INVALID/
+  );
 });
 
 test("verification requires a host-pinned audience and rejects mismatches", () => {
