@@ -156,6 +156,10 @@ def basic(page,url,out,label):
     expect(expedition.locator('[data-expedition-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
     expect(expedition.locator('[data-expedition-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     expect(expedition.locator('#guild-expedition-summary')).to_contain_text('2 recorded')
+    close_sheet(page)
+    page.locator('#places-button').click()
+    page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -268,24 +272,26 @@ def institutional_locations(browser,url,out):
         assert after==before, 'Following an expedition route must not create an event, revision, or XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
+        expect(page.locator('[data-collaborator-role="archivist"]')).to_be_visible()
+        expect(page.locator('[data-collaborator-role="adversary"]')).to_be_visible()
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
         expect(page.locator('#contradiction-clerk-npc button')).to_have_count(0)
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
-        for role,name in [
-            ('archivist','Hostile Archivist'),
-            ('adversary','Adversary'),
-            ('synthesizer','Synthesis Clerk'),
-            ('tutor','Polymath Tutor')
+        for role,name,location in [
+            ('archivist','Hostile Archivist','Evidence Archive'),
+            ('adversary','Adversary','Evidence Archive'),
+            ('synthesizer','Synthesis Clerk','Guild Hall'),
+            ('tutor','Polymath Tutor','Polymath Academy')
         ]:
             close_sheet(page)
             page.locator('#places-button').click()
             page.get_by_role('button',name=f'Walk to {name}',exact=True).click()
-            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
             role_card=page.locator(f'[data-collaborator-role="{role}"]')
             expect(role_card).to_be_visible()
             expect(role_card).to_be_focused()
@@ -334,9 +340,9 @@ def institutional_locations(browser,url,out):
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
-        for role in ('archivist','adversary','synthesizer','tutor'):
+        page.get_by_role('button',name='Walk to Adversary',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        for role in ('archivist','adversary'):
             expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
@@ -384,7 +390,7 @@ def institutional_locations(browser,url,out):
         expect(council_coverage).to_contain_text('OPEN')
         expect(council_coverage).to_contain_text('1/4')
         council_coverage.get_by_role('button',name='Go do this →',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         next_role=page.locator('[data-collaborator-role="archivist"]')
         expect(next_role).to_be_visible()
         expect(next_role).to_be_focused()
@@ -410,7 +416,7 @@ def institutional_locations(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
-        page.locator('details.collaborator-response summary').click()
+        page.locator('[data-collaborator-response-id] details.collaborator-response summary').click()
         archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
@@ -595,10 +601,10 @@ def shared(browser,url,data,out):
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
         b.unroute('**/api/action',lose_report_response)
-        # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
+        # Safe retry closes the Journal; reach the bounded adversary through the world Evidence Archive.
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
