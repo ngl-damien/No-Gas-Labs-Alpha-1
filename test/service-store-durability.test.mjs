@@ -739,3 +739,28 @@ test('service-store removes only its own published lock when the temporary pathn
   assert.equal(await readFile(temporaryPath, 'utf8'), 'replacement temporary path', 'cleanup must not unlink a replacement temporary path');
   assert.equal((await lstat(movedOriginal)).isFile(), true, 'the original opened inode remains reachable for inspection');
 });
+
+
+test('service-store close preserves a replacement lock even when its metadata is identical', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-close-replaced-lock-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const originalBytes = await readFile(lockPath);
+  const original = await lstat(lockPath);
+
+  await rename(lockPath, movedOriginal);
+  await writeFile(lockPath, originalBytes, { mode: 0o600 });
+  const replacement = await lstat(lockPath);
+  assert.notEqual(replacement.ino, original.ino, 'replacement must be a different inode');
+  assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the same owner metadata');
+
+  await store.close();
+
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.dev, replacement.dev);
+  assert.equal(afterClose.ino, replacement.ino, 'close must not unlink a replacement lock based only on matching contents');
+  assert.deepEqual(await readFile(lockPath), originalBytes);
+  assert.equal((await lstat(movedOriginal)).ino, original.ino, 'the original lease inode remains available for inspection');
+});
