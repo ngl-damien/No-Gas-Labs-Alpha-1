@@ -3,10 +3,75 @@ import { isValidMoonshotProposal } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 const questTrailContext = new WeakMap();
+
+// A projection is valid only while the source bytes it depended on remain
+// structurally unchanged. Array identity and length alone miss in-place edits
+// to retained event/record objects. Inspect descriptors rather than reading
+// properties normally so accessors cannot execute during this freshness check.
+function safeProjectionFingerprint(value) {
+  const active = new WeakSet();
+  let visited = 0;
+  function encode(item, depth) {
+    visited += 1;
+    if (visited > 100000 || depth > 32) throw new Error('projection snapshot limit');
+    if (item === null) return 'null';
+    if (item === undefined) return 'undefined';
+    if (typeof item === 'string') return JSON.stringify(item);
+    if (typeof item === 'boolean') return item ? 'true' : 'false';
+    if (typeof item === 'number') return Number.isFinite(item) ? String(item) : null;
+    if (typeof item !== 'object' || active.has(item)) throw new Error('unsupported projection value');
+    const prototype = Object.getPrototypeOf(item);
+    if (Array.isArray(item)) {
+      if (prototype !== Array.prototype) throw new Error('nonstandard projection array');
+      const length = Object.getOwnPropertyDescriptor(item, 'length')?.value;
+      const keys = Reflect.ownKeys(item);
+      if (!Number.isSafeInteger(length) || length < 0 || keys.length !== length + 1) {
+        throw new Error('sparse or extended projection array');
+      }
+      active.add(item);
+      try {
+        const parts = [];
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(item, String(index));
+          if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+            throw new Error('accessor or missing projection item');
+          }
+          parts.push(encode(descriptor.value, depth + 1));
+        }
+        return '[' + parts.join(',') + ']';
+      } finally { active.delete(item); }
+    }
+    if (prototype !== Object.prototype && prototype !== null) throw new Error('nonplain projection record');
+    const keys = Reflect.ownKeys(item);
+    if (keys.some(key => typeof key !== 'string')) throw new Error('symbol projection key');
+    active.add(item);
+    try {
+      const parts = [];
+      for (const key of keys.sort()) {
+        const descriptor = Object.getOwnPropertyDescriptor(item, key);
+        if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+          throw new Error('accessor or hidden projection field');
+        }
+        parts.push(JSON.stringify(key) + ':' + encode(descriptor.value, depth + 1));
+      }
+      return '{' + parts.join(',') + '}';
+    } finally { active.delete(item); }
+  }
+  try {
+    return encode([
+      value?.events, value?.creations, value?.discoveries,
+      value?.contributions, value?.reports
+    ], 0);
+  } catch {
+    return null;
+  }
+}
+
 function sealQuestTrail(world, viewer, entries) {
   const trail = Object.freeze(entries);
   questTrailContext.set(trail, {
     world,
+    fingerprint: safeProjectionFingerprint(world),
     revision: world?.revision,
     events: world?.events,
     eventCount: Array.isArray(world?.events) ? world.events.length : 0,
@@ -26,7 +91,9 @@ function sealQuestTrail(world, viewer, entries) {
 
 export function isQuestTrailProjection(value, world, viewer) {
   const context = questTrailContext.get(value);
-  return Boolean(context && context.world === world &&
+  const fingerprint = safeProjectionFingerprint(world);
+  return Boolean(context && context.fingerprint !== null && fingerprint !== null &&
+    context.fingerprint === fingerprint && context.world === world &&
     context.revision === world?.revision && context.events === world?.events &&
     context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
     context.creations === world?.creations &&
