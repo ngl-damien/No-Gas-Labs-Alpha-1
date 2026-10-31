@@ -271,6 +271,9 @@ export function projectCharacter(world, viewer, options = null) {
     event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
   );
   const matchedMethods = methodEvidence.records;
+  // One report is one adversarial encounter per actor. Later duplicate attempts remain in the event history,
+  // but cannot mint another skill count, field item, or quest-activity reward.
+  const challengedReportIds = new Set();
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
@@ -301,6 +304,10 @@ export function projectCharacter(world, viewer, options = null) {
       if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
           !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
     }
+    return true;
+  }).filter(event => {
+    if (challengedReportIds.has(event.reportId)) return false;
+    challengedReportIds.add(event.reportId);
     return true;
   });
   const studyIdCounts = new Map();
