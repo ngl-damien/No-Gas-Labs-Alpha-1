@@ -537,7 +537,7 @@ test('service-store rejects persisted-envelope owner mismatches at path and desc
       });
       globalThis.__nglUidCalls = () => calls;
     `;
-    await writeFile(preload, override + '\\n');
+    await writeFile(preload, override + '\n');
     const probe = `
       const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
       try {
