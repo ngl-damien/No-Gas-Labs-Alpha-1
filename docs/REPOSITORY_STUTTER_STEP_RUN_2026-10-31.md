@@ -606,3 +606,51 @@ No branch was deleted. No release, deployment, credential/key change, permission
 3. Continue storage crash-consistency work only after checking whether PR #215/#205 owners have rebased or handed off the narrow current-main test transplant. Preserve the rule that stale locks require explicit offline recovery; do not automate stale-lock deletion.
 4. Keep Worker B's MMORPG ledger and #227 game stack separate. PR #239 is green evidence documentation; #227 remains stacked and not integrated.
 5. Repeat the loop while useful session budget remains. No claim of background execution after this host session.
+
+
+## Ralph continuation — final browser evidence and cross-worker rehydration (2026-10-31 UTC)
+
+### Mandatory bootstrap and environment
+- Re-read current-main root `AGENTS.md` alone, then the complete canonical shared protocol alone, before repository inventory.
+- Re-read the current checkpoint and inspected the latest Worker B durable result and active PRs.
+- Local portable preflight and local tests remain unavailable in this connector-only environment; the prior local clone attempt failed DNS resolution for github.com. No local test or local preflight pass is claimed. Hosted preflight/CI evidence is recorded below.
+
+### PR #237 — read-only legacy branch inventory
+- Exact head: `96589b98cb63bc6c93a052b6a629b6cec3b2bca7`; base main `bb1aa833130b7e5399d7b84d1041b1c26c49cc16`; 13 ahead / 0 behind.
+- Re-inspected the exact three-file diff and relevant nested instructions. No `.github/AGENTS.md`, `.github/workflows/AGENTS.md`, or `test/AGENTS.md` exists at the branch.
+- Current workflow is `workflow_dispatch` only, with one preview job; it has no delete job, no confirmation path, and no Git-ref mutation API calls. The 80 manifested legacy branch names were independently absent from the 489-ref inventory recorded in the prior audit, so no cleanup action is currently needed.
+- Verify [41173118283](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173118283): success. Hosted preflight emitted warnings [] and failures []; Node tests, Python inspector tests, standalone game build, and bounded institutional exercise completed successfully.
+- Genesis Evidence Invariant [41173118308](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173118308): success.
+- Browser Acceptance [41173118285](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173118285): success, **12/12 journeys**, no journey errors. Includes desktop, phone, five institutional locations, two-session shared world (version 2 / kernelAccepted 2), 320/360/412px phone toolbars, one-button layouts, standalone file/exact bytes, and shared restart. Artifact [13032306710](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173118285/artifacts/13032306710), SHA-256 `93cb888ff9bc9573c44dfff01416dd9a8820323735836a284a3686803c29c2ce`.
+- Updated PR body with exact-head evidence and residual least-privilege note; marked PR ready for review. At last recheck it remained open/unmerged, mergeable=true, mergeable_state=clean. No workflow dispatch, branch deletion, permission change, release, or deployment occurred.
+- Residual: workflow-level `contents: write` remains even though the preview makes no write calls. No permission change was made; it remains a separate least-privilege follow-up. Do not reintroduce deletion capability without a separate authorization and review.
+
+### Worker B — latest current-main MMORPG evidence ledger PR #239
+- PR #239 remains draft/open, exact head `907b84abce119d4bc8b48e6841da4ff1cbe7d1c9`, base current main, one documentation path changed.
+- Independently inspected its full ledger patch and PR body. G0–G8 are honestly marked IN PROGRESS with current-main evidence and missing acceptance boundaries; G9 is NOT STARTED. Proposed #227 branch evidence is kept separate from current-main capability.
+- The ledger explicitly distinguishes responsive browser/PWA work from a native Alpha-1 Android application; shared browser restart from durable production sessions; published-creation inventory from equipment/economy; and two-session browser tests from production scale.
+- Exact-head Verify #41173021081, Genesis #41173021072, and Browser Acceptance #41173021061 all succeeded; Browser Acceptance is 12/12. This is evidence for the ledger proposal, not a merged feature or Founder acceptance.
+- No conflicting Worker A edit made. PR #239 remains proposed documentation, not integrated state.
+
+### Worker B — game integration PR #227
+- Rechecked exact head `4f1f04a76b0715765965ec70419b4091d61225eb`, still draft and stacked on PR #225 at base `42a5832a93671974ad330a2d3fda24b5fbf5caaa`.
+- Verify #41172456018, Genesis #41172456020, and Browser Acceptance #41172456015 all succeeded; Browser Acceptance 13/13.
+- It remains 151 ahead / 9 behind current main and spans 41 paths. Green checks do not make the stacked child independently mergeable. Worker A made no gameplay edits.
+
+### PR #238 — Forge fresh-challenge hardening, updated owner head
+- Owner advanced PR #238 from `914cb667...` to `0cac61bbfd57f2ab0621b2b7affff69d0d1081f5`.
+- Re-read the exact two-file diff. The updated source now normalizes `runCandidate(input)` before reading caller fields, returns normalized source/output paths from validation, and has `compareCandidates()` consume those normalized values. Added getter and Proxy regressions correspond to the earlier findings in comments #6539633478 and #6539638513.
+- Verify #41173380864 and Genesis #41173380903 succeeded. Browser Acceptance #41173380862 was in progress at last poll.
+- The latest exact-head Verify preflight still omits both changed paths, `src/forge/runner.mjs` and `test/forge-runner.test.mjs`, from its configured target list. This is recorded in review comment #6539662239. Do not call preflight coverage complete until the owner adds both paths and reruns the exact-head workflows.
+- No Worker A source edits made on this active Forge branch.
+
+### Other overlapping work
+- PR #208 remains open/draft on an older base and overlaps the branch-inventory workflow. It is not closed as superseded because #237 has not yet been integrated.
+- No mainline source or game files changed during this run. No branch was deleted; no workflow dispatched; no merge, release, deployment, credential/key change, permission mutation, or spending occurred.
+
+### Next ranked actions
+1. Recheck PR #238 Browser Acceptance #41173380862 and exact head. If it passes, retain the preflight-target gap until corrected by its owner.
+2. Recheck PR #237 current PR/main state before any further disposition; its read-only workflow and exact-head CI are now verified, but its workflow token still has contents:write.
+3. Keep PR #208 open until #237 is actually integrated or another disposition is observed.
+4. Worker B owns reconciliation of #222 → #225 → #227 and the next player-facing capability; do not flatten the stack or duplicate game edits.
+5. Preserve the current-main MMORPG ledger audit in #239 and use its concrete missing gates to prioritize Android-native delivery, durable session recovery, social/economic systems, NPC/encounter loops, backup/restore, and scale evidence.
