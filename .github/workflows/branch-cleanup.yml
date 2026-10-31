@@ -1,23 +1,20 @@
-name: One-time redundant branch cleanup
+name: Legacy branch inventory (read-only)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/branch-cleanup.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: read
 
 jobs:
-  clean-redundant-refs:
+  preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Checkout recovery manifest
+      - name: Check out recovery manifest
         uses: actions/checkout@v4
-      - name: Delete only branches pinned to the recorded identical commit
+      - name: Preview legacy refs without deleting anything
         uses: actions/github-script@v7
         with:
           script: |
@@ -28,34 +25,32 @@ jobs:
             const manifest = fs.readFileSync('recovery/BRANCH-CLEANUP-2026-10-17.md', 'utf8');
             const candidates = [...manifest.matchAll(/^- `([^`]+)`$/gm)].map(m => m[1]);
             if (candidates.length !== 80) throw new Error('Unexpected manifest size: ' + candidates.length);
-            const branches = await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 });
-            const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 });
-            const openHeads = new Set(pulls.filter(p => p.head.repo?.full_name === context.repo.owner + '/' + context.repo.repo).map(p => p.head.ref));
-            const byName = new Map(branches.map(b => [b.name, b]));
-            const deleted = [], skipped = [], errors = [];
+            const [branches, pulls, repository] = await Promise.all([
+              github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 }),
+              github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }),
+              github.rest.repos.get({ owner, repo })
+            ]);
+            const defaultRef = 'refs/heads/' + repository.data.default_branch;
+            if (context.ref !== defaultRef) throw new Error('Inventory must be dispatched from the default branch');
+            const openHeads = new Set(pulls
+              .filter(p => p.head.repo?.full_name === owner + '/' + repo)
+              .map(p => p.head.ref));
+            const byName = new Map(branches.map(branch => [branch.name, branch]));
+            const eligible = [], skipped = [];
             for (const name of candidates) {
               const branch = byName.get(name);
-              if (!branch || branch.protected || branch.commit.sha !== baseline || openHeads.has(name) || name === context.payload.repository.default_branch) {
+              if (!branch || branch.protected || branch.commit.sha !== baseline ||
+                  openHeads.has(name) || name === repository.data.default_branch) {
                 skipped.push(name);
-                continue;
-              }
-              try {
-                // Re-read the exact ref immediately before deletion to avoid deleting work added since inventory.
-                const live = await github.rest.git.getRef({ owner, repo, ref: 'heads/' + name });
-                if (live.data.object.sha !== baseline) { skipped.push(name); continue; }
-                await github.rest.git.deleteRef({ owner, repo, ref: 'heads/' + name });
-                deleted.push(name);
-              } catch (error) {
-                errors.push(name + ': ' + error.message);
+              } else {
+                eligible.push(name);
               }
             }
-            core.info(JSON.stringify({ baseline, candidates: candidates.length, deleted, skipped, errors }, null, 2));
-            await core.summary.addHeading('NGL branch cleanup results')
-              .addRaw('Candidates: ' + candidates.length + ', deleted: ' + deleted.length + ', skipped: ' + skipped.length + ', errors: ' + errors.length)
-              .addHeading('Deleted')
-              .addCodeBlock(deleted.join('\n') || '(none)')
+            core.info(JSON.stringify({ mode: 'preview-only', baseline, candidates: candidates.length, eligible, skipped }, null, 2));
+            await core.summary.addHeading('NGL legacy branch inventory')
+              .addRaw('Read-only inspection. No branches were deleted. Candidates: ' + candidates.length +
+                ', eligible at inspection: ' + eligible.length + ', skipped: ' + skipped.length)
+              .addHeading('Eligible at inspection')
+              .addCodeBlock(eligible.join('\n') || '(none)')
               .addHeading('Skipped')
-              .addCodeBlock(skipped.join('\n') || '(none)')
-              .addHeading('Errors')
-              .addCodeBlock(errors.join('\n') || '(none)').write();
-            if (errors.length) core.setFailed('Some branch deletions failed; see recorded details.');
+              .addCodeBlock(skipped.join('\n') || '(none)').write();
