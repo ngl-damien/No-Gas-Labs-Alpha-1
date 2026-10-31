@@ -602,6 +602,27 @@ export function projectCharacter(world, viewer, options = null) {
 
   // A loadout is a player choice among retained, actor-owned source events.
   // It never creates an item, verifies a claim, grants authority, or awards XP.
+  const publicationEquipmentEntries = mine(retainedPublications, viewer).flatMap(event => {
+    const version = retainedVersions.get(versionKey(event.creationId, event.version));
+    if (!version || !Number.isInteger(positionByEvent.get(event))) return [];
+    return [{
+      position: positionByEvent.get(event),
+      item: Object.freeze({
+        id: 'published-artifact:' + event.id,
+        eventId: event.id,
+        kind: 'published-artifact',
+        title: 'Published artifact · ' + creationTitle(event.creationId),
+        at: event.at,
+        status: 'version retained · content not verified',
+        summary: 'This exact published version is retained. Its receipt identifies bytes only.',
+        sourceCreationId: event.creationId,
+        sourceVersion: event.version,
+        locationId: null,
+        receipt: Object.freeze({ digest: version.receipt.digest, size: version.receipt.size }),
+        action: Object.freeze({ type: 'creation', id: event.creationId, version: event.version })
+      })
+    }];
+  });
   const publicationEntriesNewestFirst = publicationEquipmentEntries.slice().reverse();
   const equipmentCandidatesBySlot = new Map();
   const candidateBySlotAndEventId = new Map();
