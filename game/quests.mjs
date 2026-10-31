@@ -18,7 +18,10 @@ function safeProjectionFingerprint(value) {
     if (item === undefined) return 'undefined';
     if (typeof item === 'string') return JSON.stringify(item);
     if (typeof item === 'boolean') return item ? 'true' : 'false';
-    if (typeof item === 'number') return Number.isFinite(item) ? String(item) : null;
+    if (typeof item === 'number') {
+      if (!Number.isFinite(item)) throw new Error('nonfinite projection number');
+      return Object.is(item, -0) ? '-0' : String(item);
+    }
     if (typeof item !== 'object' || active.has(item)) throw new Error('unsupported projection value');
     const prototype = Object.getPrototypeOf(item);
     if (Array.isArray(item)) {
@@ -58,10 +61,25 @@ function safeProjectionFingerprint(value) {
     } finally { active.delete(item); }
   }
   try {
-    return encode([
-      value?.events, value?.creations, value?.discoveries,
-      value?.contributions, value?.reports
-    ], 0);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('invalid projection world');
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error('nonplain projection world');
+    }
+    const fields = [];
+    for (const key of ['events', 'creations', 'discoveries', 'contributions', 'reports']) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor) fields.push(undefined);
+      else {
+        if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+          throw new Error('accessor or hidden world field');
+        }
+        fields.push(descriptor.value);
+      }
+    }
+    return encode(fields, 0);
   } catch {
     return null;
   }
