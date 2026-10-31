@@ -1404,3 +1404,49 @@ No merge, release, deployment, workflow dispatch, branch deletion, credential/se
 4. **MMORPG:** continue from Worker B's PR #227 field-kit handoff only after the active server stack is reconciled; the next G4 slice requires a server-validated, event-backed non-combat equipment choice and actor ownership/idempotency.
 5. **ngl-mesh:** recover the pinned source archive, reference APK, and fresh RAE report before full bridge reproduction or Android/device acceptance.
 6. **Hybrid cognition:** turn Issue #22 into a preregistered falsifiable comparison; do not claim multi-model superiority before independent scoring.
+
+## Worker A stutter-step run — 2026-10-31 02:55 UTC (Founder signer parity and policy boundary)
+
+### Rehydration and fresh state
+- Read root \`AGENTS.md\` first and the complete canonical \`docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md\` second before inventory or source inspection. Root blob: \`c94f9cf4d922699908971a00a9a502cd179187b9\`; protocol blob: \`a1bd788885865c887ae0fc64b1718c30ce040556\`.
+- Re-read the prior checkpoint branch and active PRs. Alpha 1 \`main\` is still \`7d8c77367f6acb2d85e35cd9a195797555d1ac7d\`; fresh branch pagination returned **476 refs**, **0 marked protected**, **57 open PRs**, and **2 open issues (#17, #22)**. No branch was deleted.
+- Latest Worker B gameplay PR #227 remains open/draft at \`26c05fd047c072d4192c2f707a3b0c51ead8ca5b\`; Verify, Genesis and Browser Acceptance runs \`41155521218\`, \`41155521203\`, \`41155521238\` succeeded, with **13/13 browser journeys**. PR #229's agent/completion contract head \`ec826bc45bcdc8679c2e921b4e105655334cbd1a\` also has all three checks successful. No Worker B game files were edited.
+
+### Cycle 1 — browser/server identifier policy mismatch
+- In PR #203, server-side \`isIdentifier()\` explicitly rejects \`prototype\`, but the browser signer did not. The UI could sign an identifier the verifier later rejects.
+- Updated \`authority/index.html\` to use the same reserved identifier set as the server and added a VM regression that executes the actual inline validation helper.
+- Commits: \`35fbd3e5081b20c447f278c9636540d51cf02eb2\` (signer) and \`b1342ad80b427fda55b78fcff8f520b5b754dd0d\` (test).
+- Preserved failed attempt: head \`b1342ad...\` failed Verify because the new test's script-extraction regex was over-escaped. The log reported **676 passing and one failing test file**. Corrected the regex in \`8f79e589ba58fc4c313afbb4e266b637ac4ce746\`; Verify and Genesis passed on that corrected head. The earlier Browser Acceptance run was still pending when that head was superseded, so it is not counted as final-head evidence.
+
+### Cycle 2 — enforce the stated one-hour local signing lease
+- Source review found that both the signing click handler and UI rendering trusted only the local lease's schema, key fingerprint and expiry. They did not validate issue time, maximum duration, renewal flags or exact fields. A malformed/stale localStorage record could keep the UI active longer than the advertised hour.
+- Added \`isActiveLease()\` to require the exact lease schema/fields, canonical timestamps, issue time not in the future, matching fingerprint, explicit-only renewal, no auto-renew, and duration no longer than 3,600 seconds. Both render and sign paths use the same predicate.
+- Commits: \`9c6e1ff1536922958d9cf93755cc92ad02ac717e\` (implementation) and \`3e865510f8a9c7b0ca0d66af7b019557cc2e7bae\` (regression tests).
+- Boundary: localStorage is user-editable and this is a UI consistency guard, **not** server-side authority or a security guarantee. The page continues to disclose that distinction.
+
+### Cycle 3 — reject multi-capability signed decisions
+- Source comparison found a policy gap: \`makeDecisionPayload()\` requires exactly one capability matching the proposal, but \`isDecisionPayload()\` accepted any non-empty capability list. A manually constructed, validly signed payload containing multiple capabilities could pass the verification schema check.
+- The server verifier now requires exactly one capability; the browser signer rejects multi-capability payloads before signing. Regression coverage signs a two-capability payload and proves both \`verifyFounderDecision()\` and \`authorizationEventFromEnvelope()\` reject it, and executes the browser validator to confirm it rejects the same payload.
+- Commits: \`c39cc7dbd90902ebf03df6aa3460b5cca4d57057\` (server invariant), \`4cddcfaf52befb9f38c1320ff384192e7cec9f4f\` (browser check), and \`1d657c7959e695a660f757d31a704fdfd72895fc\` (regressions).
+
+### Exact-head verification — PR #203
+- Current head: \`1d657c7959e695a660f757d31a704fdfd72895fc\`, branch \`security/founder-decision-seal-main-20261030\`, draft/open/unmerged.
+- Verify run [41161787400](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41161787400): **success**. Hosted log confirms Node \`--test\`, Python inspector tests, game package build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant run [41161787341](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41161787341): **success**.
+- Browser Acceptance run [41161787464](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41161787464): **success**, all **12/12 journeys passed**, no journey errors. Artifact [13027054359](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41161787464/artifacts/13027054359).
+- No local checkout/test execution is claimed; the evidence is hosted CI on the exact final head.
+
+### Remaining authority boundary and residual risk
+- Alpha 1 \`main\` remains unchanged at \`7d8c773...\` and still contains the legacy caller-supplied \`verification.valid\` authorization path. PR #203 is not merged and its verifier is not integrated into live \`game/server.mjs\`.
+- This run narrows the schema by rejecting multi-capability decisions, but the verifier still does not independently compare even a single capability or the acceptance list against trusted canonical proposal/quest state. \`makeDecisionPayload()\` checks those relationships during construction; a manually assembled signed payload can bypass that constructor unless a trusted host context check is added. Do not treat this helper-level change as complete policy binding.
+- Issue #17 remains open for canonical trust-model selection (Ed25519 INSTALL versus P-256 decision signing), real independent key custody/identity evidence, live-server integration, concurrency, and crash/stale-lock recovery. No Founder key was created, read, enrolled, rotated, or used.
+
+### Linked repository state and coordination
+- Command Center PR #3 remains draft/open at \`5188e7b3f10db008f82ae1ea5188714a13f1df07\`; CI, Core CI, Security Core, Repo Classification and agent-governance checks passed. No live Node-Gate/EvidenceOS smoke test or deployment is claimed.
+- EvidenceOS PR #1 head \`eea29797c80bab41428476ca7ba9f519b43b742e\` and PR #2 head \`c19bdf9c230e1d0bd5f54ad5dea050bd33705292\` have successful hosted verification but remain open; both touch \`src/server.js\`, and #2 is based on an older #1 head. No overlapping edits made.
+- ngl-mesh PR #1 head \`81536604a8473b8d698aa4c5d752c7d5426dab7d\` and PR #3 head \`7847c0fd7eb334d4bed726f12703567bdff9de42\` have successful hosted checks. Full RAE/APK reproduction, rebuild, Android-device validation and live provider integration remain unverified. No linked-repository edits made.
+
+### Procedural compliance, limits and next actions
+- No nested \`AGENTS.md\` was found at \`authority/AGENTS.md\`, \`src/authority/AGENTS.md\`, \`test/AGENTS.md\`, \`docs/AGENTS.md\`, or \`docs/operations/AGENTS.md\` (each direct path lookup returned 404). Root instructions and the full protocol were read before work.
+- Next priorities: (1) choose the canonical trust/custody model without creating Founder keys; (2) add trusted proposal/quest context binding and integrate only after the active server stack is reconciled; (3) finish Issue #17 crash/concurrency acceptance against the writer-lease work; (4) reconcile EvidenceOS #1/#2 by reviewed three-way diff; (5) run the real Command Center cross-service smoke test; (6) recover the exact Relay APK/source/RAE inputs; (7) preregister and run Issue #22's falsifiable hybrid-cognition comparison.
+- No merge, release, deployment, branch deletion, workflow dispatch, credential/key/permission change, spending, external announcement, or provider call occurred.
