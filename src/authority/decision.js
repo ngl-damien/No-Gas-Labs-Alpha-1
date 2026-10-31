@@ -13,6 +13,7 @@ const isIdentifier = value => typeof value === "string" && IDENTIFIER.test(value
   !RESERVED_IDENTIFIERS.has(value) && !Object.hasOwn(Object.prototype, value);
 const FINGERPRINT = /^[a-f0-9]{64}$/;
 const DECISION_SCHEMA = "ngl.founder-decision.v2";
+const SIGNED_ENVELOPE_SCHEMA = "ngl.agp.founder-decision-envelope.v2";
 const DECISION_KEYS = ["schema", "proposal_id", "quest_id", "audience", "capabilities", "outputs", "acceptance", "expires_at"];
 const SIGNED_KEYS = ["payload_sha256", "key_fingerprint", "signature"];
 const AUTHORIZATION_EVENT_KEYS = ["event_id", "type", "quest_id", "audience", "proposal_id", "grant_id", "actor", "capabilities", "outputs", "acceptance", "expires_at", "key_fingerprint", "signature"];
@@ -416,6 +417,35 @@ export function authorizationEvent(input) {
     key_fingerprint: seal.keyFingerprint,
     signature: seal.signature
   });
+}
+
+export function authorizationEventFromEnvelope(input) {
+  const args = snapshotCallArguments(input, [
+    "envelope", "public_key_jwk", "expected_fingerprint", "expected_audience"
+  ]);
+  if (!args) throw new Error("FOUNDER_ENVELOPE_INVALID");
+
+  // The browser signer exports this exact envelope. Snapshot its outer shape,
+  // then detach the nested payload and receipt before signature verification.
+  const raw = snapshotDataObject(args.envelope, ["schema", "payload", "signed"]);
+  if (!raw || raw.schema !== SIGNED_ENVELOPE_SCHEMA) {
+    throw new Error("FOUNDER_ENVELOPE_INVALID");
+  }
+  const payload = snapshotDecisionPayload(raw.payload);
+  const signed = snapshotSignedReceipt(raw.signed);
+  if (!payload || !signed) throw new Error("FOUNDER_ENVELOPE_INVALID");
+
+  const verification = verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: args.public_key_jwk,
+    expected_fingerprint: args.expected_fingerprint,
+    expected_audience: args.expected_audience
+  });
+  if (verification.valid !== true) {
+    throw new Error("FOUNDER_DECISION_" + (verification.reason ?? "INVALID"));
+  }
+  return authorizationEvent({ signed, payload, verification });
 }
 
 export function verifyAuthorizationEvent(event, options = {}) {
