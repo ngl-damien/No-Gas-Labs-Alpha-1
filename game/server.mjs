@@ -28,7 +28,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
@@ -42,7 +42,8 @@ const actionFields = {
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId']
+  'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -119,6 +120,15 @@ function preflightAction(input) {
       preflightText(input.reflection, 1000, 'Reflection', { required: true });
       break;
     }
+    case 'record-collaborator-response': {
+      if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
+      requiredId(input.moonshotId, 'Moonshot ID');
+      if (typeof input.packetJson !== 'string' || !input.packetJson || Buffer.byteLength(input.packetJson) > 64 * 1024) fail('INVALID_COLLABORATOR_PACKET', 'The exact hand-off packet is required and must remain within 64 KiB.');
+      if (!Array.isArray(input.sourceEventIds) || input.sourceEventIds.length < 1 || input.sourceEventIds.length > 8 || input.sourceEventIds.some(id => typeof id !== 'string' || !id || id.trim() !== id || Array.from(id).length > 128) || new Set(input.sourceEventIds).size !== input.sourceEventIds.length) fail('INVALID_COLLABORATOR_SOURCES', 'One to eight unique bounded source event IDs are required.');
+      if (typeof input.responseText !== 'string' || !input.responseText.trim()) fail('INVALID_COLLABORATOR_RESPONSE', 'The exact external response is required.');
+      if (Buffer.byteLength(input.responseText) > 64 * 1024) fail('TOO_LARGE', 'Collaborator response exceeds 64 KiB.', 413);
+      break;
+    }
     case 'challenge-experiment-report': {
       requiredId(input.reportId, 'Experiment report ID');
       if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
@@ -166,17 +176,18 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set();
-  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
+  const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
     const event = world.events[index];
     if (!event || typeof event !== 'object') continue;
     eventPositions.set(event, index);
+    if (typeof event.id === 'string') eventById.set(event.id, event);
     if (event.type === 'publish') addHistory(publicationEventsByVersion, historyKey(event.creationId, event.version), event);
     if (event.type === 'moonshot-proposed') addHistory(proposalsByMoonshot, event.moonshotId, { event, index });
   }
@@ -288,6 +299,44 @@ function validateHistory(world) {
       }
       challengeIds.add(event.challengeId);
     }
+    if (event.type === 'collaborator-response-recorded') {
+      const index = eventPositions.get(event);
+      if (typeof event.responseId !== 'string' || !event.responseId || collaboratorResponseIds.has(event.responseId) ||
+          !['archivist', 'adversary', 'synthesizer', 'tutor'].includes(event.role) ||
+          typeof event.moonshotId !== 'string' || !event.moonshotId ||
+          !Array.isArray(event.sourceEventIds) || event.sourceEventIds.length < 1 || event.sourceEventIds.length > 8 ||
+          event.sourceEventIds.some(id => typeof id !== 'string' || !id || id.trim() !== id || Array.from(id).length > 128) ||
+          new Set(event.sourceEventIds).size !== event.sourceEventIds.length ||
+          typeof event.packetJson !== 'string' || Buffer.byteLength(event.packetJson) > 64 * 1024 ||
+          typeof event.responseText !== 'string' || !event.responseText.trim() || Buffer.byteLength(event.responseText) > 64 * 1024 ||
+          !['valid-for-human-review', 'rejected'].includes(event.validationStatus) ||
+          (event.validationStatus === 'valid-for-human-review' && event.validationReason !== null) ||
+          (event.validationStatus === 'rejected' && (typeof event.validationReason !== 'string' || !event.validationReason || Array.from(event.validationReason).length > 128)) ||
+          event.validator !== 'ngl.collaborator-response.v1') throw new Error('Stored collaborator response is malformed or repeated');
+      collaboratorResponseIds.add(event.responseId);
+      const receiptMatches = (value, receipt) => receipt && typeof receipt === 'object' && !Array.isArray(receipt) &&
+        Object.keys(receipt).sort().join(',') === 'algorithm,digest,size' && receipt.algorithm === 'sha256' &&
+        receipt.digest === createHash('sha256').update(value, 'utf8').digest('hex') && receipt.size === Buffer.byteLength(value);
+      if (!receiptMatches(event.packetJson, event.packetReceipt) || !receiptMatches(event.responseText, event.responseReceipt)) throw new Error('Stored collaborator response byte receipt mismatch');
+      let packet; try { packet = JSON.parse(event.packetJson); } catch { throw new Error('Stored collaborator packet JSON is malformed'); }
+      const snapshot = packet?.sourceSnapshot;
+      if (packet?.protocol !== 'ngl.bounded-collaborator-packet.v1' || packet.role !== event.role || packet.targetMoonshotId !== event.moonshotId ||
+          packet.authority !== 'advisory-only' || packet.mayWriteCanonicalState !== false || packet.mayGrantAuthority !== false ||
+          packet.mayAwardProgress !== false || packet.mayCertifyTruthOrExecution !== false ||
+          snapshot?.status !== 'identified' || snapshot.worldId !== world.id || snapshot.revision !== index || snapshot.suppliedEventCount !== world.events.slice(0, index).filter(source => event.actor.role === 'founder' || !['draft', 'repair'].includes(source.type)).length ||
+          !Array.isArray(packet.inputRefs) || JSON.stringify(packet.inputRefs) !== JSON.stringify(event.sourceEventIds) ||
+          !Array.isArray(packet.inputRecords) || packet.inputRecords.length !== event.sourceEventIds.length ||
+          !Array.isArray(packet.omittedEventIds) || packet.omittedEventIds.length > 64 || packet.omittedEventIds.some(id => typeof id !== 'string' || !id || Array.from(id).length > 128 || event.sourceEventIds.includes(id)) || new Set(packet.omittedEventIds).size !== packet.omittedEventIds.length ||
+          !Number.isSafeInteger(packet.omittedCount) || packet.omittedCount < 0 || packet.omittedCount < packet.omittedEventIds.length ||
+          packet.omittedEventIdListTruncated !== (packet.omittedCount > packet.omittedEventIds.length)) throw new Error('Stored collaborator packet identity or authority boundary mismatch');
+      for (let sourceIndex = 0; sourceIndex < event.sourceEventIds.length; sourceIndex += 1) {
+        const source = eventById.get(event.sourceEventIds[sourceIndex]), record = packet.inputRecords[sourceIndex];
+        if (!source || eventPositions.get(source) >= index || record?.eventId !== source.id || record?.type !== source.type || record?.at !== source.at ||
+            record?.actor?.id !== source.actor?.id || record?.actor?.role !== source.actor?.role || record?.moonshotId !== source.moonshotId || source.moonshotId !== event.moonshotId) {
+          throw new Error('Stored collaborator packet source reference is not an earlier matching world event');
+        }
+      }
+    }
     if (event.repeat !== undefined && (event.type !== 'discover' || typeof event.repeat !== 'boolean')) throw new Error('Stored repeat-discovery marker is invalid');
     const receiptFields = ['requestId', 'actionFingerprint', 'actionResult'];
     const present = receiptFields.filter(key => Object.hasOwn(event, key));
@@ -298,7 +347,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -307,6 +356,7 @@ function validateHistory(world) {
       if (event.type === 'experiment-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency experiment challenge result mismatch');
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
+      if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
