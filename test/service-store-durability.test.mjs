@@ -756,7 +756,11 @@ test('service-store close preserves a replacement lock even when its metadata is
   assert.notEqual(replacement.ino, original.ino, 'replacement must be a different inode');
   assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the same owner metadata');
 
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503,
+    'close must report that it could not release a replacement lock'
+  );
 
   const afterClose = await lstat(lockPath);
   assert.equal(afterClose.dev, replacement.dev);
@@ -797,7 +801,7 @@ test('service-store refuses commits after the published writer lock pathname is 
     error => error.code === 'SERVICE_LOCK_CHANGED'
   );
 
-  await store.close();
+  await assert.rejects(store.close(), error => error.code === 'SERVICE_LOCK_CHANGED');
   const afterClose = await lstat(lockPath);
   assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock');
   await assert.rejects(
@@ -845,7 +849,7 @@ test('service-store marks a commit uncertain when the writer lease is replaced d
     error => error.code === 'COMMIT_LEASE_LOST'
   );
 
-  await store.close();
+  await assert.rejects(store.close(), error => error.code === 'COMMIT_LEASE_LOST');
   const afterClose = await lstat(lockPath);
   assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock after an uncertain commit');
   await assert.rejects(
