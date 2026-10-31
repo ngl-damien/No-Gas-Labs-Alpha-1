@@ -256,3 +256,18 @@ test('CI preflight scopes the Founder signer, verifier and authorization regress
     assert.ok(script.includes('--path ' + path), 'missing scoped preflight target: ' + path);
   }
 });
+
+test('CI preflight scopes Founder signer and lock-inspector ownership changes', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  for (const path of [
+    'src/bounded-file-reader.mjs',
+    'test/approve-install-file-reader.test.mjs',
+    'experiment-001/FOUNDER-APPROVAL.md',
+    'src/institution/lock-inspector.mjs',
+    'test/writer-lock-inspector.test.mjs'
+  ]) {
+    assert.ok(command.includes('--path ' + path), 'missing Founder signer preflight target: ' + path);
+  }
+});
+
