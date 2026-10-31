@@ -7,6 +7,8 @@ The first Android package is a native application shell around the existing Comm
 - The actual Common Ground entry page, JavaScript modules, styles and local assets are bundled in the APK.
 - Private play opens without a remote server. The existing private-world save remains in WebView DOM storage under the appassets origin.
 - The native back button closes an open creation or sheet before leaving the activity.
+- The Journal's world JSON import/export uses Android's system document picker. The same bounded bridge saves HTML artifact and exhibition downloads without broad storage permissions.
+- Imported bytes are passed to the existing in-world validator and can only replace the device-local private world; they do not create shared authority or canonical server state.
 - File/content URL access, mixed content, external navigation and external WebView requests are blocked.
 - A shared-world `/api/*` request receives an explicit 503 response. The app does not fabricate a shared session, silently switch modes, or grant Founder authority.
 
@@ -27,5 +29,5 @@ The debug package is written to `android/app/build/outputs/apk/debug/app-debug.a
 
 - The shared service URL is not configured in this build; shared mode fails closed with 503.
 - The game UI is still web-rendered inside a native Android activity. This is the first packaging/integration boundary, not a claim that the full RPG has native views.
-- Native document-picker import/export and blob-download handling are not wired yet. Export important private work before clearing app data or uninstalling; Android backup is disabled in this first shell.
+- Android backup remains disabled. Export important private work from the Journal before clearing app data or uninstalling; imports are size-bounded, UTF-8 checked, and then validated by the game before replacing the private save.
 - No GPS permission, native location feature, production deployment, or physical Android-device acceptance is claimed. Emulator acceptance is not physical-device acceptance.
