@@ -6,17 +6,53 @@ import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-worl
 import {createWorld} from '../game/model.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
 
+const viewFixtures = new WeakMap();
+
 function makeView(t) {
-  const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
-    addEventListener:()=>{},removeEventListener:()=>{},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{},
-    ResizeObserver:class{observe(){}disconnect(){}}};
-  const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
-  Object.assign(globalThis,globals);
-  const interactions=[],positions=[],discoveries=[],attributes=new Map();
-  const canvas={getContext:()=>({}),getBoundingClientRect:()=>({left:0,top:0,width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{},setAttribute:(key,value)=>attributes.set(key,String(value)),getAttribute:key=>attributes.get(key)??null,removeAttribute:key=>attributes.delete(key),focus:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:id=>discoveries.push(id),onPosition:position=>positions.push(position)});
-  t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions,positions,discoveries,canvas};
+  let fixture = viewFixtures.get(t);
+  if (!fixture) {
+    const globals = {
+      document: { body: { classList: { contains: () => false } } },
+      devicePixelRatio: 1,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {},
+      ResizeObserver: class { observe() {} disconnect() {} },
+    };
+    const previous = new Map(Object.keys(globals).map(key => [
+      key, Object.getOwnPropertyDescriptor(globalThis, key),
+    ]));
+    Object.assign(globalThis, globals);
+    fixture = { previous, views: [] };
+    viewFixtures.set(t, fixture);
+    t.after(() => {
+      for (const view of fixture.views.reverse()) view.destroy();
+      for (const [key, descriptor] of fixture.previous) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else delete globalThis[key];
+      }
+      viewFixtures.delete(t);
+    });
+  }
+  const interactions = [], positions = [], discoveries = [], attributes = new Map();
+  const canvas = {
+    getContext: () => ({}),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 700 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    setAttribute: (key, value) => attributes.set(key, String(value)),
+    getAttribute: key => attributes.get(key) ?? null,
+    removeAttribute: key => attributes.delete(key),
+    focus: () => {},
+  };
+  const view = new WorldView(canvas, {
+    onInteract: place => interactions.push(place),
+    onDiscover: id => discoveries.push(id),
+    onPosition: position => positions.push(position),
+  });
+  fixture.views.push(view);
+  return { view, interactions, positions, discoveries, canvas };
 }
 
 test('the map pennant projects the next actor-scoped Questkeeper objective without changing the world',t=>{
