@@ -700,6 +700,9 @@ export function getQuestTrail(world, viewer, options = null) {
       Date.parse(version.publishedAt) <= Date.parse(event.at) &&
       hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
   };
+  // A report is one Contradiction encounter per actor. Preserve later attempts in history,
+  // but only the first valid challenge can advance this actor's repeatable encounter trail.
+  const challengedReportIds = new Set();
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (eventPositionByReference.get(report) ?? -1) : -1;
@@ -717,6 +720,10 @@ export function getQuestTrail(world, viewer, options = null) {
       isStrictTimestamp(event.at) &&
       isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
+  }).filter(event => {
+    if (challengedReportIds.has(event.reportId)) return false;
+    challengedReportIds.add(event.reportId);
+    return true;
   });
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
@@ -746,8 +753,13 @@ export function getQuestTrail(world, viewer, options = null) {
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
   const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
-  const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
-  const hasExperimentChallenge = experimentChallenges.length >= 1;
+  const challengeTargetReports = allExperimentReports.filter(event => event.actor?.id !== actorId);
+  const remainingChallengeTargetReport = [...challengeTargetReports].reverse()
+    .find(event => !challengedReportIds.has(event.reportId)) || null;
+  const hasChallengeTarget = challengeTargetReports.length > 0;
+  // Keep one visible target while blocked; each newly retained report from another actor
+  // expands the repeatable objective and creates another source-bound encounter.
+  const challengeTargetCount = Math.max(1, challengeTargetReports.length);
   const hasStudy = studies.length >= 1;
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
@@ -756,8 +768,8 @@ export function getQuestTrail(world, viewer, options = null) {
   const nextAttemptProposal = events.slice().reverse().find(event =>
     isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
   ) || null;
-  // Prefer the newest appended eligible report from another actor, not the oldest matching record.
-  const challengeTargetReport = allExperimentReports.slice().reverse().find(event => event.actor?.id !== actorId) || null;
+  // The next encounter is the newest appended eligible report this actor has not challenged yet.
+
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -838,12 +850,13 @@ export function getQuestTrail(world, viewer, options = null) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
       trailMilestone(
-        'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
+        'founder-challenge-experiment-report', 'Challenge each distinct report · Contradiction encounters', challengeTargetCount,
         experimentChallenges.map(event => event.id), experimentChallenges,
-        hasChallengeTarget && !hasExperimentChallenge
-          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+        remainingChallengeTargetReport
+          ? (researchActivityAction(remainingChallengeTargetReport, remainingChallengeTargetReport.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
+        'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
@@ -928,12 +941,13 @@ export function getQuestTrail(world, viewer, options = null) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
-      'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
+      'witness-challenge-experiment-report', 'Challenge each distinct report · Contradiction encounters', challengeTargetCount,
       experimentChallenges.map(event => event.id), experimentChallenges,
-      hasChallengeTarget && !hasExperimentChallenge
-          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+      remainingChallengeTargetReport
+          ? (researchActivityAction(remainingChallengeTargetReport, remainingChallengeTargetReport.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
+      'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
