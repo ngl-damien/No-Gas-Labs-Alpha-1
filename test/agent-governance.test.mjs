@@ -252,6 +252,8 @@ test('CI preflight scopes the Founder signer, verifier and authorization regress
     'test/decision-chamber.test.js',
     'test/decision-context-binding.test.js',
     'test/decision-world-integration.test.js',
+    'game/server.mjs',
+    'test/game-server.test.mjs',
     'game/service-store.mjs',
     'scripts/verify.mjs',
     'test/service-store-durability.test.mjs',
