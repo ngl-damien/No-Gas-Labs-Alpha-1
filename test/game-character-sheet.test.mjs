@@ -1004,6 +1004,16 @@ test('field satchel projects retained work while preserving failed reports and d
     'dissent preserved · not adjudicated');
   assert.equal(witnessRecord.fieldSatchel.find(item => item.kind === 'experiment-report').status,
     'self-reported · failed');
+  assert.deepEqual(founderRecord.fieldSatchel.find(item => item.kind === 'field-note').action,
+    { type: 'creation', id: 'satchel-source', version: 1 });
+  assert.deepEqual(founderRecord.fieldSatchel.find(item => item.kind === 'guide-discovery').action,
+    { type: 'location', id: 'river' });
+  assert.deepEqual(witnessRecord.fieldSatchel.find(item => item.kind === 'moonshot-proposal').action,
+    { type: 'moonshot', moonshotId: 'satchel-moonshot' });
+  assert.deepEqual(witnessRecord.fieldSatchel.find(item => item.kind === 'experiment-report').action,
+    { type: 'moonshot-activity', moonshotId: 'satchel-moonshot', activityId: 'satchel-experiment-report' });
+  assert.deepEqual(founderRecord.fieldSatchel.find(item => item.kind === 'experiment-challenge').action,
+    { type: 'moonshot-activity', moonshotId: 'satchel-moonshot', activityId: 'satchel-challenge' });
   assert.equal(founderRecord.xp, 100, 'only the retained publication reward contributes XP');
   assert.equal(witnessRecord.xp, 0, 'research and reported failure do not award XP');
   assert.deepEqual(world, before, 'opening the satchel is a read-only projection');

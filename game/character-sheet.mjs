@@ -434,7 +434,10 @@ export function projectCharacter(world, viewer) {
         sourceVersion: Number.isSafeInteger(metadata.sourceVersion) && metadata.sourceVersion > 0
           ? metadata.sourceVersion : null,
         locationId: typeof metadata.locationId === 'string' ? metadata.locationId : null,
-        receipt
+        receipt,
+        action: metadata.action && typeof metadata.action === 'object' && typeof metadata.action.type === 'string'
+          ? Object.freeze({ ...metadata.action })
+          : null
       })
     });
   };
@@ -444,7 +447,8 @@ export function projectCharacter(world, viewer) {
       title: 'Guide discovery · ' + match.record.locationId,
       status: 'visit recorded',
       summary: 'A recorded visit; it does not verify the guide or its claims.',
-      locationId: match.record.locationId
+      locationId: match.record.locationId,
+      action: { type: 'location', id: match.record.locationId }
     });
   }
   for (const match of contributionEvidence.matches) {
@@ -453,7 +457,8 @@ export function projectCharacter(world, viewer) {
       status: 'retained note',
       summary: match.record.text,
       sourceCreationId: match.record.creationId,
-      sourceVersion: match.record.version
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
     });
   }
   for (const match of reportEvidence.matches) {
@@ -462,7 +467,8 @@ export function projectCharacter(world, viewer) {
       status: 'retained report · not adjudicated',
       summary: match.record.text,
       sourceCreationId: match.record.creationId,
-      sourceVersion: match.record.version
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
     });
   }
   for (const match of methodEvidence.matches) {
@@ -471,7 +477,8 @@ export function projectCharacter(world, viewer) {
       status: 'repair publication matched',
       summary: match.record.description,
       sourceCreationId: match.record.creationId,
-      sourceVersion: match.record.version
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
     });
   }
   for (const event of studyEvents) {
@@ -480,7 +487,8 @@ export function projectCharacter(world, viewer) {
       status: 'practice recorded · not mastery',
       summary: 'Question: ' + event.question + ' · Attempt: ' + event.attempt + ' · Next check: ' + event.nextCheck,
       sourceCreationId: event.creationId,
-      sourceVersion: event.version
+      sourceVersion: event.version,
+      action: { type: 'creation', id: event.creationId, version: event.version }
     });
   }
   for (const event of studyReviews) {
@@ -489,7 +497,8 @@ export function projectCharacter(world, viewer) {
       status: 'practice recorded · not accuracy proof',
       summary: 'Response: ' + event.response + ' · Reflection: ' + event.reflection,
       sourceCreationId: event.creationId,
-      sourceVersion: event.version
+      sourceVersion: event.version,
+      action: { type: 'creation', id: event.creationId, version: event.version }
     });
   }
   for (const event of events) {
@@ -499,7 +508,8 @@ export function projectCharacter(world, viewer) {
       status: 'proposal only · not execution',
       summary: 'Hypothesis: ' + event.hypothesis + ' · Falsifier: ' + event.falsifier + ' · Evidence needed: ' + event.evidenceNeeded,
       sourceCreationId: event.sourceCreationId,
-      sourceVersion: event.sourceVersion
+      sourceVersion: event.sourceVersion,
+      action: { type: 'moonshot', moonshotId: event.moonshotId }
     });
   }
   for (const event of experimentReports) {
@@ -508,7 +518,8 @@ export function projectCharacter(world, viewer) {
       status: 'self-reported · ' + event.reportedOutcome,
       summary: 'Procedure: ' + event.procedure + ' · Observation: ' + event.observation,
       sourceCreationId: event.evidenceCreationId,
-      sourceVersion: event.evidenceVersion
+      sourceVersion: event.evidenceVersion,
+      action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.reportId }
     });
   }
   for (const event of experimentChallenges) {
@@ -517,7 +528,8 @@ export function projectCharacter(world, viewer) {
       status: 'dissent preserved · not adjudicated',
       summary: event.challengeText,
       sourceCreationId: event.evidenceCreationId,
-      sourceVersion: event.evidenceVersion
+      sourceVersion: event.evidenceVersion,
+      action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.challengeId }
     });
   }
   for (const object of projectCollaboratorResponseWorldObjects(world)) {
@@ -530,7 +542,8 @@ export function projectCharacter(world, viewer) {
       status: rejected ? 'rejected response preserved' : 'structurally valid · human review only',
       summary: rejected
         ? 'Reason: ' + (object.validationReason || 'structural validation rejected the response') + ' · Moonshot ' + object.moonshotId
-        : 'Response preserved for human review · Moonshot ' + object.moonshotId + '. Structural validity is not truth, evidence, execution or approval.'
+        : 'Response preserved for human review · Moonshot ' + object.moonshotId + '. Structural validity is not truth, evidence, execution or approval.',
+      action: { type: 'collaborator-response', id: object.responseId }
     });
   }
 

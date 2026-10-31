@@ -642,6 +642,15 @@ def shared(browser,url,data,out):
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        # The character's field satchel is a navigable projection of the exact retained dissent event.
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
+        dissent_card=a.locator('#sheet .field-card').filter(has_text='Challenge · missing-evidence')
+        expect(dissent_card).to_have_count(1)
+        dissent_card.get_by_role('button',name='Inspect retained object →',exact=True).click()
+        expect(a.locator('#sheet-title')).to_have_text('Moonshot Field')
+        expect(a.locator('#sheet')).to_contain_text('The report omits the measurement settings needed to reproduce the attempt.')
         close_sheet(a)
         # A lost shared read must preserve the last received Chronicle while
         # showing unavailable registers as unknown, never as empty or approved.
