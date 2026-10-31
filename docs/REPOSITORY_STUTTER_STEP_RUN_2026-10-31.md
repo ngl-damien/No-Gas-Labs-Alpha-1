@@ -791,3 +791,53 @@ PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173
 - Re-fetched mainline `CLAUDE.md`, `CODEX.md`, `GEMINI.md`, and `.github/workflows/agent-governance.yml`: all three provider entry points are present and the workflow requires all five entry points (root AGENTS, Claude, Gemini, Codex, Copilot).
 - Scope remains declarative agent pointers plus a governance presence check. No recovered source/application/runtime behavior was changed. The repository remains a recovered 127-file snapshot; no source test, build, or recovered-runtime execution is claimed because this workflow only validates instruction presence.
 - No permission, credential, release, deployment, spending, or external-publication change occurred.
+
+
+## Worker A stutter-step run — 2026-10-31 UTC (Founder key ownership hardening and authority review)
+
+### Rehydration and procedural compliance
+- Read current Alpha 1 root `AGENTS.md` alone, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone, before repository inventory.
+- Read the latest available checkpoint, MMORPG contract and ledger; rechecked current main, open PRs, issue #17, and the other hourly worker's latest recorded result.
+- Current main at final review: `93bc9157dca95f7d4f552a88e8570823b30c11aa`.
+- Direct nested-instruction lookups for the touched/inspected paths (`src/AGENTS.md`, `src/authority/AGENTS.md`, `src/institution/AGENTS.md`, `game/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, `docs/operations/AGENTS.md`, `scripts/AGENTS.md`, `experiment-001/AGENTS.md`, `.github/AGENTS.md`, and `.github/workflows/AGENTS.md`) returned 404 on current main. No nested file at those exact paths was found.
+- A local shallow clone/preflight attempt failed because the container could not resolve `github.com` (DNS). No local test suite or local preflight is claimed. The final hosted Verify pipeline did run the repository preflight and returned `status: ready`, no warnings, and no failures.
+- Worker B's latest recorded scheduled run failed with a generic automation failure and no usable new result. Current Worker B PRs were re-observed directly rather than trusting the older summary.
+
+### Cycle 1 — fail closed on unverifiable Founder key-file ownership
+PR [#241](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/241), branch `security/fail-closed-founder-key-owner-verification-20261031`, is open/draft and based on the current main SHA above. Final head: `e1432e21210652f3f7e8adfdf9cf43e3e85d265f` (4 commits ahead, 0 behind; GitHub reports clean/mergeable).
+
+- `src/bounded-file-reader.mjs` now fails closed when current-user ownership verification is requested but `process.getuid` is unavailable, throws, or returns a non-safe/negative UID. It preserves the distinct owner-mismatch failure.
+- `test/approve-install-file-reader.test.mjs` adds regressions for unavailable, throwing, invalid, and mismatched UID lookup, plus an end-to-end CLI test proving the offline Founder signer emits no signature receipt when ownership cannot be verified.
+- `test/agent-governance.test.mjs` and `package.json` include the new implementation/test/operator-contract paths in scoped CI preflight; `experiment-001/FOUNDER-APPROVAL.md` documents that standard Windows Node lacks `process.getuid()`, so this file-based signer remains intentionally unavailable there until an ACL-aware verifier exists.
+- Commits: `065a203ec2ffd1b900c9d685154caf4a6a405071` initial fail-closed owner check; `5e73d89a89bb5a3669faaf5deb6f1b17549c38a8` normalize thrown/invalid UID lookup failures; `96f5856f239c5d9746f45863cb21c31ecef7d8ac` regression coverage; `e1432e21210652f3f7e8adfdf9cf43e3e85d265f` corrected the CLI fixture newline.
+
+### Exact-head verification and preserved failure
+For final head `e1432e21210652f3f7e8adfdf9cf43e3e85d265f`:
+- World Projection [41175699112](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41175699112): **success**. Hosted `npm run verify` log shows preflight `status: ready`, `warnings: []`, `failures: []`; Node tests, Python inspector, game package build, and bounded institutional exercise all exited 0; report `passed: true`.
+- Genesis Evidence Invariant [41175699137](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41175699137): **success**.
+- Browser Acceptance [41175699212](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41175699212): **success, 12/12 journeys** (desktop, phone, institutional actions, two-session shared world, responsive controls, standalone file/exact bytes, shared restart).
+
+The intermediate head `96f5856...` had one failed World Projection run [41175619944](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41175619944): 717/718 tests passed. The new CLI test wrote a literal backslash-n into its preload file, causing a SyntaxError before the ownership assertion. This was a test-fixture defect, corrected in `e1432e2...`; all three exact-final-head workflows then passed. The failed attempt is preserved, not counted as a pass.
+
+No real Founder key was created, read, enrolled, rotated, or used. Tests use ephemeral fixture keys only. PR #241 remains draft/unmerged; no source change was made to main.
+
+### Cycle 2 — challenge the Founder-authentication priority against current source
+- Issue #17 remains open. Its recorded finding says the original PR #16 self-signing `demonstrate()` path was superseded by merged PR #18's detached Ed25519 INSTALL signature. Do not reopen PR #16 as if that old code were still active.
+- Current main's separate `src/authority/decision.js` still exposes an `authorizationEvent()` helper that trusts caller-supplied `verification.valid`; its `verifyFounderDecision()` also accepts caller-supplied public JWK, expected fingerprint, and clock. This is source-backed helper-level trust weakness; no live-server integration of that helper was evidenced in this run.
+- PR #203 contains a much stronger sealed/context-bound verifier proposal, including trusted proposal/quest/output resolvers, but remains draft/open at `4cbe26c108bf8a5a9622c0944fdc2539c5281bf8`, based on old main `7d8c773...`; comparison with current main is diverged (40 ahead / 10 behind). It is not wired into live `game/server.mjs`. The canonical trust model and independent Founder key custody/identity remain Founder decisions; no key provisioning or enrollment was attempted.
+- The decision-store writer-lease proposal is also not ready to integrate. PR #205 is open, based on old main, and diverged from current main (11 ahead / 10 behind). Its proposed directory/guard ownership checks use optional `process.getuid` checks, which skip ownership verification when that API is unavailable. PR #215 is a child test branch stacked on #205 and changes the same decision-store/test files. Current main's decision-store directory and persisted-file checks also conditionally skip owner checks when `process.getuid` is absent. Because #205/#215 actively own these paths and are stacked, no competing edit was made. This is the next cross-cutting fail-closed review item when the stack is reconciled.
+- Main's `game/server.mjs` Founder key reader/data-directory checks also conditionally skip owner verification when `process.getuid` is absent. The active server/storage stack must be reconciled before changing that path.
+
+### Worker B and MMORPG recheck
+- PR #240 private-position snapshot hardening is open/draft at `5ad25731da8d81a57475318e8811e531b6106efa`, based on current main; exact-head Verify, World Projection, and Browser Acceptance all succeeded. Its change rejects accessor-backed, inherited, hidden, symbol-backed, extra, and malformed position fields and ensures an in-memory player ID is never persisted. This remains proposed branch work, not integrated mainline capability.
+- PR #227 remains open/draft and stacked on PR #225 at `4f1f04a76b0715765965ec70419b4091d61225eb`; its three exact-head workflows are successful. It is not an isolated current-main PR and still requires parent-stack reconciliation.
+- PR #239's ledger audit is open/draft at `907b84abce119d4bc8b48e6841da4ff1cbe7d1c9`, but its base `bb1aa833...` has diverged from current main by one commit each way. Refresh the audit against `93bc915...` before relying on its gate classifications. The audit records G0–G8 as IN PROGRESS and G9 as NOT STARTED; no physical Android device, native Alpha-1 APK, or Founder acceptance is evidenced.
+- No gameplay files or ledger rows were changed by Worker A.
+
+### Next ranked actions
+1. Reconcile PR #205/#215 against current main; carry the fail-closed owner-verification requirement into the decision-store directory, file, and guard paths, preserving crash-window tests. Do not duplicate their active work or merge.
+2. Reconcile PR #203 with the live server stack only after Damien's trust-model/key-custody decision and trusted retained-state resolver contract; keep PR #16's superseded status explicit.
+3. Worker B: refresh PR #239's ledger against current main and reconcile PR #240/#227's gameplay stack; keep PWA/browser evidence separate from native Android/device acceptance.
+4. Continue linked-repository work only after fresh sequential instruction bootstrap in each target repository. No linked-repository changes were made in this run.
+
+No merge, release, deployment, branch deletion, workflow/permission change, key/credential operation, spending, or external announcement occurred.
