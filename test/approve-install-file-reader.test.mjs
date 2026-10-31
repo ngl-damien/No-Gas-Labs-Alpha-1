@@ -306,3 +306,91 @@ test('bounded reader rejects unsafe configured limits before filesystem access',
     /BOUNDED_FILE_READER_INVALID_CONFIG/
   );
 });
+
+
+const boundedReaderUrl = new URL('../src/bounded-file-reader.mjs', import.meta.url).href;
+
+function runOwnershipCheck(path, setup, expectedError) {
+  const code = `
+    import { readBoundedRegularFile } from ${JSON.stringify(boundedReaderUrl)};
+    ${setup}
+    try {
+      await readBoundedRegularFile(${JSON.stringify(path)}, 100, 'TEST', { requireCurrentUserOwnership: true });
+      process.exitCode = 1;
+    } catch (error) {
+      if (error?.message !== ${JSON.stringify(expectedError)}) {
+        console.error(error);
+        process.exitCode = 2;
+      }
+    }
+  `;
+  return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    encoding: 'utf8',
+    timeout: 5000
+  });
+}
+
+test('bounded reader fails closed when current-user ownership verification is unavailable', async t => {
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_UNAVAILABLE');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader rejects a file owned by a different process user when ownership is required', async t => {
+  if (typeof process.getuid !== 'function') return t.skip('POSIX process UID ownership is unavailable');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `const actualGetuid = process.getuid.bind(process); Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => actualGetuid() + 1 });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_MISMATCH');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+
+test('bounded reader fails closed when current-user ownership lookup throws', async t => {
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => { throw new Error('OS_UID_LOOKUP_FAILED'); } });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_FAILED');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader fails closed when current-user ownership lookup returns an invalid UID', async t => {
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => Number.NaN });`;
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_FAILED');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('Founder CLI refuses to sign when current-user ownership verification is unavailable', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  const preloadPath = join(directory, 'disable-getuid.cjs');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  await chmod(privateKeyPath, 0o600);
+  await writeFile(preloadPath, `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });\n`);
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], {
+    NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem),
+    NODE_OPTIONS: `--require=${JSON.stringify(preloadPath)}`
+  });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /FOUNDER_KEY_OWNER_VERIFICATION_UNAVAILABLE/);
+  assert.equal(result.stdout, '');
+});
