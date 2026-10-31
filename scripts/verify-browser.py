@@ -867,6 +867,67 @@ def launchpad(page,url,out,label):
     return {'journey':label,'passed':True,'artifacts':3,'checks':6,'errors':errors}
 
 
+def town_square_social(browser,url,out):
+    errors=[]
+    owner=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    visitor=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    try:
+        founder_page,witness_page=owner.new_page(),visitor.new_page()
+        for page in [founder_page,witness_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url,wait_until='networkidle')
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        founder_page.locator('#login-button').click()
+        founder_page.locator('#founder-key').fill(KEY)
+        founder_page.locator('#verify-founder').click()
+        founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        witness_page.locator('#commons-message').fill('Witness message for the Commons.')
+        witness_page.locator('#commons-post-message').click()
+        witness_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Witness message for the Commons.')
+        expect(witness_message).to_be_visible()
+
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(founder_page.locator('[data-commons-message-id]').filter(has_text='Witness message for the Commons.')).to_be_visible()
+        founder_page.locator('#commons-message').fill('Founder message for the moderation fixture.')
+        founder_page.locator('#commons-post-message').click()
+        founder_message=witness_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_message).to_be_visible()
+
+        founder_message.locator('details.commons-report summary').click()
+        founder_message.locator('[data-commons-report-reason]').select_option('privacy')
+        founder_message.locator('[data-commons-report-details]').fill('Fixture-only private report detail.')
+        founder_message.get_by_role('button',name='Submit report',exact=True).click()
+        expect(founder_page.locator('#commons-pending-reports')).to_contain_text('Fixture-only private report detail.')
+        report_card=founder_page.locator('[data-commons-report-id]').filter(has_text='Fixture-only private report detail.')
+        report_card.locator('[data-commons-moderation-reason]').select_option('privacy')
+        report_card.get_by_role('button',name='Hide for Witnesses',exact=True).click()
+        hidden_message=witness_page.locator('[data-commons-message-id]').filter(has_text='This message was hidden after human review.')
+        expect(hidden_message).to_be_visible()
+        assert 'Founder message for the moderation fixture.' not in witness_page.locator('#sheet').inner_text()
+        founder_hidden=founder_page.locator('[data-commons-message-id]').filter(has_text='Founder message for the moderation fixture.')
+        expect(founder_hidden).to_contain_text('HIDDEN FROM WITNESSES')
+
+        public_state=visitor.request.get(url+'api/state').json()
+        public_post=next(event for event in public_state['world']['events'] if event.get('type')=='message-posted' and event.get('text')=='[Message hidden by human moderation.]')
+        assert public_post['messageId']
+        assert all(event.get('type')!='message-reported' or event.get('actor',{}).get('id')==public_state['viewer']['id'] for event in public_state['world']['events'])
+        founder_state=owner.request.get(url+'api/state').json()
+        assert any(event.get('type')=='message-posted' and event.get('text')=='Founder message for the moderation fixture.' for event in founder_state['world']['events'])
+        assert founder_state['world']['xp']==public_state['world']['xp']==0
+        assert not errors,errors
+        return {'journey':'town-square-social-moderation','passed':True,'sharedMessages':2,'privateReports':1,'moderation':'hidden-with-retained-founder-history','worldXp':0,'errors':errors}
+    finally:
+        owner.close()
+        visitor.close()
+
+
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
@@ -897,6 +958,13 @@ def offline_pwa(browser,url,out):
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        page.locator('#commons-message').fill('Offline message survives reload.')
+        page.locator('#commons-post-message').click()
+        expect(page.locator('[data-commons-message-id]').filter(has_text='Offline message survives reload.')).to_be_visible()
+        assert page.locator('#xp-count').text_content()=='100', 'Social messages must not award world XP'
         api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
         page.reload(wait_until='networkidle')
@@ -906,8 +974,13 @@ def offline_pwa(browser,url,out):
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        expect(page.locator('[data-commons-message-id]').filter(has_text='Offline message survives reload.')).to_be_visible()
+        assert page.locator('#xp-count').text_content()=='100', 'The message must not change world XP'
         assert not errors,errors
-        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'shared_api':'network-only'}
+        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'private_commons_messages':1,'shared_api':'network-only'}
     finally:
         context.close()
 
@@ -934,6 +1007,7 @@ def main():
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
+                    record(town_square_social(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
