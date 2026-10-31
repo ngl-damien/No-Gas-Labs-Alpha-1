@@ -23,6 +23,28 @@ function immutableSnapshot(value) {
 }
 const storeReadError = (code, message) => Object.assign(new Error(message), { code });
 
+function currentProcessUid(subject) {
+  // Private mode bits do not establish ownership. Missing or unreliable UID
+  // verification must fail closed; Windows needs a separate ACL-aware verifier.
+  let getuid;
+  try { getuid = process.getuid; }
+  catch {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_UNAVAILABLE`, `${subject} owner verification is unavailable`);
+  }
+  if (typeof getuid !== 'function') {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_UNAVAILABLE`, `${subject} owner verification is unavailable`);
+  }
+  let uid;
+  try { uid = getuid.call(process); }
+  catch {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_FAILED`, `${subject} owner verification failed`);
+  }
+  if (!Number.isSafeInteger(uid) || uid < 0) {
+    throw storeReadError(`${subject}_OWNER_VERIFICATION_INVALID`, `${subject} owner verification returned an invalid UID`);
+  }
+  return uid;
+}
+
 // Best-effort path walk: reject symlinked ancestors before recursive creation,
 // then validate the final directory's identity, owner and privacy. This is not
 // an atomic openat-style boundary against a hostile process racing path changes.
@@ -56,7 +78,7 @@ async function assertPrivateDirectory(path, expectedIdentity) {
   if ((stat.mode & 0o077) !== 0) {
     throw storeReadError('SERVICE_DIRECTORY_PERMISSIONS_TOO_BROAD', 'Service store directories must exclude group and other access (0700)');
   }
-  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+  if (stat.uid !== currentProcessUid('SERVICE_DIRECTORY')) {
     throw storeReadError('SERVICE_DIRECTORY_OWNER_MISMATCH', 'Service store directory must be owned by the current process user');
   }
   if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) {
@@ -81,7 +103,7 @@ async function readBoundedStoreEnvelope(path) {
   if ((before.mode & 0o077) !== 0) {
     throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
   }
-  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+  if (before.uid !== currentProcessUid('SERVICE_STORE')) {
     throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
   }
   if (before.size > MAX_SERVICE_STORE_BYTES) {
@@ -109,7 +131,7 @@ async function readBoundedStoreEnvelope(path) {
     if ((opened.mode & 0o077) !== 0) {
       throw storeReadError('SERVICE_STORE_PERMISSIONS_TOO_BROAD', `${label} must exclude group and other permissions (0600)`);
     }
-    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+    if (opened.uid !== currentProcessUid('SERVICE_STORE')) {
       throw storeReadError('SERVICE_STORE_OWNER_MISMATCH', `${label} must be owned by the current process user`);
     }
     if (opened.size > MAX_SERVICE_STORE_BYTES) {
