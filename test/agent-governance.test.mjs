@@ -53,6 +53,19 @@ test('preflight rejects Windows drive-qualified paths on every host platform', a
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+
+test('preflight rejects invalid UTF-8 instead of hashing replacement-decoded text', async () => {
+  const root = await fixture();
+  try {
+    const malformed = Buffer.concat([Buffer.from('Read'), Buffer.alloc(1, 255)]);
+    await writeFile(join(root, 'CLAUDE.md'), malformed);
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === 'CLAUDE.md' && item.reason.includes('valid UTF-8')));
+    assert.ok(!result.files.some(file => file.path === 'CLAUDE.md'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight fails closed when sequential bootstrap order is removed', async () => {
   const root = await fixture();
   try {
