@@ -275,7 +275,7 @@ async function assertOwnedLockPath(path, identity, label) {
 }
 
 /** One replaceable envelope prevents partial world / kernel / artifact commits. */
-export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory, linkFile = link }) {
+export async function createServiceStore({ dataDir, initial, validate, syncDirectory: syncDirectoryFn = syncDirectory, linkFile = link, renameFile: renameFileFn = rename }) {
   dataDir = resolve(dataDir);
   await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -320,6 +320,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let closePromise;
   let durabilityUncertainState = false;
   let directoryUncertainState = false;
+  let leaseUncertainError = null;
   // Serialize all commits made through this lease. The HTTP server has its own
   // action queue, but the store primitive must also be safe for direct callers.
   let commitQueue = Promise.resolve();
@@ -363,10 +364,27 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
     }
   }
+  async function assertStableLease({ afterRename = false } = {}) {
+    if (leaseUncertainError) throw leaseUncertainError;
+    await assertStableDirectory();
+    try {
+      await assertOwnedLockPath(lockPath, leaseIdentity, 'Service writer lock path');
+    } catch (cause) {
+      leaseUncertainError = storeReadError(
+        afterRename ? 'COMMIT_LEASE_LOST' : 'SERVICE_LOCK_CHANGED',
+        afterRename
+          ? 'Service writer lease changed after the store envelope was renamed; commit outcome is uncertain and offline validation is required'
+          : 'Service writer lease changed; close and inspect the lock before continuing'
+      );
+      leaseUncertainError.status = 503;
+      leaseUncertainError.cause = cause;
+      throw leaseUncertainError;
+    }
+  }
   async function persist(payload) {
     // The caller may retain this store while the directory pathname is replaced.
     // Revalidate its identity before any path-based write.
-    await assertStableDirectory();
+    await assertStableLease();
     const pending = join(dataDir, `.service-${randomUUID()}.tmp`);
     let file;
     let renamed = false;
@@ -377,15 +395,17 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       await file.close(); file = null;
       // Do not replace the envelope if the directory changed while the temp
       // file was being written.
-      await assertStableDirectory();
-      await rename(pending, path);
+      await assertStableLease();
+      await renameFileFn(pending, path);
       renamed = true;
       try {
-        // A post-rename path change is itself an uncertain durability boundary:
+        // A post-rename path or lease change makes the commit outcome uncertain:
         // never expose stale in-memory state or permit another write.
-        await assertPrivateDirectory(dataDir, directoryIdentity);
+        await assertStableLease({ afterRename: true });
         await syncDirectoryFn(dataDir);
+        await assertStableLease({ afterRename: true });
       } catch (error) {
+        if (error.code === 'COMMIT_LEASE_LOST') throw error;
         durabilityUncertainState = true;
         throw durabilityUncertain(error);
       }
@@ -399,6 +419,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   }
   return {
     get value() {
+      if (leaseUncertainError) throw leaseUncertainError;
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
       return current;
@@ -406,6 +427,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
     close,
     async commit(candidate) {
       if (released || closing) throw closedStoreError();
+      if (leaseUncertainError) throw leaseUncertainError;
       if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
       if (durabilityUncertainState) throw durabilityUncertain();
       // Snapshot as strict canonical JSON at call time. This rejects accessors,
@@ -414,6 +436,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       const snapshot = JSON.parse(canonicalStringify(candidate));
       const operation = commitQueue.then(async () => {
         if (released) throw closedStoreError();
+        if (leaseUncertainError) throw leaseUncertainError;
         if (directoryUncertainState) throw storeReadError('SERVICE_DIRECTORY_CHANGED', 'Service store directory changed; close and reopen to validate storage before continuing');
         if (durabilityUncertainState) throw durabilityUncertain();
         const valid = immutableSnapshot(await validate(snapshot));
