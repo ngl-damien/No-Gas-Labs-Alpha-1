@@ -654,3 +654,26 @@ No branch was deleted. No release, deployment, credential/key change, permission
 3. Keep PR #208 open until #237 is actually integrated or another disposition is observed.
 4. Worker B owns reconciliation of #222 → #225 → #227 and the next player-facing capability; do not flatten the stack or duplicate game edits.
 5. Preserve the current-main MMORPG ledger audit in #239 and use its concrete missing gates to prioritize Android-native delivery, durable session recovery, social/economic systems, NPC/encounter loops, backup/restore, and scale evidence.
+
+
+## Ralph loop continuation — latest exact-head outcomes (2026-10-31 UTC)
+
+### PR #237 — completed all hosted checks; ready-for-review, not merged
+- Current head remains 96589b98cb63bc6c93a052b6a629b6cec3b2bca7; PR is now marked ready (draft=false).
+- Verify #41173118283 success; Genesis #41173118308 success; Browser Acceptance #41173118285 success.
+- Browser log explicitly records all 12 journeys passing: desktop, phone, institutional-location-actions, two-session-shared (version 2, kernelAccepted 2), phone toolbars 320/360/412px, one-button 320/412, standalone-file, standalone-exact-bytes, shared-restart. No journey errors. Artifact #13032306710; SHA-256 93cb888ff9bc9573c44dfff01416dd9a8820323735836a284a3686803c29c2ce.
+- Verify log's hosted preflight target list explicitly includes the changed workflow and regression test, with status ready, warnings [], failures []. Node tests, Python inspector tests, game package build, and bounded institutional exercise exited 0.
+- PR description accurately records three changed paths and exact-head evidence. Workflow contains no deletion job or ref mutation calls. The residual contents: write token scope remains; I reiterated the least-privilege concern in review comment #6539663415. No permissions changed and no merge performed. This is now a ready-for-review safety improvement, but merge remains blocked on the permission-boundary decision.
+
+### PR #238 — updated Forge input boundary; exact-head browser still running
+- Owner advanced the head to 0cac61bbfd57f2ab0621b2b7affff69d0d1081f5 (6 commits ahead / 0 behind current main; same two Forge paths).
+- Re-inspected exact source: runCandidate(input) validates/copies through dataRecord before reading properties; validate returns a normalized request; compareCandidates consumes normalized sourceDir/outDir rather than rereading the original caller object. Added getter-not-invoked and Proxy regressions. Prior source-boundary findings are addressed in this head.
+- Verify #41173380864 success; Genesis #41173380903 success; Browser Acceptance #41173380862 still in progress at latest poll.
+- Hosted Verify preflight returns ready, warnings [], failures [], but its command/target list still omits src/forge/runner.mjs and test/forge-runner.test.mjs. Therefore the changed Forge paths are not covered by the scoped preflight receipt. PR body also still cites old head 914cb667... and pending checks. Review comment #6539667259 asks the owner to add both paths, refresh the body, and rerun all three checks on the resulting head. No Forge edits made.
+
+### Coordination and authority
+- PR #239 remains Worker B's single-file MMORPG ledger audit; exact-head CI all green and source review found no factual correction. Current-main vs proposed game capability boundaries are explicit.
+- PR #227 remains a stacked child of #225/#222; 151 ahead / 9 behind main at last comparison. No Worker A gameplay changes.
+- PR #215 remains active and stacked on #205; no transplant of the pre-rename crash regression was made. Preserve its ownership and avoid duplicating the same decision-store paths.
+- Issue #17 remains open: real Founder key custody/identity, adversarial concurrency, and crash/stale-lock recovery are still explicit acceptance work. No stale-lock automation or key custody change.
+- No PR was merged, no permission changed, no workflow dispatched, no branch deleted, no release/deployment/spending/external publication occurred.
