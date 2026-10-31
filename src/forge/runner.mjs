@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile, lstat, realpath, readdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -86,7 +86,7 @@ function credentialContentRule(content) {
 }
 
 export function listWorkloads() {
-  return [{ id: 'vector-sum-v1', description: 'Sum the same deterministic 10,000-number vector 200 times; verify seven independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
+  return [{ id: 'vector-sum-v1', description: 'Sum a per-run randomized 10,000-number vector 200 times; verify unpredictable independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
 }
 export function forgeCapabilities() {
   return { execution: 'trusted-local-child-processes', workloads: listWorkloads(), limits: { defaults: DEFAULTS, maxCandidates: 8, maxConcurrency: 4, maxTimeoutMs: 10000, maxOutputBytes: 1048576, source: SOURCE_LIMITS }, repositoryLimits: { defaults: REPOSITORY_DEFAULTS, maxConcurrency: 4, maxTimeoutMs: 120000, maxOutputBytes: 1048576 }, automaticIntegration: false, osSandbox: false };
@@ -319,21 +319,45 @@ async function verifyWorkspace(workspace, expected) {
   return { passed: changed.size === 0, changedPaths: [...changed].sort() };
 }
 function parseJson(text) { try { return JSON.parse(text.trim()); } catch { return null; } }
-const expectedChecksum = Array.from({ length: 10000 }, (_, index) => index % 201 - 100).reduce((a, b) => a + b, 0) * 200;
-const challengeCases = [[], [1], [-1, 0, 1], [2, 3, 4], [-10, -20], [0.5, 0.25, -0.125], Array.from({ length: 10000 }, (_, index) => index % 201 - 100)];
-const verificationChallenge = { schema: 'ngl.forge-challenge.v1', cases: challengeCases.map(values => ({ values, expected: values.reduce((a, b) => a + b, 0) })) };
-const challengeId = sha256(stable(verificationChallenge));
-function checkVerification(response) {
-  const protocolValid = response?.schema === 'ngl.forge-verification.v2' && response.challengeId === challengeId && Array.isArray(response.cases) && response.cases.length === challengeCases.length;
-  const failedCases = [];
-  for (let index = 0; index < challengeCases.length; index++) {
-    const actual = response?.cases?.[index];
-    const expected = verificationChallenge.cases[index];
-    if (!actual || actual.result !== expected.expected || !Array.isArray(actual.values) || actual.values.length !== expected.values.length || actual.values.some((value, i) => value !== expected.values[i])) failedCases.push(index);
-  }
-  return { passed: protocolValid && failedCases.length === 0, protocolValid, challengeId, checkedCases: protocolValid ? challengeCases.length : 0, failedCases };
+function randomVector(length) {
+  const values = Array.from({ length }, () => randomInt(-100, 101));
+  // Keep the old fixed-vector checksum from accidentally becoming a valid answer.
+  if (length === 10000 && values.reduce((sum, value) => sum + value, 0) === -3775) values[0] += 1;
+  return values;
 }
-async function candidateRun({ candidate, snapshot, outDir, workloadId, limits }) {
+function createBenchmarkChallenge() {
+  const nonce = randomBytes(16).toString('hex');
+  const values = randomVector(10000);
+  const iterations = 200;
+  const challengeId = sha256(stable({ nonce, values, iterations }));
+  return {
+    input: { schema: 'ngl.forge-benchmark.v1', challengeId, values, iterations },
+    expectedChecksum: values.reduce((sum, value) => sum + value, 0) * iterations
+  };
+}
+function createVerificationChallenge() {
+  const nonce = randomBytes(16).toString('hex');
+  const vectors = [[], randomVector(1), randomVector(2), randomVector(3), randomVector(17), randomVector(257), randomVector(10000)];
+  const cases = vectors.map(values => ({ values, expected: values.reduce((sum, value) => sum + value, 0) }));
+  const challengeId = sha256(stable({ nonce, cases: cases.map(({ values }) => values) }));
+  return { schema: 'ngl.forge-challenge.v1', challengeId, cases };
+}
+function checkVerification(response, challenge) {
+  const expectedCases = challenge.cases;
+  const protocolValid = response?.schema === 'ngl.forge-verification.v2' &&
+    response.challengeId === challenge.challengeId &&
+    Array.isArray(response.cases) && response.cases.length === expectedCases.length;
+  const failedCases = [];
+  for (let index = 0; index < expectedCases.length; index++) {
+    const actual = response?.cases?.[index];
+    const expected = expectedCases[index];
+    if (!actual || actual.result !== expected.expected || !Array.isArray(actual.values) ||
+        actual.values.length !== expected.values.length ||
+        actual.values.some((value, i) => value !== expected.values[i])) failedCases.push(index);
+  }
+  return { passed: protocolValid && failedCases.length === 0, protocolValid, challengeId: challenge.challengeId, checkedCases: protocolValid ? expectedCases.length : 0, failedCases };
+}
+async function candidateRun({ candidate, snapshot, outDir, workloadId, limits, benchmarkChallenge, verificationChallenge }) {
   const started = performance.now();
   const overlayManifest = Object.entries(candidate.overlay).map(([path, bytes]) => ({ path, sha256: sha256(bytes), size: Buffer.byteLength(bytes) }));
   const taskId = sha256(stable({ source: snapshot.manifest.digest, workloadId, limits, candidate: { id: candidate.id, overlay: overlayManifest } }));
@@ -344,7 +368,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   for (const [path, bytes] of expected) await writeBytes(workspace, path, bytes);
   await mkdir(join(workspace, '.tmp'));
   const copyMs = performance.now() - started;
-  const execution = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/execution`, entry: BENCHMARK, limits });
+  const execution = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/execution`, entry: BENCHMARK, limits, input: stable(benchmarkChallenge.input) });
   const verificationStarted = performance.now();
   let verificationWorkspacePath = null;
   let verificationWorkspace = null;
@@ -357,7 +381,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
     for (const [path, bytes] of expected) await writeBytes(verificationWorkspace, path, bytes);
     await mkdir(join(verificationWorkspace, '.tmp'));
     verificationCopyMs = performance.now() - verificationCopyStarted;
-    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable(verificationChallenge) });
   }
   const integrityStarted = performance.now();
   const candidateIntegrity = await verifyWorkspace(workspace, expected);
@@ -371,13 +395,13 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const integrityMs = performance.now() - integrityStarted;
   const actual = parseJson(execution.content.stdout);
   const verified = parseJson(verification.content.stdout);
-  const verificationChecks = checkVerification(verified);
-  const outputCorrect = actual?.workload === workloadId && actual.iterations === 200 && actual.length === 10000 && actual.checksum === expectedChecksum;
+  const verificationChecks = checkVerification(verified, verificationChallenge);
+  const outputCorrect = actual?.schema === 'ngl.forge-benchmark.v1' && actual.challengeId === benchmarkChallenge.input.challengeId && actual.workload === workloadId && actual.iterations === benchmarkChallenge.input.iterations && actual.length === benchmarkChallenge.input.values.length && actual.checksum === benchmarkChallenge.expectedChecksum;
   const correct = execution.receipt.outcome === 'passed' && verification.receipt.outcome === 'passed' && verificationChecks.passed && outputCorrect && integrity.passed;
   const failure = [execution.receipt, verification.receipt].find(phase => ['timed_out', 'output_limited', 'spawn_failed'].includes(phase.outcome));
   const outcome = correct ? 'passing' : failure?.outcome ?? 'failed';
   const verificationOverheadMs = performance.now() - verificationStarted;
-  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, verificationWorkspace: verificationWorkspacePath, overlay: overlayManifest, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, verificationCopyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
+  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, verificationWorkspace: verificationWorkspacePath, overlay: overlayManifest, benchmarkChallengeId: benchmarkChallenge.input.challengeId, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, verificationCopyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
   await writeJson(join(outDir, `candidates/${candidate.id}/result.json`), result);
   return result;
 }
@@ -398,12 +422,14 @@ export async function compareCandidates(options) {
   await writeJson(join(outDir, 'source-manifest.json'), snapshot.manifest);
   const snapshotMs = performance.now() - started;
   const { candidates, limits, workloadId } = validated;
+  const benchmarkChallenge = createBenchmarkChallenge();
+  const verificationChallenge = createVerificationChallenge();
   const results = new Array(candidates.length);
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(limits.concurrency, candidates.length) }, async () => {
     while (cursor < candidates.length) {
       const index = cursor++;
-      results[index] = await candidateRun({ candidate: candidates[index], snapshot, outDir, workloadId, limits });
+      results[index] = await candidateRun({ candidate: candidates[index], snapshot, outDir, workloadId, limits, benchmarkChallenge, verificationChallenge });
     }
   }));
   const eligible = results.filter(result => result.correct);
@@ -414,8 +440,10 @@ export async function compareCandidates(options) {
   return report;
 }
 
-export async function runCandidate({ candidate, ...options }) {
-  return compareCandidates({ ...options, candidates: [candidate] });
+export async function runCandidate(options) {
+  const request = dataRecord(options, ['candidate', 'sourceDir', 'outDir', 'workloadId', 'limits'], 'single-candidate request');
+  const { candidate, ...rest } = request;
+  return compareCandidates({ ...rest, candidates: [candidate] });
 }
 
 function repositoryLimits(input = {}) {
