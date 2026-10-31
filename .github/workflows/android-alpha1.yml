@@ -27,7 +27,10 @@ permissions:
 
 jobs:
   emulator-acceptance:
-    runs-on: ubuntu-latest
+    # Standard Linux runners in this environment do not expose usable KVM.
+    # The standard macOS Intel runner provides Hypervisor.framework without
+    # requiring a paid larger Linux runner or software-emulating x86_64.
+    runs-on: macos-15-intel
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -41,21 +44,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Enable KVM access for Android emulator
-        run: |
-          if [[ ! -e /dev/kvm ]]; then
-            echo "::error::/dev/kvm is unavailable; API 35 x86_64 instrumentation requires a hardware-accelerated runner."
-            exit 1
-          fi
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-            echo "::error::KVM exists but remains unreadable or unwritable after applying the runner udev rule."
-            ls -l /dev/kvm
-            exit 1
-          fi
-          echo "KVM read/write access verified for the ephemeral CI runner."
       - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug
       - name: Run offline-world emulator journey
@@ -66,7 +54,6 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          disable-linux-hw-accel: false
           script: gradle -p android :app:connectedDebugAndroidTest
       - name: Preserve debug APK
         if: always()
