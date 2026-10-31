@@ -119,7 +119,7 @@ function validate(options) {
     }
     return { id: candidateInput.id, overlay };
   });
-  return { workloadId, candidates, limits };
+  return { sourceDir: request.sourceDir, outDir: request.outDir, workloadId, candidates, limits };
 }
 async function git(sourceDir, args) {
   const { stdout } = await exec('git', args, { cwd: sourceDir, maxBuffer: 4 * 1024 * 1024, timeout: 5000, encoding: 'utf8' });
@@ -421,8 +421,8 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits, v
 export async function compareCandidates(options) {
   const validated = validate(options);
   const started = performance.now();
-  const sourceDir = await realpath(options.sourceDir);
-  const outDir = await physicalOutputPath(options.outDir);
+  const sourceDir = await realpath(validated.sourceDir);
+  const outDir = await physicalOutputPath(validated.outDir);
   const within = slash(relative(sourceDir, outDir));
   if (within === '' || (!within.startsWith('../') && !within.startsWith('/') && !within.startsWith('.runtime/'))) throw new Error('outDir inside source must be under ignored .runtime/ and must be fresh');
   try { await lstat(outDir); throw new Error('outDir must be fresh; path already exists'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -450,8 +450,15 @@ export async function compareCandidates(options) {
   return report;
 }
 
-export async function runCandidate({ candidate, ...options }) {
-  return compareCandidates({ ...options, candidates: [candidate] });
+export async function runCandidate(input) {
+  const request = dataRecord(input, ['candidate', 'sourceDir', 'outDir', 'workloadId', 'limits'], 'candidate request');
+  return compareCandidates({
+    sourceDir: request.sourceDir,
+    outDir: request.outDir,
+    workloadId: request.workloadId,
+    limits: request.limits,
+    candidates: [request.candidate]
+  });
 }
 
 function repositoryLimits(input = {}) {
