@@ -23,7 +23,7 @@ const out = await mkdtemp(join(runtimeRoot, 'verification-'));
 const stages = [];
 
 for (const [name, bin, args, cwd, timeoutMs = 120000] of [
-  ['tests', process.execPath, ['--test', '--test-reporter=tap'], ROOT],
+  ['tests', process.execPath, ['--test', '--test-reporter=tap', '--test-timeout=45000'], ROOT],
   ['python-inspector', 'python3', ['-m', 'unittest', '-v', 'test_engine.py'], join(ROOT, 'experiments/AOTA-FEATHERSTONIAN-ENGINE')],
   ['package', process.execPath, ['scripts/build-game.mjs'], ROOT],
   ['institutional-exercise', process.execPath, ['scripts/meteor-demo.mjs', '--out', join(out, 'exercise')], ROOT]
