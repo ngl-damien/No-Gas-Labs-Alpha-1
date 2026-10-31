@@ -92,7 +92,7 @@ const $=id=>document.getElementById(id);
 const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1';
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
-let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null;
+let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,commonsDraftText='';
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
 const paragraph=(text,className)=>node('p',{text,class:className||''});
 const button=(text,onClick,attrs={})=>node('button',{type:'button',text,onClick,...attrs});
@@ -528,17 +528,31 @@ function openTownSquare(){
 }
 function renderTownSquareContent(content){
   if(content!==$('sheet-content')||$('sheet').hidden)return;
+  const active=document.activeElement;
+  const activeId=content.contains(active)?active.id:null;
+  const activeValue=activeId&&'value' in active?active.value:undefined;
+  const selectionStart=activeId&&typeof active.selectionStart==='number'?active.selectionStart:null;
+  const selectionEnd=activeId&&typeof active.selectionEnd==='number'?active.selectionEnd:null;
+  const openReportIds=new Set([...content.querySelectorAll('details.commons-report[open]')].map(details=>details.closest('[data-commons-message-id]')?.dataset.commonsMessageId).filter(Boolean));
+  const previousInput=content.querySelector('#commons-message');
+  const draftValue=previousInput?previousInput.value:commonsDraftText;
   content.replaceChildren();
   content.append(paragraph('Player-authored conversation, not evidence, approval, authority, XP, or verified work. Shared messages are visible to everyone in this world. Do not post secrets or personal data. Reports are private to their author and the authenticated Founder. Human moderation hides public text but preserves the original in Founder history. Private-mode messages remain on this device.','form-help'));
-  const messageInput=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A thought worth carrying into the world',required:''});
-  const counter=node('small',{id:'commons-message-count',text:'0 / '+COMMONS_MESSAGE_LIMIT});
-  messageInput.addEventListener('input',()=>{counter.textContent=Array.from(messageInput.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
+  const messageInput=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A thought worth carrying into the world',required:'',value:draftValue});
+  const counter=node('small',{id:'commons-message-count',text:Array.from(draftValue).length+' / '+COMMONS_MESSAGE_LIMIT});
+  messageInput.addEventListener('input',()=>{commonsDraftText=messageInput.value;counter.textContent=Array.from(messageInput.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
   content.append(node('article',{class:'field-card'},[
     node('h3',{text:'Leave a message'}),
     field('Message · '+COMMONS_MESSAGE_LIMIT+' characters maximum','commons-message',messageInput),
     counter,
     button('Post to the Commons',guarded(async()=>{
-      await act({type:'post-message',text:messageInput.value});
+      const message=messageInput.value;
+      commonsDraftText=message;
+      await act({type:'post-message',text:message});
+      commonsDraftText='';
+      const currentInput=$('commons-message'),currentCounter=$('commons-message-count');
+      if(currentInput)currentInput.value='';
+      if(currentCounter)currentCounter.textContent='0 / '+COMMONS_MESSAGE_LIMIT;
       toast('Message retained as player conversation. No XP or authority changed.');
     }),{id:'commons-post-message',class:'primary-button'})
   ]));
@@ -566,6 +580,7 @@ function renderTownSquareContent(content){
     }
     if(message.canReport){
       const details=node('details',{class:'commons-report'});
+      if(openReportIds.has(message.messageId))details.open=true;
       details.append(node('summary',{text:'Report this message'}));
       const reason=node('select',{'data-commons-report-reason':'',required:''});
       reason.append(node('option',{value:'',text:'Choose a reason'}));
@@ -606,6 +621,16 @@ function renderTownSquareContent(content){
       queue.append(item);
     }
     content.append(queue);
+  }
+  if(activeId){
+    const target=document.getElementById(activeId);
+    if(target&&content.contains(target)){
+      if(activeValue!==undefined&&target!==messageInput)target.value=activeValue;
+      target.focus({preventScroll:true});
+      if(Number.isInteger(selectionStart)&&Number.isInteger(selectionEnd)&&typeof target.setSelectionRange==='function'){
+        try{target.setSelectionRange(selectionStart,selectionEnd);}catch{}
+      }
+    }
   }
 }
 
