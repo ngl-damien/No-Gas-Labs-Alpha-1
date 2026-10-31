@@ -412,3 +412,54 @@ This run delivered an additional two-file source/test correction on current-main
 
 ### Execution boundary
 This continuation added one targeted preflight-coverage correction to PR #237 and preserved the evidence above. No local test execution is claimed. The current exact-head hosted workflows remain in progress; do not call the cleanup fix integrated or fully verified yet.
+
+
+## Ralph continuation — branch-cleanup destructive-trigger hardening (2026-10-31 UTC)
+
+**Worker:** Repository Stutter-Step / Worker A.
+
+### Bootstrap and current state
+- Root `AGENTS.md` was fetched and read alone, then the full canonical shared protocol was fetched and read alone. Only after those operations did this run inspect checkpoint, PR, workflow, and worker state.
+- The canonical `docs/operations/LATEST_CHECKPOINT.md` path does not exist on main (404); the existing durable run record on the checkpoint branch was rehydrated instead.
+- A fresh local clone/preflight attempt failed: `git clone https://github.com/...` returned `Could not resolve host: github.com`. No local test or preflight execution is claimed. Manual bootstrap and nested-instruction checks were performed; no `.github/AGENTS.md`, `.github/workflows/AGENTS.md`, or `test/AGENTS.md` exists at the checked refs.
+- Current main observed through PR #237 metadata and compare: `bb1aa833130b7e5399d7b84d1041b1c26c49cc16`.
+- Main's current `.github/workflows/branch-cleanup.yml` was inspected directly. It still triggers on push to main when the workflow file itself changes, and has workflow-wide `contents: write`. This is a live, source-observed destructive-trigger risk, not a hypothetical one.
+
+### Rehydrated PR and competing work
+- PR #237, branch `safety/manualize-branch-cleanup-current-main-20261031`, was already the current-main proposal for manual-only, preview-first cleanup. Its prior head was `9aa702360434e1c1e0d2bf6bb485ebfb4c60b834`, based on main `bb1aa833...`.
+- Older PR #208 overlaps the same workflow/test paths but is diverged (7 ahead / 9 behind current main); PR #237 is the newer current-main proposal. No changes were made to #208.
+- Worker B PR #227 was rehydrated from its latest available result. It remains a draft, stacked game integration with broad game/client scope; Worker A made no game edits.
+- PR #230 was closed unmerged as superseded by PR #232. PR #230's closure comment says the exact-byte hashing change was carried forward; current main's `scripts/validate-agent-governance.mjs` and `test/agent-governance.test.mjs` were independently fetched and do contain raw-Buffer hashing, fatal UTF-8 validation, and the malformed-UTF-8 regression. This resolves the prior PR #230 integration uncertainty. PR #232 itself is also closed unmerged, but its claimed path hardening is not the subject of this run.
+
+### New source-backed finding
+PR #237 already made the destructive workflow manual-only, defaulted to preview, required exact confirmation, and rechecked baseline SHA before delete. Review of its candidate loop found a time-of-check/time-of-use gap: the initial branch/protection/open-PR/default-branch inventory was reused throughout a potentially long deletion run. A branch could acquire protection, become the default branch, or gain an open PR after the initial inventory but before its deletion attempt.
+
+### Changes made on existing PR #237
+- Branch `safety/manualize-branch-cleanup-current-main-20261031` advanced to exact head `a118f17955b4067552fea7707f63dab4ddcea2e2`.
+- `.github/workflows/branch-cleanup.yml`: immediately before each candidate deletion, re-fetch the exact ref, branch metadata, complete open-PR list, and repository metadata. Skip if the SHA changed, branch is protected, a same-repository open PR now targets the branch, or it is now the default branch.
+- `test/branch-cleanup-safety.test.mjs`: add a regression asserting all live reads and eligibility predicates occur inside the per-candidate loop before `deleteRef`.
+- `package.json` wires the safety test into the repository's existing verification path; no package dependency or external service was added.
+- Recompared against main after edits: 8 commits ahead / 0 behind; exactly three paths changed: workflow, package.json, and safety test.
+- Posted a PR comment explaining the new race finding, checks, exact head, and residual limit.
+
+### Exact-head hosted verification
+For head `a118f17955b4067552fea7707f63dab4ddcea2e2`:
+- Verify [41172422027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422027): **success**. Hosted log shows agent preflight `status: ready`, all 11 declared targets, checkpoint hash, no warnings/failures; Node `--test`, Python inspector, game package build, and institutional exercise all exited 0. No aggregate Node test count was emitted.
+- Genesis Evidence Invariant [41172422102](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422102): **success**.
+- Browser Acceptance [41172422065](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422065): still **pending/queued** at the latest poll; no jobs were returned yet. Do not claim the full required workflow set is green.
+- PR #237 metadata at the latest observation: open, draft, mergeable=true, mergeable_state=clean. It is not merged and has not been dispatched. No branch was deleted.
+
+### Residual security boundary
+- Per-candidate revalidation narrows the stale-inventory window but does **not** make deletion atomic. GitHub's delete-ref endpoint offers no compare-and-delete SHA precondition, so a final race remains between the last read and delete request. The PR comment explicitly discloses this; do not call the workflow race-free.
+- Workflow-wide `contents: write` remains, so even preview receives a write-capable token. Narrowing token scope was deliberately not attempted because it changes workflow permission boundaries; record it as a separate review item requiring explicit authorization.
+- No workflow dispatch, deletion, merge, release, deployment, permission change, secret/key operation, spending, or external publication occurred.
+
+### Next ranked actions
+1. Recheck Browser Acceptance run 41172422065 for exact head `a118f179...`; inspect journey count and artifact if it completes.
+2. Re-read the final diff and current main. If Browser Acceptance passes and no new conflict appears, the routine-maintenance proposal can move through review under the standing routine-maintenance authorization; do not dispatch cleanup or delete any branch.
+3. Keep #208 as a superseded overlapping proposal until #237's disposition is settled; then close it unmerged with a factual supersession note if appropriate.
+4. Rehydrate Worker B's latest PR #227 head/checks before any game-specific handoff. Its stacked ancestry must be reconciled by Worker B, not flattened by Worker A.
+5. Separate future least-privilege workflow-token review from this change; no permission mutation is included.
+
+### Execution boundary
+This iteration made a substantive safety change and added a targeted regression on the existing PR #237. Exact-head Verify and Genesis pass; Browser Acceptance is pending. No local execution was possible due DNS failure. Resume from the exact current head and do not repeat unchanged polls without new evidence.
