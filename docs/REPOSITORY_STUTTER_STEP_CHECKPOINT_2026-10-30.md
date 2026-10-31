@@ -1262,3 +1262,40 @@ No merge, release, deployment, CONTACT dispatch, state change, credential/permis
 5. Correct TaskAgile's stale root-agent dependency claims only after re-reading that repository's own instructions and current source; its Actions API still has no hosted runs.
 
 No merge, release, deployment, workflow dispatch, branch deletion, credential/secret/key/permission change, spending, or external publication occurred.
+
+
+## Worker A stutter-step run — 2026-10-31 00:20 UTC (CONTACT publication-gate schema hardening)
+
+### Second challenge/implementation cycle
+- After the ledger-recovery change, re-read the current CONTACT publication gate and its tests on the active PR branch. Found a separate fail-open condition: `publication_decision()` accepted a dictionary with `enabled=true` and an ALLOW Founder Gate even when the state schema was missing or wrong; `main()` also parsed JSON without the strict duplicate-key/schema reader.
+- Tightened `publication_decision()` to require `ngl.contact.state.v1` and an actual boolean `enabled`; `main()` now uses `ledger_store.load_state()`, which rejects duplicate keys, wrong schema, symlinks, invalid JSON, and non-boolean enablement. Added direct regression cases and persisted-state tests.
+- Additional commits on the same CONTACT PR #2 branch:
+  - `162740dcae5934fe9102f43d66910b49d6fa6984` — strict publication-gate schema and state loading.
+  - `eb4aff3c0926b929c8b7de5a73cacf36c609eaaf` — missing/wrong schema and non-boolean gate tests.
+  - `7985fdb06cd0ddb06f893ad86ef52c407fc0b60f` — strict state-reader duplicate-key and schema tests.
+- Current CONTACT PR #2 head: `7985fdb06cd0ddb06f893ad86ef52c407fc0b60f`; draft/open, mergeable, base remains `792b7ebe17dcb92fbbb2223d9cd8fee98d2f78c3`. A durable PR comment records both cycles and limits.
+
+### Final cross-repository reinspection
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`. Worker B PR #227 is now `f182efce2ce22a269346a54a1553900ab51f897e`; exact-head Verify [41148502363], Genesis [41148502364], and Browser Acceptance [41148502332] all passed.
+- Alpha 1 PR #203 remains `60ee0004ca6d6ef5cc587f0bf4c7a1008661cd0a`; Verify [41145548306], Genesis [41145548319], and Browser Acceptance [41145548367] passed. Its live-server/key-custody integration boundary remains unresolved as recorded above.
+- EvidenceOS PR #1 `eea29797c80bab41428476ca7ba9f519b43b742e` passed exact-head run [41125011030]; PR #2 `c19bdf9c230e1d0bd5f54ad5dea050bd33705292` passed [41084314765]. Both remain drafts; PR #2 still documents loopback-only access and no remote authentication/TLS adapter.
+- ngl-mesh PR #1 `81536604a8473b8d698aa4c5d752c7d5426dab7d` passed [41041610180] and [41041610303]; PR #3 `7847c0fd7eb334d4bed726f12703567bdff9de42` passed [41110544499] and [41110544604]. The latter still lacks full APK/RAE integration evidence.
+- Command Center PR #3 is now `0febe0167d9a1a2ad9fb468f09fabf07056520a1`; five exact-head checks [41145900837], [41145900689], [41145900705], [41145900777], [41145900703] passed. Live Node-Gate/EvidenceOS smoke test remains absent; unresolved grid asset/deprecation/build-script warnings remain.
+- TaskAgile PR #1 remains `a44660f8d5fe49abef3df28cb0237cd274847b54` with no hosted runs. Its stale root-agent dependency claims remain a documented follow-up, not changed in this run.
+
+### Verification and limits
+- Exact branch source/test contents were rehydrated after an initial local harness assembly used stale fixture text. The corrected isolated Python harness passed **22/22 tests**; runtime and publication-gate syntax compilation passed.
+- CONTACT workflow YAML parsed with PyYAML BaseLoader. Its observe job remains read-only; the write permission exists only on the separately gated publish job. Path filters include the runtime, ledger helper, gate, and both test files.
+- Existing 128-event CONTACT history remains fully digest/chain-verified; state count/hash/last-observation match the final event. Checked-in Founder Gate remains `DENY_WITHOUT_EXPLICIT_AUTHORIZATION`.
+- CONTACT Actions API still reports zero hosted workflow runs. GitHub DNS resolution prevented a local checkout; no live runtime/network observation was run. No state or ledger file was modified. No workflow dispatch or publication occurred.
+- The CONTACT helper still does not provide a local OS-level cross-process lock; its scheduled workflow is serialized by the existing concurrency group. The monitored legacy repository target remains a scope question.
+
+### Next ranked actions
+1. Resolve the intended CONTACT observation target (legacy `No-Gas-Labs-Official` repo versus current `ngl-damien` repo) before changing the endpoint.
+2. Obtain hosted exact-head CI for CONTACT PR #2 when Actions are available; keep the Founder Gate DENY and do not dispatch/publish.
+3. Decide whether local concurrent CONTACT invocations are supported; if so, add and test an OS-level lock/stale-lock policy before claiming multi-process safety.
+4. Reconcile PR #18's Ed25519 INSTALL trust anchor with PR #203's P-256 decision helper and demonstrate actual Founder key custody before live-server integration.
+5. Continue Worker B's current #227 integration without duplicating its gameplay paths.
+6. Revisit TaskAgile's stale root AGENTS claims and zero-run Actions state; separately obtain a real Command Center upstream smoke test.
+
+No merge, release, deployment, workflow dispatch, branch deletion, credential/secret/key/permission change, spending, or external publication occurred.
