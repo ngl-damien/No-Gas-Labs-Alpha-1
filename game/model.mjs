@@ -151,6 +151,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
       const report=matches[0];
       if(report.actor.id===who.id)fail('SELF_CHALLENGE','A different actor ID must challenge this report.',409);
+      if(world.events.some(e=>e?.type==='experiment-challenged'&&e.reportId===reportId&&e.actor?.id===who.id&&e.actor?.role===who.role))
+        fail('REPORT_ALREADY_CHALLENGED','You have already challenged this report. Choose another actor’s report for a new Contradiction encounter.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
       const challengeText=text(action.challengeText,1000,'Challenge text');
       const hasEvidenceId=action.evidenceCreationId!==undefined&&action.evidenceCreationId!==null;
