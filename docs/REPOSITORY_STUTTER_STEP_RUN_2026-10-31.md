@@ -318,3 +318,28 @@ This run completed an adversarial review and an exact-head game CI failure hando
 
 ### Execution boundary
 This run delivered an additional two-file source/test correction on current-main PR #236, two evidence-based PR handoffs/review comments, and a durable checkpoint update. It did not merge or deploy, did not alter credential/permission settings, did not delete branches, and did not exhaust Compute.
+
+
+## Final integration result — PR #236 merged to main (2026-10-31 UTC)
+
+- PR #236 exact head e827b98a4111babe60e7ef35c0d827d25bdeaf51 completed all three required hosted workflows:
+  - Verify #41171554446: success. Hosted log shows Node --test, Python inspector, game build, and bounded institutional exercise all exited 0; verification report passed=true.
+  - Genesis Evidence Invariant #41171554449: success.
+  - Browser Acceptance #41171554468: success. All 12 journeys passed: desktop, phone, institutional-location actions, two-session shared world, 320/360/412px phone toolbar, one-button 320/412 layouts, standalone file, standalone exact bytes, and shared restart. No journey errors. Artifact [13031337573](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41171554468/artifacts/13031337573), SHA-256 611abdc361b10e401b053bf2e1a4c17df1eedb0d788c2a37db06a3ef0a9ad0ec.
+  - The hosted Verify preflight returned status ready and failures []; its configured default target list did not include the two Forge files changed by this PR. The local portable preflight could not be run in this connector-only session. Do not claim a target-specific preflight receipt for those files. The Node test suite did run and exit 0, including the new regression tests.
+- Rechecked PR #236 before merge: current-main base 0ef6791b241d224b6647a291f039cf079f948db4, head e827b98a4111babe60e7ef35c0d827d25bdeaf51, 2 ahead / 0 behind, exactly two intended files, GitHub mergeable=true / mergeable_state=clean.
+- Marked PR #236 ready and squash-merged under Damien's standing authorization for verified, non-conflicting routine maintenance. Observed merge commit bb1aa833130b7e5399d7b84d1041b1c26c49cc16.
+- Independently fetched main afterward; main points to exactly bb1aa833130b7e5399d7b84d1041b1c26c49cc16. The merge commit lists only src/forge/runner.mjs and test/forge-runner.test.mjs.
+- PR #235 and older PR #216 were closed unmerged as superseded by #236. Their branches and historical CI evidence remain; no branch deletion occurred.
+- No deployment, release, credential/key change, permission-scope change, spending, or external publication occurred.
+
+### Remaining cross-worker items at final poll
+- Worker B PR #227 remained at bb799237ea2b58595095ae84ac52961b5685ab2d. Its latest Browser Acceptance #41170972505 still fails because #sheet-backdrop intercepts the click on the founder-challenge encounter objective; Worker B handoff comment #6539378035 contains the exact trace and suggested correction. Verify and Genesis pass on that head.
+- Draft PR #208 remains stale (7 ahead / 8 behind at the prior compare) while current main still has the automatic push-triggered branch-cleanup workflow with workflow-level contents: write. Review note #6539393187 asks for current-main reconciliation and points out preview job inherits write scope. No cleanup dispatch, branch deletion, or permission mutation occurred.
+- The connector-only environment prevented local clone/test/preflight execution. Hosted exact-head tests provide the evidence stated above; they do not retroactively create a local receipt.
+
+### Next ranked work
+1. Rehydrate after main bb1aa833... and continue from current source.
+2. Recheck Worker B PR #227 and #208 for fresh heads/comments/checks; do not assume old state.
+3. Address the branch-cleanup workflow risk only through a current-main, exact-head verified proposal and preserve the human authority boundary around destructive execution and token permission scope.
+4. Continue the institution-wide reliability audit, avoiding duplicate ownership and prioritizing real high-risk defects over status-only work.
