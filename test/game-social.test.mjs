@@ -38,6 +38,31 @@ test('Commons posts are bounded, attributed, retained and never award progressio
   assert.equal(projection.totalMessages, 1);
 });
 
+test('Commons device-local mutes hide exact actor posts only in that viewer projection and never mutate shared history', async () => {
+  let world = createWorld({ now: at(0) });
+  world = await act(world, { type: 'post-message', text: 'Visible to both players.' }, firstWitness, 1);
+  world = await act(world, { type: 'post-message', text: 'Muted only by the first player.' }, secondWitness, 2);
+  const before = structuredClone(world);
+
+  const muted = projectTownSquare(publicWorld(world, firstWitness), firstWitness, {
+    mutedAuthors: [{ id: secondWitness.id, role: secondWitness.role, name: secondWitness.name }]
+  });
+  assert.equal(muted.messages.length, 1);
+  assert.equal(muted.messages[0].text, 'Visible to both players.');
+  assert.equal(muted.messages[0].canMute, false, 'a character cannot mute itself');
+  assert.equal(muted.mutedMessageCount, 1);
+  assert.equal(muted.mutedAuthors.length, 1);
+  assert.equal(muted.totalMessages, 2);
+  assert.equal(muted.omittedMessageCount, 0);
+
+  const otherPlayer = projectTownSquare(publicWorld(world, secondWitness), secondWitness);
+  assert.equal(otherPlayer.messages.length, 2, 'another player receives the unfiltered shared feed');
+  assert.equal(otherPlayer.mutedMessageCount, 0);
+  assert.deepEqual(world, before, 'device-local preferences never append or mutate world events');
+  assert.equal(world.xp, 0);
+  await validateWorld(world);
+});
+
 test('Commons rate limit permits five posts per actor per rolling minute and rejects the sixth', async () => {
   let world = createWorld({ now: at(0) });
   for (let second = 1; second <= 5; second += 1) {
