@@ -219,7 +219,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -390,7 +390,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -405,6 +405,7 @@ function validateHistory(world) {
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
+      if (event.type.startsWith('guild-') && result.guildId !== event.guildId) throw new Error('Stored idempotency player-guild result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
@@ -490,6 +491,21 @@ function publicationCandidate(payload, world, result) {
 }
 const MAX_FOUNDER_KEY_FILE_BYTES = 1025; // 1024-byte key plus the generated trailing newline.
 
+function currentFounderKeyUid() {
+  // Standard Windows Node does not expose process.getuid(). Existing file-backed
+  // Founder keys intentionally fail closed there until an ACL-aware owner
+  // verifier exists; a missing file still follows getFounderKey's ENOENT path.
+  let getuid;
+  try { getuid = process.getuid; }
+  catch { throw new Error('Founder key owner verification is unavailable'); }
+  if (typeof getuid !== 'function') throw new Error('Founder key owner verification is unavailable');
+  let uid;
+  try { uid = getuid.call(process); }
+  catch { throw new Error('Founder key owner verification failed'); }
+  if (!Number.isSafeInteger(uid) || uid < 0) throw new Error('Founder key owner verification returned an invalid UID');
+  return uid;
+}
+
 async function readFounderKeyFile(path) {
   // A pathname alone is not a trust anchor: reject symlinks and permissive
   // files, then verify the opened descriptor still names the inspected inode.
@@ -500,7 +516,8 @@ async function readFounderKeyFile(path) {
   if ((before.mode & 0o077) !== 0) {
     throw new Error('Founder key file permissions must exclude group and other access (0600)');
   }
-  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+  const currentUid = currentFounderKeyUid();
+  if (before.uid !== currentUid) {
     throw new Error('Founder key file must be owned by the current process user');
   }
   if (before.size > MAX_FOUNDER_KEY_FILE_BYTES) {
@@ -518,7 +535,7 @@ async function readFounderKeyFile(path) {
     if ((opened.mode & 0o077) !== 0) {
       throw new Error('Founder key file permissions must exclude group and other access (0600)');
     }
-    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) {
+    if (opened.uid !== currentUid) {
       throw new Error('Founder key file must be owned by the current process user');
     }
     if (opened.size > MAX_FOUNDER_KEY_FILE_BYTES) {

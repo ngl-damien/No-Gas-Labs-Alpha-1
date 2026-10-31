@@ -384,6 +384,38 @@ test('the direct CLI starts the HTTP service and releases its exclusive writer l
 });
 
 
+test('existing Founder key files fail closed when UID verification is missing, throws, or returns an invalid value', async t => {
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });"],
+    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });"],
+    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });"]
+  ];
+  for (const [label, override] of cases) {
+    const dataDir = await mkdtemp(join(tmpdir(), `ngl-key-owner-${label}-`));
+    t.after(() => rm(dataDir, { recursive: true, force: true }));
+    const keyPath = join(dataDir, 'founder.key');
+    await writeFile(keyPath, KEY + '\\n');
+    await chmod(keyPath, 0o600);
+    const preload = join(dataDir, 'uid-override.mjs');
+    await writeFile(preload, override + '\\n');
+    const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir };
+    delete env.NGL_FOUNDER_KEY;
+    const child = spawn(process.execPath, ['--import', preload, 'game/server.mjs'], {
+      cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+    const [code, signal] = await once(child, 'exit');
+    clearTimeout(timeout);
+    assert.equal(signal, null, `${label} UID lookup must fail before the server starts: ${output}`);
+    assert.equal(code, 1, `${label} UID lookup must fail startup: ${output}`);
+    assert.match(output, /Local world startup failed/);
+    assert.equal(await readFile(keyPath, 'utf8'), KEY + '\\n', 'The existing key must not be replaced or regenerated');
+  }
+});
+
 test('the host CSP permits authored srcdoc instrument scripts while its iframe remains opaque', async t => {
   const f = await fixture(t); const guest = f.client(); const page = await guest.request('/');
   assert.equal(page.response.status, 200);
@@ -1429,4 +1461,19 @@ test('shared player guilds reconcile across independent sessions with idempotent
     'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
   ]);
   assert.equal(finalState.body.world.xp, baselineXp);
+
+  // The same event history must remain valid after a full service restart.
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+    const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
+    assert.deepEqual(restoredState.world.events.map(event => event.type), [
+      'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+    ]);
+    assert.equal(projectPlayerGuilds(restoredState.world).history[0].status, 'disbanded');
+    assert.equal(restoredState.world.xp, baselineXp);
+  } finally {
+    await restarted.closeGame();
+  }
 });
