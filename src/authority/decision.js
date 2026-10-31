@@ -147,7 +147,8 @@ function isDecisionPayload(payload) {
     isIdentifier(payload.proposal_id) &&
     isIdentifier(payload.quest_id) &&
     isIdentifier(payload.audience) &&
-    isScope(payload.capabilities) && isScope(payload.outputs) && isScope(payload.acceptance) &&
+    isScope(payload.capabilities) && payload.capabilities.length === 1 &&
+    isScope(payload.outputs) && isScope(payload.acceptance) &&
     isCanonicalUtcTimestamp(payload.expires_at);
 }
 
