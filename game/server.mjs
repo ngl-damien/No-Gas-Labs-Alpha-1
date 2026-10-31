@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import {FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
+import {COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,COMMONS_DISPOSITIONS} from './social.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
@@ -29,7 +30,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'collaborator-world-objects', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'social', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'collaborator-world-objects', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']],
@@ -47,7 +48,10 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId']
+  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
+  'post-message': ['type', 'text', 'requestId'],
+  'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
+  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -152,6 +156,19 @@ function preflightAction(input) {
       break;
     case 'unequip-field-item':
       if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
+      break;
+    case 'post-message':
+      preflightText(input.text, COMMONS_MESSAGE_LIMIT, 'Message', { required: true });
+      break;
+    case 'report-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded report reason.');
+      preflightText(input.details, 500, 'Report details', { required: true });
+      break;
+    case 'moderate-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_DISPOSITIONS.includes(input.disposition)) fail('INVALID_MESSAGE_DISPOSITION', 'Choose hide or restore.');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded moderation reason.');
       break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
@@ -876,7 +893,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       if (path === '/api/action') preflightAction(input);
       if (path === '/api/presence') preflightPresence(input);
       if (path === '/api/logout') exact(input, []);
-      const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
+      const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair', 'moderate-message'].includes(input.type);
       const founderOnlyRoute = path === '/api/launch' || founderOnlyAction || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
