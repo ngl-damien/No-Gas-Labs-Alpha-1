@@ -12,7 +12,8 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
-const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+const MAX_FIELD_EQUIPMENT_CHOICES = 100;
+export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({
     id: 'provenance', label: 'Receipt Buckler', kinds: Object.freeze(['published-artifact']),
     description: 'A version-matched publication receipt. It identifies retained bytes, not truth.'
@@ -599,70 +600,61 @@ export function projectCharacter(world, viewer, options = null) {
     satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(entry => entry.item)
   );
 
-  // Field equipment is an automatically selected, read-only loadout. Each
-  // slot points to the newest qualifying retained activity for this actor;
-  // it creates no item event, ownership, combat statistic, approval or XP.
-  // Sources are selected from the full bounded scan, not only the 100 visible
-  // satchel cards, so older evidence does not silently unequip a field practice.
-  const publicationEquipmentEntries = mine(retainedPublications, viewer).flatMap(event => {
-    const version = retainedVersions.get(versionKey(event.creationId, event.version));
-    if (!version || !Number.isInteger(positionByEvent.get(event))) return [];
-    return [{
-      position: positionByEvent.get(event),
-      item: Object.freeze({
-        id: 'published-artifact:' + event.id,
-        eventId: event.id,
-        kind: 'published-artifact',
-        title: 'Published artifact · ' + creationTitle(event.creationId),
-        at: event.at,
-        status: 'version retained · content not verified',
-        summary: 'This exact published version is retained. Its receipt identifies bytes only.',
-        sourceCreationId: event.creationId,
-        sourceVersion: event.version,
-        locationId: null,
-        receipt: Object.freeze({
-          digest: version.receipt.digest,
-          size: version.receipt.size
-        }),
-        action: Object.freeze({
-          type: 'creation',
-          id: event.creationId,
-          version: event.version
-        })
-      })
-    }];
-  });
-  // satchelEntries is already sorted by descending append position. Select
-  // its first source per kind, then scan publication sources once; avoid a
-  // second full sort when a long Chronicle contains many retained records.
-  const latestEquipmentSourceByKind = new Map();
-  for (const entry of satchelEntries) {
-    if (!latestEquipmentSourceByKind.has(entry.item.kind)) {
-      latestEquipmentSourceByKind.set(entry.item.kind, entry);
-    }
+  // A loadout is a player choice among retained, actor-owned source events.
+  // It never creates an item, verifies a claim, grants authority, or awards XP.
+  const publicationEntriesNewestFirst = publicationEquipmentEntries.slice().reverse();
+  const equipmentCandidatesBySlot = new Map();
+  const candidateBySlotAndEventId = new Map();
+  for (const slot of FIELD_EQUIPMENT_SLOTS) {
+    const sourceEntries = slot.kinds.includes('published-artifact') ? publicationEntriesNewestFirst : satchelEntries;
+    const eligibleEntries = sourceEntries.filter(entry => slot.kinds.includes(entry.item.kind) &&
+      typeof entry.item.eventId === 'string' && entry.item.eventId.length > 0);
+    equipmentCandidatesBySlot.set(slot.id, eligibleEntries);
+    const byEventId = new Map();
+    for (const entry of eligibleEntries) if (!byEventId.has(entry.item.eventId)) byEventId.set(entry.item.eventId, entry);
+    candidateBySlotAndEventId.set(slot.id, byEventId);
   }
-  for (const entry of publicationEquipmentEntries) {
-    const current = latestEquipmentSourceByKind.get('published-artifact');
-    if (!current || entry.position > current.position ||
-        (entry.position === current.position && entry.item.id.localeCompare(current.item.id) < 0)) {
-      latestEquipmentSourceByKind.set('published-artifact', entry);
+  const latestSelectionBySlot = new Map();
+  for (const event of events) {
+    if (event?.type !== 'field-item-equipped' || event.actor?.id !== viewer?.id ||
+        event.actor?.role !== viewer?.role || !Object.hasOwn(event, 'sourceEventId') ||
+        !(event.sourceEventId === null || (typeof event.sourceEventId === 'string' &&
+          event.sourceEventId.length > 0 && event.sourceEventId.length <= 128 &&
+          event.sourceEventId.trim() === event.sourceEventId))) continue;
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+    const eventPosition = positionByEvent.get(event);
+    if (!slot || !Number.isInteger(eventPosition)) continue;
+    if (event.sourceEventId !== null) {
+      const candidate = candidateBySlotAndEventId.get(slot.id)?.get(event.sourceEventId);
+      if (!candidate || candidate.position >= eventPosition) continue;
     }
+    latestSelectionBySlot.set(slot.id, { sourceEventId: event.sourceEventId, position: eventPosition });
   }
   const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
-    let selected = null;
-    for (const kind of slot.kinds) {
-      const candidate = latestEquipmentSourceByKind.get(kind);
-      if (candidate && (!selected || candidate.position > selected.position ||
-          (candidate.position === selected.position && candidate.item.id.localeCompare(selected.item.id) < 0))) {
-        selected = candidate;
-      }
+    const eligibleEntries = equipmentCandidatesBySlot.get(slot.id) || [];
+    const automatic = eligibleEntries[0] || null;
+    const selection = latestSelectionBySlot.get(slot.id) || null;
+    const byEventId = candidateBySlotAndEventId.get(slot.id);
+    let selected = automatic;
+    if (selection && selection.sourceEventId !== null) selected = byEventId?.get(selection.sourceEventId) || automatic;
+    const choices = eligibleEntries.slice(0, MAX_FIELD_EQUIPMENT_CHOICES);
+    if (selected && !choices.some(entry => entry.item.eventId === selected.item.eventId)) choices.push(selected);
+    const uniqueChoices = [];
+    const seenChoiceIds = new Set();
+    for (const entry of choices) {
+      if (seenChoiceIds.has(entry.item.eventId)) continue;
+      seenChoiceIds.add(entry.item.eventId);
+      uniqueChoices.push(entry.item);
     }
+    const pinned = Boolean(selection && selection.sourceEventId !== null &&
+      selected?.item.eventId === selection.sourceEventId);
     return Object.freeze({
-      id: slot.id,
-      label: slot.label,
-      description: slot.description,
+      id: slot.id, label: slot.label, description: slot.description,
       status: selected ? 'record-backed' : 'empty',
-      source: selected?.item ?? null
+      mode: pinned ? 'pinned' : 'automatic',
+      source: selected?.item ?? null,
+      choices: Object.freeze(uniqueChoices),
+      choicesOmittedCount: Math.max(0, eligibleEntries.length - uniqueChoices.length)
     });
   }));
 

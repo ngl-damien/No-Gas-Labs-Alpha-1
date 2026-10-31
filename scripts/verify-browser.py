@@ -653,6 +653,28 @@ def shared(browser,url,data,out):
         expect(adversarial_slot).to_contain_text('Contradiction Ward')
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
         expect(adversarial_slot.get_by_role('button',name='Inspect source →',exact=True)).to_have_count(1)
+        source_choice=adversarial_slot.locator('select[data-equipment-choice="adversarial"]')
+        expect(source_choice).to_have_count(1)
+        selected_source_id=source_choice.input_value()
+        assert selected_source_id, 'The retained challenge must be selectable as field equipment'
+        before_loadout=owner.request.get(url+'api/state').json()
+        before_revision=before_loadout['world']['revision']
+        before_xp=before_loadout['world']['xp']
+        adversarial_slot.get_by_role('button',name='Pin selected source',exact=True).click()
+        expect(adversarial_slot).to_contain_text('PINNED')
+        pinned_state=owner.request.get(url+'api/state').json()
+        assert pinned_state['world']['revision']==before_revision+1
+        assert pinned_state['world']['xp']==before_xp, 'Equipping a retained source must not award XP'
+        loadout_events=[event for event in pinned_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('role')=='founder']
+        assert loadout_events and loadout_events[-1]['slotId']=='adversarial' and loadout_events[-1]['sourceEventId']==selected_source_id
+        close_sheet(a)
+        a.locator('#character-button').click()
+        adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
+        expect(adversarial_slot).to_contain_text('PINNED')
+        adversarial_slot.get_by_role('button',name='Use newest source',exact=True).click()
+        expect(adversarial_slot).to_contain_text('AUTOMATIC')
+        reset_state=owner.request.get(url+'api/state').json()
+        assert reset_state['world']['xp']==before_xp
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
         dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)

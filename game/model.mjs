@@ -2,10 +2,12 @@ import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 const encoder=new TextEncoder();
 const kinds=new Set(['comic','loom','observatory','custom']);
 const challengeTypes=new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
 const knownPlaces=new Set(['relay','river','overlook','ruins']);
+const equipmentSourceEventTypes=Object.freeze({provenance:['publish'],scouting:['discover'],observation:['contribute','report'],learning:['study','study-reviewed'],research:['moonshot-proposed','experiment-reported'],adversarial:['experiment-challenged'],collaboration:['collaborator-response-recorded'],restoration:['publish']});
 const slots=[{x:540,y:610},{x:480,y:395},{x:1120,y:560},{x:1190,y:390},{x:1050,y:830},{x:380,y:800},{x:650,y:825},{x:1450,y:590},{x:270,y:310},{x:1400,y:180},{x:1100,y:190},{x:530,y:180}];
 const clone=value=>structuredClone(value);
 const uid=prefix=>`${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -188,6 +190,23 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       recordEvent('collaborator-response-recorded',{responseId,role,moonshotId,sourceEventIds,packetJson:packet.packetJson,packetReceipt,responseText:action.responseText,responseReceipt,validationStatus:checked.status,validationReason:checked.reason,validator:'ngl.collaborator-response.v1'});
       break;
     }
+    case 'equip-field-item':{
+      const slotId=text(action.slotId,32,'Equipment slot');
+      const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
+      if(!slot||action.slotId!==slotId)fail('INVALID_EQUIPMENT_SLOT','Choose a known field-equipment slot.');
+      if(!Object.hasOwn(action,'sourceEventId')||!(action.sourceEventId===null||(typeof action.sourceEventId==='string'&&action.sourceEventId.length>0&&action.sourceEventId.length<=128&&action.sourceEventId.trim()===action.sourceEventId)))fail('INVALID_EQUIPMENT_SOURCE','Choose a retained source or null for automatic selection.');
+      const sourceEventId=action.sourceEventId;
+      if(sourceEventId!==null){
+        const record=projectCharacter(original,who);
+        const equipment=record.equipment.find(candidate=>candidate.id===slotId);
+        if(!equipment?.choices.some(candidate=>candidate.eventId===sourceEventId))fail('INVALID_EQUIPMENT_SOURCE','That source is not an eligible item in this actor’s field kit.',409);
+        const source=original.events.find(candidate=>candidate?.id===sourceEventId);
+        if(!source||source.actor?.id!==who.id||source.actor?.role!==who.role)fail('INVALID_EQUIPMENT_SOURCE','That source is not owned by this actor.',409);
+      }
+      result={slotId,sourceEventId};
+      recordEvent('field-item-equipped',{slotId,sourceEventId});
+      break;
+    }
     case 'discover':{
       if(!knownPlaces.has(action.locationId))fail('INVALID_LOCATION','That place is not on this map.');
       if(world.discoveries.some(d=>d.actor.id===who.id&&d.locationId===action.locationId)){result={discovered:false};recordEvent('discover',{locationId:action.locationId,repeat:true});break;}
@@ -225,7 +244,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-equipped':'slotId,sourceEventId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=publicationsByVersion.get(historyKey(version.id,version.version))||[];if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
   for(const e of raw.events)if(e.type==='moonshot-proposed'){
@@ -365,6 +384,34 @@ export async function validateWorld(raw) {
       if(!source||eventPositions.get(source)>=packetIndex||record?.eventId!==source.id||record?.type!==source.type||record?.at!==source.at||
          record?.actor?.id!==source.actor?.id||record?.actor?.role!==source.actor?.role||record?.moonshotId!==source.moonshotId||source.moonshotId!==e.moonshotId)
         invalid('Collaborator packet source reference is not an earlier matching world event.');
+    }
+  }
+  const allowedFieldEquipmentKeys=new Set(['id','type','actor','at','semantics','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];if(e.type!=='field-item-equipped')continue;
+    if(Object.keys(e).some(key=>!allowedFieldEquipmentKeys.has(key)))invalid('Field-equipment event contains unsupported canonical fields.');
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===e.slotId);
+    if(!slot||!Object.hasOwn(e,'sourceEventId')||!(e.sourceEventId===null||(typeof e.sourceEventId==='string'&&e.sourceEventId.length>0&&e.sourceEventId.length<=128&&e.sourceEventId.trim()===e.sourceEventId)))invalid('Malformed field-equipment selection.');
+    if(e.sourceEventId===null)continue;
+    const source=eventById.get(e.sourceEventId),sourceIndex=source?eventPositions.get(source):-1;
+    if(!source||!Number.isInteger(sourceIndex)||sourceIndex>=index||
+       source.actor?.id!==e.actor?.id||source.actor?.role!==e.actor?.role||
+       !equipmentSourceEventTypes[e.slotId]?.includes(source.type))invalid('Field-equipment selection must reference an earlier source owned by the same actor and compatible with the slot.');
+    if(e.slotId==='scouting'){
+      const matches=raw.discoveries.filter(record=>record.actor?.id===source.actor.id&&record.actor?.role===source.actor.role&&record.locationId===source.locationId&&record.at===source.at);
+      if(source.repeat===true||matches.length!==1)invalid('Field-equipment scouting source is not a unique retained discovery.');
+    }
+    if(e.slotId==='observation'){
+      const records=source.type==='report'?raw.reports:raw.contributions;
+      const matches=records.filter(record=>record.actor?.id===source.actor.id&&record.actor?.role===source.actor.role&&record.creationId===source.creationId&&record.version===source.version&&record.at===source.at);
+      const publications=publicationsByVersion.get(historyKey(source.creationId,source.version))||[];
+      if(matches.length!==1||publications.length!==1||eventPositions.get(publications[0])>=sourceIndex||Date.parse(publications[0].at)>Date.parse(source.at))invalid('Field-equipment observation source is not uniquely linked to an earlier retained publication.');
+    }
+    if(e.slotId==='restoration'){
+      if(!Number.isSafeInteger(source.version)||source.version<2||typeof source.creationId!=='string'||!source.creationId)invalid('Field-equipment restoration source must be a retained repaired publication.');
+      const methods=raw.methods.filter(method=>method.actor?.id===source.actor.id&&method.actor?.role===source.actor.role&&method.creationId===source.creationId&&method.version===source.version&&method.at===source.at);
+      const repairs=raw.events.slice(0,sourceIndex).filter(repair=>repair.type==='repair'&&repair.actor?.id===source.actor.id&&repair.actor?.role===source.actor.role&&repair.creationId===source.creationId&&repair.baseVersion===source.version-1&&Date.parse(repair.at)<=Date.parse(source.at));
+      if(methods.length!==1||repairs.length!==1)invalid('Field-equipment restoration source lacks one matching repair and method record.');
     }
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))invalid('Malformed attributed note.');}

@@ -5,6 +5,7 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import {FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
@@ -42,7 +43,7 @@ const exact = (value, fields) => {
 const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
-  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'],
+  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
@@ -145,6 +146,10 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'equip-field-item':
+      if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
+      if (!Object.hasOwn(input, 'sourceEventId') || !(input.sourceEventId === null || (typeof input.sourceEventId === 'string' && input.sourceEventId.length > 0 && input.sourceEventId.length <= 128 && input.sourceEventId.trim() === input.sourceEventId))) fail('INVALID_EQUIPMENT_SOURCE', 'Choose a retained source or null for automatic selection.');
+      break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;

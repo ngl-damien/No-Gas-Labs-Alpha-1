@@ -1218,3 +1218,38 @@ test('offline shell precaches and serves every module in the playable Guild Hall
   assert.equal(stylesheet.response.status, 200);
   assert.match(stylesheet.response.headers.get('content-type') || '', /text\/css/);
 });
+
+
+test('field loadout writes an idempotent actor-owned event without awarding XP',async t=>{
+  const f=await fixture(t);
+  const founderClient=f.client();await founderClient.login();await publish(founderClient);
+  const witnessClient=f.client();
+  const before=(await witnessClient.request('/api/state')).body;
+  const witnessId=before.viewer.id;
+  const publicationEvent=before.world.events.find(event=>event.type==='publish');
+  assert.ok(publicationEvent);
+  const cannotEquipFounderSource=await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'provenance',sourceEventId:publicationEvent.id});
+  assert.equal(cannotEquipFounderSource.response.status,409);
+
+  const discovery=await witnessClient.request('/api/action',{type:'discover',locationId:'river',requestId:'field-loadout-discovery'});
+  assert.equal(discovery.response.status,200,JSON.stringify(discovery.body));
+  const afterDiscovery=(await witnessClient.request('/api/state')).body;
+  const source=afterDiscovery.world.events.find(event=>event.type==='discover'&&event.locationId==='river'&&event.actor.id===witnessId);
+  assert.ok(source,'the Witness must select their own retained discovery event');
+  const action={type:'equip-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'field-loadout-equip'};
+  const equipped=await witnessClient.request('/api/action',action);
+  assert.equal(equipped.response.status,200,JSON.stringify(equipped.body));
+  assert.deepEqual(equipped.body.result,{slotId:'scouting',sourceEventId:source.id});
+  assert.equal(equipped.body.world.xp,before.world.xp,'equipment selection cannot award XP');
+  assert.equal(equipped.body.world.revision,before.world.revision+2,'discovery and equip are distinct retained actions');
+  assert.equal(equipped.body.world.events.filter(event=>event.type==='field-item-equipped').length,1);
+  assert.equal(equipped.body.world.events.at(-1).actor.id,witnessId);
+
+  const retry=await witnessClient.request('/api/action',action);
+  assert.equal(retry.response.status,200);
+  assert.equal(retry.body.world.events.filter(event=>event.type==='field-item-equipped').length,1,'same request ID cannot duplicate the loadout event');
+  const founderCannotEquipWitnessSource=await founderClient.request('/api/action',{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id});
+  assert.equal(founderCannotEquipWitnessSource.response.status,409);
+  assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'not-a-slot',sourceEventId:null})).response.status,400);
+  assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
+});

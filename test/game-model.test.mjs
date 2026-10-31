@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {projectCharacter} from '../game/character-sheet.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -135,4 +136,53 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+
+test('field loadout choices are actor-owned, append-only, reversible, and XP-neutral',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const firstSource=discovered.world.events.find(event=>event.type==='discover'&&event.locationId==='river');
+  const pinned=await applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:firstSource.id},witness,{now,requestId:'field-equip-river',actionFingerprint:'a'.repeat(64)});
+  assert.equal(pinned.world.events.at(-1).type,'field-item-equipped');
+  assert.deepEqual(pinned.result,{slotId:'scouting',sourceEventId:firstSource.id});
+  assert.equal(pinned.world.xp,0,'equipping cannot award XP');
+  assert.doesNotThrow(()=>validateWorld(pinned.world));
+  let slot=projectCharacter(pinned.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'pinned');
+  assert.equal(slot.source.eventId,firstSource.id);
+  assert.ok(Object.isFrozen(slot.choices));
+
+  const later=await applyAction(pinned.world,{type:'discover',locationId:'relay'},witness,{now});
+  const secondSource=later.world.events.find(event=>event.type==='discover'&&event.locationId==='relay');
+  slot=projectCharacter(later.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.source.eventId,firstSource.id,'a pinned source survives newer qualifying activity');
+  assert.equal(slot.mode,'pinned');
+
+  const reset=await applyAction(later.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now});
+  slot=projectCharacter(reset.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'automatic');
+  assert.equal(slot.source.eventId,secondSource.id,'reset returns to the newest qualifying source');
+  assert.equal(reset.world.xp,0);
+  assert.doesNotThrow(()=>validateWorld(reset.world));
+});
+
+test('field loadout rejects wrong slots, missing sources, cross-actor sources, and forged imported references',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const source=discovered.world.events.find(event=>event.type==='discover');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'unknown',sourceEventId:null},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SLOT');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting'},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  const pinned=await applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now,requestId:'field-equip-tamper',actionFingerprint:'b'.repeat(64)});
+  const forged=structuredClone(pinned.world);
+  forged.events.at(-1).sourceEventId='missing-source';
+  forged.events.at(-1).actionResult.sourceEventId='missing-source';
+  assert.throws(()=>validateWorld(forged),error=>error.code==='INVALID_WORLD');
+  const forgedSlot=structuredClone(pinned.world);
+  forgedSlot.events.at(-1).slotId='provenance';
+  forgedSlot.events.at(-1).actionResult.slotId='provenance';
+  assert.throws(()=>validateWorld(forgedSlot),error=>error.code==='INVALID_WORLD');
+  const forgedActor=structuredClone(pinned.world);
+  forgedActor.events.at(-1).actor={...founder};
+  assert.throws(()=>validateWorld(forgedActor),error=>error.code==='INVALID_WORLD');
 });
