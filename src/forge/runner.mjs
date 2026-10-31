@@ -113,6 +113,8 @@ function validate(options) {
       if (!safePath(path) || path !== TARGET) throw new Error(`Overlay path is not allowlisted: ${path}`);
       const candidateSource = overlayInput[path];
       if (typeof candidateSource !== 'string' || Buffer.byteLength(candidateSource) > 65536) throw new Error('Overlay must contain at most 65536 UTF8 source bytes');
+      const credentialRule = credentialContentRule(Buffer.from(candidateSource, 'utf8'));
+      if (credentialRule) throw new Error(`Credential-like content detected in candidate overlay: ${path} (${credentialRule}); remove it before Forge execution`);
       overlay[path] = candidateSource;
     }
     return { id: candidateInput.id, overlay };
