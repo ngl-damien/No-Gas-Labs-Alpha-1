@@ -432,7 +432,7 @@ test('Founder data directory requires UID verification when a provided key bypas
     const dataDir = await mkdtemp(join(tmpdir(), `ngl-provided-key-owner-${label}-`));
     t.after(() => rm(dataDir, { recursive: true, force: true }));
     const preload = join(dataDir, 'uid-override.mjs');
-    await writeFile(preload, override + '\\n');
+    await writeFile(preload, override + '\n');
     const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY };
     const probe = "import { createGameServer } from './game/server.mjs'; try { const server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR, founderKey: process.env.NGL_FOUNDER_KEY }); await server.closeGame(); process.exitCode = 0; } catch (error) { console.error(error.message); process.exitCode = 1; }";
     const child = spawn(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
