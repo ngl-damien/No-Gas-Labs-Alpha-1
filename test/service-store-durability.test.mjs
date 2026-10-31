@@ -764,3 +764,93 @@ test('service-store close preserves a replacement lock even when its metadata is
   assert.deepEqual(await readFile(lockPath), originalBytes);
   assert.equal((await lstat(movedOriginal)).ino, original.ino, 'the original lease inode remains available for inspection');
 });
+
+
+test('service-store refuses commits after the published writer lock pathname is replaced', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lost-lease-before-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const originalBytes = await readFile(lockPath);
+  const original = await lstat(lockPath);
+
+  await rename(lockPath, movedOriginal);
+  await writeFile(lockPath, originalBytes, { mode: 0o600 });
+  const replacement = await lstat(lockPath);
+  assert.notEqual(replacement.ino, original.ino, 'replacement must have a different inode');
+  assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the original metadata');
+
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.throws(
+    () => store.value,
+    error => error.code === 'SERVICE_LOCK_CHANGED',
+    'a store that lost its writer lease must not expose a possibly stale projection'
+  );
+  const retained = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.equal(retained.payload.revision, 0, 'a lost writer must not persist a new revision');
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  await store.close();
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock');
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED',
+    'the replacement lock must continue to exclude another writer'
+  );
+});
+
+test('service-store marks a commit uncertain when the writer lease is replaced during atomic rename', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lost-lease-during-rename-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let replacement;
+  const store = await createServiceStore({
+    dataDir,
+    initial: { revision: 0 },
+    validate,
+    renameFile: async (pending, target) => {
+      const originalBytes = await readFile(lockPath);
+      await rename(lockPath, movedOriginal);
+      await writeFile(lockPath, originalBytes, { mode: 0o600 });
+      replacement = await lstat(lockPath);
+      await rename(pending, target);
+    }
+  });
+
+  await assert.rejects(
+    store.commit({ revision: 1 }),
+    error => error.code === 'COMMIT_LEASE_LOST' && error.status === 503
+  );
+  assert.throws(
+    () => store.value,
+    error => error.code === 'COMMIT_LEASE_LOST',
+    'a renamed envelope with a lost lease must not be exposed as a confirmed commit'
+  );
+  const onDisk = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.equal(onDisk.payload.revision, 1, 'the atomic rename may have committed before lease loss was detected');
+  await assert.rejects(
+    store.commit({ revision: 2 }),
+    error => error.code === 'COMMIT_LEASE_LOST'
+  );
+
+  await store.close();
+  const afterClose = await lstat(lockPath);
+  assert.equal(afterClose.ino, replacement.ino, 'close must preserve the replacement lock after an uncertain commit');
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate }),
+    error => error.code === 'SERVICE_LOCKED',
+    'no successor may open while the replacement lock remains'
+  );
+});
