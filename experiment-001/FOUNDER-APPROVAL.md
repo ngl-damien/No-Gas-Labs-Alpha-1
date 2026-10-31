@@ -24,7 +24,7 @@ NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-64-character-hex-fingerpr
 
 The signer re-reads and revalidates the proposal and refuses a digest mismatch. The resulting JSON receipt contains `proposalDigest`, `keyFingerprint` and `signature`. The ledger's `commit(decision, signature)` expects the detached `signature` string, not the whole receipt. Compare the digest again before passing that signature to the ledger.
 
-The signer rejects malformed/expired proposals, unknown or invalid strategies, a non-Ed25519 key, an absent/malformed trust pin, a fingerprint mismatch, oversized/non-regular files, and group/world-readable private-key files on POSIX. It never writes to the ledger, installs a capability, deploys code, or awards XP.
+The signer rejects malformed/expired proposals, unknown or invalid strategies, a non-Ed25519 key, an absent/malformed trust pin, a fingerprint mismatch, oversized/non-regular files, and group/world-readable private-key files on POSIX. It also fails closed if the runtime cannot verify current-process ownership of the private-key file (`FOUNDER_KEY_OWNER_VERIFICATION_UNAVAILABLE`). Standard Windows Node does not expose `process.getuid()`, so this file-based signer is intentionally unavailable there until an ACL-aware ownership verifier exists. It never writes to the ledger, installs a capability, deploys code, or awards XP.
 
 ## Security boundary and limits
 
