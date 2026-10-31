@@ -771,3 +771,14 @@ PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173
 - Browser job #124456528731 passed all 12 journeys, including desktop, phone, institutional actions, two-session shared world, mobile widths, one-button layouts, exact-byte standalone checks, and shared restart. Artifact #13031737646: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173616025/artifacts/13031737646 (archive SHA-256 `869ee93d44ccc56a855d8d3f97f42a3bb3a17e2036d2f84d75360e27a5645858`).
 - The merged workflow source still declares `contents: write` / `pull-requests: read`, despite having no Git-ref mutation calls. This remains a least-privilege mismatch to address through a separately authorized permission change; this continuation did not change permissions.
 - This post-merge evidence supersedes any earlier statement that PR #237 had not been integrated or that its post-merge checks were unknown.
+
+
+## Mainline event — PR #237 merged; redundant PR #208 retired (2026-10-31 UTC)
+
+- Re-read root AGENTS.md and the complete shared protocol after observing main advance; then rehydrated the current checkpoint and Worker B's bootstrap checkpoint.
+- Current main is 93bc9157dca95f7d4f552a88e8570823b30c11aa, which GitHub reports as PR #237's merge commit. PR #237 is closed/merged. Its exact-head checks were all green before merge: Verify #41173118283, Genesis #41173118308, Browser Acceptance #41173118285 (12/12 journeys). The current main workflow is manual workflow_dispatch, has one preview job, and contains no deleteRef/createRef/updateRef calls.
+- The workflow still declares contents: write / pull-requests: read. This least-privilege issue remains; no permission change was made. No post-merge workflow runs were returned for the merge commit, so only exact PR-head checks are claimed.
+- Rechecked PR #208 against current main. Its two-file diff still contains a delete job gated by typed confirmation; current main has replaced the whole deletion capability with read-only preview. The old proposal is superseded, and the 80 manifest refs had all been absent in the latest paginated inventory. Added closure comment #6539704359 and closed PR #208 as superseded. Its branch and discussion were not deleted; no branch refs were removed.
+- Current open branch drift after merge: PR #238 is 6 ahead / 1 behind; PR #239 is 1 ahead / 1 behind; PR #227 remains stacked and 151 ahead / 10 behind. Added current-main rehydration handoffs #6539710485, #6539710813, and #6539711206 respectively.
+- PR #238 remains all-green on prior exact head 0cac61b..., but preflight target list still omits the Forge source/test paths. PR #239 remains green documentation audit. PR #227 remains Worker B's stacked game integration.
+- No merge was performed by Worker A. PR #237 merge was independently observed in GitHub. No permissions, secrets, Founder keys, or release/deployment state were changed. No branch deletion was performed.
