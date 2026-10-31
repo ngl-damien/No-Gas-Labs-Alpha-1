@@ -12,8 +12,18 @@ function checkPermissions(stat, label, { requirePrivatePermissions, requireCurre
   if (requirePrivatePermissions && process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
     fail('FOUNDER_KEY_PERMISSIONS_TOO_BROAD');
   }
-  if (requireCurrentUserOwnership && typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-    fail(`${label}_OWNER_MISMATCH`);
+  if (requireCurrentUserOwnership) {
+    let currentUid;
+    try {
+      const getuid = process.getuid;
+      if (typeof getuid !== 'function') fail(label + '_OWNER_VERIFICATION_UNAVAILABLE');
+      currentUid = getuid();
+    } catch (error) {
+      if (error?.message === label + '_OWNER_VERIFICATION_UNAVAILABLE') throw error;
+      fail(label + '_OWNER_VERIFICATION_FAILED');
+    }
+    if (!Number.isSafeInteger(currentUid) || currentUid < 0) fail(label + '_OWNER_VERIFICATION_FAILED');
+    if (stat.uid !== currentUid) fail(label + '_OWNER_MISMATCH');
   }
 }
 
