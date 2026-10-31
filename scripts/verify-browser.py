@@ -421,6 +421,31 @@ def institutional_locations(browser,url,out):
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
         close_sheet(page)
+
+        # Guild Hall now joins the retained Moonshot, self-reported attempt and
+        # exact Relay folio in one read-only in-world dossier.
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        docket=page.locator('#guild-expedition-docket')
+        expect(docket).to_be_visible()
+        expect(docket).to_contain_text('Can this claim be falsified?')
+        expect(docket).to_contain_text('SELF-REPORTED · NOT ADJUDICATED · CONTRADICTS')
+        expect(docket).to_contain_text('RELAY FOLIOS · 1 RETAINED')
+        expect(docket).to_contain_text('Adversary · STRUCTURE VALID · HUMAN REVIEW ONLY')
+        expect(docket.locator('[data-expedition-docket-id]')).to_have_count(1)
+        expect(docket.get_by_role('button',name='Open Decision Chamber →',exact=True)).to_have_count(0)
+        expect(docket).to_contain_text('Decision Chamber is not connected in this private world.')
+        docket_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp}}")
+        docket_response=docket.get_by_role('button',name='Inspect retained folio →',exact=True)
+        expect(docket_response).to_be_visible()
+        docket_response.click()
+        page.wait_for_function("(id)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&Array.from(sheet.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id&&card===document.activeElement)}",arg=response_id)
+        expect(page.locator('[data-collaborator-response-id="'+response_id+'"]')).to_be_focused()
+        docket_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp}}")
+        assert docket_after==docket_before, 'Opening a retained dossier or folio must not create events, revision or XP'
+        close_sheet(page)
+
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
         attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
@@ -787,6 +812,29 @@ def shared(browser,url,data,out):
             a.locator('#founder-key').fill(KEY)
             a.locator('#verify-founder').click()
             a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
+
+        # The Guild Hall dossier routes to the existing human gate; navigation
+        # must not create a decision, policy, world event, or XP.
+        decision_before=owner.request.get(url+'api/state').json()['world']
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        shared_docket=a.locator('#guild-expedition-docket')
+        expect(shared_docket).to_contain_text('Can the shared observation be reproduced?')
+        expect(shared_docket.locator('[data-expedition-docket-id]')).to_have_count(2)
+        decision_link=shared_docket.get_by_role('button',name='Open Decision Chamber →',exact=True).first
+        expect(decision_link).to_be_visible()
+        decision_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
+        expect(a.locator('#sheet-content')).to_contain_text('FOUNDER GATE')
+        expect(a.locator('#sheet-content')).to_contain_text('No operational review policy is activated.')
+        decision_snapshot=owner.request.get(url+'api/decisions').json()
+        assert decision_snapshot['policy'] is None and decision_snapshot['decisions']==[], 'Opening the Decision Chamber must not create a policy or decision'
+        decision_after=owner.request.get(url+'api/state').json()['world']
+        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'Opening the Decision Chamber must not submit or approve a proposal or mutate world progress'
+        close_sheet(a)
+
         # Quest objectives live on the world HUD, not inside the character sheet.
         encounter_objective=a.locator('#quest-trail [data-objective-id="founder-challenge-experiment-report"]')
         expect(encounter_objective).to_contain_text('OPEN')
