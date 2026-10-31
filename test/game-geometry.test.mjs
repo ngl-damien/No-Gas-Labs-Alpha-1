@@ -152,6 +152,23 @@ test('fixed institutional buildings are physical obstacles with reachable front 
   }
 });
 
+test('restoring a legacy position inside a fixed landmark rehomes to a safe tile',t=>{
+  const {view}=makeView(t);
+  view.setPlayer({x:230,y:170});
+  const recovered=view.getPlayer();
+  assert.notDeepEqual(recovered,{x:230,y:170});
+  assert.equal(isWalkable(recovered.x,recovered.y,[]),true);
+});
+
+test('a newly published building cannot trap a player at the previous position',t=>{
+  const {view}=makeView(t);
+  view.setPlayer({x:550,y:600});
+  view.setWorld({creations:[{id:'new-building',position:{x:550,y:600}}]});
+  const recovered=view.getPlayer();
+  assert.notDeepEqual(recovered,{x:550,y:600});
+  assert.equal(isWalkable(recovered.x,recovered.y,view.world.creations),true);
+});
+
 test('non-finite map positions and route targets fail closed',()=>{
   assert.equal(isWalkable(NaN,200,[]),false);
   assert.equal(isWalkable(200,Infinity,[]),false);
