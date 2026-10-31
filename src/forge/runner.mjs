@@ -20,12 +20,71 @@ function exactKeys(value, keys, label) {
   if (!isRecord(value)) throw new TypeError(`${label} must be an object`);
   for (const key of Object.keys(value)) if (!keys.includes(key)) throw new Error(`Unknown ${label} field: ${key}`);
 }
+function dataRecord(value, keys, label) {
+  if (!isRecord(value)) throw new TypeError(`${label} must be an object`);
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); }
+  catch { throw new Error(`${label} must expose ordinary data properties`); }
+  const copy = Object.create(null);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== 'string' || !keys.includes(key)) throw new Error(`Unknown ${label} field: ${String(key)}`);
+    const descriptor = descriptors[key];
+    if (!Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw new Error(`${label} fields must be enumerable data properties`);
+    copy[key] = descriptor.value;
+  }
+  return copy;
+}
+function denseDataArray(value, maximum, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+  let descriptors;
+  try { descriptors = Object.getOwnPropertyDescriptors(value); }
+  catch { throw new Error(`${label} must be a dense data array`); }
+  const length = descriptors.length?.value;
+  const keys = Reflect.ownKeys(descriptors);
+  if (!Number.isSafeInteger(length) || length < 1 || length > maximum || keys.length !== length + 1) throw new Error(`${label} must be a dense data array of 1..${maximum} items`);
+  const items = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) throw new Error(`${label} entries must be own data properties`);
+    items.push(descriptor.value);
+  }
+  return items;
+}
 function safePath(path) {
   return typeof path === 'string' && path.length > 0 && !path.includes('\\') && !path.includes('\0') && !path.startsWith('/') && path.split('/').every(part => part && part !== '.' && part !== '..');
 }
+const PRIVATE_CONFIG_DIRS = new Set(['gh', 'hub', 'gcloud', 'containers', 'git']);
 function excluded(path) {
-  return path.split('/').some(part => /^(?:\.git|\.runtime|runtime|node_modules|dist|\.aws|\.ssh|\.codex|\.agents|\.npmrc|\.netrc|\.pypirc|secrets?|credentials?|__pycache__)$/i.test(part) || /^\.env/i.test(part) || /\.(?:pem|key|p12|pfx|pyc)$/i.test(part) || /^(?:id_rsa|id_ed25519|credentials(?:\.json)?|secrets?\.json)$/i.test(part));
+  const parts = path.split('/');
+  return parts.some(part =>
+    /^(?:\.git|\.runtime|\.tmp|runtime|node_modules|dist|\.aws|\.ssh|\.codex|\.agents|\.npmrc|\.netrc|\.pypirc|\.docker|\.kube|\.azure|\.gnupg|\.terraform|\.terraform\.d|secrets?|credentials?|__pycache__)$/i.test(part) ||
+    /^\.env/i.test(part) ||
+    /\.(?:pem|key|p12|pfx|pyc)$/i.test(part) ||
+    /^(?:id_(?:rsa|ed25519|ecdsa|dsa)(?:_sk)?|\.git-credentials|\.vault-token|application_default_credentials\.json|google_application_credentials\.json|service-account(?:[-_][^/]*)?\.json|.*\.tfstate(?:\.backup)?)$/i.test(part)
+  ) || parts.some((part, index) =>
+    part.toLowerCase() === '.config' &&
+    PRIVATE_CONFIG_DIRS.has((parts[index + 1] ?? '').toLowerCase())
+  );
 }
+
+const SENSITIVE_CONTENT_RULES = [
+  { id: 'private-key-block', pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----/ },
+  { id: 'github-token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/ },
+  { id: 'aws-access-key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
+  { id: 'google-api-key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { id: 'slack-token', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
+  { id: 'stripe-live-secret', pattern: /\bsk_live_[A-Za-z0-9]{16,}\b/ },
+  { id: 'npm-token', pattern: /\bnpm_[A-Za-z0-9]{30,}\b/ },
+  { id: 'gitlab-token', pattern: /\bglpat-[A-Za-z0-9_-]{20,}\b/ }
+];
+function credentialContentRule(content) {
+  // Latin-1 preserves ASCII signatures even in mixed/binary blobs. The scanner
+  // reports rule IDs and paths only; it never copies a matched value to errors.
+  const text = content.toString('latin1');
+  for (const rule of SENSITIVE_CONTENT_RULES) if (rule.pattern.test(text)) return rule.id;
+  return null;
+}
+
 export function listWorkloads() {
   return [{ id: 'vector-sum-v1', description: 'Sum the same deterministic 10,000-number vector 200 times; verify seven independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
 }
@@ -33,30 +92,32 @@ export function forgeCapabilities() {
   return { execution: 'trusted-local-child-processes', workloads: listWorkloads(), limits: { defaults: DEFAULTS, maxCandidates: 8, maxConcurrency: 4, maxTimeoutMs: 10000, maxOutputBytes: 1048576, source: SOURCE_LIMITS }, repositoryLimits: { defaults: REPOSITORY_DEFAULTS, maxConcurrency: 4, maxTimeoutMs: 120000, maxOutputBytes: 1048576 }, automaticIntegration: false, osSandbox: false };
 }
 function validate(options) {
-  exactKeys(options, ['sourceDir', 'outDir', 'workloadId', 'candidates', 'limits'], 'request');
-  if (typeof options.sourceDir !== 'string' || typeof options.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
-  const workloadId = options.workloadId ?? 'vector-sum-v1';
+  const request = dataRecord(options, ['sourceDir', 'outDir', 'workloadId', 'candidates', 'limits'], 'request');
+  if (typeof request.sourceDir !== 'string' || typeof request.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
+  const workloadId = request.workloadId ?? 'vector-sum-v1';
   if (workloadId !== 'vector-sum-v1') throw new Error(`Workload is not allowlisted: ${workloadId}`);
-  exactKeys(options.limits ?? {}, Object.keys(DEFAULTS), 'limits');
-  const limits = { ...DEFAULTS, ...options.limits };
+  const limitInput = dataRecord(request.limits ?? {}, Object.keys(DEFAULTS), 'limits');
+  const limits = { ...DEFAULTS, ...limitInput };
   for (const [key, min, max] of [['timeoutMs', 50, 10000], ['maxOutputBytes', 1024, 1048576], ['concurrency', 1, 4]]) {
     if (!Number.isSafeInteger(limits[key]) || limits[key] < min || limits[key] > max) throw new Error(`Invalid ${key} limit: ${min}..${max}`);
   }
-  if (!Array.isArray(options.candidates) || !options.candidates.length || options.candidates.length > 8) throw new Error('Candidate limit is 1..8');
+  const candidateInputs = denseDataArray(request.candidates, 8, 'Candidate list');
   const ids = new Set();
-  const candidates = options.candidates.map(candidate => {
-    exactKeys(candidate, ['id', 'overlay'], 'candidate');
-    if (typeof candidate.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/.test(candidate.id) || ids.has(candidate.id)) throw new Error('Candidate IDs must be unique, short path-safe identifiers');
-    ids.add(candidate.id);
-    exactKeys(candidate.overlay ?? {}, [TARGET], 'overlay allowlist');
+  const candidates = candidateInputs.map(candidate => {
+    const candidateInput = dataRecord(candidate, ['id', 'overlay'], 'candidate');
+    if (typeof candidateInput.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/.test(candidateInput.id) || ids.has(candidateInput.id)) throw new Error('Candidate IDs must be unique, short path-safe identifiers');
+    ids.add(candidateInput.id);
+    const overlayInput = dataRecord(candidateInput.overlay ?? {}, [TARGET], 'overlay allowlist');
     const overlay = {};
-    for (const path of Object.keys(candidate.overlay ?? {}).sort()) {
+    for (const path of Object.keys(overlayInput).sort()) {
       if (!safePath(path) || path !== TARGET) throw new Error(`Overlay path is not allowlisted: ${path}`);
-      const source = candidate.overlay[path];
-      if (typeof source !== 'string' || Buffer.byteLength(source) > 65536) throw new Error('Overlay must contain at most 65536 UTF8 source bytes');
-      overlay[path] = source;
+      const candidateSource = overlayInput[path];
+      if (typeof candidateSource !== 'string' || Buffer.byteLength(candidateSource) > 65536) throw new Error('Overlay must contain at most 65536 UTF8 source bytes');
+      const credentialRule = credentialContentRule(Buffer.from(candidateSource, 'utf8'));
+      if (credentialRule) throw new Error(`Credential-like content detected in candidate overlay: ${path} (${credentialRule}); remove it before Forge execution`);
+      overlay[path] = candidateSource;
     }
-    return { id: candidate.id, overlay };
+    return { id: candidateInput.id, overlay };
   });
   return { workloadId, candidates, limits };
 }
@@ -141,11 +202,13 @@ async function sourceSnapshot(sourceDir, { requiredFiles = [TARGET, BENCHMARK, V
     const content = await readFile(current);
     total += content.length;
     if (total > SOURCE_LIMITS.bytes || content.length > SOURCE_LIMITS.fileBytes) throw new Error('Source byte limit exceeded');
+    const credentialRule = credentialContentRule(content);
+    if (credentialRule) throw new Error(`Credential-like content detected in source file: ${path} (${credentialRule}); remove or exclude it before Forge execution`);
     bytes.set(path, content);
   }
   for (const required of requiredFiles) if (!bytes.has(required)) throw new Error(`Workload source is missing: ${required}`);
   const files = [...bytes].map(([path, content]) => ({ path, size: content.length, sha256: sha256(content) }));
-  return { bytes, manifest: { schema: 'ngl.forge-source.v1', snapshotMode, revision, digest: sha256(stable(files)), files, totalBytes: total, excludedPolicy: snapshotMode === 'git' ? 'Git ignored files, metadata, runtime, dependency/build directories and credential filename patterns; no credential contents inspected.' : 'Fixed public-source roots and file extensions only; metadata, hidden paths, runtime, dependency/build directories and credential filename patterns excluded. No Git history or Git-ignore evaluation is claimed.' } };
+  return { bytes, manifest: { schema: 'ngl.forge-source.v1', snapshotMode, revision, digest: sha256(stable(files)), files, totalBytes: total, excludedPolicy: snapshotMode === 'git' ? 'Git ignored files, metadata, runtime, dependency/build directories and credential filename patterns; recognized high-confidence credential signatures in source bytes are rejected before copying, but scanning is incomplete.' : 'Fixed public-source roots and file extensions only; metadata, hidden paths, runtime, dependency/build directories and credential filename patterns excluded. Recognized high-confidence credential signatures are rejected before copying; no Git history or Git-ignore evaluation is claimed.' } };
 }
 async function writeBytes(root, path, bytes) {
   const destination = join(root, path);
@@ -202,7 +265,46 @@ async function executePhase({ workspace, outDir, prefix, entry, limits, input, p
   return { receipt: { outcome: outcome ?? (spawnError ? 'spawn_failed' : exitCode === 0 ? 'passed' : 'failed'), executable: process.execPath, args, pid: child.pid ?? null, exitCode, signal, error: spawnError, wallMs, ...receipts }, content };
 }
 async function verifyWorkspace(workspace, expected) {
-  const changed = [];
+  const changed = new Set();
+  const expectedPaths = new Set(expected.keys());
+  const expectedDirectories = new Set();
+  for (const path of expectedPaths) {
+    const parts = path.split('/');
+    for (let index = 1; index < parts.length; index += 1) expectedDirectories.add(parts.slice(0, index).join('/'));
+  }
+  const allowScratch = ![...expectedPaths].some(path => path === '.tmp' || path.startsWith('.tmp/'));
+  try {
+    const rootInfo = await lstat(workspace);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error('workspace root is not a regular directory');
+  } catch {
+    return { passed: false, changedPaths: ['.'] };
+  }
+  async function inspect(directory, prefix = '') {
+    for (const name of await readdir(directory)) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      const absolute = join(directory, name);
+      let info;
+      try { info = await lstat(absolute); } catch { changed.add(path); continue; }
+      if (path === '.tmp' && allowScratch) {
+        if (info.isSymbolicLink() || !info.isDirectory()) changed.add(path);
+        continue;
+      }
+      if (info.isSymbolicLink()) { changed.add(path); continue; }
+      if (info.isDirectory()) {
+        if (!expectedDirectories.has(path)) changed.add(path);
+        await inspect(absolute, path);
+      } else if (info.isFile()) {
+        if (!expectedPaths.has(path)) changed.add(path);
+      } else changed.add(path);
+    }
+  }
+  await inspect(workspace);
+  if (allowScratch) {
+    try {
+      const scratchInfo = await lstat(join(workspace, '.tmp'));
+      if (scratchInfo.isSymbolicLink() || !scratchInfo.isDirectory()) changed.add('.tmp');
+    } catch { changed.add('.tmp'); }
+  }
   for (const [path, bytes] of expected) {
     try {
       let current = workspace;
@@ -210,10 +312,11 @@ async function verifyWorkspace(workspace, expected) {
         current = join(current, part);
         if ((await lstat(current)).isSymbolicLink()) throw new Error('link');
       }
-      if (sha256(await readFile(current)) !== sha256(bytes)) changed.push(path);
-    } catch { changed.push(path); }
+      const info = await lstat(current);
+      if (!info.isFile() || sha256(await readFile(current)) !== sha256(bytes)) changed.add(path);
+    } catch { changed.add(path); }
   }
-  return { passed: changed.length === 0, changedPaths: changed };
+  return { passed: changed.size === 0, changedPaths: [...changed].sort() };
 }
 function parseJson(text) { try { return JSON.parse(text.trim()); } catch { return null; } }
 const expectedChecksum = Array.from({ length: 10000 }, (_, index) => index % 201 - 100).reduce((a, b) => a + b, 0) * 200;
@@ -243,10 +346,28 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const copyMs = performance.now() - started;
   const execution = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/execution`, entry: BENCHMARK, limits });
   const verificationStarted = performance.now();
+  let verificationWorkspacePath = null;
+  let verificationWorkspace = null;
+  let verificationCopyMs = 0;
   let verification = { receipt: { outcome: 'not_run', exitCode: null, signal: null, wallMs: 0 }, content: {} };
-  if (execution.receipt.outcome === 'passed') verification = await executePhase({ workspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+  if (execution.receipt.outcome === 'passed') {
+    const verificationCopyStarted = performance.now();
+    verificationWorkspacePath = `candidates/${candidate.id}/verification-workspace`;
+    verificationWorkspace = join(outDir, verificationWorkspacePath);
+    for (const [path, bytes] of expected) await writeBytes(verificationWorkspace, path, bytes);
+    await mkdir(join(verificationWorkspace, '.tmp'));
+    verificationCopyMs = performance.now() - verificationCopyStarted;
+    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+  }
   const integrityStarted = performance.now();
-  const integrity = await verifyWorkspace(workspace, expected);
+  const candidateIntegrity = await verifyWorkspace(workspace, expected);
+  const verificationIntegrity = verificationWorkspace ? await verifyWorkspace(verificationWorkspace, expected) : null;
+  const integrity = {
+    passed: candidateIntegrity.passed && (verificationIntegrity?.passed ?? true),
+    changedPaths: [...new Set([...candidateIntegrity.changedPaths, ...(verificationIntegrity?.changedPaths ?? [])])],
+    candidate: candidateIntegrity,
+    verification: verificationIntegrity
+  };
   const integrityMs = performance.now() - integrityStarted;
   const actual = parseJson(execution.content.stdout);
   const verified = parseJson(verification.content.stdout);
@@ -256,7 +377,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const failure = [execution.receipt, verification.receipt].find(phase => ['timed_out', 'output_limited', 'spawn_failed'].includes(phase.outcome));
   const outcome = correct ? 'passing' : failure?.outcome ?? 'failed';
   const verificationOverheadMs = performance.now() - verificationStarted;
-  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, overlay: overlayManifest, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
+  const result = { id: candidate.id, taskId, workloadId, workspace: workspacePath, verificationWorkspace: verificationWorkspacePath, overlay: overlayManifest, outcome, correct, outputCorrect, integrity, verificationChecks, execution: execution.receipt, verification: verification.receipt, timing: { copyMs, verificationCopyMs, runtimeMs: execution.receipt.wallMs, verificationMs: verification.receipt.wallMs, integrityMs, verificationOverheadMs, wallMs: performance.now() - started } };
   await writeJson(join(outDir, `candidates/${candidate.id}/result.json`), result);
   return result;
 }
@@ -288,7 +409,7 @@ export async function compareCandidates(options) {
   const eligible = results.filter(result => result.correct);
   const byTime = [...eligible].sort((a, b) => a.timing.runtimeMs - b.timing.runtimeMs);
   const taskId = sha256(stable({ source: snapshot.manifest.digest, workloadId, limits, candidates: results.map(result => result.taskId) }));
-  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and a minimal child environment do not identify secrets embedded in ordinary source files.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
+  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and high-confidence signature scanning reduce accidental exposure but are not a comprehensive secret detector; unknown formats and secrets not matching recognized signatures may remain.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
   await writeJson(join(outDir, 'report.json'), report);
   return report;
 }
@@ -298,8 +419,8 @@ export async function runCandidate({ candidate, ...options }) {
 }
 
 function repositoryLimits(input = {}) {
-  exactKeys(input, Object.keys(REPOSITORY_DEFAULTS), 'limits');
-  const limits = { ...REPOSITORY_DEFAULTS, ...input };
+  const validated = dataRecord(input, Object.keys(REPOSITORY_DEFAULTS), 'repository limits');
+  const limits = { ...REPOSITORY_DEFAULTS, ...validated };
   for (const [key, min, max] of [['timeoutMs', 50, 120000], ['maxOutputBytes', 1024, 1048576], ['concurrency', 1, 4]]) {
     if (!Number.isSafeInteger(limits[key]) || limits[key] < min || limits[key] > max) throw new Error(`Invalid repository ${key} limit: ${min}..${max}`);
   }
@@ -324,12 +445,12 @@ function readTap(stdout) {
 
 /** Execute only explicit allowlisted repository tests in a frozen copy, without overlays. */
 export async function verifyRepository(options) {
-  exactKeys(options, ['sourceDir', 'outDir', 'limits'], 'repository request');
-  if (typeof options.sourceDir !== 'string' || typeof options.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
-  const limits = repositoryLimits(options.limits);
+  const request = dataRecord(options, ['sourceDir', 'outDir', 'limits'], 'repository request');
+  if (typeof request.sourceDir !== 'string' || typeof request.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
+  const limits = repositoryLimits(request.limits ?? {});
   const started = performance.now();
-  const sourceDir = await realpath(options.sourceDir);
-  const outDir = await physicalOutputPath(options.outDir);
+  const sourceDir = await realpath(request.sourceDir);
+  const outDir = await physicalOutputPath(request.outDir);
   const within = slash(relative(sourceDir, outDir));
   if (within === '' || (!within.startsWith('../') && !within.startsWith('/') && !within.startsWith('.runtime/'))) throw new Error('outDir inside source must be under ignored .runtime/ and must be fresh');
   try { await lstat(outDir); throw new Error('outDir must be fresh; path already exists'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
