@@ -632,12 +632,31 @@ export function projectCharacter(world, viewer, options = null) {
       })
     }];
   });
-  const equipmentSources = [...satchelEntries, ...publicationEquipmentEntries]
-    .sort((left, right) =>
-      right.position - left.position || left.item.id.localeCompare(right.item.id)
-    );
+  // satchelEntries is already sorted by descending append position. Select
+  // its first source per kind, then scan publication sources once; avoid a
+  // second full sort when a long Chronicle contains many retained records.
+  const latestEquipmentSourceByKind = new Map();
+  for (const entry of satchelEntries) {
+    if (!latestEquipmentSourceByKind.has(entry.item.kind)) {
+      latestEquipmentSourceByKind.set(entry.item.kind, entry);
+    }
+  }
+  for (const entry of publicationEquipmentEntries) {
+    const current = latestEquipmentSourceByKind.get('published-artifact');
+    if (!current || entry.position > current.position ||
+        (entry.position === current.position && entry.item.id.localeCompare(current.item.id) < 0)) {
+      latestEquipmentSourceByKind.set('published-artifact', entry);
+    }
+  }
   const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
-    const selected = equipmentSources.find(entry => slot.kinds.includes(entry.item.kind));
+    let selected = null;
+    for (const kind of slot.kinds) {
+      const candidate = latestEquipmentSourceByKind.get(kind);
+      if (candidate && (!selected || candidate.position > selected.position ||
+          (candidate.position === selected.position && candidate.item.id.localeCompare(selected.item.id) < 0))) {
+        selected = candidate;
+      }
+    }
     return Object.freeze({
       id: slot.id,
       label: slot.label,
