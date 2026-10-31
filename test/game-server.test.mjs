@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
-import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { applyEvent, replayKernel, createKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -63,6 +63,54 @@ async function publish(founder, title = 'Observed bytes') {
   return result.body;
 }
 
+
+
+test('indexed replay matches pure transitions and preserves event-id conflict semantics', () => {
+  const config = {
+    founderId: 'damien',
+    actors: [
+      { id: 'damien', roles: ['founder'] },
+      { id: 'local-forge', roles: ['executor'] },
+      { id: 'local-byte-verifier', roles: ['observer'] }
+    ]
+  };
+  const bytes = Buffer.from('indexed replay exact evidence bytes', 'utf8');
+  const receipt = artifactReceipt(bytes);
+  const artifacts = new Map([[receipt.digest, bytes]]);
+  const workId = 'work-indexed-replay';
+  const subject = { id: 'subject-indexed-replay', version: 1 };
+  const outputs = [receipt];
+  const events = [
+    { id: 'replay-claim', type: 'claim', actor: 'local-forge', at: '2026-10-01T00:00:00.000Z', expectedRevision: 0, workId, subject, action: 'preserve-artifact-bytes' },
+    { id: 'replay-authorize', type: 'authorize', actor: 'damien', at: '2026-10-01T00:00:00.001Z', expectedRevision: 1, workId, grantId: 'grant-indexed-replay', executorId: 'local-forge', observerId: 'local-byte-verifier', scope: { subjectId: subject.id, subjectVersion: subject.version, action: 'preserve-artifact-bytes' } },
+    { id: 'replay-execute', type: 'execute', actor: 'local-forge', at: '2026-10-01T00:00:00.002Z', expectedRevision: 2, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs },
+    { id: 'replay-observe', type: 'observe', actor: 'local-byte-verifier', at: '2026-10-01T00:00:00.003Z', expectedRevision: 3, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs, passed: true },
+    { id: 'replay-adjudicate', type: 'adjudicate', actor: 'damien', at: '2026-10-01T00:00:00.004Z', expectedRevision: 4, workId, grantId: 'grant-indexed-replay', executionId: 'execution-indexed-replay', subject, outputs, observationId: 'replay-observe', decision: 'accept' }
+  ];
+  const initial = createKernel(config);
+  applyEvent(initial, events[0], { artifacts });
+  assert.deepEqual(initial, createKernel(config), 'public single-event transition remains pure');
+  const sequential = events.reduce((state, event) => applyEvent(state, event, { artifacts }), initial);
+  const replayed = replayKernel(events, config, { artifacts });
+  assert.deepEqual(replayed, sequential, 'indexed replay must match sequential pure transitions');
+  assert.deepEqual(replayKernel([...events, events.at(-1)], config, { artifacts }), replayed, 'identical duplicate event remains idempotent');
+  assert.throws(
+    () => replayKernel([...events, { ...events.at(-1), decision: 'reject' }], config, { artifacts }),
+    error => error.code === 'EVENT_ID_CONFLICT'
+  );
+
+  const secondSubject = { id: subject.id, version: 2 };
+  const secondWorkId = 'work-indexed-replay-2';
+  const secondEvents = [
+    { id: 'replay-claim-2', type: 'claim', actor: 'local-forge', at: '2026-10-01T00:00:00.005Z', expectedRevision: 5, workId: secondWorkId, subject: secondSubject, action: 'preserve-artifact-bytes' },
+    { id: 'replay-authorize-2', type: 'authorize', actor: 'damien', at: '2026-10-01T00:00:00.006Z', expectedRevision: 6, workId: secondWorkId, grantId: 'grant-indexed-replay-2', executorId: 'local-forge', observerId: 'local-byte-verifier', scope: { subjectId: secondSubject.id, subjectVersion: secondSubject.version, action: 'preserve-artifact-bytes' } },
+    { id: 'replay-execute-2', type: 'execute', actor: 'local-forge', at: '2026-10-01T00:00:00.007Z', expectedRevision: 7, workId: secondWorkId, grantId: 'grant-indexed-replay-2', executionId: 'execution-indexed-replay', subject: secondSubject, outputs }
+  ];
+  assert.throws(
+    () => replayKernel([...events, ...secondEvents], config, { artifacts }),
+    error => error.code === 'EXECUTION_EXISTS'
+  );
+});
 
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
   const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
@@ -1154,4 +1202,169 @@ test('server startup indexes large interleaved retained proposal/report history'
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
+});
+
+
+test('server startup indexes large retained publication, repair-method, and study histories', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-publication-history-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+
+  const versionCount = 600;
+  const createdAt = '2026-10-01T00:00:00.000Z';
+  const origin = Date.parse(createdAt);
+  const html = '<!doctype html><html><body>indexed retained history</body></html>';
+  const htmlBytes = Buffer.from(html, 'utf8');
+  const receipt = artifactReceipt(htmlBytes);
+  const creationId = 'creation-indexed-history';
+  const title = 'Indexed retained artifact';
+  const intent = 'Synthetic retained-history fixture for validation indexing.';
+  const position = { x: 200, y: 200 };
+  const checks = [{ id: 'document-structure', passed: true }];
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witness = { id: 'history-witness', name: 'History witness', role: 'witness' };
+  const semantics = 'Synthetic retained history fixture; no external truth claim.';
+  const methodSemantics = 'Earned game method: a retained, checked repair; no external truth or authority claim.';
+  const gameEvents = [];
+  const methods = [];
+  const publishedAt = new Map();
+  let tick = 0;
+
+  for (let version = 1; version <= versionCount; version += 1) {
+    if (version > 1) {
+      const at = new Date(origin + (++tick)).toISOString();
+      gameEvents.push({
+        id: 'event-repair-' + version, type: 'repair', actor: founder, at,
+        creationId, draftId: 'repair-draft-' + version, baseVersion: version - 1, semantics
+      });
+    }
+
+    const publicationTime = new Date(origin + (++tick)).toISOString();
+    publishedAt.set(version, publicationTime);
+    gameEvents.push({
+      id: 'event-publish-' + version, type: 'publish', actor: founder, at: publicationTime,
+      creationId, version, reward: 100, semantics
+    });
+
+    if (version > 1) {
+      methods.push({
+        id: 'method-' + version, creationId, version,
+        title: 'Repair ' + title + ' · v' + version,
+        description: intent, actor: founder, at: publicationTime, semantics: methodSemantics
+      });
+    }
+
+    const studyTime = new Date(origin + (++tick)).toISOString();
+    gameEvents.push({
+      id: 'event-study-' + version, type: 'study', actor: witness, at: studyTime,
+      studyId: 'study-' + version, creationId, version,
+      question: 'What is evidenced?',
+      attempt: 'The retained bytes can be checked.',
+      nextCheck: 'Seek independent evidence.',
+      semantics
+    });
+  }
+
+  const snapshots = [];
+  for (let version = 1; version <= versionCount; version += 1) {
+    snapshots.push({
+      id: creationId, kind: 'custom', title, intent, html, receipt, version,
+      position, checks, publishedAt: publishedAt.get(version)
+    });
+  }
+  const creation = {
+    ...snapshots[versionCount - 1],
+    versions: snapshots.slice(0, -1)
+  };
+  const world = {
+    schema: 'ngl.world.v2',
+    id: 'world-indexed-publication-history',
+    founderName: 'Damien Featherstone',
+    revision: gameEvents.length,
+    xp: versionCount * 100,
+    createdAt,
+    updatedAt: gameEvents.at(-1).at,
+    creations: [creation],
+    drafts: [],
+    events: gameEvents,
+    contributions: [],
+    reports: [],
+    discoveries: [],
+    methods
+  };
+
+  const config = {
+    founderId: 'damien',
+    actors: [
+      { id: 'damien', roles: ['founder'], kind: 'human' },
+      { id: 'local-forge', roles: ['executor'], kind: 'local-process' },
+      { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
+    ]
+  };
+  const publicationBindings = [];
+  const institutionalEvents = [];
+
+  for (let version = 1; version <= versionCount; version += 1) {
+    const workId = 'history-publication-' + version;
+    const grantId = 'history-grant-' + version;
+    const executionId = 'history-execution-' + version;
+    const at = new Date(origin + versionCount * 10 + version * 10).toISOString();
+    const subject = { id: creationId, version };
+    const outputs = [receipt];
+    const append = (type, actor, fields) => {
+      const event = {
+        id: 'institution-' + version + '-' + type,
+        type, actor, at, expectedRevision: institutionalEvents.length, workId, ...fields
+      };
+      institutionalEvents.push(event);
+      return event;
+    };
+
+    append('claim', 'local-forge', { subject, action: 'preserve-artifact-bytes' });
+    append('authorize', 'damien', {
+      grantId, executorId: 'local-forge', observerId: 'local-byte-verifier',
+      scope: { subjectId: subject.id, subjectVersion: subject.version, action: 'preserve-artifact-bytes' }
+    });
+    append('execute', 'local-forge', { grantId, executionId, subject, outputs });
+    const observed = append('observe', 'local-byte-verifier', {
+      grantId, executionId, subject, outputs, passed: true,
+      checks: [{ id: 'exact-local-bytes', passed: true, detail: 'Synthetic exact-byte verification.' }]
+    });
+    append('adjudicate', 'damien', {
+      grantId, executionId, subject, outputs, observationId: observed.id, decision: 'accept'
+    });
+    publicationBindings.push({
+      creationId, version, digest: receipt.digest, size: receipt.size, workId
+    });
+  }
+
+  const payload = {
+    world,
+    institutionalEvents,
+    artifacts: { [receipt.digest]: htmlBytes.toString('base64') },
+    publicationBindings
+  };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+
+  const server = await createGameServer({ dataDir, founderKey: KEY });
+  await server.closeGame();
+
+  // Keep the total binding count unchanged while duplicating one version and
+  // omitting another; the index must still reject ambiguous/missing identities.
+  const duplicatePayload = structuredClone(payload);
+  duplicatePayload.publicationBindings[0] = { ...duplicatePayload.publicationBindings[1] };
+  const duplicateEnvelope = {
+    schema: 'ngl.service-store.v1',
+    payload: duplicatePayload,
+    digest: artifactReceipt(canonicalStringify(duplicatePayload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(duplicateEnvelope), { mode: 0o600 });
+  await assert.rejects(
+    createGameServer({ dataDir, founderKey: KEY }),
+    /Duplicate or missing publication binding/
+  );
 });

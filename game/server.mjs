@@ -170,7 +170,7 @@ function validateHistory(world) {
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set();
-  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const eventPositions = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), methodsByVersion = new Map(), earliestDiscoveryAt = new Map();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
@@ -181,6 +181,7 @@ function validateHistory(world) {
     if (event.type === 'moonshot-proposed') addHistory(proposalsByMoonshot, event.moonshotId, { event, index });
   }
   for (const version of published) addHistory(publishedByVersion, historyKey(version.id, version.version), version);
+  for (const method of world.methods) addHistory(methodsByVersion, historyKey(method.creationId, method.version), method);
   for (const discovery of world.discoveries) {
     const key = historyKey(discovery.locationId, discovery.actor?.id);
     const at = Date.parse(discovery.at);
@@ -206,7 +207,7 @@ function validateHistory(world) {
       }
       studyIds.add(event.studyId);
       studyById.set(event.studyId, event);
-      const matches = published.filter(item => item.id === event.creationId && item.version === event.version && Date.parse(item.publishedAt) <= eventAt);
+      const matches = (publishedByVersion.get(historyKey(event.creationId, event.version)) || []).filter(item => Date.parse(item.publishedAt) <= eventAt);
       if (matches.length !== 1) throw new Error('Stored Academy study note does not bind to one earlier retained published version');
     }
     if (event.type === 'study-reviewed') {
@@ -334,7 +335,7 @@ function validateHistory(world) {
   const revisions = published.filter(publication => publication.version > 1);
   if (revisions.length !== world.methods.length) throw new Error('Earned repair method history mismatch');
   for (const publication of revisions) {
-    const matching = world.methods.filter(method => method.creationId === publication.id && method.version === publication.version);
+    const matching = methodsByVersion.get(historyKey(publication.id, publication.version)) || [];
     const event = (publicationEventsByVersion.get(historyKey(publication.id, publication.version)) || [])[0];
     if (matching.length !== 1) throw new Error('Duplicate or missing earned repair method');
     const method = matching[0]; exact(method, ['id', 'creationId', 'version', 'title', 'description', 'actor', 'at', 'semantics']);
@@ -354,19 +355,39 @@ async function validatePayload(raw) {
   const kernel = replayKernel(raw.institutionalEvents, CONFIG, { artifacts });
   const all = snapshots(world);
   if (all.length !== raw.publicationBindings.length || Object.values(kernel.works).length !== all.length || kernel.events.length !== all.length * 5) throw new Error('Publication institutional history mismatch');
+
+  // Build exact-key indexes once. Re-scanning every binding, kernel event, and
+  // game publication for every retained version made startup validation quadratic.
+  const keyOf = (id, version) => JSON.stringify([id, version]);
+  const addIndex = (map, key, value) => {
+    const values = map.get(key) || [];
+    values.push(value);
+    map.set(key, values);
+  };
+  const bindingsByVersion = new Map();
+  const eventsByWorkId = new Map();
+  const gamePublicationsByVersion = new Map();
+  for (const binding of raw.publicationBindings) {
+    addIndex(bindingsByVersion, keyOf(binding.creationId, binding.version), binding);
+  }
+  for (const event of kernel.events) addIndex(eventsByWorkId, event.workId, event);
+  for (const event of world.events) {
+    if (event.type === 'publish') addIndex(gamePublicationsByVersion, keyOf(event.creationId, event.version), event);
+  }
+
   const bindings = new Set();
   for (const publication of all) {
-    const key = `${publication.id}:${publication.version}`;
-    const matches = raw.publicationBindings.filter(b => b.creationId === publication.id && b.version === publication.version);
+    const key = keyOf(publication.id, publication.version);
+    const matches = bindingsByVersion.get(key) || [];
     if (matches.length !== 1 || bindings.has(key)) throw new Error('Duplicate or missing publication binding');
     bindings.add(key);
     const binding = matches[0]; exact(binding, ['creationId', 'version', 'digest', 'size', 'workId']);
     const work = kernel.works[binding.workId];
     const bytes = artifacts.get(binding.digest);
     if (!work || work.stage !== 'accepted' || work.action !== 'preserve-artifact-bytes' || work.subject.id !== publication.id || work.subject.version !== publication.version || work.outputs.length !== 1 || canonicalStringify(work.outputs[0]) !== canonicalStringify(publication.receipt) || publication.receipt.digest !== binding.digest || publication.receipt.size !== binding.size || !bytes || !bytes.equals(Buffer.from(publication.html, 'utf8'))) throw new Error('Publication receipt / version binding mismatch');
-    const history = kernel.events.filter(event => event.workId === work.id);
+    const history = eventsByWorkId.get(work.id) || [];
     if (history.map(event => event.type).join(',') !== 'claim,authorize,execute,observe,adjudicate') throw new Error('Publication stage history mismatch');
-    const gameEvents = world.events.filter(event => event.type === 'publish' && event.creationId === publication.id && event.version === publication.version);
+    const gameEvents = gamePublicationsByVersion.get(key) || [];
     if (gameEvents.length !== 1 || gameEvents[0].actor.id !== CONFIG.founderId || gameEvents[0].actor.role !== 'founder' || gameEvents[0].reward !== 100) throw new Error('Publication game history binding mismatch');
   }
   return { world, institutionalEvents: structuredClone(raw.institutionalEvents), artifacts: structuredClone(raw.artifacts), publicationBindings: structuredClone(raw.publicationBindings) };
