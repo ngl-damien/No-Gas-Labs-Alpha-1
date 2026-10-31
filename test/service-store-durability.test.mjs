@@ -854,3 +854,36 @@ test('service-store marks a commit uncertain when the writer lease is replaced d
     'no successor may open while the replacement lock remains'
   );
 });
+
+
+test('a former writer cannot overwrite a successor after its published lock path disappears', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-successor-after-lock-loss-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const former = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+
+  await rm(lockPath);
+  const successor = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await successor.commit({ revision: 1, writer: 'successor' });
+
+  await assert.rejects(
+    former.commit({ revision: 1, writer: 'former' }),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  assert.throws(
+    () => former.value,
+    error => error.code === 'SERVICE_LOCK_CHANGED',
+    'the former writer must not expose a projection after losing its pathname lease'
+  );
+  const retained = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.deepEqual(retained.payload, { revision: 1, writer: 'successor' });
+
+  await assert.rejects(former.close(), error => error.code === 'SERVICE_LOCK_CHANGED');
+  const successorLock = await lstat(lockPath);
+  await successor.close();
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' });
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, { revision: 1, writer: 'successor' });
+  await reopened.close();
+  assert.ok(successorLock.ino > 0, 'the successor lock inode was observed before its owner closed');
+});
