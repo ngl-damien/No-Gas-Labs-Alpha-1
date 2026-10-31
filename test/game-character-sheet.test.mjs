@@ -199,6 +199,10 @@ test('a retained publication remains inventory and a valid source even when its 
   assert.equal(record.skills.find(skill => skill.id === 'maker').count, 0);
   assert.equal(record.skills.find(skill => skill.id === 'observer').count, 1);
   assert.deepEqual(record.inventory.map(item => [item.id, item.version]), [['unrewarded-place', 1]]);
+  const provenance = record.equipment.find(slot => slot.id === 'provenance');
+  assert.equal(provenance.source.eventId, 'unrewarded-publication',
+    'retained byte identity can fill the provenance slot without a valid XP receipt');
+  assert.equal(provenance.source.status, 'version retained · content not verified');
 });
 
 test('ambiguous activity-to-event joins do not grant Explorer, Observer, or Challenger progress', () => {
