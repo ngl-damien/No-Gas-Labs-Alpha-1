@@ -160,6 +160,8 @@ test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => 
   assert.deepEqual([record.xp, record.worldXp, record.level], [0, 0, 1]);
   assert.deepEqual(record.inventory, []);
   assert.deepEqual(record.fieldSatchel, []);
+  assert.ok(record.equipment.every(slot => slot.status === 'empty' && slot.source === null),
+    'unlinked summary rows cannot fill any field-equipment slot');
   assert.equal(record.fieldSatchelTotal, 0);
   assert.equal(record.fieldSatchelOmittedCount, 0);
   for (const id of ['explorer', 'observer', 'challenger', 'restorer', 'questkeeper']) {
@@ -1017,11 +1019,32 @@ test('field satchel projects retained work while preserving failed reports and d
     { type: 'moonshot-activity', moonshotId: 'satchel-moonshot', activityId: 'satchel-challenge' });
   assert.equal(founderRecord.xp, 100, 'only the retained publication reward contributes XP');
   assert.equal(witnessRecord.xp, 0, 'research and reported failure do not award XP');
-  assert.deepEqual(world, before, 'opening the satchel is a read-only projection');
+
+  const founderGear = Object.fromEntries(founderRecord.equipment.map(slot => [slot.id, slot]));
+  const witnessGear = Object.fromEntries(witnessRecord.equipment.map(slot => [slot.id, slot]));
+  assert.equal(founderGear.provenance.source.eventId, 'satchel-publication');
+  assert.equal(founderGear.scouting.source.eventId, 'satchel-discovery-event');
+  assert.equal(founderGear.observation.source.eventId, 'satchel-field-report-event',
+    'the newest append-position report fills the observation slot');
+  assert.equal(founderGear.learning.source.eventId, 'satchel-review-event');
+  assert.equal(founderGear.adversarial.source.eventId, 'satchel-challenge-event');
+  assert.equal(founderGear.adversarial.source.status, 'dissent preserved · not adjudicated');
+  assert.equal(founderGear.research.status, 'empty');
+  assert.equal(founderGear.collaboration.status, 'empty');
+  assert.equal(founderGear.restoration.status, 'empty');
+  assert.equal(witnessGear.provenance.status, 'empty',
+    'another actor’s publication cannot equip this character');
+  assert.equal(witnessGear.research.source.eventId, 'satchel-experiment-event');
+  assert.equal(witnessGear.research.source.status, 'self-reported · failed',
+    'failed attempts remain visible as field gear sources without becoming success');
+  assert.ok(founderRecord.equipment.every(slot => Object.isFrozen(slot)));
+  assert.ok(founderRecord.equipment.every(slot => !slot.source || Object.isFrozen(slot.source)));
+  assert.deepEqual(world, before, 'field equipment and the satchel are read-only projections');
 });
 
 test('field satchel keeps its newest 100 objects and points back to retained append order', () => {
-  const events = Array.from({ length: 101 }, (_, index) => event(
+  const discoveryEvent = event('old-discovery-event', 'discover', founder, t1, { locationId: 'river' });
+  const proposals = Array.from({ length: 101 }, (_, index) => event(
     'satchel-moonshot-event-' + index,
     'moonshot-proposed',
     founder,
@@ -1034,15 +1057,27 @@ test('field satchel keeps its newest 100 objects and points back to retained app
       evidenceNeeded: 'A retained source and independent check.'
     }
   ));
-  const world = { id: 'bounded-satchel-world', revision: events.length, creations: [], events };
+  const events = [discoveryEvent, ...proposals];
+  const world = {
+    id: 'bounded-satchel-world',
+    revision: events.length,
+    creations: [],
+    events,
+    discoveries: [{ id: 'old-discovery-record', actor: founder, locationId: 'river', at: t1 }]
+  };
   const record = projectCharacter(world, founder);
 
   assert.equal(record.fieldSatchel.length, 100);
-  assert.equal(record.fieldSatchelTotal, 101);
-  assert.equal(record.fieldSatchelOmittedCount, 1);
+  assert.equal(record.fieldSatchelTotal, 102);
+  assert.equal(record.fieldSatchelOmittedCount, 2);
   assert.equal(record.fieldSatchel[0].eventId, events.at(-1).id,
     'the newest appended event is first even if other timestamps are backdated');
-  assert.equal(record.fieldSatchel.at(-1).eventId, events[1].id);
+  assert.equal(record.fieldSatchel.at(-1).eventId, proposals[1].id);
+  assert.equal(record.fieldSatchel.some(item => item.kind === 'guide-discovery'), false,
+    'the oldest discovery is outside the bounded satchel display');
+  assert.equal(record.equipment.find(slot => slot.id === 'scouting').source.eventId,
+    discoveryEvent.id,
+    'equipment scans the validated source set rather than disappearing when its satchel card is omitted');
 });
 
 
