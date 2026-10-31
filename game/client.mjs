@@ -89,7 +89,7 @@ function registerOfflineShell(){
 }
 registerOfflineShell();
 const $=id=>document.getElementById(id);
-const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1';
+const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1',COMMONS_MUTE_PREFIX='ngl.commons.mutes.v1';
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
 let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,commonsDraftText='';
@@ -643,6 +643,43 @@ function openTownSquare(){
   activeNoteRenderer=()=>renderTownSquareContent(content);
   renderTownSquareContent(content);
 }
+function commonsMuteStorageKey(){
+  return `${COMMONS_MUTE_PREFIX}:${encodeURIComponent(viewer.id)}:${viewer.role}`;
+}
+function readCommonsMutedAuthors(){
+  let raw;
+  try{raw=localStorage.getItem(commonsMuteStorageKey())}catch{return []}
+  if(!raw)return [];
+  let values;
+  try{values=JSON.parse(raw)}catch{return []}
+  if(!Array.isArray(values)||values.length>100)return [];
+  const seen=new Set(),result=[];
+  for(const value of values){
+    if(!value||typeof value.id!=='string'||!value.id.trim()||Array.from(value.id).length>128||
+       !['founder','witness'].includes(value.role)||typeof value.name!=='string'||
+       !value.name.trim()||Array.from(value.name).length>80)continue;
+    if(value.id===viewer.id&&value.role===viewer.role)continue;
+    const key=JSON.stringify([value.id,value.role]);
+    if(seen.has(key))continue;
+    seen.add(key);
+    result.push({id:value.id,role:value.role,name:value.name});
+    if(result.length===100)break;
+  }
+  return result;
+}
+function setCommonsMutedAuthor(author,muted){
+  if(!author||typeof author.id!=='string'||!author.id.trim()||
+     !['founder','witness'].includes(author.role)||typeof author.name!=='string'||
+     !author.name.trim()||Array.from(author.name).length>80)throw new Error('A valid player identity is required.');
+  if(author.id===viewer.id&&author.role===viewer.role)throw new Error('You cannot mute your own character.');
+  const current=readCommonsMutedAuthors(),key=JSON.stringify([author.id,author.role]);
+  const exists=current.some(item=>JSON.stringify([item.id,item.role])===key);
+  if(muted&&!exists&&current.length>=100)throw new Error('This device can keep up to 100 muted player identities.');
+  const next=muted?(exists?current:[...current,{id:author.id,role:author.role,name:author.name}]):
+    current.filter(item=>JSON.stringify([item.id,item.role])!==key);
+  try{localStorage.setItem(commonsMuteStorageKey(),JSON.stringify(next))}
+  catch{throw new Error('Device storage is unavailable; the mute preference was not saved.')}
+}
 function renderTownSquareContent(content){
   if(content!==$('sheet-content')||$('sheet').hidden)return;
   const active=document.activeElement;
@@ -654,7 +691,7 @@ function renderTownSquareContent(content){
   const previousInput=content.querySelector('#commons-message');
   const draftValue=previousInput?previousInput.value:commonsDraftText;
   content.replaceChildren();
-  content.append(paragraph('Player-authored conversation, not evidence, approval, authority, XP, or verified work. Shared messages are visible to everyone in this world. Do not post secrets or personal data. Reports are private to their author and the authenticated Founder. Human moderation hides public text but preserves the original in Founder history. Private-mode messages remain on this device.','form-help'));
+  content.append(paragraph('Player-authored conversation, not evidence, approval, authority, XP, or verified work. Shared messages are visible to everyone in this world. Do not post secrets or personal data. Reports are private to their author and the authenticated Founder. Human moderation hides public text but preserves the original in Founder history. Mute hides an author only on this device; it does not delete, report, moderate, or notify anyone, and other players still see their posts. Private-mode messages remain on this device.','form-help'));
   const messageInput=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A thought worth carrying into the world',required:'',value:draftValue});
   const counter=node('small',{id:'commons-message-count',text:Array.from(draftValue).length+' / '+COMMONS_MESSAGE_LIMIT});
   messageInput.addEventListener('input',()=>{commonsDraftText=messageInput.value;counter.textContent=Array.from(messageInput.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
@@ -674,16 +711,41 @@ function renderTownSquareContent(content){
     }),{id:'commons-post-message',class:'primary-button'})
   ]));
 
-  const feed=projectTownSquare(world,viewer);
+  const mutedAuthors=readCommonsMutedAuthors();
+  const feed=projectTownSquare(world,viewer,{mutedAuthors});
+  if(feed.mutedMessageCount)content.append(paragraph(feed.mutedMessageCount+' recent message'+(feed.mutedMessageCount===1?' is':'s are')+' hidden by your device-only mute list. Shared history and other players’ feeds are unchanged.','form-help'));
+  if(feed.mutedAuthors.length){
+    const mutedSection=node('section',{id:'commons-muted-authors'});
+    mutedSection.append(node('h3',{class:'section-title',text:'MUTED AUTHORS · THIS DEVICE'}));
+    for(const author of feed.mutedAuthors){
+      const row=node('article',{class:'field-card','data-commons-muted-author':author.id,'data-commons-muted-role':author.role},[
+        node('h3',{text:author.name+' · '+author.role.toUpperCase()}),
+        button('Unmute on this device',guarded(async()=>{
+          setCommonsMutedAuthor(author,false);
+          renderTownSquareContent(content);
+          toast('Messages from '+author.name+' are visible again on this device.');
+        }),{class:'secondary-button','data-commons-unmute':author.id,'data-commons-unmute-role':author.role})
+      ]);
+      mutedSection.append(row);
+    }
+    content.append(mutedSection);
+  }
   content.append(node('h3',{class:'section-title',text:'RECENT MESSAGES · '+feed.totalMessages+' RETAINED'}));
-  if(feed.omittedMessageCount)content.append(paragraph('Showing the newest 50 messages. '+feed.omittedMessageCount+' older posts remain in retained history.','form-help'));
-  if(!feed.messages.length)content.append(paragraph('The Commons is quiet. No messages have been retained yet.','empty-note'));
+  if(feed.omittedMessageCount)content.append(paragraph('Showing the newest 50 retained posts before device-local mutes. '+feed.omittedMessageCount+' older posts remain in retained history.','form-help'));
+  if(!feed.messages.length)content.append(paragraph(feed.mutedMessageCount
+    ? 'Every recent post is from an author muted on this device. Unmute an author above to inspect their messages.'
+    : 'The Commons is quiet. No messages have been retained yet.','empty-note'));
   for(const message of feed.messages){
     const card=node('article',{class:'field-card','data-commons-message-id':message.messageId});
     card.append(node('h3',{text:message.author.name+' · '+message.author.role.toUpperCase()}));
     card.append(node('small',{class:'attribution',text:message.at}));
     if(message.hidden)card.append(node('span',{class:'pill',text:viewer.role==='founder'?'HIDDEN FROM WITNESSES · ORIGINAL RETAINED':'HIDDEN AFTER HUMAN REVIEW'}));
     card.append(paragraph(message.text));
+    if(message.canMute)card.append(button('Mute author on this device',guarded(async()=>{
+      setCommonsMutedAuthor(message.author,true);
+      renderTownSquareContent(content);
+      toast('Messages from '+message.author.name+' are now hidden on this device only.');
+    }),{class:'secondary-button','data-commons-mute':message.author.id,'data-commons-mute-role':message.author.role}));
     if(viewer.role==='founder'&&message.reportCount)card.append(paragraph(message.reportCount+' retained report'+(message.reportCount===1?'':'s')+' · '+message.pendingReportCount+' pending','form-help'));
     if(message.hidden&&viewer.role==='founder'){
       const reason=node('select',{'data-commons-moderation-reason':'',required:''});
