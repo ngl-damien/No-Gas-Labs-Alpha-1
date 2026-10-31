@@ -35,7 +35,15 @@ function unsafeReason(stat) {
   if (stat.isSymbolicLink()) return 'symlink';
   if (!stat.isFile()) return 'not-a-regular-file';
   if ((stat.mode & 0o077) !== 0) return 'permissions-too-broad';
-  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) return 'owner-mismatch';
+  let getuid;
+  try { getuid = process.getuid; }
+  catch { return 'owner-verification-failed'; }
+  if (typeof getuid !== 'function') return 'owner-verification-failed';
+  let currentUid;
+  try { currentUid = getuid.call(process); }
+  catch { return 'owner-verification-failed'; }
+  if (!Number.isSafeInteger(currentUid) || currentUid < 0) return 'owner-verification-failed';
+  if (stat.uid !== currentUid) return 'owner-mismatch';
   if (stat.size > MAX_LOCK_BYTES) return 'size-limit';
   return null;
 }
