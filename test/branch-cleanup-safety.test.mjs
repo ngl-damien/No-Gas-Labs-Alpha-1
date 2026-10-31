@@ -33,8 +33,8 @@ test('preview reports only exact-baseline, unprotected refs without open pull re
     'name === repository.data.default_branch',
     "mode: 'preview-only'"
   ]) assert.ok(workflow.includes(marker), 'missing preview guard: ' + marker);
-  assert.match(workflow, /eligible\.join\('\n'\)/);
-  assert.match(workflow, /skipped\.join\('\n'\)/);
+  assert.match(workflow, /eligible\.join\('\\n'\)/);
+  assert.match(workflow, /skipped\.join\('\\n'\)/);
 });
 
 test('read-only branch inventory requests only read permissions', () => {
