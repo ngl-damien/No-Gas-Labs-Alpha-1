@@ -211,3 +211,50 @@ test('field loadout rejects wrong slots, missing sources, cross-actor sources, a
   forgedActor.events.at(-1).actor={...founder};
   await assert.rejects(validateWorld(forgedActor),error=>error.code==='INVALID_WORLD');
 });
+
+test('each actor may challenge a retained report once while independent actors preserve separate dissent', async () => {
+  const secondWitness = { id: 'witness-2', name: 'Second witness', role: 'witness' };
+  const start = createWorld({ id: 'contradiction-encounter-world', now });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot', title: 'A bounded encounter',
+    hypothesis: 'The retained report is reproducible.',
+    falsifier: 'An independent repeat produces a counterexample.',
+    evidenceNeeded: 'A retained procedure and observation.'
+  }, witness, { now });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The required settings were not retained.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  }, witness, { now: '2026-10-17T12:00:01.000Z' });
+  const challenge = {
+    type: 'challenge-experiment-report', reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report omits the settings needed to reproduce the attempt.',
+    evidenceCreationId: null, evidenceVersion: null
+  };
+  const first = await applyAction(report.world, challenge, founder, {
+    now: '2026-10-17T12:00:02.000Z'
+  });
+  await assert.rejects(
+    applyAction(first.world, {
+      ...challenge, challengeType: 'methodology',
+      challengeText: 'A second challenge against the same report.'
+    }, founder, { now: '2026-10-17T12:00:03.000Z' }),
+    error => error.code === 'REPORT_ALREADY_CHALLENGED' && error.status === 409
+  );
+
+  const independent = await applyAction(first.world, {
+    ...challenge, challengeType: 'reproducibility',
+    challengeText: 'A separate actor cannot reproduce the retained attempt.'
+  }, secondWitness, { now: '2026-10-17T12:00:03.000Z' });
+  const challenges = independent.world.events.filter(event => event.type === 'experiment-challenged');
+  assert.equal(challenges.length, 2);
+  assert.deepEqual(challenges.map(event => event.actor.id), [founder.id, secondWitness.id]);
+  assert.equal(await validateWorld(independent.world).then(() => true), true);
+  assert.equal(projectCharacter(independent.world, founder).questXp, 25);
+  assert.equal(projectCharacter(independent.world, secondWitness).questXp, 25);
+  assert.ok(challenges.every(event => event.outcome === undefined && event.status === undefined),
+    'separate challenges preserve dissent without manufacturing a verdict');
+});
