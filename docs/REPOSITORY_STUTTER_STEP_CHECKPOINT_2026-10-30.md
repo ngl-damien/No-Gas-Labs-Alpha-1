@@ -1225,3 +1225,40 @@ No merge, release, deployment, branch deletion, permission/credential/key change
 9. Reconcile TaskAgile's stale Ralph-loop state and verify why its Actions API returns zero runs before making feature changes.
 
 No merge, release, deployment, CONTACT dispatch, state change, credential/permission setting change, spending, or external publication occurred.
+
+
+## Worker A stutter-step run — 2026-10-31 00:16 UTC (CONTACT ledger crash recovery)
+
+### Rehydration and coordination
+- Read this branch's root `AGENTS.md` alone, then the complete canonical shared protocol alone. Re-read the durable checkpoint before choosing work.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; no source/mainline change occurred.
+- Worker B's latest result is PR #227 at `f182efce2ce22a269346a54a1553900ab51f897e`. Exact-head Verify [41148502363](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41148502363), Genesis [41148502364](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41148502364), and Browser Acceptance [41148502332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41148502332) all completed successfully. No Worker B gameplay paths were edited.
+- PR #203 is current at `60ee0004ca6d6ef5cc587f0bf4c7a1008661cd0a`; Verify [41145548306], Genesis [41145548319], and Browser Acceptance [41145548367] all succeeded on that exact head.
+
+### Cycle 1 — Founder authorization priority challenged against live source
+- Issue #17 explicitly records PR #16's original self-signing `demonstrate()` finding as superseded by merged PR #18's detached Ed25519 INSTALL-signature prototype. PR #16 is not reopened or duplicated.
+- The separate current-main helper `src/authority/decision.js` still accepts a caller-supplied `{valid:true}` object in `authorizationEvent()`. PR #203 seals verifier results, binds the institution audience, validates the configured public-key fingerprint, bounds canonical digest inputs, and uses a module-captured wall clock.
+- PR #203 remains helper-only: live `game/server.mjs` does not import it and instead uses a local `NGL_FOUNDER_KEY` plus ephemeral authenticated sessions. Issue #17 still lacks independently demonstrated Founder key custody/identity and a reconciled live-server trust-anchor decision. No key material was read, generated, enrolled, or changed; no server integration was attempted.
+
+### Cycle 2 — linked CONTACT append/state crash window repaired on its existing PR
+- Rechecked `ngl-damien/ngl001-def4us28/contact/runtime.py`: it appended a hash-chained JSONL event and then used a direct `state.json` write. A process death after the append but before the state write could leave the projection behind; a later run would reuse the stale `previous_hash` and fork the ledger.
+- Rechecked the existing 128-event ledger and state. All 128 event digests and previous-hash links were independently recomputed/checked; zero mismatches. `state.run_count` is 128, its last hash equals the final event hash, and `last_observation` equals that event. The new Python digest implementation was also checked against the existing final event's stored digest.
+- Continued existing draft PR #2 rather than creating a competing branch. Branch: `security/contact-publication-founder-gate-20261030`; base `main` at `792b7ebe17dcb92fbbb2223d9cd8fee98d2f78c3`; current head `3f38ab697d3cf3ab9808b5f46fe2a2f53cd0da34`.
+- Commits on the branch:
+  - `be097fe1a2016beed86475441ec549dae955b4aa` — add `contact/ledger_store.py`: validate exact event schema, duplicate JSON keys, SHA-256 contents, previous-hash chain, and state projection; recover state from a valid ledger append; fsync ledger append; atomically replace and sync state.
+  - `dd7c8df4d1ea2b0b56b298da9717f38efb38df9d` — add 12 crash-recovery, corruption, stale-writer, and atomic-state tests.
+  - `e31f3d6478563a7dffdc8c29f175d64885f3f56b` — update `contact/runtime.py` to validate/reconcile before network observation and use the durable append/atomic-state helper.
+  - `3f38ab697d3cf3ab9808b5f46fe2a2f53cd0da34` — include the new module/test paths in the workflow's push path filter and clarify the test step.
+- Local isolated Python verification: **18/18 tests passed** across the exact fetched ledger-store and publication-gate source/test contents; the updated runtime source compiled successfully. This was an isolated harness, not a full repository checkout. Container GitHub access failed with DNS resolution, so no local checkout/build is claimed.
+- The linked repository Actions API still reports `total_count: 0`; no hosted CI result is available for this PR head. PR #2 remains draft/open and the full GitHub PR API reports `mergeable_state=clean`. No workflow dispatch was attempted.
+- The checked-in Founder Gate remains `DENY_WITHOUT_EXPLICIT_AUTHORIZATION`. The existing two-key publication gate is unchanged. No state/ledger data was modified, no publication occurred, and no external mutation was authorized.
+- Scope note: the runtime's observation URL is `No-Gas-Labs-Official/ngl001-def4us28`, which is a distinct existing repository from the current `ngl-damien/ngl001-def4us28` repository. This may be intentional legacy monitoring; the endpoint was not changed without a Founder scope decision.
+
+### Reinspection, blockers, and next ranked actions
+1. Resolve whether CONTACT is intentionally observing the legacy `No-Gas-Labs-Official` repository or should observe the current `ngl-damien` repository. Do not change the target by inference.
+2. Obtain hosted CI for CONTACT PR #2 when Actions become available; do not manually dispatch or enable publication. Consider an OS-level lock if local concurrent invocations are intended; the scheduled workflow's concurrency group serializes its own runs, but the helper does not claim a cross-process local lock.
+3. Reconcile the merged Ed25519 INSTALL signer from PR #18 with PR #203's P-256 decision helper and an explicit Founder key-custody/trust-anchor decision before any live-server integration.
+4. Continue reviewing Worker B's #227 integration only for cross-cutting reliability; its current exact-head checks are green and no duplicate gameplay edits are justified.
+5. Correct TaskAgile's stale root-agent dependency claims only after re-reading that repository's own instructions and current source; its Actions API still has no hosted runs.
+
+No merge, release, deployment, workflow dispatch, branch deletion, credential/secret/key/permission change, spending, or external publication occurred.
