@@ -781,7 +781,7 @@ test("persisted host verifier uses wall clock and rejects caller-controlled cloc
 
 test("browser signing page rejects identifiers rejected by the server verifier", async () => {
   const html = await readFile(new URL("../authority/index.html", import.meta.url), "utf8");
-  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script, "signing page must contain its inline script");
   const end = script.indexOf("function openDb()");
   assert.notEqual(end, -1, "signer validation helpers must precede storage initialization");
