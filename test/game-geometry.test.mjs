@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
+import {createWorld} from '../game/model.mjs';
+import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -10,12 +12,83 @@ function makeView(t) {
     ResizeObserver:class{observe(){}disconnect(){}}};
   const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   Object.assign(globalThis,globals);
-  const interactions=[],positions=[];
-  const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onPosition:position=>positions.push(position)});
+  const interactions=[],positions=[],discoveries=[],attributes=new Map();
+  const canvas={getContext:()=>({}),getBoundingClientRect:()=>({left:0,top:0,width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{},setAttribute:(key,value)=>attributes.set(key,String(value)),getAttribute:key=>attributes.get(key)??null,removeAttribute:key=>attributes.delete(key),focus:()=>{}};
+  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:id=>discoveries.push(id),onPosition:position=>positions.push(position)});
   t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions,positions};
+  return {view,interactions,positions,discoveries,canvas};
 }
+
+test('the map pennant projects the next actor-scoped Questkeeper objective without changing the world',t=>{
+ const world=createWorld({id:'quest-map-world',now:'2026-10-31T12:40:00.000Z'});
+ const fixtures=[
+  {viewer:{id:'founder-map',role:'founder'},target:'workbench',destination:'The Making Bench'},
+  {viewer:{id:'witness-map',role:'witness'},target:'relay',destination:'The Relay'}
+ ];
+ for(const fixture of fixtures){
+  const before=structuredClone(world),trail=getQuestTrail(world,fixture.viewer),quest=getActiveQuest(world,fixture.viewer,trail);
+  const action=quest.action==='trail'?quest.nextAction:trail.find(item=>!item.complete)?.action||null;
+  const {view,canvas}=makeView(t);
+  view.setWorld(world);view.setQuestAction(action,quest.title);
+  assert.equal(view.questMarker?.targetId,fixture.target);
+  assert.equal(canvas.getAttribute('data-quest-marker'),'visible');
+  assert.equal(canvas.getAttribute('data-quest-target-id'),fixture.target);
+  assert.equal(canvas.getAttribute('data-quest-title'),quest.title);
+  assert.equal(canvas.getAttribute('data-quest-destination'),fixture.destination);
+  assert.match(canvas.getAttribute('aria-label'),new RegExp(fixture.destination));
+  assert.deepEqual(world,before,'map projection must not mutate retained world state');
+  view.setQuestAction(null,'');
+  assert.equal(view.questMarker,null);
+  assert.equal(canvas.getAttribute('data-quest-target-id'),null);
+  assert.match(canvas.getAttribute('aria-label'),/^The Common Ground\./);
+ }
+});
+
+test('tapping the active quest pennant routes to the real destination but does not itself record discovery',t=>{
+ const world=createWorld({id:'quest-map-route-world',now:'2026-10-31T12:40:00.000Z'});
+ const viewer={id:'witness-map-route',role:'witness'},trail=getQuestTrail(world,viewer),quest=getActiveQuest(world,viewer,trail);
+ const action=quest.action==='trail'?quest.nextAction:trail.find(item=>!item.complete)?.action||null;
+ const {view,canvas,discoveries,interactions}=makeView(t);
+ view.setWorld(world);view.setQuestAction(action,quest.title);view.setPlayer({x:650,y:330});
+ const marker=view.questMarker,rect=canvas.getBoundingClientRect();
+ const pointer={clientX:rect.left+view.width/2+(marker.x-view.camera.x)*view.zoom,
+  clientY:rect.top+view.height/2+(marker.y-view.camera.y)*view.zoom};
+ view.onPointer(pointer);
+ assert.equal(view.target,'relay');
+ assert.deepEqual(discoveries,[],'the marker tap is navigation, not discovery');
+ assert.deepEqual(interactions,[]);
+ assert.deepEqual(world.events,[]);
+ for(let step=0;step<60&&(view.route.length||view.target);step++)view.update(.045,step*45);
+ assert.deepEqual(discoveries,['relay'],'discovery occurs only after the player physically approaches the location');
+ assert.deepEqual(interactions,[{type:'discovery',id:'relay'}]);
+ assert.deepEqual(world.events,[],'the map renderer dispatches activity but never appends canonical events');
+});
+
+test('quest pennants resolve retained creations and only map-visible research or collaborator records',t=>{
+ const world=createWorld({id:'quest-map-objects-world',now:'2026-10-31T12:40:00.000Z'});
+ world.creations.push({id:'retained-place',title:'A retained place',kind:'comic',version:1,position:{x:700,y:520}});
+ const {view}=makeView(t);view.setWorld(world);
+ view.setQuestAction({type:'creation',id:'retained-place',version:1},'Leave a field note');
+ assert.equal(view.questMarker?.targetId,'retained-place');
+ assert.equal(view.questMarker?.destination,'A retained place');
+ view.researchObjects=[{id:'moonshot-object',moonshotId:'moonshot-1',title:'A falsifiable question',x:900,y:400}];
+ view.setQuestAction({type:'research-object',id:'moonshot-object',moonshotId:'moonshot-1'},'Record an experiment attempt');
+ assert.equal(view.questMarker?.targetId,'moonshot-object');
+ assert.equal(view.questMarker?.targetType,'research-object');
+ view.researchActivityObjects=[{id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1',title:'Attempt report',x:980,y:440,mapVisible:true}];
+ view.setQuestAction({type:'research-activity',id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1'},'Link a retained artifact');
+ assert.equal(view.questMarker?.targetId,'attempt-object');
+ assert.equal(view.questMarker?.targetType,'research-activity');
+ view.researchActivityObjects[0].mapVisible=false;
+ assert.equal(view.setQuestAction({type:'research-activity',id:'attempt-object',moonshotId:'moonshot-1',activityId:'report-1'},'Link a retained artifact'),null);
+ view.collaboratorResponseObjects=[{id:'response-object',responseId:'response-1',name:'Rejected response',x:220,y:220,mapVisible:true}];
+ view.setQuestAction({type:'collaborator-response',id:'response-1'},'Preserve a bounded response');
+ assert.equal(view.questMarker?.targetId,'response-object');
+ assert.equal(view.questMarker?.targetType,'collaborator-response');
+ view.collaboratorResponseObjects[0].mapVisible=false;
+ assert.equal(view.setQuestAction({type:'collaborator-response',id:'response-1'},'Preserve a bounded response'),null);
+ assert.deepEqual(world.events,[],'map object projection must not create research, response, or progress events');
+});
 
 test('keyboard movement cancels a pending destination without opening it',t=>{
   const {view,interactions}=makeView(t);
