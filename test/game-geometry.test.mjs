@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
+import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
+import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -76,6 +78,36 @@ test('the playable map exposes all eight institutional functions as real destina
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
 });
+
+test('Guild Hall NPCs are the exact bounded collaborator roles and stay within the playable map',()=>{
+ assert.deepEqual(GUILD_NPCS.map(npc=>npc.roleId),COLLABORATOR_ROLES.map(role=>role.id));
+ assert.equal(new Set(GUILD_NPCS.map(npc=>npc.id)).size,GUILD_NPCS.length);
+ assert.ok(GUILD_NPCS.every(npc=>npc.id==='guild-npc-'+npc.roleId&&npc.name&&npc.objective));
+ assert.ok(GUILD_NPCS.every(npc=>npc.x>24&&npc.x<1576&&npc.y>28&&npc.y<972));
+});
+
+test('each Guild Hall NPC is a reachable map destination and dispatches only its own role',t=>{
+ const {view,interactions}=makeView(t);
+ for(const npc of GUILD_NPCS){
+  view.setPlayer({x:180,y:640});
+  view.setWorld({creations:[]});
+  view.goTo(npc.id);
+  assert.equal(view.target,npc.id,npc.name+' route should be accepted');
+  for(let step=0;step<500&&!interactions.length;step++)view.update(.045,step*45);
+  assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}],npc.name+' must open its own bounded role');
+  interactions.length=0;
+ }
+});
+
+test('a nearby Guild Hall NPC can be spoken to without recording discovery or progress',t=>{
+ const {view,interactions}=makeView(t);
+ const npc=GUILD_NPCS[0];
+ view.setPlayer({x:npc.x,y:npc.y+10});
+ view.interact(npc.id,'collaborator');
+ assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}]);
+ assert.deepEqual(view.world,{creations:[],discoveries:[]});
+});
+
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
@@ -109,6 +141,41 @@ test('institutional destinations dispatch their own location identity',t=>{
  for(let i=0;i<30;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'evidence_archive'}]);
 });
+test('fixed institutional buildings are physical obstacles with reachable front approaches',()=>{
+  const landmarks=[...PLACES.filter(place=>place.type==='institution'),PLACES.find(place=>place.id==='workbench')];
+  for(const place of landmarks){
+    assert.equal(isWalkable(place.x,place.y,[]),false,place.name+' footprint must block movement');
+    assert.equal(isWalkable(place.x,place.y+50,[]),true,place.name+' front approach must remain walkable');
+    const route=findRoute({x:180,y:640},{x:place.x,y:place.y+50},[]);
+    assert.ok(route.length>1,place.name+' must remain reachable from spawn');
+    assert.ok(route.every(point=>isWalkable(point.x,point.y,[])),place.name+' route must avoid water and buildings');
+  }
+});
+
+test('restoring a legacy position inside a fixed landmark rehomes to a safe tile',t=>{
+  const {view}=makeView(t);
+  view.setPlayer({x:230,y:170});
+  const recovered=view.getPlayer();
+  assert.notDeepEqual(recovered,{x:230,y:170});
+  assert.equal(isWalkable(recovered.x,recovered.y,[]),true);
+});
+
+test('a newly published building cannot trap a player at the previous position',t=>{
+  const {view}=makeView(t);
+  view.setPlayer({x:550,y:600});
+  view.setWorld({creations:[{id:'new-building',position:{x:550,y:600}}]});
+  const recovered=view.getPlayer();
+  assert.notDeepEqual(recovered,{x:550,y:600});
+  assert.equal(isWalkable(recovered.x,recovered.y,view.world.creations),true);
+});
+
+test('non-finite map positions and route targets fail closed',()=>{
+  assert.equal(isWalkable(NaN,200,[]),false);
+  assert.equal(isWalkable(200,Infinity,[]),false);
+  assert.deepEqual(findRoute({x:NaN,y:200},{x:300,y:300},[]),[]);
+  assert.deepEqual(findRoute({x:200,y:200},{x:300,y:Infinity},[]),[]);
+});
+
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
   assert.equal(isWalkable(850,360,[]),true);
@@ -207,4 +274,21 @@ test('world activity counts refresh when a new world projection is supplied', t 
   });
   assert.equal(view.institutionCounts['town-square'], 1);
   assert.equal(view.institutionCounts.evidence_archive, 0);
+});
+
+
+test('map only reuses a Relay projection sealed to the exact world snapshot', t => {
+  const {view} = makeView(t);
+  const world = { id: 'map-projection-world', revision: 0, creations: [], events: [] };
+  const foreignWorld = { id: 'other-map-world', revision: 0, creations: [], events: [] };
+  const foreignProjection = projectCollaboratorResponseWorldObjects(foreignWorld);
+  const forgedProjection = Object.freeze([{ id: 'forged-folio', mapVisible: true, x: 610, y: 205 }]);
+
+  view.setWorld(world, null, foreignProjection);
+  assert.deepEqual(view.collaboratorResponseObjects, [], 'a projection from another world is recomputed, not replayed');
+  view.setWorld(world, null, forgedProjection);
+  assert.deepEqual(view.collaboratorResponseObjects, [], 'a caller-created array cannot add a map object');
+  const ownProjection = projectCollaboratorResponseWorldObjects(world);
+  view.setWorld(world, null, ownProjection);
+  assert.strictEqual(view.collaboratorResponseObjects, ownProjection, 'the same-snapshot projection is reused');
 });

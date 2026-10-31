@@ -13,7 +13,7 @@ async function publishedSource(){
   const draft=await applyAction(initial,{type:'draft',kind:'observatory',title:'Study source',intent:'A retained artifact whose claims still need independent checking.'},founder,{now:'2026-10-28T00:00:01.000Z'});
   return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-28T00:00:02.000Z'});
 }
-test('Polymath Academy retains a source-bound study note without awarding XP or mastery',async()=>{
+test('Polymath Academy grants source-bound activity XP without awarding mastery',async()=>{
   const published=await publishedSource();
   const before=getQuestTrail(published.world,witness).find(item=>item.id==='witness-academy-study-note');
   assert.equal(before.complete,false);
@@ -24,7 +24,7 @@ test('Polymath Academy retains a source-bound study note without awarding XP or 
   assert.equal(valid.xp,published.world.xp);assert.equal(event.outcome,undefined);assert.equal(event.status,undefined);assert.equal(institutionActivityCount('academy',valid),1);
   const entry=projectChronicle({world:valid}).entries.find(item=>item.eventType==='study');
   assert.ok(entry);assert.equal(entry.category,'POLYMATH ACADEMY');assert.match(entry.summary,/does not certify correctness or mastery/i);assert.match(entry.detail,/Question: What does the retained receipt establish/);assert.equal(entry.targetAvailable,true);
-  const character=projectCharacter(valid,witness);assert.equal(character.xp,0);assert.equal(character.skills.find(skill=>skill.id==='scholar').count,1);
+  const character=projectCharacter(valid,witness);assert.deepEqual([character.xp,character.publicationXp,character.questXp],[25,0,25]);assert.equal(character.skills.find(skill=>skill.id==='scholar').count,1);
   const witnessQuest=getQuestTrail(valid,witness).find(item=>item.id==='witness-academy-study-note');
   const founderQuest=getQuestTrail(valid,founder).find(item=>item.id==='founder-academy-study-note');
   assert.equal(witnessQuest.complete,true);assert.deepEqual(witnessQuest.evidenceIds,[event.id]);assert.equal(witnessQuest.evidence[0].creationId,published.result.creationId);assert.equal(witnessQuest.evidence[0].version,1);assert.equal(founderQuest.complete,false);
@@ -45,7 +45,7 @@ test('duplicate study identities cannot complete the Academy quest or inflate Sc
   await assert.rejects(validateWorld(ambiguous),error=>error.code==='INVALID_WORLD');
 });
 
-test('Academy retrieval review is actor-scoped, source-bound activity without XP or mastery',async()=>{
+test('Academy retrieval review grants actor-scoped activity XP without mastery',async()=>{
   const published=await publishedSource();
   const studied=await applyAction(published.world,{type:'study',creationId:published.result.creationId,version:1,question:'What does the receipt prove?',attempt:'Only byte identity, not truth.',nextCheck:'Name one independent observation that could challenge the claim.'},witness,{now:'2026-10-28T00:00:03.000Z'});
   const source=studied.world.events.at(-1);
@@ -70,7 +70,7 @@ test('Academy retrieval review is actor-scoped, source-bound activity without XP
   assert.match(entry.summary,/self-reported practice/i);
   assert.equal(entry.targetAvailable,true);
   const character=projectCharacter(valid,witness);
-  assert.equal(character.xp,0);
+  assert.deepEqual([character.xp,character.publicationXp,character.questXp],[50,0,50]);
   assert.equal(character.skills.find(skill=>skill.id==='retriever').count,1);
   assert.equal(getQuestTrail(valid,witness).find(item=>item.id==='witness-academy-study-review').complete,true);
   assert.equal(getQuestTrail(valid,founder).find(item=>item.id==='founder-academy-study-review').complete,false);

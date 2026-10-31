@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot } from '../game/institution-view.mjs';
 
 function element(tag) {
   return {
@@ -146,3 +146,126 @@ test('Evidence Archive does not mistake unavailable canonical history for an emp
   assert.match(output, /not being treated as empty/);
   assert.match(output, /Private draft created/);
 }));
+
+
+test('institution view preserves the last world chronicle but marks failed shared registers unavailable', () => withDocument(() => {
+  const root = element('div');
+  const world = {
+    creations: [],
+    events: [{
+      id: 'draft-before-disconnect',
+      type: 'draft',
+      actor: { id: 'damien', name: 'Damien' },
+      at: '2026-10-30T08:00:00.000Z'
+    }],
+    reports: [],
+    contributions: []
+  };
+
+  renderInstitution(root, null, null, {
+    world,
+    worldSnapshotStale: true,
+    projectsUnavailable: true,
+    decisionsUnavailable: true,
+    kernelUnavailable: true
+  });
+
+  const output = textOf(root);
+  assert.match(output, /last snapshot received by this session; it may be stale/i);
+  assert.match(output, /Private draft created/);
+  assert.match(output, /No empty register is inferred from missing data/);
+  assert.match(output, /Decision ledger unavailable or malformed/);
+  assert.match(output, /Canonical work receipts could not be loaded/);
+  assert.doesNotMatch(output, /No retained record is installed/);
+  assert.doesNotMatch(output, /No operational review policy is activated/);
+}));
+
+test('institution view keeps available project records when the decision ledger is unavailable', () => withDocument(() => {
+  const root = element('div');
+  const availableProjects = {
+    ...projects,
+    projects: [{ title: 'Recovered project register', status: 'OPEN' }]
+  };
+  const world = { creations: [], events: [], reports: [], contributions: [] };
+  const kernel = { revision: 0, eventCount: 0, events: [], accepted: [] };
+
+  renderInstitution(root, availableProjects, null, {
+    world,
+    kernel,
+    decisionsUnavailable: true
+  });
+
+  const output = textOf(root);
+  assert.match(output, /Recovered project register/);
+  assert.match(output, /Decision ledger unavailable or malformed/);
+  assert.doesNotMatch(output, /No operational review policy is activated/);
+  assert.doesNotMatch(output, /Project, accomplishment, dispute and decision-status registers are unavailable/);
+}));
+
+
+function validWorldSnapshot(overrides = {}) {
+  const at = '2026-10-30T10:00:00.000Z';
+  return {
+    schema: 'ngl.world.v2',
+    id: 'world-test',
+    founderName: 'Damien Featherstone',
+    revision: 0,
+    xp: 0,
+    createdAt: at,
+    updatedAt: at,
+    creations: [],
+    drafts: [],
+    events: [],
+    contributions: [],
+    reports: [],
+    discoveries: [],
+    methods: [],
+    ...overrides
+  };
+}
+
+test('world snapshot selection accepts a complete envelope without claiming canonical truth', () => {
+  const candidate = validWorldSnapshot();
+  assert.equal(isInspectableWorldSnapshot(candidate), true);
+  const selected = selectWorldSnapshot(candidate, null);
+  assert.equal(selected.world, candidate);
+  assert.equal(selected.stale, false);
+  assert.equal(selected.unavailable, false);
+});
+
+test('malformed shared world response falls back to the last inspectable snapshot as stale', () => {
+  const previous = validWorldSnapshot({ revision: 4, events: [
+    { id: 'event-before-outage', type: 'draft', at: '2026-10-30T09:00:00.000Z' }
+  ] });
+  const selected = selectWorldSnapshot({ world: {} }, previous);
+  assert.equal(selected.world, previous);
+  assert.equal(selected.stale, true);
+  assert.equal(selected.unavailable, false);
+});
+
+test('missing or malformed world snapshots are unavailable rather than fresh empty worlds', () => {
+  for (const malformed of [
+    null,
+    {},
+    { ...validWorldSnapshot(), events: undefined },
+    { ...validWorldSnapshot(), createdAt: '2026-02-30T00:00:00Z' },
+    { ...validWorldSnapshot(), creations: Array(1) }
+  ]) {
+    assert.equal(isInspectableWorldSnapshot(malformed), false);
+    const selected = selectWorldSnapshot(malformed, null);
+    assert.equal(selected.world, null);
+    assert.equal(selected.stale, true);
+    assert.equal(selected.unavailable, true);
+  }
+});
+
+test('world snapshot envelope rejects accessor-backed fields without executing getters', () => {
+  let reads = 0;
+  const hostile = validWorldSnapshot();
+  Object.defineProperty(hostile, 'events', {
+    enumerable: true,
+    get() { reads += 1; return []; }
+  });
+  assert.equal(isInspectableWorldSnapshot(hostile), false);
+  assert.equal(reads, 0);
+});

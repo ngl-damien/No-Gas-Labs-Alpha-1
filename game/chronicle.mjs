@@ -4,7 +4,11 @@ const PLACE_NAMES = Object.freeze({
   river: "River of Receipts",
   overlook: "The Long View",
   ruins: "The Unfinished",
-  "town-square": "TownSquare"
+  "town-square": "TownSquare",
+  guild_hall: "Guild Hall",
+  evidence_archive: "Evidence Archive",
+  academy: "Polymath Academy",
+  moonshot_field: "Moonshot Field"
 });
 
 const text = value => typeof value === "string" && value.trim() ? value : "";
@@ -326,6 +330,39 @@ function worldEntry(event, index, creations, notes) {
     } else {
       entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
     }
+  } else if (type === "experiment-challenged") {
+    const challengeType = text(event?.challengeType) || "unclassified";
+    entry.title = `Experiment challenge · ${challengeType.toUpperCase()}`;
+    entry.category = "DISSENT & CHALLENGE";
+    entry.summary = "A bounded challenge to an earlier self-reported experiment attempt was retained. It preserves dissent; it does not adjudicate the report or prove a counterclaim.";
+    entry.detail = text(event?.challengeText) || "No challenge text was recorded.";
+    if (event?.evidenceCreationId && !target) {
+      entry.warning = "The referenced challenge-evidence version is unavailable in this snapshot; no evidence target is inferred.";
+    } else if (target) {
+      entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
+    }
+  } else if (type === "collaborator-response-recorded") {
+    const roleNames = {
+      archivist: "Hostile Archivist",
+      adversary: "Adversary",
+      synthesizer: "Synthesis Clerk",
+      tutor: "Polymath Tutor",
+    };
+    const role = roleNames[event?.role] || text(event?.role) || "Unknown collaborator";
+    const status = event?.validationStatus === "valid-for-human-review"
+      ? "STRUCTURE VALID · HUMAN REVIEW ONLY"
+      : "REJECTED · PRESERVED";
+    entry.title = `Collaborator response preserved · ${role} · ${status}`;
+    entry.category = "GUILD HALL";
+    entry.summary = "An actor-attributed pasted collaborator response and its exact source packet were preserved. Structural/scope validation does not establish truth, evidence, execution, approval, mastery or authority.";
+    entry.detail = [
+      `Moonshot: ${text(event?.moonshotId) || "not identified"}`,
+      `Source events: ${Array.isArray(event?.sourceEventIds) ? event.sourceEventIds.join(", ") : "not identified"}`,
+      `Packet SHA-256: ${text(event?.packetReceipt?.digest) || "unavailable"} (${Number.isSafeInteger(event?.packetReceipt?.size) ? event.packetReceipt.size + " bytes" : "size unavailable"})`,
+      `Response SHA-256: ${text(event?.responseReceipt?.digest) || "unavailable"} (${Number.isSafeInteger(event?.responseReceipt?.size) ? event.responseReceipt.size + " bytes" : "size unavailable"})`,
+      event?.validationReason ? `Structural result: ${text(event.validationReason)}` : "Structural result: valid for human review only",
+    ].join(" · ");
+    entry.warning = "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";

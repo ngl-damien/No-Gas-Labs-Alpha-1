@@ -1,4 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
 export const PLACES=[
@@ -8,21 +10,42 @@ export const PLACES=[
  {id:'overlook',name:'The Long View',x:1310,y:310,type:'discovery'},
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
- {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Review retained work and the limits of collaborator authority.',glyph:'G',color:'#356e62'},
+ {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
- {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, contributions and version references.',glyph:'E',color:'#6b805d'},
+ {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
 ];
+
+const GUILD_NPC_POSITIONS = Object.freeze([
+  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
+  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
+  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
+  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
+]);
+
+// These are authored, role-bound entry points to the Guild Hall contracts.
+// They are not autonomous agents and make no provider calls or world writes.
+export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
+  const role = COLLABORATOR_ROLES.find(candidate => candidate.id === position.roleId);
+  return role ? [Object.freeze({
+    id: 'guild-npc-' + role.id,
+    roleId: role.id,
+    name: role.name,
+    objective: role.objective,
+    ...position
+  })] : [];
+}));
+
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: research proposals, reported attempts, and explicit dissent.
- guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
  // Forge: the artifact lifecycle, including its explicit publication step.
  forge:event=>['draft','repair','publish'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
- evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
@@ -470,10 +493,44 @@ export function projectMoonshotWorldObjects(world) {
 
 const riverX=y=>856+Math.sin(y/155)*34;
 const bridge=y=>(y>=326&&y<=396)||(y>=682&&y<=754);
+// Collision follows the visible footprints of the fixed landmarks. The front
+// approach points used by goTo() remain outside these bounds.
+const LANDMARK_OBSTACLES=Object.freeze([
+  {id:'workbench',x:325,y:645,halfWidth:67,top:-48,bottom:41},
+  ...PLACES.filter(place=>place.type==='institution').map(place=>({
+    id:place.id,x:place.x,y:place.y,
+    halfWidth:place.id==='town-square'?61:48,
+    top:place.id==='town-square'?-49:-58,
+    bottom:place.id==='town-square'?23:25
+  }))
+]);
 export function isWalkable(x,y,buildings=[]) {
-  if(x<24||y<28||x>1576||y>972)return false;
+  if(!Number.isFinite(x)||!Number.isFinite(y)||x<24||y<28||x>1576||y>972)return false;
   if(Math.abs(x-riverX(y))<69&&!bridge(y))return false;
+  if(LANDMARK_OBSTACLES.some(obstacle=>
+    Math.abs(x-obstacle.x)<obstacle.halfWidth&&
+    y>obstacle.y+obstacle.top&&y<obstacle.y+obstacle.bottom
+  ))return false;
   return !buildings.some(c=>Math.abs(x-c.position.x)<74&&y>c.position.y-67&&y<c.position.y+49);
+}
+function nearestWalkablePoint(position,buildings=[],maxRadius=8) {
+  if(!position||!Number.isFinite(position.x)||!Number.isFinite(position.y))return null;
+  if(isWalkable(position.x,position.y,buildings))return {x:position.x,y:position.y};
+  const cell=20,centerX=Math.max(2,Math.min(78,Math.round(position.x/cell)));
+  const centerY=Math.max(2,Math.min(48,Math.round(position.y/cell)));
+  for(let radius=1;radius<=maxRadius;radius++){
+    let best=null;
+    for(let dx=-radius;dx<=radius;dx++)for(let dy=-radius;dy<=radius;dy++){
+      if(Math.abs(dx)!==radius&&Math.abs(dy)!==radius)continue;
+      const x=(centerX+dx)*cell,y=(centerY+dy)*cell;
+      if(!isWalkable(x,y,buildings))continue;
+      const distance=Math.hypot(x-position.x,y-position.y);
+      if(!best||distance<best.distance||
+         (distance===best.distance&&(y<best.y||(y===best.y&&x<best.x))))best={x,y,distance};
+    }
+    if(best)return {x:best.x,y:best.y};
+  }
+  return null;
 }
 export function stepPlayer(player,input,distance,buildings=[]) {
   const len=Math.hypot(input.x,input.y);if(!len)return {...player};
@@ -482,6 +539,8 @@ export function stepPlayer(player,input,distance,buildings=[]) {
   return {x,y};
 }
 export function findRoute(start,target,buildings=[]) {
+  if(!start||!target||!Number.isFinite(start.x)||!Number.isFinite(start.y)||
+     !Number.isFinite(target.x)||!Number.isFinite(target.y))return [];
   const cell=20,cols=80,rows=50,key=(x,y)=>y*cols+x;
   const from={x:Math.max(2,Math.min(78,Math.round(start.x/cell))),y:Math.max(2,Math.min(48,Math.round(start.y/cell)))},to={x:Math.max(2,Math.min(78,Math.round(target.x/cell))),y:Math.max(2,Math.min(48,Math.round(target.y/cell)))};
   if(!isWalkable(from.x*cell,from.y*cell,buildings)){let closest=null;for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const x=from.x+dx,y=from.y+dy,distance=Math.hypot(x*cell-start.x,y*cell-start.y);if(isWalkable(x*cell,y*cell,buildings)&&(!closest||distance<closest.distance))closest={x,y,distance};}if(!closest)return [];from.x=closest.x;from.y=closest.y;}
@@ -497,18 +556,19 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=projectCollaboratorResponseWorldObjects(this.world);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());this.onBlur=()=>{this.keys.clear();this.input={x:0,y:0}};
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world,institutionSummary=this.institutionSummary){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
+  setWorld(world,institutionSummary=this.institutionSummary,collaboratorResponseObjects=null){const next=world||{creations:[]};this.world=next;const safePlayer=nearestWalkablePoint(this.player,Array.isArray(next.creations)?next.creations:[]);if(safePlayer)this.player={...this.player,...safePlayer};this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=isCollaboratorResponseProjection(collaboratorResponseObjects,next)?collaboratorResponseObjects:projectCollaboratorResponseWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),collaboratorResponseObjects:this.collaboratorResponseObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
-  setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
+  drawGuildNpc(npc){const c=this.ctx;c.save();c.translate(npc.x,npc.y);this.ellipse(0,10,13,5,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle=npc.accent;c.lineWidth=1.6;c.beginPath();c.roundRect(-10,-21,20,29,5);c.fill();c.stroke();this.ellipse(0,-28,8,9,'#e2b68b','#675d42');c.fillStyle=npc.accent;c.fillRect(-10,-37,20,7);this.text(npc.sigil,0,-11,10,'#f8efd4','system-ui');this.text(npc.name,0,29,8,'#29443d','system-ui');this.text('GUILD HALL',0,40,7,'#687756','system-ui');c.restore();}
+  setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){const safe=nearestWalkablePoint({x:player.x,y:player.y},this.world.creations);if(safe)this.player={...this.player,...safe};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}
   cancelRoute(){this.route=[];this.target=null;this.targetType=null;}
@@ -520,7 +580,12 @@ export class WorldView {
       const place=PLACES.find(p=>p.id===id);
       const researchObject=this.researchObjects.find(object=>object.id===id);
       const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);
-      if(targetType==='research-object'){
+      const collaboratorResponseObject=(this.collaboratorResponseObjects||[]).find(object=>object.id===id);
+      const collaborator=GUILD_NPCS.find(npc=>npc.id===id);
+      if(targetType==='collaborator-response'){
+        if(!collaboratorResponseObject?.mapVisible){this.cancelRoute();return}
+        target={x:collaboratorResponseObject.x,y:collaboratorResponseObject.y+18};
+      }else if(targetType==='research-object'){
         if(!researchObject){this.cancelRoute();return}
         target={x:researchObject.x,y:researchObject.y+28};
       }else if(targetType==='research-activity'){
@@ -532,6 +597,8 @@ export class WorldView {
       else if(place)target={x:place.x,y:place.y+50};
       else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};
       else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};
+      else if(collaboratorResponseObject?.mapVisible)target={x:collaboratorResponseObject.x,y:collaboratorResponseObject.y+18};
+      else if(collaborator)target={x:collaborator.x,y:collaborator.y+12};
       else {this.cancelRoute();return}
     }
     const route=findRoute(this.player,target,this.world.creations);
@@ -539,7 +606,7 @@ export class WorldView {
     this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;
   }
   nearest(targetId,targetType){
-    const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];
+    const options=[...PLACES,...GUILD_NPCS.map(npc=>({id:npc.id,roleId:npc.roleId,x:npc.x,y:npc.y+10,type:'collaborator',name:npc.name})),...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({id:object.id,responseId:object.responseId,roleId:object.roleId,moonshotId:object.moonshotId,validationStatus:object.validationStatus,x:object.x,y:object.y+10,type:'collaborator-response',name:object.name}))];
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
@@ -548,13 +615,13 @@ export class WorldView {
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
-      const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
+      const interaction=nearest.type==='collaborator'?{type:'collaborator',id:nearest.id,roleId:nearest.roleId}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:nearest.type==='collaborator-response'?{type:'collaborator-response',responseId:nearest.responseId,roleId:nearest.roleId,moonshotId:nearest.moonshotId,validationStatus:nearest.validationStatus}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
   update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
     const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(175*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const collaboratorResponseObject=(this.collaboratorResponseObjects||[]).find(object=>object.id===id);const collaborator=GUILD_NPCS.find(npc=>npc.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='collaborator-response'){if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus});else if(collaborator)this.callbacks.onInteract({type:'collaborator',id:collaborator.id,roleId:collaborator.roleId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;const desired={x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
@@ -576,13 +643,14 @@ export class WorldView {
   }
   drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
   drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(dissent?'D':'A',0,4,9,dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
+  drawCollaboratorResponseObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const rejected=object.validationStatus==='rejected';this.ellipse(0,10,12,4,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle=object.accent;c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-12,16,21,2);c.fill();c.stroke();this.line([[-4,-6],[4,-6]],object.accent,1);this.line([[-4,-2],[4,-2]],'#9a9876',1);this.text(object.sigil,0,10,8,object.accent,'system-ui');this.text(rejected?'REJECTED':'REVIEW',0,21,6,rejected?'#af5138':'#687756','system-ui');c.restore();}
   drawWorkbench(){const c=this.ctx;c.save();c.translate(325,645);this.ellipse(0,24,65,19,'#444b2620');for(const x of [-37,34])this.line([[x,5],[x-3,36]],'#67543b',7);c.fillStyle='#bc9e68';c.strokeStyle=palette.ink;c.lineWidth=2;c.beginPath();c.moveTo(-60,-17);c.lineTo(35,-30);c.lineTo(62,-3);c.lineTo(-36,12);c.closePath();c.fill();c.stroke();c.fillStyle='#f6efdb';c.fillRect(-20,-31,37,24);this.line([[-14,-25],[9,-25]],'#9a9876',1);this.line([[-14,-19],[3,-19]],'#9a9876',1);this.line([[26,-24],[39,-43]],'#aa532f',4);c.fillStyle='#d6803f';c.fillRect(-45,-30,10,16);this.text('THE MAKING BENCH',0,67,12);this.text('ideas become places',0,84,10,'#7b8162');c.restore()}
   drawPlaces(){const c=this.ctx;for(const place of PLACES.filter(p=>p.type==='discovery')){const{x,y,id}=place;c.save();c.translate(x,y);this.ellipse(0,25,43,12,'#44532b14');if(id==='relay'){this.line([[0,20],[0,-76]],'#646e4a',5);this.line([[-26,-55],[25,-55]],'#646e4a',4);c.fillStyle='#ce7443';c.beginPath();c.moveTo(3,-78);c.quadraticCurveTo(44,-88,42,-53);c.quadraticCurveTo(18,-68,3,-53);c.closePath();c.fill();this.line([[-12,20],[-7,4],[8,4],[16,20]],'#887951',2)}else if(id==='river'){for(let i=0;i<3;i++)this.rock(i*16-16,i*3,.7);this.line([[6,-10],[6,-58]],'#586a4c',3);c.fillStyle='#e9d39a';c.fillRect(7,-59,35,22);this.text('≡',24,-43,18,'#746f50')}else if(id==='overlook'){for(let n=0;n<4;n++)this.line([[-44+n*10,28-n*11],[44-n*10,28-n*11]],'#a5a27a',8);this.line([[-22,-10],[-22,-51],[21,-51],[21,-10]],'#797e5b',5);this.line([[-30,-51],[29,-51]],'#797e5b',8);this.line([[8,-48],[8,-72],[45,-70]],'#5b7566',4);this.ellipse(47,-69,9,8,'#c7be85','#5b7566')}else{for(const [bx,h] of [[-29,41],[-5,28],[28,53]]){c.fillStyle='#bfc1a0';c.strokeStyle='#8e9877';c.lineWidth=1.5;c.fillRect(bx-9,17-h,18,h);c.strokeRect(bx-9,17-h,18,h);this.line([[bx-10,17-h],[bx+4,10-h],[bx+10,17-h]],'#7d886a',2)}this.line([[-42,26],[42,26]],'#9ca17a',5)}this.text(place.name.toUpperCase(),0,57,11,'#687756');c.restore()}for(const place of PLACES.filter(p=>p.type==='institution'&&p.id!=='town-square'))this.drawInstitution(place);}
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
   drawPlayer(player,other=false){const c=this.ctx;c.save();c.translate(player.x,player.y);this.ellipse(0,9,13,5,'#354a3a33');const bob=!this.reduced&&this.moving&&!other?Math.sin(this.time*16)*1.5:0;c.translate(0,bob);this.line([[-4,0],[-5,8]],'#3c4b43',4);this.line([[5,0],[7,8]],'#3c4b43',4);c.fillStyle=other?'#6e8c76':'#385e58';c.beginPath();c.roundRect(-9,-20,18,23,5);c.fill();this.ellipse(0,-26,9,10,'#e2b68b','#675d42');this.ellipse(0,-33,11,8,other?'#819a75':palette.orange,'#7d6541');c.fillStyle=other?'#819a75':'#e38942';c.fillRect(-11,-33,22,5);this.ellipse(0,-42,4,4,other?'#819a75':palette.orange);this.line([[-9,-17],[-14,-8]],'#c7a17b',4);this.line([[9,-17],[13,-8]],'#c7a17b',4);if(!other){this.ellipse(0,-52,3,3,'#fff4ce');this.text('YOU',0,27,9,'#35574d','system-ui')}else if(player.name)this.text(String(player.name).slice(0,24),0,27,10,'#546c53');c.restore()}
   render(){const c=this.ctx;c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.save();c.translate(this.width/2-this.camera.x*this.zoom,this.height/2-this.camera.y*this.zoom);c.scale(this.zoom,this.zoom);this.drawLandscape();if(this.route.length){this.line([[this.player.x,this.player.y],...this.route.map(p=>[p.x,p.y])],'#b56a3e99',2,[4,7]);const p=this.route.at(-1);this.ellipse(p.x,p.y,8,4,undefined,'#b56a3e')}
-    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
-    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
+    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawCollaboratorResponseObject(object)})),...GUILD_NPCS.map(npc=>({y:npc.y,draw:()=>this.drawGuildNpc(npc)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
+    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='collaborator'?`E · Speak to ${near.name}`:near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='collaborator-response'?'E · Inspect archived '+near.name+' response':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.width*.2,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#786f3600');vignette.addColorStop(1,'#786f3618');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
   }
   destroy(){this.destroyed=true;cancelAnimationFrame(this.animation);this.resizeObserver.disconnect();removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);this.canvas.removeEventListener('pointerdown',this.onPointer);}

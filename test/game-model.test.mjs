@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {projectCharacter} from '../game/character-sheet.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -135,4 +136,125 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+
+test('field loadout choices are actor-owned, append-only, reversible, and XP-neutral',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const firstSource=discovered.world.events.find(event=>event.type==='discover'&&event.locationId==='river');
+  const pinned=await applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:firstSource.id},witness,{now,requestId:'field-equip-river',actionFingerprint:'a'.repeat(64)});
+  assert.equal(pinned.world.events.at(-1).type,'field-item-equipped');
+  assert.deepEqual(pinned.result,{slotId:'scouting',sourceEventId:firstSource.id});
+  assert.equal(pinned.world.xp,0,'equipping cannot award XP');
+  await assert.doesNotReject(validateWorld(pinned.world));
+  let slot=projectCharacter(pinned.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'pinned');
+  assert.equal(slot.source.eventId,firstSource.id);
+  assert.ok(Object.isFrozen(slot.choices));
+
+  const later=await applyAction(pinned.world,{type:'discover',locationId:'relay'},witness,{now});
+  const secondSource=later.world.events.find(event=>event.type==='discover'&&event.locationId==='relay');
+  slot=projectCharacter(later.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.source.eventId,firstSource.id,'a pinned source survives newer qualifying activity');
+  assert.equal(slot.mode,'pinned');
+
+  const reset=await applyAction(later.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now});
+  slot=projectCharacter(reset.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'automatic');
+  assert.equal(slot.source.eventId,secondSource.id,'reset returns to the newest qualifying source');
+  assert.equal(reset.world.xp,0);
+  await assert.doesNotReject(validateWorld(reset.world));
+
+  const cleared=await applyAction(reset.world,{type:'unequip-field-item',slotId:'scouting'},witness,{
+    now:'2026-10-17T12:00:01.000Z',requestId:'field-unequip-river',actionFingerprint:'c'.repeat(64)
+  });
+  assert.equal(cleared.world.events.at(-1).type,'field-item-unequipped');
+  assert.deepEqual(cleared.result,{slotId:'scouting'});
+  assert.equal(cleared.world.xp,0,'unequipping cannot award XP');
+  slot=projectCharacter(cleared.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'unequipped');
+  assert.equal(slot.status,'empty');
+  assert.equal(slot.source,null);
+  await assert.doesNotReject(validateWorld(cleared.world));
+
+  const afterClearDiscovery=await applyAction(cleared.world,{type:'discover',locationId:'overlook'},witness,{now:'2026-10-17T12:00:02.000Z'});
+  const laterSource=afterClearDiscovery.world.events.find(event=>event.type==='discover'&&event.locationId==='overlook');
+  slot=projectCharacter(afterClearDiscovery.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'unequipped','new activity does not silently re-equip a cleared slot');
+  assert.equal(slot.source,null);
+
+  const autoAgain=await applyAction(afterClearDiscovery.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now:'2026-10-17T12:00:03.000Z'});
+  slot=projectCharacter(autoAgain.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'automatic');
+  assert.equal(slot.source.eventId,laterSource.id,'automatic selection resumes only after an explicit reset');
+  await assert.doesNotReject(validateWorld(autoAgain.world));
+});
+
+test('field loadout rejects wrong slots, missing sources, cross-actor sources, and forged imported references',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const source=discovered.world.events.find(event=>event.type==='discover');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'unknown',sourceEventId:null},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SLOT');
+  await assert.rejects(applyAction(discovered.world,{type:'unequip-field-item',slotId:'unknown'},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SLOT');
+  await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting'},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
+  const pinned=await applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now,requestId:'field-equip-tamper',actionFingerprint:'b'.repeat(64)});
+  const forged=structuredClone(pinned.world);
+  forged.events.at(-1).sourceEventId='missing-source';
+  forged.events.at(-1).actionResult.sourceEventId='missing-source';
+  await assert.rejects(validateWorld(forged),error=>error.code==='INVALID_WORLD');
+  const forgedSlot=structuredClone(pinned.world);
+  forgedSlot.events.at(-1).slotId='provenance';
+  forgedSlot.events.at(-1).actionResult.slotId='provenance';
+  await assert.rejects(validateWorld(forgedSlot),error=>error.code==='INVALID_WORLD');
+  const forgedActor=structuredClone(pinned.world);
+  forgedActor.events.at(-1).actor={...founder};
+  await assert.rejects(validateWorld(forgedActor),error=>error.code==='INVALID_WORLD');
+});
+
+test('each actor may challenge a retained report once while independent actors preserve separate dissent', async () => {
+  const secondWitness = { id: 'witness-2', name: 'Second witness', role: 'witness' };
+  const start = createWorld({ id: 'contradiction-encounter-world', now });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot', title: 'A bounded encounter',
+    hypothesis: 'The retained report is reproducible.',
+    falsifier: 'An independent repeat produces a counterexample.',
+    evidenceNeeded: 'A retained procedure and observation.'
+  }, witness, { now });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The required settings were not retained.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  }, witness, { now: '2026-10-17T12:00:01.000Z' });
+  const challenge = {
+    type: 'challenge-experiment-report', reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report omits the settings needed to reproduce the attempt.',
+    evidenceCreationId: null, evidenceVersion: null
+  };
+  const first = await applyAction(report.world, challenge, founder, {
+    now: '2026-10-17T12:00:02.000Z'
+  });
+  await assert.rejects(
+    applyAction(first.world, {
+      ...challenge, challengeType: 'methodology',
+      challengeText: 'A second challenge against the same report.'
+    }, founder, { now: '2026-10-17T12:00:03.000Z' }),
+    error => error.code === 'REPORT_ALREADY_CHALLENGED' && error.status === 409
+  );
+
+  const independent = await applyAction(first.world, {
+    ...challenge, challengeType: 'reproducibility',
+    challengeText: 'A separate actor cannot reproduce the retained attempt.'
+  }, secondWitness, { now: '2026-10-17T12:00:03.000Z' });
+  const challenges = independent.world.events.filter(event => event.type === 'experiment-challenged');
+  assert.equal(challenges.length, 2);
+  assert.deepEqual(challenges.map(event => event.actor.id), [founder.id, secondWitness.id]);
+  assert.equal(await validateWorld(independent.world).then(() => true), true);
+  assert.equal(projectCharacter(independent.world, founder).questXp, 25);
+  assert.equal(projectCharacter(independent.world, secondWitness).questXp, 25);
+  assert.ok(challenges.every(event => event.outcome === undefined && event.status === undefined),
+    'separate challenges preserve dissent without manufacturing a verdict');
 });
