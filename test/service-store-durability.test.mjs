@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, rename, rm, symlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, writeFile, open, link, rename, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServiceStore } from '../game/service-store.mjs';
@@ -687,3 +687,55 @@ test('service-store leaves an abruptly terminated writer lock for read-only insp
   assert.equal(lockAfterContender.ino, lockAfterExit.ino, 'inspection and rejected reopen must preserve the stale lock for offline recovery');
 });
 
+
+
+test('service-store refuses to publish a lock when its temporary pathname is replaced before linking', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lock-replaced-before-link-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let temporaryPath;
+  const linkFile = async (source, target) => {
+    temporaryPath = source;
+    await rename(source, movedOriginal);
+    await writeFile(source, 'replacement lock path', { mode: 0o600 });
+    await link(source, target);
+  };
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate, linkFile }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  const [published, temporary, original] = await Promise.all([
+    lstat(lockPath), lstat(temporaryPath), lstat(movedOriginal)
+  ]);
+  assert.equal(published.dev, temporary.dev);
+  assert.equal(published.ino, temporary.ino);
+  assert.notEqual(published.ino, original.ino, 'the published replacement must not be mistaken for the opened lease inode');
+  assert.equal(await readFile(lockPath, 'utf8'), 'replacement lock path');
+  assert.equal(await readFile(temporaryPath, 'utf8'), 'replacement lock path');
+});
+
+test('service-store removes only its own published lock when the temporary pathname changes after linking', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lock-replaced-after-link-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  let temporaryPath;
+  const linkFile = async (source, target) => {
+    temporaryPath = source;
+    await link(source, target);
+    await rename(source, movedOriginal);
+    await writeFile(source, 'replacement temporary path', { mode: 0o600 });
+  };
+
+  await assert.rejects(
+    createServiceStore({ dataDir, initial: { revision: 0 }, validate, linkFile }),
+    error => error.code === 'SERVICE_LOCK_CHANGED'
+  );
+
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' }, 'cleanup must release the inode opened by this process');
+  assert.equal(await readFile(temporaryPath, 'utf8'), 'replacement temporary path', 'cleanup must not unlink a replacement temporary path');
+  assert.equal((await lstat(movedOriginal)).isFile(), true, 'the original opened inode remains reachable for inspection');
+});
