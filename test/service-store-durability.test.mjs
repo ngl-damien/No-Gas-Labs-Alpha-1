@@ -412,7 +412,7 @@ test('service-store fails closed when current UID verification is unavailable, t
   for (const [label, override, expectedCode] of cases) {
     const dataDir = join(root, label);
     const preload = join(root, label + '.mjs');
-    await writeFile(preload, override + '\\n');
+    await writeFile(preload, override + '\n');
     const probe = `
       const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
       try {
@@ -471,7 +471,7 @@ test('service-store rechecks persisted-envelope ownership before and after openi
       });
       globalThis.__nglUidCalls = () => calls;
     `;
-    await writeFile(preload, override + '\\n');
+    await writeFile(preload, override + '\n');
     const probe = `
       const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
       try {
