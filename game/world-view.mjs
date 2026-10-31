@@ -13,7 +13,7 @@ export const PLACES=[
  {id:'commons',name:'The Commons',x:600,y:500,type:'institution',purpose:'Share bounded player messages, report abuse, and inspect human moderation history.',glyph:'C',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Inspect actor-scoped Questkeeper objectives, found player groups, prepare bounded collaborator packets, preserve attributed responses, and review collaborator limits.',glyph:'G',color:'#356e62'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
- {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
+ {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts; challenge real published artifacts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
@@ -21,13 +21,13 @@ export const PLACES=[
 ];
 
 const GUILD_NPC_POSITIONS = Object.freeze([
-  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
-  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
-  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
-  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
+  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A', locationLabel: 'GUILD HALL' },
+  { roleId: 'adversary', x: 1120, y: 95, accent: '#af5138', sigil: '!', locationLabel: 'EVIDENCE ARCHIVE' },
+  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S', locationLabel: 'GUILD HALL' },
+  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T', locationLabel: 'GUILD HALL' }
 ]);
 
-// These are authored, role-bound entry points to the Guild Hall contracts.
+// These authored, role-bound entry points live beside the institutional work they support.
 // They are not autonomous agents and make no provider calls or world writes.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
   const role = COLLABORATOR_ROLES.find(candidate => candidate.id === position.roleId);
@@ -627,7 +627,7 @@ export class WorldView {
   }
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
-  drawGuildNpc(npc){const c=this.ctx;c.save();c.translate(npc.x,npc.y);this.ellipse(0,10,13,5,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle=npc.accent;c.lineWidth=1.6;c.beginPath();c.roundRect(-10,-21,20,29,5);c.fill();c.stroke();this.ellipse(0,-28,8,9,'#e2b68b','#675d42');c.fillStyle=npc.accent;c.fillRect(-10,-37,20,7);this.text(npc.sigil,0,-11,10,'#f8efd4','system-ui');this.text(npc.name,0,29,8,'#29443d','system-ui');this.text('GUILD HALL',0,40,7,'#687756','system-ui');c.restore();}
+  drawGuildNpc(npc){const c=this.ctx;c.save();c.translate(npc.x,npc.y);this.ellipse(0,10,13,5,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle=npc.accent;c.lineWidth=1.6;c.beginPath();c.roundRect(-10,-21,20,29,5);c.fill();c.stroke();this.ellipse(0,-28,8,9,'#e2b68b','#675d42');c.fillStyle=npc.accent;c.fillRect(-10,-37,20,7);this.text(npc.sigil,0,-11,10,'#f8efd4','system-ui');this.text(npc.name,0,29,8,'#29443d','system-ui');this.text(npc.locationLabel||'GUILD HALL',0,40,7,'#687756','system-ui');c.restore();}
   setDiscoveryScope(scope){const next=typeof scope==='string'&&scope.length>0?scope:null;if(next!==this.discoveryScope){this.discoveryScope=next;this.discovered.clear();}}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){const safe=nearestWalkablePoint({x:player.x,y:player.y},this.world.creations);if(safe)this.player={...this.player,...safe};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
