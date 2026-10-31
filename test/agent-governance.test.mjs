@@ -35,6 +35,24 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+
+test('preflight rejects Windows drive-qualified paths on every host platform', async () => {
+  const root = await fixture();
+  try {
+    const driveAbsolute = 'C' + ':' + '/' + 'outside.mjs';
+    const driveRelative = 'C' + ':' + 'relative.mjs';
+    const result = await runPreflight({
+      root,
+      paths: [driveAbsolute, driveRelative],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item => item.path === driveAbsolute && item.reason.includes('safe repository-relative path')));
+    assert.ok(result.failures.some(item => item.path === driveRelative && item.reason.includes('safe repository-relative path')));
+    assert.deepEqual(result.targets, []);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight fails closed when sequential bootstrap order is removed', async () => {
   const root = await fixture();
   try {
