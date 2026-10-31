@@ -290,7 +290,7 @@ test('Forge rejects recognizable credentials in candidate overlays before creati
   const samples = [
     ['github-token', 'ghp_' + 'B'.repeat(36)],
     ['aws-access-key', 'AKIA' + 'B'.repeat(16)],
-    ['private-key-block', '-----BEGIN PRIVATE KEY----- synthetic-fixture']
+    ['private-key-block', ['-----BEGIN ', 'PRIVATE KEY-----'].join('') + ' synthetic-fixture']
   ];
   for (const [index, [rule, secret]] of samples.entries()) {
     const outDir = options.outDir + '-overlay-' + index;
