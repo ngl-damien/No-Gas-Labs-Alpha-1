@@ -1,5 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -379,6 +381,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'collaborator-response-recorded' ? {
+        collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {})
     }));
   }
   const complete = evidence.length >= target;
@@ -480,6 +487,8 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const uniqueEventById = new Map(events.filter(event => uniqueMoonshotEventIds.has(event?.id))
+    .map(event => [event.id, event]));
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -538,6 +547,22 @@ export function getQuestTrail(world, viewer) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
+  // The Guild Hall quest and the physical Relay folios must agree about what
+  // counts as a retained response. Reuse the same strict world-object projector
+  // so malformed packets, stale snapshots, broken source chains, duplicate IDs,
+  // or responses that cannot become navigable folios cannot award quest progress.
+  const collaboratorResponseObjects = projectCollaboratorResponseWorldObjects(world)
+    .filter(object => object.actorId === actorId && object.actorRole === actorRole);
+  const collaboratorResponses = collaboratorResponseObjects
+    .map(object => uniqueEventById.get(object.eventId))
+    .filter(Boolean);
+  const hasCollaboratorResponse = collaboratorResponses.length > 0;
+  const collaboratorResponsesByRole = new Map();
+  for (const event of collaboratorResponses) {
+    if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
+  }
+  const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
+  const nextCollaboratorRole = COLLABORATOR_ROLES.find(role => !collaboratorResponsesByRole.has(role.id)) || null;
   const allExperimentReports = events.filter(event => {
     const eventPosition = eventPositionByReference.get(event);
     const proposalPosition = proposalPositionById.get(event?.moonshotId);
@@ -747,6 +772,20 @@ export function getQuestTrail(world, viewer) {
         !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
         !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
       ),
+      trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
+        collaboratorResponses.map(event => event.id), collaboratorResponses,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
+        'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
+      trailMilestone('founder-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+        collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+        hasAnyMoonshotProposal && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; the Guild Hall roles need a retained research question.' : null,
+        'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+      ),
     ]);
   }
 
@@ -822,6 +861,20 @@ export function getQuestTrail(world, viewer) {
       studyReviews.map(event => event.id), studyReviews,
       !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
       !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
+    ),
+    trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
+      collaboratorResponses.map(event => event.id), collaboratorResponses,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
+      'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+    ),
+    trailMilestone('witness-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+      collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+      hasAnyMoonshotProposal && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing the Guild Hall role hand-offs.' : null,
+      'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
     ),
   ]);
 }

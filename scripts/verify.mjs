@@ -23,7 +23,7 @@ const out = await mkdtemp(join(runtimeRoot, 'verification-'));
 const stages = [];
 
 for (const [name, bin, args, cwd] of [
-  ['tests', process.execPath, ['--test'], ROOT],
+  ['tests', process.execPath, ['--test', '--test-reporter=tap'], ROOT],
   ['python-inspector', 'python3', ['-m', 'unittest', '-v', 'test_engine.py'], join(ROOT, 'experiments/AOTA-FEATHERSTONIAN-ENGINE')],
   ['package', process.execPath, ['scripts/build-game.mjs'], ROOT],
   ['institutional-exercise', process.execPath, ['scripts/meteor-demo.mjs', '--out', join(out, 'exercise')], ROOT]
@@ -43,8 +43,13 @@ for (const [name, bin, args, cwd] of [
   stages.push(record);
   console.log(JSON.stringify(record));
   if (exitCode) {
-    const tail = (stdout + '\n' + stderr).split(/\r?\n/).slice(-100).join('\n');
-    console.error('FAILED STAGE OUTPUT (' + name + '):\n' + tail);
+    const lines = (stdout + '\n' + stderr).split(/\r?\n/);
+    const failures = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      if (/^not ok\s/.test(lines[index])) failures.push(...lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 18)));
+    }
+    const tail = lines.slice(-300);
+    console.error('FAILED STAGE OUTPUT (' + name + '):\n' + [...new Set([...failures, ...tail])].join('\n'));
     process.exitCode = 1;
     break;
   }

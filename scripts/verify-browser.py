@@ -232,6 +232,22 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
+        for role,name in [
+            ('archivist','Hostile Archivist'),
+            ('adversary','Adversary'),
+            ('synthesizer','Synthesis Clerk'),
+            ('tutor','Polymath Tutor')
+        ]:
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {name}',exact=True).click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(role_card).to_be_visible()
+            expect(role_card).to_be_focused()
+            assert page.locator('#creation-count').text_content()=='0', 'Speaking to a collaborator must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', 'Speaking to a collaborator must not award XP'
+        close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
@@ -272,6 +288,88 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        for role in ('archivist','adversary','synthesizer','tutor'):
+            expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
+        packet=page.locator('[data-collaborator-role="adversary"]')
+        packet.locator('details.collaborator-packet summary').click()
+        prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
+        response={
+            'targetEventId':target_event,
+            'challengeType':'methodology',
+            'challengeDraft':'The procedure does not specify a control condition.',
+            'distinctnessAssessment':'This is a draft for human review against the supplied challenge.',
+            'duplicateOfEventIds':[],
+            'counterexample':'A controlled comparison could produce a different result.',
+            'evidenceNeeded':['A retained controlled replication.'],
+            'unknowns':['No independent measurement is supplied.']
+        }
+        valid_response_text=json.dumps(response)
+        response_details=packet.locator('details.collaborator-response')
+        response_details.locator('summary').click()
+        response_field=response_details.locator('textarea[aria-label="Adversary response JSON"]')
+        expect(response_field).to_be_visible()
+        response_field.fill(valid_response_text)
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+        response['targetEventId']='event-not-in-packet'
+        response_field.fill(json.dumps(response))
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('RESPONSE_SCHEMA_OR_SCOPE_INVALID')
+        response_field.fill(valid_response_text)
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        world_before_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY')
+        world_after_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_archive['revision']==world_before_archive['revision']+1
+        assert world_after_archive['events'][:-1]==world_before_archive['events']
+        archived_response=world_after_archive['events'][-1]
+        assert archived_response['type']=='collaborator-response-recorded'
+        assert archived_response['validationStatus']=='valid-for-human-review'
+        assert archived_response['responseText']==valid_response_text
+        assert world_after_archive['xp']==world_before_archive['xp']==0
+        expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        close_sheet(page)
+        council_coverage=page.locator('[data-objective-id="founder-guild-council-coverage"]')
+        expect(council_coverage).to_contain_text('OPEN')
+        expect(council_coverage).to_contain_text('1/4')
+        council_coverage.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        next_role=page.locator('[data-collaborator-role="archivist"]')
+        expect(next_role).to_be_visible()
+        expect(next_role).to_be_focused()
+        assert page.locator('#xp-count').text_content()=='0', 'Role coverage is recorded activity, not an XP reward'
+        close_sheet(page)
+        response_id=archived_response['responseId']
+        folio_xp_before=page.locator('#xp-count').text_content()
+        folio_revision_before=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).revision")
+        page.locator('#places-button').click()
+        folio_row=page.get_by_role('button',name='Inspect archived response: Adversary',exact=True)
+        expect(folio_row).to_be_visible()
+        folio_row.click()
+        page.wait_for_function("(id)=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive' && Array.from(document.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id && card===document.activeElement)",arg=response_id)
+        folio_card=page.locator(f'[data-collaborator-response-id="{response_id}"]')
+        expect(folio_card).to_be_focused()
+        folio_card.locator('details.collaborator-response summary').click()
+        expect(folio_card.locator('textarea[aria-label="Archived collaborator response"]')).to_have_value(valid_response_text)
+        assert page.locator('#xp-count').text_content()==folio_xp_before, 'Inspecting a response folio must not award XP'
+        assert page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).revision")==folio_revision_before, 'Inspecting a response folio must not append a world event'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
+        expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+        page.locator('details.collaborator-response summary').click()
+        archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(archived_field).to_have_count(1)
+        assert archived_field.input_value()==valid_response_text
         close_sheet(page)
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
@@ -543,6 +641,27 @@ def shared(browser,url,data,out):
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
         close_sheet(a)
+        # A lost shared read must preserve the last received Chronicle while
+        # showing unavailable registers as unknown, never as empty or approved.
+        def fail_institution_reads(route):
+            path=route.request.url.split('?',1)[0]
+            if route.request.method=='GET' and path.endswith(('/api/projects','/api/decisions','/api/state','/api/institution')):
+                route.abort('failed')
+            else:
+                route.continue_()
+        b.route('**/api/**',fail_institution_reads)
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The institution at work.')
+        expect(b.locator('#sheet')).to_contain_text('last snapshot received by this session')
+        expect(b.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+        expect(b.locator('#sheet')).to_contain_text('No empty register is inferred')
+        expect(b.locator('#sheet')).to_contain_text('Decision ledger unavailable')
+        expect(b.locator('#sheet')).to_contain_text('Canonical work receipts could not be loaded')
+        expect(b.locator('#sheet')).not_to_contain_text('No retained record is installed')
+        expect(b.locator('#sheet')).not_to_contain_text('No operational review policy is activated')
+        b.unroute('**/api/**',fail_institution_reads)
+        close_sheet(b)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
@@ -594,6 +713,46 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
 
+
+def offline_pwa(browser,url,out):
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,service_workers='allow')
+    page=context.new_page();errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
+        active=page.evaluate("async()=>{const registration=await navigator.serviceWorker.ready;return registration.active?.state==='activated';}")
+        assert active, 'Offline shell service worker did not activate'
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)")
+        context.set_offline(True)
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        page.locator('#start-private').click()
+        try:
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        except Exception as error:
+            page.screenshot(path=str(out/'offline-pwa-start-failure.png'))
+            diagnostic=page.evaluate("""async()=>{const registration=await navigator.serviceWorker.getRegistration();const names=await caches.keys();const cached=await Promise.all(names.map(async name=>({name,paths:(await (await caches.open(name)).keys()).map(request=>new URL(request.url).pathname)})));return {mode:document.querySelector('#mode-label')?.textContent,playHidden:document.querySelector('#play-ui')?.hidden,doorwayHidden:document.querySelector('#doorway')?.hidden,startHandler:typeof document.querySelector('#start-private')?.onclick,toast:document.querySelector('#toast')?.textContent,toastHidden:document.querySelector('#toast')?.hidden,controller:Boolean(navigator.serviceWorker.controller),workerState:registration?.active?.state,cacheNames:names,cached,localSave:localStorage.getItem('ngl.common-ground.v2')?.length||0};}""")
+            (out/'offline-pwa-start-failure.json').write_text(json.dumps({'error':str(error),'diagnostic':diagnostic,'browserErrors':errors},indent=2))
+            raise AssertionError('Offline private-world start failed: '+json.dumps(diagnostic)) from error
+        draft(page,'loom','Offline field instrument')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
+        assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        # A reload returns to the explicit doorway; reopen the existing device-local world.
+        expect(page.locator('#doorway')).to_be_visible()
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        assert not errors,errors
+        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'shared_api':'network-only'}
+    finally:
+        context.close()
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -607,6 +766,7 @@ def main():
             with sync_playwright() as playwright:
                 browser=playwright.chromium.launch(executable_path=os.environ.get('NGL_CHROMIUM_EXECUTABLE','/usr/bin/chromium'),args=['--no-sandbox'])
                 try:
+                    record(offline_pwa(browser,url,out))
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
                         page=context.new_page()
