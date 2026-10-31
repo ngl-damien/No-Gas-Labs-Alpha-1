@@ -88,7 +88,8 @@ public final class MainActivityTest {
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
-        Thread.sleep(1200);
+        awaitJavaScript(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
         awaitJavaScript(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
