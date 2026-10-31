@@ -35,6 +35,28 @@ test('the deletion job requires the exact manual confirmation and a successful p
   assert.doesNotMatch(deletion, /permissions:/, 'no job-level permission changes are proposed');
 });
 
+test('deletion rechecks live protection, open PRs and default branch immediately before each delete', () => {
+  const loopStart = deletion.indexOf('for (const name of candidates)');
+  const loopEnd = deletion.indexOf('\n            }\n            core.info', loopStart);
+  assert.ok(loopStart >= 0 && loopEnd > loopStart, 'deletion candidate loop must be present');
+  const candidateLoop = deletion.slice(loopStart, loopEnd);
+  const checks = [
+    "github.rest.git.getRef({ owner, repo, ref: 'heads/' + name })",
+    'github.rest.repos.getBranch({ owner, repo, branch: name })',
+    "github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }",
+    'github.rest.repos.get({ owner, repo })',
+    'liveBranch.data.protected',
+    'hasOpenPullRequest',
+    'latestRepository.data.default_branch === name'
+  ];
+  const deleteAt = candidateLoop.indexOf('github.rest.git.deleteRef');
+  assert.ok(deleteAt >= 0, 'candidate loop must perform the guarded deletion');
+  for (const check of checks) {
+    const at = candidateLoop.indexOf(check);
+    assert.ok(at >= 0 && at < deleteAt, 'live eligibility check must precede deletion: ' + check);
+  }
+});
+
 test('deletion retains the manifest, exact-baseline, open-PR, protection and live-ref guards', () => {
   for (const marker of [
     'candidates.length !== 80',
