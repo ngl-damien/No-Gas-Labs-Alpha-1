@@ -10,6 +10,7 @@ import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from './collaborator-world-objects.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS} from './social.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 let currentCharacterRecord=null,currentQuestTrail=null,currentCollaboratorResponseObjects=null;
@@ -71,6 +72,7 @@ function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
+  if (id === 'commons') return openTownSquare();
   if (id === 'decision_chamber' || id === 'town-square') return openInstitution(id);
   if (id === 'academy') return openAcademy();
   if (id === 'moonshot_field') return openMoonshotField();
@@ -519,6 +521,94 @@ function openForge(){
   content.append(paragraph('Drafting, repair and publication require an authenticated Founder session. Witnesses can inspect published work and leave attributed contributions or reports.'));
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
+function openTownSquare(){
+  const content=showSheet('The Commons','PLAYER MESSAGES · HUMAN MODERATION');
+  activeNoteRenderer=()=>renderTownSquareContent(content);
+  renderTownSquareContent(content);
+}
+function renderTownSquareContent(content){
+  if(content!==$('sheet-content')||$('sheet').hidden)return;
+  content.replaceChildren();
+  content.append(paragraph('Player-authored conversation, not evidence, approval, authority, XP, or verified work. Shared messages are visible to everyone in this world. Do not post secrets or personal data. Reports are private to their author and the authenticated Founder. Human moderation hides public text but preserves the original in Founder history. Private-mode messages remain on this device.','form-help'));
+  const messageInput=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A thought worth carrying into the world',required:''});
+  const counter=node('small',{id:'commons-message-count',text:'0 / '+COMMONS_MESSAGE_LIMIT});
+  messageInput.addEventListener('input',()=>{counter.textContent=Array.from(messageInput.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
+  content.append(node('article',{class:'field-card'},[
+    node('h3',{text:'Leave a message'}),
+    field('Message · '+COMMONS_MESSAGE_LIMIT+' characters maximum','commons-message',messageInput),
+    counter,
+    button('Post to the Commons',guarded(async()=>{
+      await act({type:'post-message',text:messageInput.value});
+      toast('Message retained as player conversation. No XP or authority changed.');
+    }),{id:'commons-post-message',class:'primary-button'})
+  ]));
+
+  const feed=projectTownSquare(world,viewer);
+  content.append(node('h3',{class:'section-title',text:'RECENT MESSAGES · '+feed.totalMessages+' RETAINED'}));
+  if(feed.omittedMessageCount)content.append(paragraph('Showing the newest 50 messages. '+feed.omittedMessageCount+' older posts remain in retained history.','form-help'));
+  if(!feed.messages.length)content.append(paragraph('The Commons is quiet. No messages have been retained yet.','empty-note'));
+  for(const message of feed.messages){
+    const card=node('article',{class:'field-card','data-commons-message-id':message.messageId});
+    card.append(node('h3',{text:message.author.name+' · '+message.author.role.toUpperCase()}));
+    card.append(node('small',{class:'attribution',text:message.at}));
+    if(message.hidden)card.append(node('span',{class:'pill',text:viewer.role==='founder'?'HIDDEN FROM WITNESSES · ORIGINAL RETAINED':'HIDDEN AFTER HUMAN REVIEW'}));
+    card.append(paragraph(message.text));
+    if(viewer.role==='founder'&&message.reportCount)card.append(paragraph(message.reportCount+' retained report'+(message.reportCount===1?'':'s')+' · '+message.pendingReportCount+' pending','form-help'));
+    if(message.hidden&&viewer.role==='founder'){
+      const reason=node('select',{'data-commons-moderation-reason':'',required:''});
+      reason.append(node('option',{value:'',text:'Choose restoration reason'}));
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      card.append(field('Restore reason','commons-restore-reason-'+message.messageId,reason));
+      card.append(button('Restore for Witnesses',guarded(async()=>{
+        if(!reason.value)throw new Error('Choose a restoration reason.');
+        await act({type:'moderate-message',messageId:message.messageId,disposition:'restore',reason:reason.value});
+      }),{class:'secondary-button','data-commons-restore':message.messageId}));
+    }
+    if(message.canReport){
+      const details=node('details',{class:'commons-report'});
+      details.append(node('summary',{text:'Report this message'}));
+      const reason=node('select',{'data-commons-report-reason':'',required:''});
+      reason.append(node('option',{value:'',text:'Choose a reason'}));
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      const reportDetails=node('textarea',{'data-commons-report-details':'',maxlength:'500',rows:'2',placeholder:'What should the Founder review?',required:''});
+      details.append(field('Reason','commons-report-reason-'+message.messageId,reason));
+      details.append(field('Details · visible only to you and the Founder','commons-report-details-'+message.messageId,reportDetails));
+      details.append(button('Submit report',guarded(async()=>{
+        if(!reason.value||!reportDetails.value.trim())throw new Error('Choose a reason and describe what needs review.');
+        await act({type:'report-message',messageId:message.messageId,reason:reason.value,details:reportDetails.value});
+        toast('Report retained for human review. It is not an adjudication.');
+      }),{class:'secondary-button','data-commons-submit-report':message.messageId}));
+      card.append(details);
+    }
+    content.append(card);
+  }
+
+  if(viewer.role==='founder'){
+    const queue=node('section',{id:'commons-pending-reports'});
+    queue.append(node('h3',{class:'section-title',text:'PENDING REPORTS · '+feed.pendingReportTotal}));
+    if(feed.omittedPendingReportCount)queue.append(paragraph('Showing the newest 100 pending reports. '+feed.omittedPendingReportCount+' older reports remain retained.','form-help'));
+    if(!feed.pendingReports.length)queue.append(paragraph('No pending reports. The absence of reports is not a certification that every message is safe.','empty-note'));
+    for(const report of feed.pendingReports){
+      const item=node('article',{class:'field-card','data-commons-report-id':report.reportId});
+      item.append(node('h3',{text:report.reason.toUpperCase()+' · '+report.reporter.name}));
+      item.append(paragraph(report.details));
+      item.append(paragraph('Target · '+report.messageAuthor.name+' · '+report.messageId,'attribution'));
+      item.append(paragraph('Message · '+report.messageText));
+      const reason=node('select',{'data-commons-moderation-reason':'',required:''});
+      reason.append(node('option',{value:'',text:'Choose a moderation reason'}));
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      item.append(field('Human decision reason','commons-report-moderation-'+report.reportId,reason));
+      item.append(button('Hide for Witnesses',guarded(async()=>{
+        if(!reason.value)throw new Error('Choose a moderation reason.');
+        await act({type:'moderate-message',messageId:report.messageId,disposition:'hide',reason:reason.value});
+        toast('Public text hidden; the original and report remain in Founder history.');
+      }),{class:'secondary-button','data-commons-hide':report.messageId}));
+      queue.append(item);
+    }
+    content.append(queue);
+  }
+}
+
 function openEvidenceArchive(focusResponseId=null){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);

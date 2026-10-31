@@ -10,6 +10,7 @@ export const PLACES=[
  {id:'overlook',name:'The Long View',x:1310,y:310,type:'discovery'},
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
+ {id:'commons',name:'The Commons',x:600,y:500,type:'institution',purpose:'Share bounded player messages, report abuse, and inspect human moderation history.',glyph:'C',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
@@ -50,6 +51,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
  'town-square':event=>['contribute','report','experiment-challenged','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ commons:event=>['message-posted','message-reported','message-moderated'].includes(event?.type),
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='MOONSHOT',
  publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
