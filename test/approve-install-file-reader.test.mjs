@@ -376,10 +376,10 @@ test('Founder CLI refuses to sign when current-user ownership verification is un
   const proposalPath = join(directory, 'proposal.json');
   const privateKeyPath = join(directory, 'founder-private.pem');
   const preloadPath = join(directory, 'disable-getuid.cjs');
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
   await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
   await chmod(privateKeyPath, 0o600);
-  await writeFile(preloadPath, `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });\\n`);
+  await writeFile(preloadPath, `Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });\n`);
 
   const result = run([
     '--confirm',
