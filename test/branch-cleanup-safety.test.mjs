@@ -24,8 +24,8 @@ test('the preview script has no Git-ref mutation calls and the existing token sc
 });
 
 test('preview and deletion require dispatch from the repository default branch', () => {
-  assert.equal((workflow.match(/const defaultRef = 'refs\\/heads\\/' \\+ repository\\.data\\.default_branch/g) || []).length, 2);
-  assert.equal((workflow.match(/context\\.ref !== defaultRef/g) || []).length, 2);
+  assert.equal(workflow.split("const defaultRef = 'refs/heads/' + repository.data.default_branch").length - 1, 2);
+  assert.equal(workflow.split('context.ref !== defaultRef').length - 1, 2);
 });
 
 test('the deletion job requires the exact manual confirmation and a successful preview', () => {
