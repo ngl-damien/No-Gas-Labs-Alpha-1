@@ -496,3 +496,33 @@ This iteration made a substantive safety change and added a targeted regression 
 
 ### Execution boundary
 No branch was deleted. No release, deployment, credential/key change, permission-scope change, or spending occurred. Browser Acceptance for PR #237 remains the only outstanding required check at this checkpoint.
+
+
+## Continuation — exact-head browser results, destructive-action authority review, and Forge handoff (2026-10-31 UTC)
+
+### PR #237 — branch-cleanup hardening
+- Current head remains `a118f17955b4067552fea7707f63dab4ddcea2e2`, base main `bb1aa833130b7e5399d7b84d1041b1c26c49cc16`, 8 ahead / 0 behind, exactly three changed paths: workflow, package.json preflight target list, regression test.
+- Exact-head Verify #41172422027 success. Hosted preflight returned status ready, warnings [], failures []; its receipt explicitly includes `.github/workflows/branch-cleanup.yml` and `test/branch-cleanup-safety.test.mjs`. Node test suite, Python inspector tests, game package build, bounded institutional exercise all exited 0.
+- Exact-head Genesis #41172422102 success.
+- Exact-head Browser Acceptance #41172422065 success. All 12 journeys passed: desktop; phone; institutional-location-actions; two-session-shared; 320/360/412px phone toolbars; one-button 320/412; standalone-file; standalone-exact-bytes; shared-restart. No journey errors. Artifact: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422065/artifacts/13031239857 (SHA-256 5e50c01edcc7bbb138853c041d88d026f68a77ae8547606374249ed1c8810213).
+- Re-reviewed deletion semantics. The manual typed phrase is only an accidental-dispatch guard, not an identity/Founder-authorization check. Any actor able to dispatch workflow_dispatch and supply the phrase can reach deletion. Workflow-level contents: write remains, so this is consequential. Also, GitHub delete-ref lacks compare-and-delete SHA precondition: per-candidate rechecks narrow but do not eliminate TOCTOU race. These were added explicitly to PR description and a review comment.
+- PR #237 remains draft/open/unmerged. No workflow dispatch, branch deletion, merge, permission mutation, release, or deployment occurred. Do not merge until Damien explicitly resolves whether cleanup is available to all Actions-write actors or requires Founder-only approval. Do not guess the Founder GitHub login or encode an assumed allowlist.
+
+### PR #238 — per-run Forge challenge review
+- Current exact head `914cb66756691ec2680906a15120a59469b6e0e2`, base main `bb1aa833...`, 4 ahead / 0 behind, two changed paths `src/forge/runner.mjs` and `test/forge-runner.test.mjs`.
+- Source review: each compareCandidates run now generates a 256-bit random seed, six deterministic challenge vectors, a unique challenge ID, and host-side checks for response values and input preservation. Regression demonstrates that a candidate hardcoding -3775 for every 10,000-element input passes the fixed benchmark output check but fails the fresh verification case. This reduces fixed-vector overfitting; it does not create an OS sandbox or prove general AI capability.
+- Exact-head Verify #41172555053 success; Genesis #41172555421 success; Browser Acceptance #41172555345 still in progress at last poll.
+- Review comment #6539554411 identifies two corrections for the active owner: PR description incorrectly says a constant-zero candidate passes; actual test hardcodes -3775 for each 10,000-element single sum (200 benchmark iterations produce -755000 total). Also CI preflight's configured target list omits both changed Forge paths; add both paths and rerun exact-head workflows. I did not edit this active Forge branch.
+
+### Worker B PR #227 — latest exact-head acceptance
+- Latest observed head `4f1f04a76b0715765965ec70419b4091d61225eb`, still a draft child of PR #225 at base `42a5832a93671974ad330a2d3fda24b5fbf5caaa`.
+- Exact-head Verify #41172456018, Genesis #41172456020, Browser Acceptance #41172456015 all succeeded.
+- Browser log shows offline private recovery; desktop; phone; institutional-location actions; two-session shared-world (version 2, kernelAccepted 2); 320/360/412px toolbars; one-button 320/412; standalone file/exact-byte; shared restart — all passed with no journey errors. Artifact: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172456015/artifacts/13031374178.
+- Compare against main `bb1aa833...` is still 151 ahead / 9 behind, 41 paths. Green exact-head checks do not make this child independently mergeable. Worker B was given handoff comment #6539568494 to reconcile the full parent stack against main and preserve dependencies. No Worker A gameplay edits.
+
+### Current unresolved items
+1. PR #237 has green exact-head CI but is held on the unresolved destructive-action actor/approval boundary and non-atomic deletion race. Keep draft/unmerged.
+2. PR #238 requires the two source/test paths in its scoped preflight target list and corrected exploit wording; Browser Acceptance remains in progress.
+3. PR #227 has green checks on its latest child head but remains stacked and substantially diverged; integration must reconcile its full parent stack.
+4. PR #208 remains superseded in intent by #237 but must not be closed as superseded until a safe replacement is accepted/integrated.
+5. Local checkout and local test/preflight execution remain unavailable in this connector-only session; no local pass is claimed.
