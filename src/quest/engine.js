@@ -47,7 +47,7 @@ export function projectQuest(quest, events = [], options = {}) {
   const relevant = [];
   const executions = [];
   const succeeded = [];
-  const failed = [];
+  let latestExecutionOutcome = null;
 
   // Replay revocations in event order, matching the world reducer. A verified
   // revocation blocks later executions using that grant, but never erases an
@@ -84,8 +84,12 @@ export function projectQuest(quest, events = [], options = {}) {
         revokedGrants.has(grantId)) continue;
 
     executions.push(event);
-    if (event.outcome === "SUCCEEDED") succeeded.push(event);
-    if (event.outcome === "FAILED") failed.push(event);
+    if (event.outcome === "SUCCEEDED") {
+      succeeded.push(event);
+      latestExecutionOutcome = "SUCCEEDED";
+    } else if (event.outcome === "FAILED") {
+      latestExecutionOutcome = "FAILED";
+    }
   }
 
   const authorized = [...questGrantIds].some(grantId => !revokedGrants.has(grantId));
@@ -94,10 +98,14 @@ export function projectQuest(quest, events = [], options = {}) {
     Array.isArray(event.acceptance_satisfied) ? event.acceptance_satisfied : []
   ));
   const complete = quest.acceptance.every(id => satisfied.has(id));
+  // A verified retry may supersede the current attempt status, but it never
+  // removes an earlier failure from the append-only event history or execution
+  // list. A fully completed quest remains completed; a revoked grant with no
+  // active replacement remains revoked.
   const status = complete ? QUEST_STATUS.COMPLETED
-    : failed.length ? QUEST_STATUS.FAILED
     : revoked && !authorized ? QUEST_STATUS.REVOKED
-    : succeeded.length ? QUEST_STATUS.IN_PROGRESS
+    : latestExecutionOutcome === "FAILED" ? QUEST_STATUS.FAILED
+    : latestExecutionOutcome === "SUCCEEDED" ? QUEST_STATUS.IN_PROGRESS
     : authorized ? QUEST_STATUS.AUTHORIZED
     : QUEST_STATUS.OPEN;
   const location_observations = projectLocationEvidence(relevant, quest.quest_id);
@@ -106,7 +114,11 @@ export function projectQuest(quest, events = [], options = {}) {
     acceptance: Object.freeze(quest.acceptance.map(id =>
       Object.freeze({ id, satisfied: satisfied.has(id) })
     )),
-    executions: Object.freeze(executions.map(event => event.event_id))
+    executions: Object.freeze(executions.map(event => event.event_id)),
+    execution_outcomes: Object.freeze(executions.map(event => Object.freeze({
+      event_id: event.event_id,
+      outcome: event.outcome
+    })))
   });
 }
 
