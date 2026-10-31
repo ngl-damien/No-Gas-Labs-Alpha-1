@@ -506,3 +506,66 @@ test('service-store rechecks persisted-envelope ownership before and after openi
     await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' }, 'failed reopen must release its writer lock');
   }
 });
+
+
+test('service-store rejects persisted-envelope owner mismatches at path and descriptor boundaries', async t => {
+  if (typeof process.getuid !== 'function') {
+    t.skip('persisted-envelope owner probes require a platform UID API');
+    return;
+  }
+  const root = await mkdtemp(join(tmpdir(), 'ngl-store-envelope-owner-mismatch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const dataDir = join(root, 'store');
+  const seed = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await seed.close();
+  const originalBytes = await readFile(join(dataDir, 'service.json'));
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+
+  for (const [label, mismatchAt] of [['path', 4], ['descriptor', 5]]) {
+    const preload = join(root, label + '-uid-mismatch.mjs');
+    const override = `
+      const original = process.getuid.bind(process);
+      let calls = 0;
+      Object.defineProperty(process, 'getuid', {
+        value: () => {
+          calls += 1;
+          const uid = original();
+          return calls === ${mismatchAt} ? uid + 1 : uid;
+        },
+        configurable: true,
+        writable: true
+      });
+      globalThis.__nglUidCalls = () => calls;
+    `;
+    await writeFile(preload, override + '\\n');
+    const probe = `
+      const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+      try {
+        const store = await createServiceStore({
+          dataDir: process.env.NGL_TEST_DATA_DIR,
+          initial: { revision: 0 },
+          validate: async value => value
+        });
+        await store.close();
+        console.log(JSON.stringify({ unexpected: 'store opened', calls: globalThis.__nglUidCalls() }));
+        process.exitCode = 2;
+      } catch (error) {
+        console.log(JSON.stringify({ code: error.code, calls: globalThis.__nglUidCalls() }));
+        if (error.code !== 'SERVICE_STORE_OWNER_MISMATCH') process.exitCode = 3;
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: process.cwd(),
+      env: { ...process.env, NGL_TEST_DATA_DIR: dataDir },
+      encoding: 'utf8',
+      timeout: 10_000
+    });
+    assert.equal(result.error, undefined, `${label} owner mismatch probe must complete: ${result.error?.message}`);
+    assert.equal(result.status, 0, `${label} owner mismatch probe failed: ${result.stderr}`);
+    const outcome = JSON.parse(result.stdout.trim());
+    assert.equal(outcome.code, 'SERVICE_STORE_OWNER_MISMATCH');
+    assert.equal(outcome.calls, mismatchAt, 'the injected mismatch must occur at the intended ownership boundary');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' }, 'rejected reopen must release its writer lock');
+    assert.deepEqual(await readFile(join(dataDir, 'service.json')), originalBytes, 'rejected reopen must not rewrite persisted state');
+  }
+});
