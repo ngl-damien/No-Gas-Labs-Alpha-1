@@ -511,3 +511,118 @@ export function createFounderAuthorizationVerifier(options = {}) {
     expected_audience
   });
 }
+
+
+function sameScopeMembers(left, right) {
+  return left.length === right.length && left.every(value => right.includes(value));
+}
+
+function snapshotAuthorizationEventForContext(event) {
+  const raw = snapshotDataObject(event, AUTHORIZATION_EVENT_KEYS);
+  if (!raw) return null;
+  const payload = snapshotDecisionPayload({
+    schema: DECISION_SCHEMA,
+    proposal_id: raw.proposal_id,
+    quest_id: raw.quest_id,
+    audience: raw.audience,
+    capabilities: raw.capabilities,
+    outputs: raw.outputs,
+    acceptance: raw.acceptance,
+    expires_at: raw.expires_at
+  });
+  const signed = snapshotSignedReceipt({
+    payload_sha256: raw.grant_id,
+    key_fingerprint: raw.key_fingerprint,
+    signature: raw.signature
+  });
+  if (!payload || !signed) return null;
+  return Object.freeze({
+    event_id: raw.event_id,
+    type: raw.type,
+    quest_id: raw.quest_id,
+    audience: raw.audience,
+    proposal_id: raw.proposal_id,
+    grant_id: raw.grant_id,
+    actor: raw.actor,
+    capabilities: payload.capabilities,
+    outputs: payload.outputs,
+    acceptance: payload.acceptance,
+    expires_at: payload.expires_at,
+    key_fingerprint: signed.key_fingerprint,
+    signature: signed.signature
+  });
+}
+
+function matchesFounderDecisionContext(event, proposalFields, quest) {
+  const questFields = snapshotSelectedDataFields(quest, ["quest_id", "capabilities", "acceptance"]);
+  if (!questFields || !isIdentifier(questFields.quest_id) ||
+      questFields.quest_id !== proposalFields.quest_id) return false;
+
+  const capabilities = copyScope(event.capabilities);
+  const outputs = copyScope(event.outputs);
+  const acceptance = copyScope(event.acceptance);
+  const questCapabilities = copyScope(questFields.capabilities);
+  const questAcceptance = copyScope(questFields.acceptance);
+  if ([capabilities, outputs, acceptance, questCapabilities, questAcceptance].some(scope => scope === null)) {
+    return false;
+  }
+
+  if (capabilities.length !== 1 || capabilities[0] !== proposalFields.capability ||
+      !questCapabilities.includes(proposalFields.capability)) return false;
+  // The current quest schema has a canonical acceptance list, so it can be
+  // bound here. It does not yet define a canonical output allowlist; outputs
+  // remain signature-bound and structurally validated, but are not policy-bound.
+  return sameScopeMembers(acceptance, questAcceptance);
+}
+
+/**
+ * Create a host-side authorization verifier that binds a cryptographically valid
+ * decision to the canonical proposal and quest resolved by trusted host callbacks.
+ *
+ * The callbacks must read the institution's authoritative retained state; never
+ * implement them by returning caller-supplied request data. They must be
+ * synchronous and return the canonical proposal/quest record or null.
+ */
+export function createContextBoundFounderAuthorizationVerifier(options = {}) {
+  const args = snapshotCallArguments(options, [
+    "public_key_jwk", "expected_fingerprint", "expected_audience",
+    "resolveProposal", "resolveQuest"
+  ]);
+  if (!args || typeof args.resolveProposal !== "function" || typeof args.resolveQuest !== "function") {
+    throw new Error("FOUNDER_CONTEXT_TRUST_CONFIGURATION_INVALID");
+  }
+
+  const verifySignature = createFounderAuthorizationVerifier({
+    public_key_jwk: args.public_key_jwk,
+    expected_fingerprint: args.expected_fingerprint,
+    expected_audience: args.expected_audience
+  });
+  const resolveProposal = args.resolveProposal;
+  const resolveQuest = args.resolveQuest;
+
+  return event => {
+    // Detach the exact event and its nested scopes before verification and
+    // context lookup. Do not verify one caller-controlled view, then authorize
+    // a second view of the same object.
+    const snapshot = snapshotAuthorizationEventForContext(event);
+    if (!snapshot || !verifySignature(snapshot)) return false;
+
+    try {
+      const proposal = resolveProposal(snapshot.proposal_id);
+      const proposalFields = snapshotSelectedDataFields(proposal, [
+        "event_id", "type", "quest_id", "capability"
+      ]);
+      if (!proposalFields || proposalFields.type !== "PROPOSAL" ||
+          !isIdentifier(proposalFields.event_id) ||
+          proposalFields.event_id !== snapshot.proposal_id ||
+          !isIdentifier(proposalFields.quest_id) ||
+          proposalFields.quest_id !== snapshot.quest_id ||
+          !isIdentifier(proposalFields.capability)) return false;
+
+      const quest = resolveQuest(proposalFields.quest_id);
+      return matchesFounderDecisionContext(snapshot, proposalFields, quest);
+    } catch {
+      return false;
+    }
+  };
+}
