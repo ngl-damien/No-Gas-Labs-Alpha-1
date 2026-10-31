@@ -725,3 +725,26 @@ No branch was deleted. No release, deployment, credential/key change, permission
 5. Reconcile monorepo PR #2 only after re-reading that repository's instructions and protocol; no merge is claimed.
 6. Implement a real portfolio/work-claim registry only after a source-backed design identifies a shared store and honest lease/ownership semantics. Static branch names are not a global lock.
 7. Repeat the loop while safe, useful host-session budget remains. No background execution after the host session ends is claimed.
+
+
+## Ralph loop — security integration trace and exact-head verification closure (2026-10-31 UTC)
+
+### PR #238 — exact-head hosted verification completed
+- Exact head 0cac61bbfd57f2ab0621b2b7affff69d0d1081f5 now has Verify #41173380864 success, Genesis #41173380903 success, and Browser Acceptance #41173380862 success.
+- Browser log records all 12 journeys passing, including two-session shared world (version 2 / kernelAccepted 2), three mobile toolbar widths, one-button layouts, exact-byte standalone checks, and shared restart. Artifact #13032097324, SHA-256 a5fe9dd58ad662987d92f9da18814c8b4fe637ba3c16f263e01c89b43c5cf3c0.
+- The updated getter/Proxy hardening is source- and regression-backed. However, the hosted Verify preflight command still lists only the existing governance/package paths and does not include src/forge/runner.mjs or test/forge-runner.test.mjs. The PR remains draft and its body still names the old head 914cb... with stale pending-check language. Comment #6539677507 records the successful browser result and repeats the exact remaining scoped-preflight/body correction. No code edit on the active Forge branch.
+
+### PR #203 — Founder authorization helper, current-main integration trace
+- Rechecked current-main src/authority/decision.js and game/server.mjs, then read game/AGENTS.md (absent).
+- Current main's authorizationEvent() helper still trusts a caller-supplied truthy verification.valid object; this is a source-level event-construction gap.
+- Current game/server.mjs does not import/call verifyFounderDecision, authorizationEvent, authorizationEventFromEnvelope, or createContextBoundFounderAuthorizationVerifier. The live routes /api/decisions/policy, /api/decisions/proposals, and /api/decisions/choose instead require an existing Founder session and mutate the separate openDecisions() store. Founder login itself compares a submitted key against the configured server key.
+- PR #203 includes helper-level sealed verification, context/audience/proposal/quest/output binding and tests, but remains draft, 40 ahead / 9 behind current main, five changed paths. Its historical exact-head checks are green on its branch; this does not establish integration into live server decisions or real Founder identity/key custody.
+- Added detailed integration-boundary handoff comment #6539684337: keep authentication/session establishment distinct from per-decision signed authorization; if integrated, verify host-pinned key/audience and canonical server-side proposal/quest/output policy, with atomic expiry/replay/one-use handling. Do not use browser localStorage as trust anchor. No key action or server integration was made.
+
+### Current state after this loop
+- PR #237 is ready-for-review (draft=false), exact-head Verify/Genesis/Browser all green; still not merged because workflow-level contents: write exceeds the read-only preview's actual need and the repository authority boundary has not authorized a permission change.
+- PR #238 is all green at its exact head but not fully preflight-scoped; owner has been asked to fix this before treating governance coverage as complete.
+- PR #239 is a source-backed documentation audit with all three exact-head workflows green; reviewed without factual correction.
+- PR #227 remains stacked game work; no Worker A gameplay duplication.
+- PR #215/#205 continue to own the decision-store pre-rename crash/lease work; no duplicate transplant.
+- No merges, permission changes, key custody actions, workflow dispatches, branch deletions, releases, deployments, spending, or external publication occurred.
