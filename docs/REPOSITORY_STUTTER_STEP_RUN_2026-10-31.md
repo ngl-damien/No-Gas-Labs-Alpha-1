@@ -841,3 +841,71 @@ No real Founder key was created, read, enrolled, rotated, or used. Tests use eph
 4. Continue linked-repository work only after fresh sequential instruction bootstrap in each target repository. No linked-repository changes were made in this run.
 
 No merge, release, deployment, branch deletion, workflow/permission change, key/credential operation, spending, or external announcement occurred.
+
+
+---
+
+## Run 2026-10-31 06:36–06:55 UTC — read-only workflow permissions and Relay marker ancestor integrity
+
+### Bootstrap and coordination
+
+- Alpha-1 root `AGENTS.md` was read first, followed by the complete canonical shared protocol as the second repository operation. Current Alpha-1 main was re-observed at `93bc9157dca95f7d4f552a88e8570823b30c11aa`; current open PR inventory and this checkpoint were inspected.
+- The latest Worker B result was read. It reported the explicit `unequip-field-item` capability at commit `37aa6249295cb03c9173f4b1bf0271290b542280`; live PR #227 is now at `4f1f04a76b0715765965ec70419b4091d61225eb`, 22 commits beyond that reported commit. The current exact-head checks were rechecked below; the stale result text was not treated as the live branch head.
+- For `ngl-mesh`, root `AGENTS.md`, Alpha-1's complete shared protocol, `README.md`, and `integration/relay/README.md` were read before source inspection. `integration/AGENTS.md` and `integration/relay/AGENTS.md` both returned 404; no nested instruction file was present at those exact paths.
+
+### Cycle 1 — Alpha-1 branch-inventory least privilege
+
+**Source-backed finding:** `.github/workflows/branch-cleanup.yml` is manual-only and read-only. Its script calls only `repos.listBranches`, `pulls.list`, and `repos.get`; there is no ref mutation or deletion path. Yet it requested `contents: write`. The existing safety test did not assert the token permission boundary. No active open PR owned either target file.
+
+**Change:** draft [PR #242](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/242), branch `security/branch-inventory-readonly-permissions-20261031`, final head `0647cf20f6d7f737f0b184b0937d3304d9b6da61`, based on main `93bc9157dca95f7d4f552a88e8570823b30c11aa` (4 commits ahead / 0 behind). Two paths only:
+- `.github/workflows/branch-cleanup.yml`: `contents: write` → `contents: read`.
+- `test/branch-cleanup-safety.test.mjs`: require exactly `contents: read` and `pull-requests: read`.
+
+**Exact-head hosted verification:**
+- Verify [41177779610](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41177779610): success. The log shows scoped `agent:preflight:ci` status `ready`, no warnings/failures, and both changed paths in the preflight targets. Node `--test`, Python inspector, package build, and bounded institutional exercise all exited 0; report says `passed: true`.
+- Genesis Evidence Invariant [41177779560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41177779560): success.
+- Browser Acceptance [41177779561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41177779561): success; all 12 reported journeys passed.
+- PR #242 remains draft/open/unmerged. No branch cleanup was dispatched and no repository permission settings were changed.
+
+### Cycle 2 — ngl-mesh replay/revocation marker ancestor integrity
+
+**Source-backed finding:** PR #1's `DurableMarker` already rejected symlinks and enforced private owner/mode on the marker directory and its immediate parent, but a writable non-sticky grandparent could still permit another local user to rename/replace the private subtree. `exists()` needed the same ancestor check as `create()`.
+
+**Changes on the existing PR #1 branch** `security/pin-relay-operator-key-20261026`:
+- `91c315b24fffbb2e44b4bf63029afb5785352f6a`: inspect all path ancestors; reject group/other-writable ancestors unless the sticky bit protects entries (e.g. `/tmp`).
+- `0cc7695b3524e9349249a60b7e74dd2854ac4e00`: add regressions for both creating and reading markers below a writable non-sticky grandparent.
+- `95259805052c07280d9f755837fe683152517b3f`: preserve the existing, more specific leaf/immediate-parent permission diagnostics; the ancestor-specific check now covers only higher ancestors.
+- `cac6aac116a73ed4d2ce5adcf9423c355ee60132`: document the full marker-directory, immediate-parent, ancestor, and marker-file requirements.
+
+**Preserved failed attempts and corrections:**
+- Exact-head run [41177012127](https://github.com/ngl-damien/ngl-mesh/actions/runs/41177012127) failed at the pre-existing permissive-parent regression because its test ID used `g`, which is not hexadecimal. The fixture was corrected to a valid 64-character hex ID in commit `fab9774bd00295fb8c316cce1f5547e8d3bff4ac`.
+- Runs [41178260376](https://github.com/ngl-damien/ngl-mesh/actions/runs/41178260376) and [41178263984](https://github.com/ngl-damien/ngl-mesh/actions/runs/41178263984) exposed an error-code regression when the new ancestor check intercepted the existing leaf/immediate-parent tests. Commit `95259805052c07280d9f755837fe683152517b3f` corrected the check ordering without weakening the new ancestor boundary.
+
+**Final exact-head verification:** PR #1 head `cac6aac116a73ed4d2ce5adcf9423c355ee60132` (47 ahead / 0 behind current ngl-mesh main `b4d17f38fab4a38cfd23bd17ef33016c844a63c1` by compare):
+- Relay operator-key trust [41178398068](https://github.com/ngl-damien/ngl-mesh/actions/runs/41178398068): success; OperatorKeyTrust **9**, DurableMarker **25**, RevocationAuthorization **9** checks passed.
+- Agent governance [41178398054](https://github.com/ngl-damien/ngl-mesh/actions/runs/41178398054): success.
+- PR #1 remains draft/open/unmerged. This isolated Java workflow does not prove recovered APK/RAE integration, an Android rebuild, device behavior, real operator identity, or Windows ACL support. POSIX-unavailable environments fail closed.
+
+### Founder authorization re-audit — PR #16 is superseded, not still live
+
+- PR #16 is closed/unmerged. PR #18 merged on 2026-10-22 at `213f3b5c7771da24b36f9ce6ebdde871d22e4602`.
+- Current main `experiment-001/institutional-cycle.mjs` pins `NGL_FOUNDER_KEY_FINGERPRINT` at module import, requires an Ed25519 public key matching that configured fingerprint, and verifies a detached Ed25519 INSTALL signature. Current tests include rejection of unsigned/model-supplied approval, caller-selected keys, and a missing startup pin, plus cross-process reuse. PR #18's pre-merge Verify and Genesis checks were successful.
+- Therefore the original PR #16 self-signing path is superseded by source now present on main. Do not reopen that old branch as though its design remains active. This does **not** prove Damien's real-world identity or private-key custody; no real key was created, enrolled, read, rotated, or used.
+- A separate trust boundary remains: current main `src/authority/decision.js` has an `authorizationEvent()` helper that trusts a caller-supplied `verification.valid` value, and `verifyFounderDecision()` accepts caller-supplied JWK, fingerprint, and clock. Draft PR #203 at `4cbe26c108bf8a5a9622c0944fdc2539c5281bf8` adds trusted proposal/quest/output resolvers and exact output-set binding; exact-head Verify [41170407395](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41170407395), Genesis [41170407522](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41170407522), and Browser Acceptance [41170407358](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41170407358) succeeded. But PR #203 is draft, diverged from current main (40 ahead / 10 behind), and is not wired into live `game/server.mjs`. It remains proposed helper work, not live server authorization.
+- Draft PR #241 at `e1432e21210652f3f7e8adfdf9cf43e3e85d265f` passes exact-head Verify, Genesis, and Browser Acceptance. It makes the bounded offline file reader fail closed when process ownership cannot be verified, but does not fix the live server reader.
+- Current main `game/server.mjs` still conditionally checks key-file owner only when `process.getuid` exists. PRs #205, #222, and #227 all touch `game/server.mjs`; PR #215 is stacked on #205 and touches the decision store. No competing edit was made. Reconcile that active stack before changing the server owner check.
+
+### Worker B / MMORPG recheck and handoff
+
+- PR #227 remains draft and stacked: head `4f1f04a76b0715765965ec70419b4091d61225eb`, based on PR #225 head `42a5832a93671974ad330a2d3fda24b5fbf5caaa`, itself based on PR #222 head `609f676e482c1a3151b64f4f44c32fc30f1ca5d9`. Compare against current main `93bc9157dca95f7d4f552a88e8570823b30c11aa`: **151 ahead / 10 behind**, 41 changed paths. Exact current-head Verify [41172456018](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172456018), Genesis [41172456020](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172456020), and Browser Acceptance [41172456015](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172456015) all succeeded. It is not safe to treat the child as an isolated current-main change or merge independently.
+- PR #240 private-position snapshot hardening remains draft at `5ad25731da8d81a57475318e8811e531b6106efa`, based on current main; Verify [41174179278](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41174179278), Genesis [41174179292](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41174179292), and Browser Acceptance [41174179294](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41174179294) all succeeded.
+- PR #239's ledger audit at `907b84abce119d4bc8b48e6841da4ff1cbe7d1c9` is diverged from current main by 1 commit each way; refresh the ledger against `93bc915...` before relying on its gate classifications. Browser/PWA evidence remains distinct from native Android/device acceptance.
+
+### Next ranked actions
+
+1. **Worker B:** reconcile the PR #222 → #225 → #227 playable-world stack against current main; refresh PR #239's G0–G9 ledger on the current base; preserve PR #240 as a separate current-main proposal until the stack is reconciled.
+2. **Worker A:** carry PR #241's fail-closed ownership lesson into the live server key reader only after #205/#215/#222/#227 are reconciled. Add a regression where `process.getuid` is unavailable and prove the server refuses to trust the key file; do not provision a key.
+3. **Worker A:** rebase/reconcile PR #203 and design its live-server integration only after Damien makes the trust-model/key-custody decision. Keep PR #16's superseded status explicit.
+4. Continue linked-repository work only after each target's own root instructions, shared protocol, README/local docs, checkpoint, and nested instructions are re-read.
+
+No merges, releases, deployments, branch deletions, external announcements, spending, key/credential operations, or repository permission-setting changes occurred in this run. No local checkout or local test execution is claimed.
