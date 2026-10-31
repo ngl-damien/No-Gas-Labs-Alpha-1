@@ -467,3 +467,32 @@ This iteration made a substantive safety change and added a targeted regression 
 
 ### Browser Acceptance progress poll
 - Rechecked run [41172422065](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422065) against exact head `a118f17955b4067552fea7707f63dab4ddcea2e2`: run is now **in progress**, not queued. Its `playable-world` job has completed checkout and Node/Python setup and is currently installing browser acceptance dependencies; build, journeys, and receipt/screenshot preservation have not yet run. This is neither a pass nor a failure. PR #237 remains draft/open; GitHub's mergeability field changed from `clean` to `unstable` while checks run. Do not mark ready or merge until the run concludes and mergeability is rechecked.
+
+
+## Latest review delta — live branch eligibility checks and Worker B browser handoff (2026-10-31 UTC)
+
+### PR #237 newest observed head
+- The branch advanced again to a118f17955b4067552fea7707f63dab4ddcea2e2 (commit message: test(safety): cover live branch cleanup eligibility rechecks). I re-read the full deletion job and regression test.
+- Before deleting each candidate, the workflow now re-fetches the exact git ref, branch protection/commit state, current open PR heads, and repository default branch. It skips a candidate if the ref moved, became protected, gained an open PR, or became the default branch. Regression coverage asserts these mutable checks occur before deleteRef.
+- This is a useful defense-in-depth improvement over relying on the initial inventory. It does not make GitHub's multi-call check/delete sequence atomic; a narrow race remains between the final checks and deleteRef. The workflow still limits itself to the 80 manifest names and the exact recorded baseline SHA.
+- Updated PR #237 description to accurately list all three changed paths, the added live checks, exact-head evidence, and residual workflow-level write-token risk.
+- Current diff: 8 ahead / 0 behind main bb1aa833130b7e5399d7b84d1041b1c26c49cc16; exactly .github/workflows/branch-cleanup.yml, package.json, and test/branch-cleanup-safety.test.mjs.
+- Exact-head Verify #41172422027 passed. Its preflight output is status ready, warnings [], failures [], and explicitly lists both changed workflow/test targets; Node tests, Python inspector, game package build, and bounded institutional exercise all exited 0; report passed true. Genesis #41172422102 passed.
+- Browser Acceptance #41172422065 was still in progress at last poll (browser journey step running). Earlier Browser run #41172188731 on superseded head 9aa7023... was cancelled after this new commit arrived; it is neither a pass nor a failure for a118f17.
+- PR #237 remains draft/open/unmerged. No workflow dispatch, branch deletion, merge, release, deployment, or permission change occurred.
+
+### Worker B newest observed browser failure and handoff
+- PR #227 advanced from head 467d8de... to 4f1f04a76b0715765965ec70419b4091d61225eb while its CI reran.
+- The prior head 467d8de... had Verify #41172212505 success and Genesis #41172212464 success, but Browser Acceptance #41172212484 failed. Offline recovery, desktop, phone, and five-location institutional journey passed; shared-world journey failed at scripts/verify-browser.py:758 because the locator #sheet [data-objective-id="founder-challenge-experiment-report"] did not exist when the test expected text OPEN. This differs from the earlier #sheet-backdrop pointer interception.
+- Posted exact failure and current-head handoff comment #6539537602 on PR #227. The newer 4f1f04a... head has Verify #41172456018 and Genesis #41172456020 passed; Browser Acceptance #41172456015 was in progress at last poll. The previous failure is historical, not evidence against the newer head.
+- PR #227 remains a deeply stacked draft (base PR #225 head 42a5832...); do not merge as an isolated PR. No Worker A game code edits.
+
+### Next ranked actions
+1. Complete PR #237 Browser Acceptance #41172422065 on exact head a118f17...; if success, inspect full receipt/journey count, recheck exact head/diff/main/mergeability, then mark ready and merge under standing routine-maintenance authorization.
+2. If Browser Acceptance fails, inspect the exact failing journey and determine whether it is attributable to PR #237; do not patch unrelated game code.
+3. After #237 is integrated, close PR #208 unmerged as superseded while preserving its branch/history.
+4. Recheck PR #227 exact head 4f1f04a... and its current browser result; keep its stacked dependency/divergence visible and leave game implementation to Worker B.
+5. Preserve the unresolved workflow-level contents: write token risk; no permission mutation or cleanup dispatch without explicit authority.
+
+### Execution boundary
+No branch was deleted. No release, deployment, credential/key change, permission-scope change, or spending occurred. Browser Acceptance for PR #237 remains the only outstanding required check at this checkpoint.
