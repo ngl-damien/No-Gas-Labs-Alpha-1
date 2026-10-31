@@ -12,6 +12,40 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
+const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+  Object.freeze({
+    id: 'provenance', label: 'Receipt Buckler', kinds: Object.freeze(['published-artifact']),
+    description: 'A version-matched publication receipt. It identifies retained bytes, not truth.'
+  }),
+  Object.freeze({
+    id: 'scouting', label: 'Surveyor’s Compass', kinds: Object.freeze(['guide-discovery']),
+    description: 'A recorded visit to an authored guide location; visiting does not verify its claims.'
+  }),
+  Object.freeze({
+    id: 'observation', label: 'Observer’s Lens', kinds: Object.freeze(['field-report', 'field-note']),
+    description: 'An attributed note or report attached to a retained published version.'
+  }),
+  Object.freeze({
+    id: 'learning', label: 'Polymath Codex', kinds: Object.freeze(['retrieval-review', 'study-note']),
+    description: 'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'
+  }),
+  Object.freeze({
+    id: 'research', label: 'Moonshot Compass', kinds: Object.freeze(['experiment-report', 'moonshot-proposal']),
+    description: 'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'
+  }),
+  Object.freeze({
+    id: 'adversarial', label: 'Contradiction Ward', kinds: Object.freeze(['experiment-challenge']),
+    description: 'A retained challenge to another actor’s report; dissent remains unadjudicated.'
+  }),
+  Object.freeze({
+    id: 'collaboration', label: 'Relay Sigil', kinds: Object.freeze(['guild-folio']),
+    description: 'A source-bound collaborator response preserved for human review, not approval.'
+  }),
+  Object.freeze({
+    id: 'restoration', label: 'Repair Gloves', kinds: Object.freeze(['checked-repair']),
+    description: 'A repair method linked to a checked publication sequence; it is not independent validation.'
+  })
+]);
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -564,6 +598,54 @@ export function projectCharacter(world, viewer, options = null) {
   const fieldSatchel = Object.freeze(
     satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(entry => entry.item)
   );
+
+  // Field equipment is an automatically selected, read-only loadout. Each
+  // slot points to the newest qualifying retained activity for this actor;
+  // it creates no item event, ownership, combat statistic, approval or XP.
+  // Sources are selected from the full bounded scan, not only the 100 visible
+  // satchel cards, so older evidence does not silently unequip a field practice.
+  const publicationEquipmentEntries = mine(retainedPublications, viewer).flatMap(event => {
+    const version = retainedVersions.get(versionKey(event.creationId, event.version));
+    if (!version || !Number.isInteger(positionByEvent.get(event))) return [];
+    return [{
+      position: positionByEvent.get(event),
+      item: Object.freeze({
+        id: 'published-artifact:' + event.id,
+        eventId: event.id,
+        kind: 'published-artifact',
+        title: 'Published artifact · ' + creationTitle(event.creationId),
+        at: event.at,
+        status: 'version retained · content not verified',
+        summary: 'This exact published version is retained. Its receipt identifies bytes only.',
+        sourceCreationId: event.creationId,
+        sourceVersion: event.version,
+        locationId: null,
+        receipt: Object.freeze({
+          digest: version.receipt.digest,
+          size: version.receipt.size
+        }),
+        action: Object.freeze({
+          type: 'creation',
+          id: event.creationId,
+          version: event.version
+        })
+      })
+    }];
+  });
+  const equipmentSources = [...satchelEntries, ...publicationEquipmentEntries]
+    .sort((left, right) =>
+      right.position - left.position || left.item.id.localeCompare(right.item.id)
+    );
+  const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
+    const selected = equipmentSources.find(entry => slot.kinds.includes(entry.item.kind));
+    return Object.freeze({
+      id: slot.id,
+      label: slot.label,
+      description: slot.description,
+      status: selected ? 'record-backed' : 'empty',
+      source: selected?.item ?? null
+    });
+  }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
