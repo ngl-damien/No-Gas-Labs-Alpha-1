@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir, realpath, stat } from 'node:fs/promises';
-import { dirname, basename, resolve, relative, posix } from 'node:path';
+import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const VENDOR_POINTERS = ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md'];
@@ -9,11 +9,15 @@ const PROTOCOL_MARKERS = ['Required loop on every run', 'Shared work coordinatio
 
 function insideRoot(root, candidate) {
   const rel = relative(root, candidate);
-  return rel === '' || (!rel.startsWith('..') && !posix.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
 }
 function safeRelativePath(value) {
-  return typeof value === 'string' && Boolean(value.trim()) && !value.includes('\\') &&
-    !posix.isAbsolute(value) && value.split('/').every(part => part !== '..' && part !== '.' && part !== '');
+  if (typeof value !== 'string' || !value.trim() || value.includes('\\')) return false;
+  const first = value.charCodeAt(0);
+  const hasWindowsDrivePrefix = value.length >= 2 &&
+    ((first >= 65 && first <= 90) || (first >= 97 && first <= 122)) && value[1] === ':';
+  return !posix.isAbsolute(value) && !isAbsolute(value) && !win32.isAbsolute(value) &&
+    !hasWindowsDrivePrefix && value.split('/').every(part => part !== '..' && part !== '.' && part !== '');
 }
 function protocolFromEntry(entry) {
   const match = entry.match(/\(([^)\n]*RALPH[^)\n]*PROTOCOL[^)\n]*)\)/i);
