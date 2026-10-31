@@ -116,6 +116,38 @@ test('Founder disposition is explicit and records no automatic promotion or exec
   assert.equal(decided.proposedEffect, proposal().proposedEffect);
 });
 
+test('public decision summary is read-only, aggregate-only, and tracks retained dispositions', async t => {
+  const { store } = await fixture(t);
+  const initial = store.summary();
+  assert.deepEqual(initial, {
+    schema: 'ngl.decisions.summary.v1',
+    available: true,
+    revision: 1,
+    decisionCount: 0,
+    counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  });
+
+  await store.create(evaluator, proposal());
+  const pending = store.summary();
+  assert.equal(pending.revision, 2);
+  assert.equal(pending.decisionCount, 1);
+  assert.equal(pending.counts.PENDING, 1);
+
+  await store.decide(founder, request('REJECT'));
+  const rejectedSummary = store.summary();
+  assert.equal(rejectedSummary.revision, 3);
+  assert.equal(rejectedSummary.decisionCount, 1);
+  assert.equal(rejectedSummary.counts.PENDING, 0);
+  assert.equal(rejectedSummary.counts.REJECTED, 1);
+  assert.equal(rejectedSummary.counts.APPROVED, 0);
+  const serialized = JSON.stringify(rejectedSummary);
+  for (const privateValue of [proposal().title, proposal().risks[0], proposal().rollback, proposal().evaluation.bytes, proposal().proposedEffect]) {
+    assert.equal(serialized.includes(privateValue), false, 'aggregate summary must not disclose decision content');
+  }
+  assert.deepEqual(store.summary(), rejectedSummary, 'reading the summary must not append or mutate ledger history');
+  assert.equal((await store.snapshot(founder)).revision, rejectedSummary.revision);
+});
+
 test('serializes competing decisions so an exact expected revision permits only one winner', async t => {
   const { store } = await fixture(t);
   await store.create(evaluator, proposal());
