@@ -335,7 +335,15 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       released = true;
       await lease.close();
       if (leaseUncertainError) throw leaseUncertainError;
-      await unlinkOwnedLock(lockPath, leaseIdentity);
+      const removed = await unlinkOwnedLock(lockPath, leaseIdentity);
+      if (!removed) {
+        leaseUncertainError = storeReadError(
+          'SERVICE_LOCK_CHANGED',
+          'Service writer lease changed before close; the replacement lock was preserved for inspection'
+        );
+        leaseUncertainError.status = 503;
+        throw leaseUncertainError;
+      }
     })();
     return closePromise;
   }
@@ -343,7 +351,7 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
   let raw;
   try { raw = await readBoundedStoreEnvelope(path); }
   catch (error) {
-    if (error.code !== 'ENOENT') { await close(); throw error; }
+    if (error.code !== 'ENOENT') { await close().catch(() => {}); throw error; }
   }
   if (raw !== undefined) {
     try {
@@ -353,10 +361,10 @@ export async function createServiceStore({ dataDir, initial, validate, syncDirec
       }
       if (envelope.schema !== 'ngl.service-store.v1' || !envelope.payload || envelope.digest !== digest(envelope.payload)) throw new Error('Service store integrity check failed');
       current = immutableSnapshot(await validate(envelope.payload));
-    } catch (error) { await close(); throw error; }
+    } catch (error) { await close().catch(() => {}); throw error; }
   } else {
     try { current = immutableSnapshot(await validate(initial)); await persist(current); }
-    catch (error) { await close(); throw error; }
+    catch (error) { await close().catch(() => {}); throw error; }
   }
   async function assertStableDirectory() {
     try { await assertPrivateDirectory(dataDir, directoryIdentity); }
