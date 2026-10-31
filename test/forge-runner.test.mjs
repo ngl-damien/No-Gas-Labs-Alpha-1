@@ -59,11 +59,11 @@ test('Forge runs actual correct and incorrect candidates in disjoint copies and 
   assert.equal(JSON.parse(await readFile(join(options.outDir, 'report.json'), 'utf8')).taskId, report.taskId);
 });
 
-test('Forge fresh verification challenge rejects a candidate hardcoded for the deterministic benchmark checksum', async t => {
+test('Forge fresh verification challenge rejects a candidate hardcoded for the deterministic benchmark result', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
   const benchmarkOnly = `export function sum(values) {
-    if (values.length === 10000) return 0;
+    if (values.length === 10000) return -3775;
     return values.reduce((total, value) => total + value, 0);
   }`;
   const report = await compareCandidates({
