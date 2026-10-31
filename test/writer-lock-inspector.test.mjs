@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { renameSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
@@ -271,4 +272,40 @@ test('does not interpret an unknown writer-lock schema as owner metadata', async
   assert.equal(result.reason, 'unsupported-lock-schema');
   assert.equal(result.owner, undefined);
   assert.equal(result.safeToRemove, false);
+});
+
+
+test('lock inspector reports failed UID ownership lookups as unsafe instead of throwing', async t => {
+  const directory = await temp(t);
+  const path = join(directory, '.writer.lock');
+  await writeFile(path, JSON.stringify({
+    schema: 'ngl.service-lock.v1',
+    pid: process.pid,
+    openedAt: '2026-10-31T00:00:00.000Z'
+  }), { mode: 0o600 });
+  const moduleUrl = new URL('../src/institution/lock-inspector.mjs', import.meta.url).href;
+  const setups = [
+    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });",
+    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => { throw new Error('UID_LOOKUP_FAILED'); } });",
+    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => Number.NaN });",
+    "Object.defineProperty(process, 'getuid', { configurable: true, get() { throw new Error('UID_PROPERTY_LOOKUP_FAILED'); } });"
+  ];
+  for (const setup of setups) {
+    const script = [
+      'import { inspectWriterLock } from ' + JSON.stringify(moduleUrl) + ';',
+      setup,
+      'const result = await inspectWriterLock(' + JSON.stringify(path) + ');',
+      'process.stdout.write(JSON.stringify(result));'
+    ].join('\n');
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8',
+      timeout: 5000
+    });
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'unsafe');
+    assert.equal(result.reason, 'owner-verification-failed');
+    assert.equal(result.safeToRemove, false);
+    assert.equal(result.owner, undefined);
+  }
 });
