@@ -555,3 +555,13 @@ No branch was deleted. No release, deployment, credential/key change, permission
 2. If all three checks pass, review the new read-only-only diff and consider moving PR #237 out of draft; do not change permissions or merge without the appropriate authorization boundary.
 3. Recheck whether the owner of PR #238 has added Forge paths to preflight and corrected description before relying on that proposal.
 4. Continue current-main reliability audit without duplicating Worker B's stacked game work.
+
+
+## Final continuation notes — additional security and MMORPG handoffs (2026-10-31 UTC)
+
+- PR #238 review now also includes comment #6539633478: exported `runCandidate({ candidate, ...options })` destructures/spreads caller input before `compareCandidates()` applies `dataRecord()`. Accessor-backed input can execute before rejection. Suggested safe pattern: accept `input`, call `dataRecord(input, ['candidate','sourceDir','outDir','workloadId','limits'], 'candidate request')`, then build options from that safe copy; add a getter-not-executed regression. This is a distinct issue from the already merged #236 verifyRepository accessor fix.
+- PR #203 current-main re-audit: current `src/authority/decision.js` still allows `authorizationEvent()` to accept any caller-supplied object with truthy `.valid`; current `game/server.mjs` does not reference the verifier/event helper. The PR branch has private WeakMap seals and audience binding, but is 40 ahead / 9 behind main, draft, and not wired into the live session gate. Handoff comment #6539638001 requests current-main reconciliation and exact-head checks; no security branch edits made.
+- PR #227 current branch lacks `docs/operations/MMORPG_COMPLETION_LEDGER.md` even though current main has the G0–G9 ledger initialized as NOT ASSESSED. Protocol requires Worker B to update the gate-by-gate ledger on every substantive game run. Handoff comment #6539643497 requests inclusion/update with exact evidence and explicit PWA-vs-native-Android/physical-device limits.
+- PR #237 new read-only-only head Verify #41173118283 success and Genesis #41173118308 success; preflight receipt targets include the exact workflow and regression test. Browser Acceptance #41173118285 was still in progress at last poll (job #124455359809 executing the desktop/mobile/shared-world/recovery journeys). Do not mark fully verified or merge until exact-head browser run completes.
+- The earlier destructive workflow proposal is superseded by the read-only-only branch. Current live inventory: 489 refs, all 80 manifested names absent. No deletion action is needed or authorized.
+
