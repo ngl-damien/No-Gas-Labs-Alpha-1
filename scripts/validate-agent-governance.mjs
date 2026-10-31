@@ -100,6 +100,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       continue;
     }
     normalizedTargets.push(target);
+    // Scoped preflight must read and fingerprint each requested file, not only
+    // inspect its parent directories for nested instructions. Missing, unreadable,
+    // or invalid-UTF-8 targets therefore block the receipt.
+    await inspect(target, 'target');
     const parts = target.split('/');
     for (let index = 1; index <= parts.length; index += 1) {
       const prefix = parts.slice(0, index).join('/');

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,12 +27,52 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   try {
     await mkdir(join(root, 'scripts'));
     await writeFile(join(root, 'scripts/AGENTS.md'), 'Scripts-specific instructions.');
+    const workerBytes = Buffer.from('export const worker = true;\\n', 'utf8');
+    await writeFile(join(root, 'scripts/worker.mjs'), workerBytes);
     const result = await runPreflight({ root, paths: ['scripts/worker.mjs'], checkpoint: 'CHECKPOINT.md' });
     assert.equal(result.status, 'ready');
     assert.equal(result.protocol, protocolPath);
     assert.ok(result.files.some(file => file.path === 'scripts/AGENTS.md' && file.kind === 'nested-instructions'));
     assert.ok(result.files.some(file => file.path === 'CHECKPOINT.md' && file.kind === 'durable-checkpoint'));
+    const target = result.files.find(file => file.path === 'scripts/worker.mjs');
+    assert.equal(target.kind, 'target');
+    assert.equal(target.bytes, workerBytes.byteLength);
+    assert.equal(target.sha256, createHash('sha256').update(workerBytes).digest('hex'));
     assert.ok(result.files.every(file => /^[a-f0-9]{64}$/.test(file.sha256)));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight blocks a missing scoped target instead of returning a ready receipt', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/missing.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/missing.mjs' && item.reason.includes('cannot read')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/missing.mjs'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects invalid UTF-8 in a scoped target', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/bad.mjs'), Buffer.from([0x52, 0x65, 0xff]));
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/bad.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/bad.mjs' && item.reason.includes('valid UTF-8')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/bad.mjs'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -199,5 +240,19 @@ test('preflight refuses receipt creation through an escaping directory symlink',
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('CI preflight scopes the Founder signer, verifier and authorization regressions', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const script = packageJson.scripts['agent:preflight:ci'];
+  for (const path of [
+    'authority/index.html',
+    'src/authority/decision.js',
+    'test/decision-chamber.test.js',
+    'test/decision-context-binding.test.js',
+    'test/decision-world-integration.test.js'
+  ]) {
+    assert.ok(script.includes('--path ' + path), 'missing scoped preflight target: ' + path);
   }
 });
