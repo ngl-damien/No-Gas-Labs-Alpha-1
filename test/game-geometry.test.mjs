@@ -206,14 +206,20 @@ test('the playable map exposes all nine institutional functions as real destinat
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
 });
 
-test('Guild Hall NPCs are the exact bounded collaborator roles and stay within the playable map',()=>{
+test('institutional collaborator NPCs retain exact roles and stand beside their work',()=>{
  assert.deepEqual(GUILD_NPCS.map(npc=>npc.roleId),COLLABORATOR_ROLES.map(role=>role.id));
  assert.equal(new Set(GUILD_NPCS.map(npc=>npc.id)).size,GUILD_NPCS.length);
  assert.ok(GUILD_NPCS.every(npc=>npc.id==='guild-npc-'+npc.roleId&&npc.name&&npc.objective));
  assert.ok(GUILD_NPCS.every(npc=>npc.x>24&&npc.x<1576&&npc.y>28&&npc.y<972));
+ const archive=PLACES.find(place=>place.id==='evidence_archive');
+ const adversary=GUILD_NPCS.find(npc=>npc.roleId==='adversary');
+ assert.equal(adversary.locationLabel,'EVIDENCE ARCHIVE');
+ assert.ok(Math.hypot(adversary.x-archive.x,adversary.y-archive.y)<200,
+   'the report-challenging Adversary must stand beside the Evidence Archive');
+ assert.ok(GUILD_NPCS.filter(npc=>npc.roleId!=='adversary').every(npc=>npc.locationLabel==='GUILD HALL'));
 });
 
-test('each Guild Hall NPC is a reachable map destination and dispatches only its own role',t=>{
+test('each institutional collaborator NPC is a reachable map destination and dispatches only its own role',t=>{
  const {view,interactions}=makeView(t);
  for(const npc of GUILD_NPCS){
   view.setPlayer({x:180,y:640});
@@ -226,7 +232,7 @@ test('each Guild Hall NPC is a reachable map destination and dispatches only its
  }
 });
 
-test('a nearby Guild Hall NPC can be spoken to without recording discovery or progress',t=>{
+test('a nearby collaborator NPC can be spoken to without recording discovery or progress',t=>{
  const {view,interactions}=makeView(t);
  const npc=GUILD_NPCS[0];
  view.setPlayer({x:npc.x,y:npc.y+10});
