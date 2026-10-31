@@ -677,3 +677,51 @@ No branch was deleted. No release, deployment, credential/key change, permission
 - PR #215 remains active and stacked on #205; no transplant of the pre-rename crash regression was made. Preserve its ownership and avoid duplicating the same decision-store paths.
 - Issue #17 remains open: real Founder key custody/identity, adversarial concurrency, and crash/stale-lock recovery are still explicit acceptance work. No stale-lock automation or key custody change.
 - No PR was merged, no permission changed, no workflow dispatched, no branch deleted, no release/deployment/spending/external publication occurred.
+
+
+## Ralph continuation — checkpoint and restarted loop (2026-10-31 UTC)
+
+### Bootstrap integrity and clean restart
+- **Procedural failure preserved:** the first rehydration attempt in this session requested root `AGENTS.md` and the canonical protocol in parallel. That violated the repository's sequential-bootstrap rule. I discarded that pre-read baseline and restarted cleanly.
+- Clean restart: fetched and read current-main root `AGENTS.md` alone (blob `a4beeee1c0ec46faab28502957c0e53850b2855d`), then fetched and read the complete canonical protocol alone (blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). Only after these separate operations did I rehydrate repository state.
+- Current Alpha-1 main: `bb1aa833130b7e5399d7b84d1041b1c26c49cc16`.
+- Re-read the durable bootstrap checkpoint `docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md` (blob `6d6b5492851ed68a18cfacf7219189108ce12ce1`) and this checkpoint/run history.
+- Current recursive tree contains only root `AGENTS.md` and `recovery/public-repos/TaskAgile/AGENTS.md`; no nested instructions apply to the docs/operations, src/forge, or test paths reviewed here.
+- Portable local preflight and local tests were **not run**. This session has repository connectors but no usable local checkout/command runner; prior clone attempt could not resolve github.com. Do not interpret hosted CI as a local preflight receipt.
+
+### Other-worker state and product boundary
+- Worker B's latest game implementation remains PR #227, head `4f1f04a76b0715765965ec70419b4091d61225eb`. Verify #41172456018 and Genesis #41172456020 passed; Browser Acceptance #41172456015 passed **13/13**. The browser evidence includes a two-session shared world and shared restart, but the PR is 151 ahead / 9 behind current main and remains stacked on PR #225. No gameplay edits or integration claim by Worker A.
+- Worker B's current-main completion audit is PR #239, head `907b84abce119d4bc8b48e6841da4ff1cbe7d1c9`, one ledger file. Verify #41173021081, Genesis #41173021072, and Browser Acceptance #41173021061 passed; browser 12/12. The ledger records G0–G8 as IN PROGRESS and G9 NOT STARTED, distinguishing current-main from proposed #227 evidence. This is a draft documentation proposal, not a game completion claim.
+- PR #215's pre-rename process-death regression remains a meaningful storage gap, but its branch is stacked on #205 (14 ahead / 9 behind current main, six paths). Existing handoff #6539588731 recommends transplanting only the test seam/regression onto current main after ownership/rebase reconciliation. No duplicate storage edit was made.
+
+### Cross-repository continuation carried forward
+- **Command Center:** PR #4 was squash-merged to main at `28a131ca0448c4fdd11b196ae6e2ae4549274698`. Exact-head governance, security, classification, Core CI, and CI checks passed; Node 20/22 type-check and production build passed. The test step explicitly skipped because main had no `test` script; no test pass is claimed.
+- **no-gas-labs-monorepo:** PR #2 adds Claude/Gemini/Codex pointers and requires all five provider entry points in the governance workflow. Exact-head governance run #41172542360 passed. PR remains open and ready; the merge attempt was blocked by host safety controls. It is **not merged**.
+- **TaskAgile:** PR #1 owns the root instruction/README/CI changes. The Actions API returned no workflow runs; no hosted test/CI pass is claimed. No overlapping edit was made.
+- No claim of a complete 32-repository portfolio inventory or a shared work-claim registry; the registry remains unimplemented.
+
+### New review cycle — Forge security and preflight scope
+- Rehydrated PR #238 against current main. Live PR head is `0cac61bbfd57f2ab0621b2b7affff69d0d1081f5` on `security/forge-per-run-verification-challenge-20261031`; this supersedes the stale head stated in its PR body.
+- Current source now accepts `runCandidate(input)`, validates/copies the caller input with `dataRecord()` before reading fields, and uses normalized `validated.sourceDir` / `validated.outDir` in `compareCandidates()`. The test file includes getter-not-invoked and Proxy regressions. These changes address the earlier wrapper-accessor and post-validation reread findings at the inspected head.
+- Exact-head Verify #41173380864 passed; Genesis #41173380903 passed. Browser Acceptance #41173380862 was still in progress at the latest poll.
+- **Remaining verification defect:** Verify log reports preflight `ready`, but `agent:preflight:ci` still omits `src/forge/runner.mjs` and `test/forge-runner.test.mjs`. A green preflight therefore does not establish scoped instruction coverage for the files this PR changes. Review comment #6539667259 records this, the corrected code review, and the stale PR-body head.
+- No code edit was made to the active Forge branch.
+
+### New exact-head result — read-only branch inventory workflow
+- PR #237 head `96589b98cb63bc6c93a052b6a629b6cec3b2bca7` now has all three exact-head workflows green: Verify #41173118283, Genesis #41173118308, Browser Acceptance #41173118285.
+- Browser log confirms **12/12 journeys**: desktop, phone, five-location institutional actions, two-session shared world (version 2, kernelAccepted 2), 320/360/412px toolbars, one-button 320/412, standalone file/exact bytes, and shared restart. Artifact #13032306710: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41173118285/artifacts/13032306710.
+- Review update #6539672128 closes the previously pending browser-evidence item. PR remains draft/unmerged because the inherited workflow still grants `contents: write` although its preview job is read-only, and the destructive-action/approval boundary was intentionally not changed without authorization. No dispatch or branch deletion occurred.
+
+### Work performed in this continuation
+- Added review-only comments #6539667259 to PR #238 and #6539672128 to PR #237.
+- No source code, game code, workflow permissions, credentials, branches, or default branches were changed in this continuation.
+- No merge, release, deployment, spending, external publication, branch deletion, or credential/permission change occurred in this continuation.
+
+### Next ranked actions
+1. Re-poll PR #238 Browser Acceptance #41173380862. Require both Forge paths in scoped preflight and rerun all three workflows on the new exact head before treating the preflight as complete.
+2. Keep PR #237 held until the least-privilege/write-token question is resolved through an authorized route; do not dispatch or delete branches.
+3. Continue PR #215 only after rechecking #205/#215 ownership and stack; transplant the narrow crash regression only if no owner is actively doing so.
+4. Keep Worker B on the #227 stack reconciliation and current-main G0–G9 ledger; do not duplicate game work.
+5. Reconcile monorepo PR #2 only after re-reading that repository's instructions and protocol; no merge is claimed.
+6. Implement a real portfolio/work-claim registry only after a source-backed design identifies a shared store and honest lease/ownership semantics. Static branch names are not a global lock.
+7. Repeat the loop while safe, useful host-session budget remains. No background execution after the host session ends is claimed.
