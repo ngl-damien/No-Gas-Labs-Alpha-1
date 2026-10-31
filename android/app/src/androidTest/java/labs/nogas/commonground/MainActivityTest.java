@@ -184,11 +184,13 @@ public final class MainActivityTest {
                 "document.getElementById('xp-count').textContent === '100'");
     }
 
-    private Instrumentation.ActivityMonitor monitorDocumentPicker(String action, Uri selectedFile) {
+    private Instrumentation.ActivityMonitor monitorDocumentPicker(String action, Uri selectedFile) throws IntentFilter.MalformedMimeTypeException {
         Intent result = new Intent();
         result.setData(selectedFile);
         IntentFilter filter = new IntentFilter(action);
         filter.addCategory(Intent.CATEGORY_OPENABLE);
+        // Both native picker intents carry the JSON MIME type as well as the category.
+        filter.addDataType("application/json");
         return InstrumentationRegistry.getInstrumentation().addMonitor(
                 filter,
                 new Instrumentation.ActivityResult(Activity.RESULT_OK, result),
