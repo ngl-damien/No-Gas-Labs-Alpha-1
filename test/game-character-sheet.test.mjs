@@ -1052,7 +1052,7 @@ test('field satchel keeps its newest 100 objects and points back to retained app
     'satchel-moonshot-event-' + index,
     'moonshot-proposed',
     founder,
-    new Date(Date.parse(t1) + index * 1000).toISOString(),
+    new Date(Date.parse(t1) + (101 - index) * 1000).toISOString(),
     {
       moonshotId: 'satchel-moonshot-' + index,
       title: 'Bounded proposal ' + index,
@@ -1082,6 +1082,9 @@ test('field satchel keeps its newest 100 objects and points back to retained app
   assert.equal(record.equipment.find(slot => slot.id === 'scouting').source.eventId,
     discoveryEvent.id,
     'equipment scans the validated source set rather than disappearing when its satchel card is omitted');
+  assert.equal(record.equipment.find(slot => slot.id === 'research').source.eventId,
+    proposals.at(-1).id,
+    'the latest appended proposal fills the slot even when its timestamp is backdated');
 });
 
 
