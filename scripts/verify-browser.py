@@ -665,6 +665,10 @@ def shared(browser,url,data,out):
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        first_report_id=next(event['reportId'] for event in challenge_state['world']['events'] if event['type']=='experiment-reported' and event['moonshotId']==moonshot_id)
+        first_report_card=a.locator(f'[data-research-activity-id="{first_report_id}"]')
+        expect(first_report_card).to_contain_text('You already challenged this report.')
+        expect(first_report_card.get_by_role('button',name='Challenge this report →',exact=True)).to_have_count(0)
         # The character's field satchel is a navigable projection of the exact retained dissent event.
         close_sheet(a)
         a.locator('#character-button').click()
@@ -717,6 +721,62 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet-title')).to_have_text('Moonshot Field')
         expect(a.locator('#sheet')).to_contain_text('The report omits the measurement settings needed to reproduce the attempt.')
         close_sheet(a)
+
+        # A second report by the Witness reopens the Founder encounter trail.
+        second_proposal_response=visitor.request.post(url+'api/action',data={
+            'type':'propose-moonshot','title':'Does a second attempt reproduce the observation?',
+            'hypothesis':'The same observation repeats under the stated conditions.',
+            'falsifier':'A controlled repeat produces a different result.',
+            'evidenceNeeded':'The same retained artifact and a separately recorded attempt.',
+            'sourceCreationId':creation_id,'sourceVersion':2,'requestId':'browser-moonshot-proposal-2'
+        })
+        assert second_proposal_response.status==200, second_proposal_response.text()
+        second_moonshot_id=second_proposal_response.json()['result']['moonshotId']
+        second_report_response=visitor.request.post(url+'api/action',data={
+            'type':'report-experiment','moonshotId':second_moonshot_id,
+            'procedure':'Repeat the comparison independently.',
+            'observation':'The second attempt still lacks a controlled measurement setting.',
+            'reportedOutcome':'inconclusive','evidenceCreationId':creation_id,'evidenceVersion':2,
+            'requestId':'browser-experiment-report-2'
+        })
+        assert second_report_response.status==200, second_report_response.text()
+        second_report_id=second_report_response.json()['result']['reportId']
+
+        # Re-enter as the same Founder session to read the newly expanded objective.
+        a.reload()
+        a.locator('#login-button').click()
+        a.locator('#founder-key').fill(KEY)
+        a.locator('#verify-founder').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        encounter_objective=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(encounter_objective).to_contain_text('OPEN')
+        expect(encounter_objective).to_contain_text('1/2')
+        encounter_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        second_report_card=a.locator(f'[data-research-activity-id="{second_report_id}"]')
+        expect(second_report_card).to_be_visible()
+        second_report_card.get_by_role('button',name='Challenge this report →',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Challenge experiment report')
+        a.locator('#experiment-challenge-type').select_option('reproducibility')
+        a.locator('#experiment-challenge-evidence-source').select_option(creation_id)
+        assert a.locator('#experiment-challenge-evidence-version').input_value()=='2'
+        a.locator('#experiment-challenge-text').fill('The second attempt still lacks enough retained settings for independent reproduction.')
+        a.locator('#challenge-experiment-report').click()
+        expect(a.locator('#sheet')).to_contain_text('DISSENT · NOT ADJUDICATED')
+        second_challenge_state=visitor.request.get(url+'api/state').json()
+        retained_challenges=[event for event in second_challenge_state['world']['events'] if event['type']=='experiment-challenged']
+        assert len(retained_challenges)==2
+        assert {event['reportId'] for event in retained_challenges}=={first_report_id,second_report_id}
+        assert all(event['actor']['role']=='founder' for event in retained_challenges)
+        assert second_challenge_state['world']['xp']==200, 'Repeatable dissent encounters remain XP-neutral at world level'
+        close_sheet(a)
+        a.locator('#character-button').click()
+        encounter_objective=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(encounter_objective).to_contain_text('RECORDED')
+        expect(encounter_objective).to_contain_text('2/2')
+
         # A lost shared read must preserve the last received Chronicle while
         # showing unavailable registers as unknown, never as empty or approved.
         def fail_institution_reads(route):
