@@ -34,3 +34,39 @@ test('unavailable storage fails safely without throwing',()=>{
   assert.equal(readPrivatePlayerPosition(broken),null);
   assert.equal(writePrivatePlayerPosition({x:10,y:10},broken),false);
 });
+
+test('accessor-backed coordinates are rejected without executing getters',()=>{
+  let getterCalls=0;
+  const position={y:20};
+  Object.defineProperty(position,'x',{enumerable:true,get(){getterCalls+=1;throw new Error('coordinate getter executed');}});
+  assert.equal(writePrivatePlayerPosition(position,storage()),false);
+  assert.equal(getterCalls,0);
+});
+
+test('inherited, hidden, symbol-backed and extra coordinate fields are rejected',()=>{
+  const inherited=Object.assign(Object.create({x:10}),{y:20});
+  const hidden={x:10,y:20};
+  Object.defineProperty(hidden,'note',{value:'not a coordinate',enumerable:false});
+  const symbolBacked={x:10,y:20,[Symbol('metadata')]:true};
+  for(const value of [inherited,hidden,symbolBacked,{x:10,y:20,z:30},[]]){
+    assert.equal(writePrivatePlayerPosition(value,storage()),false);
+  }
+});
+
+test('saved JSON must contain exactly its schema and two coordinate fields',()=>{
+  for(const saved of [
+    {schema:'ngl.player-position.v1',x:10,y:20,identity:'damien'},
+    {schema:'ngl.player-position.v1',x:10,y:20,authority:'founder'},
+    {schema:'ngl.player-position.v1',x:10,y:20,extra:null},
+  ]){
+    assert.equal(readPrivatePlayerPosition(storage({[key]:JSON.stringify(saved)})),null);
+  }
+});
+
+test('runtime player identity is accepted as input but never persisted',()=>{
+  const store=storage();
+  assert.equal(writePrivatePlayerPosition({id:'private-founder',x:425,y:730},store),true);
+  const raw=store.values.get(key);
+  assert.deepEqual(JSON.parse(raw),{schema:'ngl.player-position.v1',x:425,y:730});
+  assert.equal(Object.hasOwn(JSON.parse(raw),'id'),false);
+});
