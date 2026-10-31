@@ -564,3 +564,45 @@ test('Forge does not disguise corrupt Git metadata as a public-source package', 
   await assert.rejects(compareCandidates({ ...options, candidates: [{ id: 'correct', overlay: {} }] }), /git|invalid/i);
   await assert.rejects(access(options.outDir));
 });
+
+
+test('runCandidate rejects accessor-backed wrapper input before invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  let invoked = false;
+  const request = {
+    sourceDir: options.sourceDir,
+    outDir: options.outDir,
+    workloadId: 'vector-sum-v1',
+    candidate: { id: 'safe', overlay: { [target]: correct } }
+  };
+  Object.defineProperty(request, 'candidate', {
+    enumerable: true,
+    get() { invoked = true; throw new Error('getter must not execute'); }
+  });
+  const { runCandidate } = await api();
+  await assert.rejects(runCandidate(request), /candidate request fields must be enumerable data properties/);
+  assert.equal(invoked, false);
+  await assert.rejects(access(options.outDir), { code: 'ENOENT' });
+});
+
+test('compareCandidates uses its normalized request snapshot instead of rereading proxy properties', async t => {
+  const options = await fixture(t);
+  let getTrapCalls = 0;
+  const input = new Proxy({
+    sourceDir: options.sourceDir,
+    outDir: options.outDir,
+    candidates: [{ id: 'safe', overlay: { [target]: correct } }]
+  }, {
+    get(target, property, receiver) {
+      if (property === 'sourceDir' || property === 'outDir') {
+        getTrapCalls += 1;
+        throw new Error('validated request must not be reread through proxy');
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const { compareCandidates } = await api();
+  const report = await compareCandidates(input);
+  assert.equal(getTrapCalls, 0);
+  assert.equal(report.results[0].correct, true);
+});
