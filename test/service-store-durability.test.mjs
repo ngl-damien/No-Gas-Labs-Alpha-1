@@ -756,7 +756,10 @@ test('service-store close preserves a replacement lock even when its metadata is
   assert.notEqual(replacement.ino, original.ino, 'replacement must be a different inode');
   assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the same owner metadata');
 
-  await store.close();
+  await assert.rejects(
+    store.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
 
   const afterClose = await lstat(lockPath);
   assert.equal(afterClose.dev, replacement.dev);
@@ -765,6 +768,65 @@ test('service-store close preserves a replacement lock even when its metadata is
   assert.equal((await lstat(movedOriginal)).ino, original.ino, 'the original lease inode remains available for inspection');
 });
 
+
+
+
+test('service-store close reports lost lease before any commit and preserves a successor', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-close-lost-lease-before-commit-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const former = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+
+  await rm(lockPath);
+  const successor = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  await successor.commit({ revision: 1, writer: 'successor' });
+  const successorLock = await lstat(lockPath);
+
+  await assert.rejects(
+    former.close(),
+    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503
+  );
+  const afterFormerClose = await lstat(lockPath);
+  assert.equal(afterFormerClose.dev, successorLock.dev);
+  assert.equal(afterFormerClose.ino, successorLock.ino, 'former close must not unlink the successor lock');
+
+  await successor.commit({ revision: 2, writer: 'successor' });
+  await successor.close();
+  const reopened = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  assert.deepEqual(reopened.value, { revision: 2, writer: 'successor' });
+  await reopened.close();
+});
+
+
+test('service-store preserves the original initialization error when lease cleanup detects replacement', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-cleanup-error-provenance-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const lockPath = join(dataDir, '.service.lock');
+  const movedOriginal = join(dataDir, '.service-lock-original');
+  const expected = new Error('INITIAL_VALIDATION_FAILED');
+  let replacement;
+
+  await assert.rejects(
+    createServiceStore({
+      dataDir,
+      initial: { revision: 0 },
+      validate: async () => {
+        const originalBytes = await readFile(lockPath);
+        const original = await lstat(lockPath);
+        await rename(lockPath, movedOriginal);
+        await writeFile(lockPath, originalBytes, { mode: 0o600 });
+        replacement = await lstat(lockPath);
+        assert.notEqual(replacement.ino, original.ino, 'replacement must be a distinct lock inode');
+        throw expected;
+      }
+    }),
+    error => error === expected
+  );
+
+  const afterFailure = await lstat(lockPath);
+  assert.equal(afterFailure.ino, replacement.ino, 'cleanup must preserve the replacement lock');
+  assert.equal((await lstat(movedOriginal)).isFile(), true, 'the original lease remains available for inspection');
+});
 
 test('service-store refuses commits after the published writer lock pathname is replaced', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-lost-lease-before-commit-'));
