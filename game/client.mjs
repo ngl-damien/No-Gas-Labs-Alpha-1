@@ -1064,7 +1064,11 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
         reportCard.append(challengeCard);
       }
-      if(report.actor?.id!==viewer.id)reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
+      if(report.actor?.id!==viewer.id){
+        const challengedByViewer=challenges.some(event=>event.actor?.id===viewer.id&&event.actor?.role===viewer.role);
+        if(challengedByViewer)reportCard.append(paragraph('You already challenged this report. Your dissent remains in the Chronicle; choose another report for a new encounter.','form-help'));
+        else reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
+      }
       card.append(reportCard);
     }
     content.append(card);
