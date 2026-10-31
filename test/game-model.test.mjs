@@ -146,7 +146,7 @@ test('field loadout choices are actor-owned, append-only, reversible, and XP-neu
   assert.equal(pinned.world.events.at(-1).type,'field-item-equipped');
   assert.deepEqual(pinned.result,{slotId:'scouting',sourceEventId:firstSource.id});
   assert.equal(pinned.world.xp,0,'equipping cannot award XP');
-  assert.doesNotThrow(()=>validateWorld(pinned.world));
+  await assert.doesNotReject(validateWorld(pinned.world));
   let slot=projectCharacter(pinned.world,witness).equipment.find(item=>item.id==='scouting');
   assert.equal(slot.mode,'pinned');
   assert.equal(slot.source.eventId,firstSource.id);
@@ -163,7 +163,7 @@ test('field loadout choices are actor-owned, append-only, reversible, and XP-neu
   assert.equal(slot.mode,'automatic');
   assert.equal(slot.source.eventId,secondSource.id,'reset returns to the newest qualifying source');
   assert.equal(reset.world.xp,0);
-  assert.doesNotThrow(()=>validateWorld(reset.world));
+  await assert.doesNotReject(validateWorld(reset.world));
 });
 
 test('field loadout rejects wrong slots, missing sources, cross-actor sources, and forged imported references',async()=>{
@@ -177,12 +177,12 @@ test('field loadout rejects wrong slots, missing sources, cross-actor sources, a
   const forged=structuredClone(pinned.world);
   forged.events.at(-1).sourceEventId='missing-source';
   forged.events.at(-1).actionResult.sourceEventId='missing-source';
-  assert.throws(()=>validateWorld(forged),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(validateWorld(forged),error=>error.code==='INVALID_WORLD');
   const forgedSlot=structuredClone(pinned.world);
   forgedSlot.events.at(-1).slotId='provenance';
   forgedSlot.events.at(-1).actionResult.slotId='provenance';
-  assert.throws(()=>validateWorld(forgedSlot),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(validateWorld(forgedSlot),error=>error.code==='INVALID_WORLD');
   const forgedActor=structuredClone(pinned.world);
   forgedActor.events.at(-1).actor={...founder};
-  assert.throws(()=>validateWorld(forgedActor),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(validateWorld(forgedActor),error=>error.code==='INVALID_WORLD');
 });
