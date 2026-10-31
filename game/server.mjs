@@ -491,18 +491,18 @@ function publicationCandidate(payload, world, result) {
 }
 const MAX_FOUNDER_KEY_FILE_BYTES = 1025; // 1024-byte key plus the generated trailing newline.
 
-function currentFounderKeyUid() {
-  // Standard Windows Node does not expose process.getuid(). Existing file-backed
-  // Founder keys intentionally fail closed there until an ACL-aware owner
-  // verifier exists; a missing file still follows getFounderKey's ENOENT path.
+function currentProcessUid(subject) {
+  // The private Founder data directory and existing Founder key file both need
+  // a real owner comparison. Standard Windows Node lacks process.getuid(), so
+  // startup fails closed until an ACL-aware verifier is available.
   let getuid;
   try { getuid = process.getuid; }
-  catch { throw new Error('Founder key owner verification is unavailable'); }
-  if (typeof getuid !== 'function') throw new Error('Founder key owner verification is unavailable');
+  catch { throw new Error(`${subject} owner verification is unavailable`); }
+  if (typeof getuid !== 'function') throw new Error(`${subject} owner verification is unavailable`);
   let uid;
   try { uid = getuid.call(process); }
-  catch { throw new Error('Founder key owner verification failed'); }
-  if (!Number.isSafeInteger(uid) || uid < 0) throw new Error('Founder key owner verification returned an invalid UID');
+  catch { throw new Error(`${subject} owner verification failed`); }
+  if (!Number.isSafeInteger(uid) || uid < 0) throw new Error(`${subject} owner verification returned an invalid UID`);
   return uid;
 }
 
@@ -516,7 +516,7 @@ async function readFounderKeyFile(path) {
   if ((before.mode & 0o077) !== 0) {
     throw new Error('Founder key file permissions must exclude group and other access (0600)');
   }
-  const currentUid = currentFounderKeyUid();
+  const currentUid = currentProcessUid('Founder key');
   if (before.uid !== currentUid) {
     throw new Error('Founder key file must be owned by the current process user');
   }
@@ -649,7 +649,8 @@ async function assertPrivateDataDirectory(dataDir) {
   if ((mode & 0o077) !== 0) {
     throw new Error('Founder data directory permissions must exclude group and other access (0700)');
   }
-  if (typeof process.getuid === 'function' && directory.uid !== process.getuid()) {
+  const currentUid = currentProcessUid('Founder data directory');
+  if (directory.uid !== currentUid) {
     throw new Error('Founder data directory must be owned by the current process user');
   }
   return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };

@@ -414,8 +414,45 @@ test('existing Founder key files fail closed when UID verification is missing, t
     clearTimeout(timeout);
     assert.equal(signal, null, `${label} UID lookup must fail before the server starts: ${output}`);
     assert.equal(code, 1, `${label} UID lookup must fail startup: ${output}`);
-    assert.match(output, /Founder key owner verification (?:is unavailable|failed|returned an invalid UID)/);
+    assert.match(output, /Founder (?:key|data directory) owner verification (?:is unavailable|failed|returned an invalid UID)/);
     assert.equal(await readFile(keyPath, 'utf8'), KEY + '\n', 'The existing key must not be replaced or regenerated');
+  }
+});
+
+test('Founder data directory requires UID verification when a provided key bypasses file-backed key loading', async t => {
+  const cases = [
+    ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });",
+      /Founder data directory owner verification is unavailable/],
+    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });",
+      /Founder data directory owner verification failed/],
+    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });",
+      /Founder data directory owner verification returned an invalid UID/]
+  ];
+  for (const [label, override, expected] of cases) {
+    const dataDir = await mkdtemp(join(tmpdir(), `ngl-provided-key-owner-${label}-`));
+    t.after(() => rm(dataDir, { recursive: true, force: true }));
+    const preload = join(dataDir, 'uid-override.mjs');
+    await writeFile(preload, override + '\\n');
+    const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY };
+    const probe = "import { createGameServer } from './game/server.mjs'; try { const server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR, founderKey: process.env.NGL_FOUNDER_KEY }); await server.closeGame(); process.exitCode = 0; } catch (error) { console.error(error.message); process.exitCode = 1; }";
+    const child = spawn(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
+      cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+    const [code, signal] = await once(child, 'exit');
+    clearTimeout(timeout);
+    assert.equal(signal, null, `${label} UID lookup must fail before server startup: ${output}`);
+    assert.equal(code, 1, `${label} UID lookup must fail even when a provided key bypasses file loading: ${output}`);
+    assert.match(output, expected);
+    await assert.rejects(readFile(join(dataDir, 'founder.key'), 'utf8'), { code: 'ENOENT' },
+      'provided-key startup must not create or replace a key file');
+    await assert.rejects(readFile(join(dataDir, 'service.json'), 'utf8'), { code: 'ENOENT' },
+      'owner verification must fail before creating persistent world state');
+    await assert.rejects(lstat(join(dataDir, '.service.lock')), { code: 'ENOENT' },
+      'owner verification must fail before acquiring a service-store writer lock');
   }
 });
 
