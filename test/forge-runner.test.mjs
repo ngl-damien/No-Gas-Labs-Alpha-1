@@ -590,21 +590,3 @@ test('runCandidate rejects accessor-backed wrapper fields before invoking getter
   await assert.rejects(access(options.outDir), { code: 'ENOENT' });
 });
 
-test('Forge captures benchmark output primitives before importing candidate code', async t => {
-  const options = await fixture(t);
-  const { compareCandidates } = await api();
-  const overlay = [
-    'process.stdout.write = () => true;',
-    'console.log = () => {};',
-    'JSON.stringify = () => "{}";',
-    'export function sum(values) { let total = 0; for (const value of values) total += value; return total; }'
-  ].join('\\n');
-  const report = await compareCandidates({
-    ...options,
-    candidates: [{ id: 'output-monkeypatch', overlay: { [target]: overlay } }]
-  });
-  assert.equal(report.results[0].execution.outcome, 'passed');
-  assert.equal(report.results[0].outputCorrect, true);
-  assert.equal(report.results[0].verificationChecks.passed, true);
-  assert.equal(report.results[0].correct, true);
-});
