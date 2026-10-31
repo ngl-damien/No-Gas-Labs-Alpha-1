@@ -284,6 +284,34 @@ test('Forge rejects recognizable embedded credentials before candidate copying o
     await rm(join(options.sourceDir, file));
   }
 });
+test('Forge rejects recognizable credentials in candidate overlays before creating workspaces', async t => {
+  const options = await fixture(t);
+  const { compareCandidates } = await api();
+  const samples = [
+    ['github-token', 'ghp_' + 'B'.repeat(36)],
+    ['aws-access-key', 'AKIA' + 'B'.repeat(16)],
+    ['private-key-block', '-----BEGIN PRIVATE KEY----- synthetic-fixture']
+  ];
+  for (const [index, [rule, secret]] of samples.entries()) {
+    const outDir = options.outDir + '-overlay-' + index;
+    const overlaySource = 'export const credential = ' + JSON.stringify(secret) + ';';
+    let failure;
+    try {
+      await compareCandidates({
+        ...options,
+        outDir,
+        candidates: [{ id: 'credential-overlay', overlay: { [target]: overlaySource } }]
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error, rule + ' must fail closed');
+    assert.ok(failure.message.includes('Credential-like content detected in candidate overlay: ' + target + ' (' + rule + ')'));
+    assert.equal(failure.message.includes(secret), false, 'errors must not echo matched credential bytes');
+    await assert.rejects(access(outDir), { code: 'ENOENT' }, 'no workspace may be created for a credential-bearing overlay');
+  }
+});
+
 test('Forge parent rejects wrong per-case results even when candidate disables shared assertions and mutates serializers', async t => {
   const options = await fixture(t);
   const { compareCandidates } = await api();
