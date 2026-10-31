@@ -1,23 +1,26 @@
 name: One-time redundant branch cleanup
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/branch-cleanup.yml'
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Leave blank for a read-only preview. Type DELETE-ONLY-MANIFESTED-BRANCHES to authorize deletion."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
   pull-requests: read
 
 jobs:
-  clean-redundant-refs:
+  preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Checkout recovery manifest
+      - name: Check out recovery manifest
         uses: actions/checkout@v4
-      - name: Delete only branches pinned to the recorded identical commit
+      - name: Preview eligible refs without deleting anything
         uses: actions/github-script@v7
         with:
           script: |
@@ -28,14 +31,72 @@ jobs:
             const manifest = fs.readFileSync('recovery/BRANCH-CLEANUP-2026-10-17.md', 'utf8');
             const candidates = [...manifest.matchAll(/^- `([^`]+)`$/gm)].map(m => m[1]);
             if (candidates.length !== 80) throw new Error('Unexpected manifest size: ' + candidates.length);
-            const branches = await github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 });
-            const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 });
-            const openHeads = new Set(pulls.filter(p => p.head.repo?.full_name === context.repo.owner + '/' + context.repo.repo).map(p => p.head.ref));
-            const byName = new Map(branches.map(b => [b.name, b]));
+            const [branches, pulls, repository] = await Promise.all([
+              github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 }),
+              github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }),
+              github.rest.repos.get({ owner, repo })
+            ]);
+            const openHeads = new Set(pulls
+              .filter(p => p.head.repo?.full_name === owner + '/' + repo)
+              .map(p => p.head.ref));
+            const byName = new Map(branches.map(branch => [branch.name, branch]));
+            const eligible = [], skipped = [];
+            for (const name of candidates) {
+              const branch = byName.get(name);
+              if (!branch || branch.protected || branch.commit.sha !== baseline ||
+                  openHeads.has(name) || name === repository.data.default_branch) {
+                skipped.push(name);
+              } else {
+                eligible.push(name);
+              }
+            }
+            core.info(JSON.stringify({ mode: 'preview-only', baseline, candidates: candidates.length, eligible, skipped }, null, 2));
+            await core.summary.addHeading('NGL branch cleanup preview')
+              .addRaw('No branches were deleted. Candidates: ' + candidates.length +
+                ', eligible at inspection: ' + eligible.length + ', skipped: ' + skipped.length)
+              .addHeading('Would be eligible if separately confirmed')
+              .addCodeBlock(eligible.join('\n') || '(none)')
+              .addHeading('Skipped')
+              .addCodeBlock(skipped.join('\n') || '(none)').write();
+
+  delete:
+    if: ${{ success() && inputs.confirmation == 'DELETE-ONLY-MANIFESTED-BRANCHES' }}
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out recovery manifest
+        uses: actions/checkout@v4
+      - name: Recheck and delete only explicitly authorized exact-baseline refs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const confirmation = 'DELETE-ONLY-MANIFESTED-BRANCHES';
+            if (context.eventName !== 'workflow_dispatch' ||
+                context.payload.inputs?.confirmation !== confirmation) {
+              throw new Error('Explicit workflow_dispatch confirmation is required');
+            }
+            const baseline = 'facee282ae0c0a56031e7bf00a038eac3ebe4926';
+            const manifest = fs.readFileSync('recovery/BRANCH-CLEANUP-2026-10-17.md', 'utf8');
+            const candidates = [...manifest.matchAll(/^- `([^`]+)`$/gm)].map(m => m[1]);
+            if (candidates.length !== 80) throw new Error('Unexpected manifest size: ' + candidates.length);
+            const [branches, pulls, repository] = await Promise.all([
+              github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 }),
+              github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }),
+              github.rest.repos.get({ owner, repo })
+            ]);
+            const openHeads = new Set(pulls
+              .filter(p => p.head.repo?.full_name === owner + '/' + repo)
+              .map(p => p.head.ref));
+            const byName = new Map(branches.map(branch => [branch.name, branch]));
             const deleted = [], skipped = [], errors = [];
             for (const name of candidates) {
               const branch = byName.get(name);
-              if (!branch || branch.protected || branch.commit.sha !== baseline || openHeads.has(name) || name === context.payload.repository.default_branch) {
+              if (!branch || branch.protected || branch.commit.sha !== baseline ||
+                  openHeads.has(name) || name === repository.data.default_branch) {
                 skipped.push(name);
                 continue;
               }
@@ -46,7 +107,8 @@ jobs:
                 await github.rest.git.deleteRef({ owner, repo, ref: 'heads/' + name });
                 deleted.push(name);
               } catch (error) {
-                errors.push(name + ': ' + error.message);
+                if (error.status === 404) skipped.push(name);
+                else errors.push(name + ': ' + error.message);
               }
             }
             core.info(JSON.stringify({ baseline, candidates: candidates.length, deleted, skipped, errors }, null, 2));
