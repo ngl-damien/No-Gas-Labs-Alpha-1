@@ -513,6 +513,25 @@ export function isWalkable(x,y,buildings=[]) {
   ))return false;
   return !buildings.some(c=>Math.abs(x-c.position.x)<74&&y>c.position.y-67&&y<c.position.y+49);
 }
+function nearestWalkablePoint(position,buildings=[],maxRadius=8) {
+  if(!position||!Number.isFinite(position.x)||!Number.isFinite(position.y))return null;
+  if(isWalkable(position.x,position.y,buildings))return {x:position.x,y:position.y};
+  const cell=20,centerX=Math.max(2,Math.min(78,Math.round(position.x/cell)));
+  const centerY=Math.max(2,Math.min(48,Math.round(position.y/cell)));
+  for(let radius=1;radius<=maxRadius;radius++){
+    let best=null;
+    for(let dx=-radius;dx<=radius;dx++)for(let dy=-radius;dy<=radius;dy++){
+      if(Math.abs(dx)!==radius&&Math.abs(dy)!==radius)continue;
+      const x=(centerX+dx)*cell,y=(centerY+dy)*cell;
+      if(!isWalkable(x,y,buildings))continue;
+      const distance=Math.hypot(x-position.x,y-position.y);
+      if(!best||distance<best.distance||
+         (distance===best.distance&&(y<best.y||(y===best.y&&x<best.x))))best={x,y,distance};
+    }
+    if(best)return {x:best.x,y:best.y};
+  }
+  return null;
+}
 export function stepPlayer(player,input,distance,buildings=[]) {
   const len=Math.hypot(input.x,input.y);if(!len)return {...player};
   let {x,y}=player;const steps=Math.ceil(distance/6),dx=input.x/len*distance/steps,dy=input.y/len*distance/steps;
@@ -544,12 +563,12 @@ export class WorldView {
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world,institutionSummary=this.institutionSummary,collaboratorResponseObjects=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=isCollaboratorResponseProjection(collaboratorResponseObjects,next)?collaboratorResponseObjects:projectCollaboratorResponseWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),collaboratorResponseObjects:this.collaboratorResponseObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
+  setWorld(world,institutionSummary=this.institutionSummary,collaboratorResponseObjects=null){const next=world||{creations:[]};this.world=next;const safePlayer=nearestWalkablePoint(this.player,Array.isArray(next.creations)?next.creations:[]);if(safePlayer)this.player={...this.player,...safePlayer};this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=isCollaboratorResponseProjection(collaboratorResponseObjects,next)?collaboratorResponseObjects:projectCollaboratorResponseWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),collaboratorResponseObjects:this.collaboratorResponseObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
   drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
   drawGuildNpc(npc){const c=this.ctx;c.save();c.translate(npc.x,npc.y);this.ellipse(0,10,13,5,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle=npc.accent;c.lineWidth=1.6;c.beginPath();c.roundRect(-10,-21,20,29,5);c.fill();c.stroke();this.ellipse(0,-28,8,9,'#e2b68b','#675d42');c.fillStyle=npc.accent;c.fillRect(-10,-37,20,7);this.text(npc.sigil,0,-11,10,'#f8efd4','system-ui');this.text(npc.name,0,29,8,'#29443d','system-ui');this.text('GUILD HALL',0,40,7,'#687756','system-ui');c.restore();}
-  setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
+  setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){const safe=nearestWalkablePoint({x:player.x,y:player.y},this.world.creations);if(safe)this.player={...this.player,...safe};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}
   cancelRoute(){this.route=[];this.target=null;this.targetType=null;}
