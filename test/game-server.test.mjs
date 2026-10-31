@@ -1147,7 +1147,6 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
 
 test('server startup indexes large interleaved retained proposal/report history', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-indexed-history-server-'));
-  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const world = createWorld({ id: 'indexed-server-history', now: '2026-10-01T00:00:00.000Z' });
   const actor = { id: 'history-witness', name: 'History witness', role: 'witness' };
   const events = [];
@@ -1182,5 +1181,8 @@ test('server startup indexes large interleaved retained proposal/report history'
   };
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
-  t.after(() => server.closeGame());
+  t.after(async () => {
+    try { await server.closeGame(); }
+    finally { await rm(dataDir, { recursive: true, force: true }); }
+  });
 });
