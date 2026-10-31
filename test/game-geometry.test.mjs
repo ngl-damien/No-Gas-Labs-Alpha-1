@@ -141,6 +141,24 @@ test('institutional destinations dispatch their own location identity',t=>{
  for(let i=0;i<30;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'evidence_archive'}]);
 });
+test('fixed institutional buildings are physical obstacles with reachable front approaches',()=>{
+  const landmarks=[...PLACES.filter(place=>place.type==='institution'),PLACES.find(place=>place.id==='workbench')];
+  for(const place of landmarks){
+    assert.equal(isWalkable(place.x,place.y,[]),false,place.name+' footprint must block movement');
+    assert.equal(isWalkable(place.x,place.y+50,[]),true,place.name+' front approach must remain walkable');
+    const route=findRoute({x:180,y:640},{x:place.x,y:place.y+50},[]);
+    assert.ok(route.length>1,place.name+' must remain reachable from spawn');
+    assert.ok(route.every(point=>isWalkable(point.x,point.y,[])),place.name+' route must avoid water and buildings');
+  }
+});
+
+test('non-finite map positions and route targets fail closed',()=>{
+  assert.equal(isWalkable(NaN,200,[]),false);
+  assert.equal(isWalkable(200,Infinity,[]),false);
+  assert.deepEqual(findRoute({x:NaN,y:200},{x:300,y:300},[]),[]);
+  assert.deepEqual(findRoute({x:200,y:200},{x:300,y:Infinity},[]),[]);
+});
+
 test('river is real collision with two walkable bridges and bounded world',()=>{
   assert.equal(isWalkable(850,450,[]),false);
   assert.equal(isWalkable(850,360,[]),true);
