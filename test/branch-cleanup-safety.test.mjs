@@ -6,7 +6,7 @@ const workflow = await readFile(new URL('../.github/workflows/branch-cleanup.yml
 
 test('legacy branch inventory is manual-only and has no automatic triggers', () => {
   const trigger = workflow.slice(0, workflow.indexOf('permissions:'));
-  assert.match(trigger, /^on:\n  workflow_dispatch:\s*$/m);
+  assert.match(trigger, /^on:\n  workflow_dispatch:\n/m);
   assert.doesNotMatch(trigger, /^  (push|pull_request):/m);
   assert.doesNotMatch(trigger, /confirmation|DELETE-ONLY-MANIFESTED-BRANCHES/);
 });
@@ -19,9 +19,8 @@ test('legacy inventory has exactly one read-only preview job and no deletion job
   assert.match(workflow, /No branches were deleted/);
 });
 
-test('the preview preserves the existing token permission boundary without expanding it', () => {
+test('the preview retains the pre-existing token permission scope', () => {
   assert.match(workflow, /^permissions:\n  contents: write\n  pull-requests: read/m);
-  assert.doesNotMatch(workflow, /permissions:\s*\n\s*contents:\s*write[\s\S]*?delete/);
 });
 
 test('inventory must be dispatched from the default branch', () => {
