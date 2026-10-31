@@ -754,7 +754,7 @@ def shared(browser,url,data,out):
             a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
-        encounter_objective=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        encounter_objective=a.locator('#sheet [data-objective-id="founder-challenge-experiment-report"]')
         expect(encounter_objective).to_contain_text('OPEN')
         expect(encounter_objective).to_contain_text('1/2')
         encounter_objective.get_by_role('button',name='Go do this →',exact=True).click()
@@ -777,7 +777,7 @@ def shared(browser,url,data,out):
         assert second_challenge_state['world']['xp']==200, 'Repeatable dissent encounters remain XP-neutral at world level'
         close_sheet(a)
         a.locator('#character-button').click()
-        encounter_objective=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        encounter_objective=a.locator('#sheet [data-objective-id="founder-challenge-experiment-report"]')
         expect(encounter_objective).to_contain_text('RECORDED')
         expect(encounter_objective).to_contain_text('2/2')
 
