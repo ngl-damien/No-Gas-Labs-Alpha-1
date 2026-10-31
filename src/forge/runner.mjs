@@ -386,8 +386,8 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
 export async function compareCandidates(options) {
   const validated = validate(options);
   const started = performance.now();
-  const sourceDir = await realpath(options.sourceDir);
-  const outDir = await physicalOutputPath(options.outDir);
+  const sourceDir = await realpath(request.sourceDir);
+  const outDir = await physicalOutputPath(request.outDir);
   const within = slash(relative(sourceDir, outDir));
   if (within === '' || (!within.startsWith('../') && !within.startsWith('/') && !within.startsWith('.runtime/'))) throw new Error('outDir inside source must be under ignored .runtime/ and must be fresh');
   try { await lstat(outDir); throw new Error('outDir must be fresh; path already exists'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -419,8 +419,8 @@ export async function runCandidate({ candidate, ...options }) {
 }
 
 function repositoryLimits(input = {}) {
-  exactKeys(input, Object.keys(REPOSITORY_DEFAULTS), 'limits');
-  const limits = { ...REPOSITORY_DEFAULTS, ...input };
+  const validated = dataRecord(input, Object.keys(REPOSITORY_DEFAULTS), 'repository limits');
+  const limits = { ...REPOSITORY_DEFAULTS, ...validated };
   for (const [key, min, max] of [['timeoutMs', 50, 120000], ['maxOutputBytes', 1024, 1048576], ['concurrency', 1, 4]]) {
     if (!Number.isSafeInteger(limits[key]) || limits[key] < min || limits[key] > max) throw new Error(`Invalid repository ${key} limit: ${min}..${max}`);
   }
@@ -445,9 +445,9 @@ function readTap(stdout) {
 
 /** Execute only explicit allowlisted repository tests in a frozen copy, without overlays. */
 export async function verifyRepository(options) {
-  exactKeys(options, ['sourceDir', 'outDir', 'limits'], 'repository request');
-  if (typeof options.sourceDir !== 'string' || typeof options.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
-  const limits = repositoryLimits(options.limits);
+  const request = dataRecord(options, ['sourceDir', 'outDir', 'limits'], 'repository request');
+  if (typeof request.sourceDir !== 'string' || typeof request.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
+  const limits = repositoryLimits(request.limits ?? {});
   const started = performance.now();
   const sourceDir = await realpath(options.sourceDir);
   const outDir = await physicalOutputPath(options.outDir);
