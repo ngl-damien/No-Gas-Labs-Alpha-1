@@ -285,6 +285,7 @@ test('lock inspector reports failed UID ownership lookups as unsafe instead of t
   }), { mode: 0o600 });
   const moduleUrl = new URL('../src/institution/lock-inspector.mjs', import.meta.url).href;
   const setups = [
+    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });",
     "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => { throw new Error('UID_LOOKUP_FAILED'); } });",
     "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => Number.NaN });",
     "Object.defineProperty(process, 'getuid', { configurable: true, get() { throw new Error('UID_PROPERTY_LOOKUP_FAILED'); } });"
