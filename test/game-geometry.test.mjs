@@ -55,6 +55,24 @@ function makeView(t) {
   return { view, interactions, positions, discoveries, canvas };
 }
 
+test('discovery de-duplication resets when the actor or world scope changes', t => {
+  const { view, discoveries } = makeView(t);
+  const relay = PLACES.find(place => place.id === 'relay');
+  assert.ok(relay, 'Relay must be a real map destination');
+  view.setPlayer({ x: relay.x, y: relay.y });
+  view.setDiscoveryScope(JSON.stringify(['world-a', 'founder-a', 'founder']));
+  view.update(0.045, 0);
+  assert.deepEqual(discoveries, ['relay']);
+  view.setDiscoveryScope(JSON.stringify(['world-a', 'witness-b', 'witness']));
+  view.update(0.045, 45);
+  assert.deepEqual(discoveries, ['relay', 'relay'],
+    'a different actor must be able to discover the same location');
+  view.setDiscoveryScope(JSON.stringify(['world-b', 'witness-b', 'witness']));
+  view.update(0.045, 90);
+  assert.deepEqual(discoveries, ['relay', 'relay', 'relay'],
+    'a different world must not inherit local discovery suppression');
+});
+
 test('the map pennant projects the next actor-scoped Questkeeper objective without changing the world',t=>{
  const world=createWorld({id:'quest-map-world',now:'2026-10-31T12:40:00.000Z'});
  const fixtures=[
