@@ -37,7 +37,7 @@ const payload = makeDecisionPayload({
   capabilities: ["repository.write"],
   outputs: ["review-packet"],
   acceptance: [...quest.acceptance],
-  expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  expires_at: "2099-01-01T00:00:00.000Z",
   audience: expectedAudience
 });
 const canonical = value => Array.isArray(value)
@@ -106,7 +106,8 @@ test("context lookup is not attempted until the event signature has passed", () 
     resolveQuest: () => { questLookups += 1; return quest; }
   });
   const valid = signedEventFor(payload);
-  const tampered = { ...valid, signature: "A" + valid.signature.slice(1) };
+  const replacement = valid.signature[0] === "A" ? "B" : "A";
+  const tampered = { ...valid, signature: replacement + valid.signature.slice(1) };
   assert.equal(verify(tampered), false);
   assert.equal(proposalLookups, 0);
   assert.equal(questLookups, 0);
@@ -124,6 +125,19 @@ test("resolver failures and accessor-backed canonical records fail closed withou
   });
   assert.equal(createVerifier({ resolveProposal: () => hostileProposal })(event), false);
   assert.equal(getterCalls, 0);
+});
+
+test("acceptance ordering may change but the exact canonical set cannot", () => {
+  const reordered = { ...payload, acceptance: [...payload.acceptance].reverse() };
+  assert.equal(createVerifier()(signedEventFor(reordered)), true);
+});
+
+test("a change to the current canonical quest invalidates an otherwise valid signed decision", () => {
+  const event = signedEventFor(payload);
+  const changedQuest = { ...quest, capabilities: ["repository.admin"] };
+  assert.equal(createVerifier({
+    resolveQuest: id => id === quest.quest_id ? changedQuest : null
+  })(event), false);
 });
 
 test("context-bound verifier requires trusted synchronous proposal and quest resolvers", () => {
