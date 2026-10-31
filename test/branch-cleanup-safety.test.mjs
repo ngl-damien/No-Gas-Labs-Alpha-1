@@ -36,3 +36,10 @@ test('preview reports only exact-baseline, unprotected refs without open pull re
   assert.match(workflow, /eligible\.join\('\\n'\)/);
   assert.match(workflow, /skipped\.join\('\\n'\)/);
 });
+
+test('read-only branch inventory requests only read permissions', () => {
+  const match = workflow.match(/^permissions:\\n((?:  [^\\n]+\\n)+)/m);
+  assert.ok(match, 'workflow must declare explicit permissions');
+  const permissions = match[1].trim().split('\\n').map(line => line.trim()).sort();
+  assert.deepEqual(permissions, ['contents: read', 'pull-requests: read']);
+});
