@@ -1,0 +1,297 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+import { COLLABORATOR_ROLES, isBoundedIdentifier, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
+
+const MAX_WORLD_EVENT_SCAN = 100_000;
+const MAX_RESPONSE_BYTES = 64 * 1024;
+const MAX_MAP_RESPONSE_OBJECTS = 24;
+const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const encoder = new TextEncoder();
+const roles = new Map(COLLABORATOR_ROLES.map(role => [role.id, role]));
+const roleStyles = Object.freeze({
+  archivist: { accent: '#6b805d', sigil: 'A' },
+  adversary: { accent: '#af5138', sigil: '!' },
+  synthesizer: { accent: '#536b68', sigil: 'S' },
+  tutor: { accent: '#9a8b5b', sigil: 'T' }
+});
+
+const responseProjectionWorld = new WeakMap();
+function sealResponseProjection(world, objects) {
+  const projection = Object.freeze(objects);
+  responseProjectionWorld.set(projection, {
+    world,
+    revision: world?.revision,
+    events: world?.events,
+    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
+    creations: world?.creations,
+    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0
+  });
+  return projection;
+}
+
+export function isCollaboratorResponseProjection(value, world) {
+  const context = responseProjectionWorld.get(value);
+  return Boolean(context && context.world === world &&
+    context.revision === world?.revision && context.events === world?.events &&
+    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
+    context.creations === world?.creations &&
+    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0));
+}
+
+function ownDataValue(value, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ownDataRecord(value) {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some(key => typeof key !== 'string' ||
+        key === '__proto__' || key === 'prototype' || key === 'constructor')) return null;
+    // A normal-object assignment to "__proto__" invokes Object.prototype's
+    // setter. Use a null-prototype snapshot and explicit data properties so
+    // imported JSON cannot turn untrusted fields into inherited event fields.
+    const result = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return null;
+      Object.defineProperty(result, key, {
+        value: descriptor.value,
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function ownDataArray(value, maximum) {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = descriptors.length;
+    const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+      ? lengthDescriptor.value : null;
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximum ||
+        Reflect.ownKeys(descriptors).length !== length + 1) return null;
+    const result = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function boundedText(value, maximum) {
+  return typeof value === 'string' && value.trim().length > 0 &&
+    Array.from(value).length <= maximum;
+}
+
+function exactStrings(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function receiptEnvelopeMatches(value, receiptValue) {
+  const receipt = ownDataRecord(receiptValue);
+  if (!receipt || Object.keys(receipt).sort().join(',') !== 'algorithm,digest,size' ||
+      receipt.algorithm !== 'sha256' || typeof receipt.digest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(receipt.digest) || !Number.isSafeInteger(receipt.size) ||
+      receipt.size !== encoder.encode(value).byteLength) return false;
+  // The server/import validator recomputes the digest over the exact bytes.
+  // This synchronous map projection checks only the receipt envelope and size;
+  // it never upgrades the response into independently verified evidence.
+  return true;
+}
+
+function validActor(value) {
+  const actor = ownDataRecord(value);
+  return actor && isBoundedIdentifier(actor.id) &&
+    ['founder', 'witness'].includes(actor.role) ? actor : null;
+}
+
+function parsePacket(packetJson) {
+  try {
+    assertNoDuplicateJsonObjectKeys(packetJson, {
+      label: 'COLLABORATOR_PACKET',
+      maxDepth: 8
+    });
+    return ownDataRecord(JSON.parse(packetJson));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Project exact archived collaborator responses into small, navigable Relay
+ * folios. These are retained response objects, not autonomous NPCs, approvals,
+ * evidence of truth, or rewards. The full packet and response stay in the
+ * Evidence Archive; older folios remain available there when the map is full.
+ */
+export function projectCollaboratorResponseWorldObjects(world) {
+  const worldId = ownDataValue(world, 'id');
+  const worldRevision = ownDataValue(world, 'revision');
+  const events = ownDataArray(ownDataValue(world, 'events'), MAX_WORLD_EVENT_SCAN);
+  const creations = ownDataArray(ownDataValue(world, 'creations'), 20_000) || [];
+  if (!isBoundedIdentifier(worldId) || !Number.isSafeInteger(worldRevision) ||
+      worldRevision < 0 || !events) return sealResponseProjection(world, []);
+
+  const entries = [];
+  const eventIdCounts = new Map();
+  const responseIdCounts = new Map();
+  const entryById = new Map();
+  let visibleEventCount = 0;
+
+  for (let index = 0; index < events.length; index += 1) {
+    const raw = events[index];
+    if (!raw || typeof raw !== 'object') continue;
+    let rawIsArray;
+    try { rawIsArray = Array.isArray(raw); } catch { continue; }
+    if (rawIsArray) continue;
+    const record = ownDataRecord(raw);
+    const entry = { index, visibleIndex: visibleEventCount, record };
+    entries.push(entry);
+    visibleEventCount += 1;
+    if (!record) continue;
+    if (typeof record.id === 'string') {
+      eventIdCounts.set(record.id, (eventIdCounts.get(record.id) || 0) + 1);
+      if (!entryById.has(record.id)) entryById.set(record.id, entry);
+    }
+    if (record.type === 'collaborator-response-recorded' && typeof record.responseId === 'string') {
+      responseIdCounts.set(record.responseId, (responseIdCounts.get(record.responseId) || 0) + 1);
+    }
+  }
+
+  if (worldRevision < visibleEventCount) return Object.freeze([]);
+
+  const valid = [];
+  for (const entry of entries) {
+    const event = entry.record;
+    if (!event || event.type !== 'collaborator-response-recorded') continue;
+    const eventId = event.id;
+    const responseId = event.responseId;
+    const roleId = event.role;
+    const role = roles.get(roleId);
+    const style = roleStyles[roleId];
+    const actor = validActor(event.actor);
+    const atMs = isStrictTimestamp(event.at) ? Date.parse(event.at) : NaN;
+    const moonshotId = event.moonshotId;
+    const sourceIds = ownDataArray(event.sourceEventIds, 8);
+    const packetJson = event.packetJson;
+    const responseText = event.responseText;
+    if (!role || !style || !actor || !WORLD_OBJECT_ID.test(eventId || '') ||
+        eventIdCounts.get(eventId) !== 1 || !WORLD_OBJECT_ID.test(responseId || '') ||
+        responseIdCounts.get(responseId) !== 1 || !WORLD_OBJECT_ID.test(moonshotId || '') ||
+        !Number.isFinite(atMs) || !sourceIds || sourceIds.length < 1 ||
+        sourceIds.some(id => !isBoundedIdentifier(id)) || new Set(sourceIds).size !== sourceIds.length ||
+        typeof packetJson !== 'string' || encoder.encode(packetJson).byteLength > MAX_RESPONSE_BYTES ||
+        typeof responseText !== 'string' || !responseText.trim() ||
+        encoder.encode(responseText).byteLength > MAX_RESPONSE_BYTES ||
+        !receiptEnvelopeMatches(packetJson, event.packetReceipt) ||
+        !receiptEnvelopeMatches(responseText, event.responseReceipt) ||
+        !['valid-for-human-review', 'rejected'].includes(event.validationStatus) ||
+        (event.validationStatus === 'valid-for-human-review' && event.validationReason !== null) ||
+        (event.validationStatus === 'rejected' &&
+          !boundedText(event.validationReason, 128)) ||
+        event.validator !== 'ngl.collaborator-response.v1') continue;
+
+    const payload = parsePacket(packetJson);
+    const snapshot = payload && ownDataRecord(payload.sourceSnapshot);
+    const inputRefs = payload && ownDataArray(payload.inputRefs, 8);
+    const inputRecords = payload && ownDataArray(payload.inputRecords, 8);
+    const omittedIds = payload && ownDataArray(payload.omittedEventIds, 64);
+    const omittedCount = payload && payload.omittedCount;
+    if (!payload || !snapshot || !inputRefs || !inputRecords || !omittedIds ||
+        payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
+        payload.role !== roleId || payload.targetMoonshotId !== moonshotId ||
+        payload.authority !== 'advisory-only' ||
+        payload.mayWriteCanonicalState !== false || payload.mayGrantAuthority !== false ||
+        payload.mayAwardProgress !== false || payload.mayCertifyTruthOrExecution !== false ||
+        !exactStrings(inputRefs, sourceIds) || inputRecords.length !== sourceIds.length ||
+        snapshot.status !== 'identified' || snapshot.worldId !== worldId ||
+        !Number.isSafeInteger(snapshot.revision) || snapshot.revision < entry.visibleIndex ||
+        snapshot.revision >= worldRevision ||
+        snapshot.suppliedEventCount !== entry.visibleIndex ||
+        !Number.isSafeInteger(omittedCount) || omittedCount < omittedIds.length ||
+        payload.omittedEventIdListTruncated !== (omittedCount > omittedIds.length) ||
+        omittedIds.some(id => !isBoundedIdentifier(id) || sourceIds.includes(id)) ||
+        new Set(omittedIds).size !== omittedIds.length) continue;
+
+    const sourceChainValid = sourceIds.every(sourceId => {
+      const sourceEntry = entryById.get(sourceId);
+      const source = sourceEntry?.record;
+      return Boolean(sourceEntry && eventIdCounts.get(sourceId) === 1 &&
+        sourceEntry.index < entry.index && source &&
+        source.moonshotId === moonshotId && isStrictTimestamp(source.at) &&
+        Date.parse(source.at) <= atMs);
+    });
+    if (!sourceChainValid) continue;
+
+    // Rebuild the role packet from the exact earlier event slice. Checking
+    // source IDs and copied record text is not enough: a forged Synthesis Clerk
+    // packet could omit newer attempts or dissent while claiming there was no
+    // omitted history. The canonical packet builder also enforces each role's
+    // input selection, ordering, clipping, and omission disclosure.
+    const priorEvents = events.slice(0, entry.index);
+    const packetEvents = actor.role === 'founder'
+      ? priorEvents
+      : priorEvents.filter(source => {
+        const sourceRecord = ownDataRecord(source);
+        return sourceRecord && !['draft', 'repair'].includes(sourceRecord.type);
+      });
+    const expectedPacket = projectCollaboratorPackets({
+      id: worldId,
+      revision: snapshot.revision,
+      events: packetEvents,
+      creations
+    }).find(candidate => candidate.id === roleId &&
+      candidate.available === true && candidate.moonshotId === moonshotId);
+    if (!expectedPacket || expectedPacket.packetJson !== packetJson) continue;
+
+    valid.push({
+      id: 'collaborator-response-object:' + responseId,
+      type: 'collaborator-response-object',
+      eventId,
+      responseId,
+      roleId,
+      name: role.name,
+      objective: role.objective,
+      sigil: style.sigil,
+      accent: style.accent,
+      moonshotId,
+      actorId: actor.id,
+      actorRole: actor.role,
+      at: event.at,
+      validationStatus: event.validationStatus,
+      validationReason: event.validationReason,
+      sourceEventIds: Object.freeze([...sourceIds])
+    });
+  }
+
+  const firstVisible = Math.max(0, valid.length - MAX_MAP_RESPONSE_OBJECTS);
+  return sealResponseProjection(world, valid.map((object, index) => {
+    const mapIndex = index - firstVisible;
+    const mapVisible = mapIndex >= 0;
+    return Object.freeze({
+      ...object,
+      mapVisible,
+      x: mapVisible ? 610 + (mapIndex % 6) * 30 : null,
+      y: mapVisible ? 205 + Math.floor(mapIndex / 6) * 30 : null
+    });
+  }));
+}

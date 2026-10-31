@@ -1,5 +1,45 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
+const questTrailContext = new WeakMap();
+function sealQuestTrail(world, viewer, entries) {
+  const trail = Object.freeze(entries);
+  questTrailContext.set(trail, {
+    world,
+    revision: world?.revision,
+    events: world?.events,
+    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
+    creations: world?.creations,
+    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0,
+    discoveries: world?.discoveries,
+    discoveryCount: Array.isArray(world?.discoveries) ? world.discoveries.length : 0,
+    contributions: world?.contributions,
+    contributionCount: Array.isArray(world?.contributions) ? world.contributions.length : 0,
+    reports: world?.reports,
+    reportCount: Array.isArray(world?.reports) ? world.reports.length : 0,
+    actorId: viewer?.id ?? null,
+    actorRole: viewer?.role ?? null
+  });
+  return trail;
+}
+
+export function isQuestTrailProjection(value, world, viewer) {
+  const context = questTrailContext.get(value);
+  return Boolean(context && context.world === world &&
+    context.revision === world?.revision && context.events === world?.events &&
+    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
+    context.creations === world?.creations &&
+    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0) &&
+    context.discoveries === world?.discoveries &&
+    context.discoveryCount === (Array.isArray(world?.discoveries) ? world.discoveries.length : 0) &&
+    context.contributions === world?.contributions &&
+    context.contributionCount === (Array.isArray(world?.contributions) ? world.contributions.length : 0) &&
+    context.reports === world?.reports &&
+    context.reportCount === (Array.isArray(world?.reports) ? world.reports.length : 0) &&
+    context.actorId === viewer?.id && context.actorRole === viewer?.role);
+}
+
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -141,7 +181,7 @@ export function getActiveQuest(world, viewer, trail = null) {
   const introductory = getQuest(world, viewer);
   if (!['founder-connect', 'witness-return'].includes(introductory.id)) return introductory;
 
-  const objectives = Array.isArray(trail) ? trail : getQuestTrail(world, viewer);
+  const objectives = isQuestTrailProjection(trail, world, viewer) ? trail : getQuestTrail(world, viewer);
   const next = objectives.find(item => !item.complete);
   if (!next) {
     // An empty/missing objective list is not evidence that the objective set was completed.
@@ -149,9 +189,10 @@ export function getActiveQuest(world, viewer, trail = null) {
     return Object.freeze({
     id: `${viewer.role}-current-trail-recorded`,
     title: 'Current quest trail · all objectives recorded',
-    copy: 'Every currently defined objective has a matching retained record. This is a gameplay checkpoint—not approval, truth verification, mastery, or proof of external execution. Inspect the retained trail, then choose a new research question when ready.',
-    button: 'Inspect retained quest trail →',
-    action: 'trail'
+    copy: 'Every currently defined objective has a matching retained record. This is a gameplay checkpoint—not approval, truth verification, mastery, or proof of external execution. Your next optional step is to frame a new falsifiable question at the Moonshot Field.',
+    button: 'Start a new research question →',
+    action: 'trail',
+    nextAction: Object.freeze({ type: 'location', id: 'moonshot_field' })
     });
   }
 
@@ -272,13 +313,46 @@ function uniqueEventIds(events) {
   return new Set([...counts].filter(([, count]) => count === 1).map(([id]) => id));
 }
 
-function matchingTrailRecords(type, records, events, fields, actorId, actorRole) {
+function validTrailRecordId(value) {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+function validTrailActor(actor) {
+  return actor && typeof actor.id === 'string' && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
+}
+
+function validTrailActivityField(field, value) {
+  if (field === 'version') return Number.isSafeInteger(value) && value > 0;
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+export function matchActivityRecords(type, records, events, fields, actorId, actorRole, predicate = () => true) {
+  const source = trailRows(records);
   const validIds = uniqueEventIds(events);
-  const owned = trailRows(records).filter(record => record?.actor?.id === actorId && record.actor.role === actorRole);
-  const candidates = trailRows(events).filter(event =>
-    event?.type === type && event?.actor?.id === actorId && event?.actor?.role === actorRole && validIds.has(event.id)
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+
+  // Keep quest progress aligned with the character-sheet projection: a record
+  // must have one unique ID, a valid actor, a strict timestamp and valid join
+  // fields before it can be paired with one unique retained event.
+  const owned = source.filter(record =>
+    validTrailRecordId(record?.id) && recordIdCounts.get(record.id) === 1 &&
+    validTrailActor(record?.actor) && record.actor.id === actorId && record.actor.role === actorRole &&
+    isStrictTimestamp(record.at) &&
+    fields.every(field => validTrailActivityField(field, record[field]))
   );
-  const key = entry => JSON.stringify([entry?.actor?.id, entry?.actor?.role, entry?.at, ...fields.map(field => entry?.[field])]);
+  const candidates = trailRows(events).filter(event =>
+    event?.type === type && validTrailRecordId(event?.id) && validIds.has(event.id) &&
+    validTrailActor(event?.actor) && event.actor.id === actorId && event.actor.role === actorRole &&
+    isStrictTimestamp(event.at) &&
+    fields.every(field => validTrailActivityField(field, event[field]))
+  );
+  const key = entry => JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...fields.map(field => entry[field])]);
   const recordCounts = new Map(), eventCounts = new Map(), eventByFingerprint = new Map();
   for (const record of owned) {
     const fingerprint = key(record);
@@ -290,11 +364,14 @@ function matchingTrailRecords(type, records, events, fields, actorId, actorRole)
     if (!eventByFingerprint.has(fingerprint)) eventByFingerprint.set(fingerprint, event);
   }
   // Resolve the one-to-one join from indexes instead of rescanning every candidate
-  // for each record. Duplicate fingerprints remain deliberately unusable.
+  // for each record. Duplicate fingerprints and duplicate record IDs remain unusable.
   return owned.flatMap(record => {
     const fingerprint = key(record);
-    return recordCounts.get(fingerprint) === 1 && eventCounts.get(fingerprint) === 1
-      ? [{ record, event: eventByFingerprint.get(fingerprint) }] : [];
+    if (recordCounts.get(fingerprint) !== 1 || eventCounts.get(fingerprint) !== 1) return [];
+    const event = eventByFingerprint.get(fingerprint);
+    let accepted = false;
+    try { accepted = predicate(event, record) === true; } catch { accepted = false; }
+    return accepted ? [{ record, event }] : [];
   });
 }
 
@@ -379,6 +456,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'collaborator-response-recorded' ? {
+        collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {})
     }));
   }
   const complete = evidence.length >= target;
@@ -395,10 +477,15 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   });
 }
 
-export function getQuestTrail(world, viewer) {
+export function getQuestTrail(world, viewer, options = null) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
-  if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
+  if (!actorId || !['founder', 'witness'].includes(actorRole)) return sealQuestTrail(world, viewer, []);
+  const suppliedResponseObjects = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const responseObjects = isCollaboratorResponseProjection(suppliedResponseObjects, world)
+    ? suppliedResponseObjects
+    : projectCollaboratorResponseWorldObjects(world);
   const events = trailRows(world?.events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
@@ -468,18 +555,23 @@ export function getQuestTrail(world, viewer) {
   ));
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
-  const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
+  const discoveries = matchActivityRecords(
+    'discover', world?.discoveries, events, ['locationId'], actorId, actorRole,
+    (event, record) => event.repeat !== true && getLocationAction(record.locationId, world, viewer) !== null
+  );
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
       locations.set(match.record.locationId, match.event);
     }
   }
-  const notes = matchingTrailRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
+  const notes = matchActivityRecords('contribute', world?.contributions, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
-  const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
+  const reports = matchActivityRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const uniqueEventById = new Map(events.filter(event => uniqueMoonshotEventIds.has(event?.id))
+    .map(event => [event.id, event]));
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -538,6 +630,22 @@ export function getQuestTrail(world, viewer) {
   });
   const validMoonshotIds = new Set(proposalPositionById.keys());
   const hasAnyMoonshotProposal = validMoonshotIds.size >= 1;
+  // The Guild Hall quest and the physical Relay folios must agree about what
+  // counts as a retained response. Reuse the same strict world-object projector
+  // so malformed packets, stale snapshots, broken source chains, duplicate IDs,
+  // or responses that cannot become navigable folios cannot award quest progress.
+  const collaboratorResponseObjects = responseObjects
+    .filter(object => object.actorId === actorId && object.actorRole === actorRole);
+  const collaboratorResponses = collaboratorResponseObjects
+    .map(object => uniqueEventById.get(object.eventId))
+    .filter(Boolean);
+  const hasCollaboratorResponse = collaboratorResponses.length > 0;
+  const collaboratorResponsesByRole = new Map();
+  for (const event of collaboratorResponses) {
+    if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
+  }
+  const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
+  const nextCollaboratorRole = COLLABORATOR_ROLES.find(role => !collaboratorResponsesByRole.has(role.id)) || null;
   const allExperimentReports = events.filter(event => {
     const eventPosition = eventPositionByReference.get(event);
     const proposalPosition = proposalPositionById.get(event?.moonshotId);
@@ -592,6 +700,9 @@ export function getQuestTrail(world, viewer) {
       Date.parse(version.publishedAt) <= Date.parse(event.at) &&
       hasUniqueEarlierPublication(event.evidenceCreationId, event.evidenceVersion, event.at, eventPosition));
   };
+  // A report is one Contradiction encounter per actor. Preserve later attempts in history,
+  // but only the first valid challenge can advance this actor's repeatable encounter trail.
+  const challengedReportIds = new Set();
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (eventPositionByReference.get(report) ?? -1) : -1;
@@ -609,6 +720,10 @@ export function getQuestTrail(world, viewer) {
       isStrictTimestamp(event.at) &&
       isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
+  }).filter(event => {
+    if (challengedReportIds.has(event.reportId)) return false;
+    challengedReportIds.add(event.reportId);
+    return true;
   });
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
@@ -638,8 +753,13 @@ export function getQuestTrail(world, viewer) {
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
   const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
-  const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
-  const hasExperimentChallenge = experimentChallenges.length >= 1;
+  const challengeTargetReports = allExperimentReports.filter(event => event.actor?.id !== actorId);
+  const remainingChallengeTargetReport = [...challengeTargetReports].reverse()
+    .find(event => !challengedReportIds.has(event.reportId)) || null;
+  const hasChallengeTarget = challengeTargetReports.length > 0;
+  // Keep one visible target while blocked; each newly retained report from another actor
+  // expands the repeatable objective and creates another source-bound encounter.
+  const challengeTargetCount = Math.max(1, challengeTargetReports.length);
   const hasStudy = studies.length >= 1;
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
@@ -648,12 +768,12 @@ export function getQuestTrail(world, viewer) {
   const nextAttemptProposal = events.slice().reverse().find(event =>
     isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
   ) || null;
-  // Prefer the newest appended eligible report from another actor, not the oldest matching record.
-  const challengeTargetReport = allExperimentReports.slice().reverse().find(event => event.actor?.id !== actorId) || null;
+  // The next encounter is the newest appended eligible report this actor has not challenged yet.
+
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
-    return Object.freeze([
+    return sealQuestTrail(world, viewer, [
       trailMilestone(
         'founder-first-place', 'Publish a first place', 1,
         firstPlaceEvents.map(event => event.id), firstPlaceEvents,
@@ -730,12 +850,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
       trailMilestone(
-        'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
+        'founder-challenge-experiment-report', 'Challenge each distinct report · Contradiction encounters', challengeTargetCount,
         experimentChallenges.map(event => event.id), experimentChallenges,
-        hasChallengeTarget && !hasExperimentChallenge
-          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+        remainingChallengeTargetReport
+          ? (researchActivityAction(remainingChallengeTargetReport, remainingChallengeTargetReport.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
+        'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
@@ -747,12 +868,26 @@ export function getQuestTrail(world, viewer) {
         !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
         !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
       ),
+      trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
+        collaboratorResponses.map(event => event.id), collaboratorResponses,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
+        'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
+      trailMilestone('founder-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+        collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+        hasAnyMoonshotProposal && nextCollaboratorRole
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; the Guild Hall roles need a retained research question.' : null,
+        'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+      ),
     ]);
   }
 
   const mapComplete = locations.size >= 4;
   const workAvailable = availablePlaceEvents.length >= 1;
-  return Object.freeze([
+  return sealQuestTrail(world, viewer, [
     trailMilestone(
       'witness-map-grounds', 'Map the four guide locations', 4,
       [...locations.values()].map(event => event.id), [...locations.values()],
@@ -806,12 +941,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
-      'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
+      'witness-challenge-experiment-report', 'Challenge each distinct report · Contradiction encounters', challengeTargetCount,
       experimentChallenges.map(event => event.id), experimentChallenges,
-      hasChallengeTarget && !hasExperimentChallenge
-          ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
+      remainingChallengeTargetReport
+          ? (researchActivityAction(remainingChallengeTargetReport, remainingChallengeTargetReport.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
+      'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
@@ -822,6 +958,20 @@ export function getQuestTrail(world, viewer) {
       studyReviews.map(event => event.id), studyReviews,
       !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
       !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
+    ),
+    trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
+      collaboratorResponses.map(event => event.id), collaboratorResponses,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
+      'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+    ),
+    trailMilestone('witness-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+      collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+      hasAnyMoonshotProposal && nextCollaboratorRole
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorRole.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing the Guild Hall role hand-offs.' : null,
+      'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
     ),
   ]);
 }

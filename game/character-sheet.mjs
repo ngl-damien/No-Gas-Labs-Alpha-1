@@ -1,5 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { getLocationAction, getQuestTrail, matchActivityRecords, isQuestTrailProjection } from './quests.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -9,6 +11,43 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const XP_PER_QUEST_ACTIVITY = 25;
+const MAX_FIELD_SATCHEL_ITEMS = 100;
+const MAX_FIELD_EQUIPMENT_CHOICES = 100;
+export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+  Object.freeze({
+    id: 'provenance', label: 'Receipt Buckler', kinds: Object.freeze(['published-artifact']),
+    description: 'A version-matched publication receipt. It identifies retained bytes, not truth.'
+  }),
+  Object.freeze({
+    id: 'scouting', label: 'Surveyor’s Compass', kinds: Object.freeze(['guide-discovery']),
+    description: 'A recorded visit to an authored guide location; visiting does not verify its claims.'
+  }),
+  Object.freeze({
+    id: 'observation', label: 'Observer’s Lens', kinds: Object.freeze(['field-report', 'field-note']),
+    description: 'An attributed note or report attached to a retained published version.'
+  }),
+  Object.freeze({
+    id: 'learning', label: 'Polymath Codex', kinds: Object.freeze(['retrieval-review', 'study-note']),
+    description: 'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'
+  }),
+  Object.freeze({
+    id: 'research', label: 'Moonshot Compass', kinds: Object.freeze(['experiment-report', 'moonshot-proposal']),
+    description: 'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'
+  }),
+  Object.freeze({
+    id: 'adversarial', label: 'Contradiction Ward', kinds: Object.freeze(['experiment-challenge']),
+    description: 'A retained challenge to another actor’s report; dissent remains unadjudicated.'
+  }),
+  Object.freeze({
+    id: 'collaboration', label: 'Relay Sigil', kinds: Object.freeze(['guild-folio']),
+    description: 'A source-bound collaborator response preserved for human review, not approval.'
+  }),
+  Object.freeze({
+    id: 'restoration', label: 'Repair Gloves', kinds: Object.freeze(['checked-repair']),
+    description: 'A repair method linked to a checked publication sequence; it is not independent validation.'
+  })
+]);
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -48,10 +87,51 @@ function retainedVersionIndex(world) {
   return index;
 }
 
-// A publish label alone is not a reward receipt. The event must be unique,
-// Founder-attributed, match a retained version and timestamp, and carry the
-// game's fixed publication reward. Duplicate claims for one version are
-// ambiguous, so none of them award character XP or Maker skill.
+// A retained publication binds an event to one exact artifact version and
+// timestamp. It establishes that a place was published, not that its contents
+// are true or that it deserves game XP.
+function retainedPublicationEvents(world) {
+  const events = uniqueEvents(world?.events);
+  const versions = retainedVersionIndex(world);
+  const candidates = [];
+  for (const event of events) {
+    if (event.type !== 'publish' ||
+        typeof event.actor?.id !== 'string' || !event.actor.id.trim() ||
+        event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
+        event.version < 1 || !isStrictTimestamp(event.at)) continue;
+    const key = versionKey(event.creationId, event.version);
+    const version = versions.get(key);
+    if (!version || version.publishedAt !== event.at) continue;
+    candidates.push({ event, key });
+  }
+  const groups = new Map();
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.key) || [];
+    group.push(candidate);
+    groups.set(candidate.key, group);
+  }
+  const retained = [];
+  for (const group of groups.values()) {
+    const rewarded = group.filter(candidate =>
+      Number.isSafeInteger(candidate.event.reward) && candidate.event.reward === XP_PER_PUBLICATION
+    );
+    // Prefer one valid fixed-reward receipt over malformed reward claims for
+    // the same exact version. If no valid reward exists, one unambiguous
+    // publication still keeps the artifact inspectable without granting XP.
+    const selected = rewarded.length === 1 ? rewarded
+      : rewarded.length === 0 && group.length === 1 ? group
+      : [];
+    for (const candidate of selected) retained.push(candidate.event);
+  }
+  return retained;
+}
+
+// A publication is an XP receipt only when the exact fixed reward is present.
+// Invalid reward metadata does not erase a retained artifact from the world.
+// XP requires one unambiguous retained publication whose own event carries
+// the fixed game reward. Malformed reward claims do not suppress a separate,
+// valid receipt for the same retained version.
 function matchedPublications(world) {
   const events = uniqueEvents(world?.events);
   const versions = retainedVersionIndex(world);
@@ -73,7 +153,18 @@ function matchedPublications(world) {
   return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
 }
 
-export function projectCharacter(world, viewer) {
+
+function matchedActivityEvidence(type, records, allEvents, fields, viewer, predicate = () => true) {
+  const matches = matchActivityRecords(type, records, allEvents, fields, viewer?.id, viewer?.role, predicate);
+  return { matches, records: matches.map(match => match.record) };
+}
+
+export function projectCharacter(world, viewer, options = null) {
+  const suppliedResponseObjects = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const collaboratorResponseObjects = isCollaboratorResponseProjection(suppliedResponseObjects, world)
+    ? suppliedResponseObjects
+    : projectCollaboratorResponseWorldObjects(world);
   const allEvents = uniqueEvents(world?.events);
   // Resolve append positions once. Repeated indexOf scans made challenge and
   // study-review projections quadratic as the retained world grew.
@@ -121,7 +212,68 @@ export function projectCharacter(world, viewer) {
   }
   const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
+  const retainedPublications = retainedPublicationEvents(world);
+  const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
+    versionKey(event.creationId, event.version), event
+  ]));
+  const retainedPublicationIds = new Set(retainedPublications.map(event => event.id));
+  const retainedPublishedVersionKeys = new Set(retainedPublications.map(event =>
+    versionKey(event.creationId, event.version)
+  ));
   const canonicalPublications = matchedPublications(world);
+  const hasEarlierPublication = event => {
+    const publication = retainedPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    return publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
+      Date.parse(publication.at) <= Date.parse(event.at);
+  };
+  const discoveryEvidence = matchedActivityEvidence(
+    'discover', world?.discoveries, allEvents, ['locationId'], viewer,
+    event => event.repeat !== true && getLocationAction(event.locationId, world, viewer) !== null
+  );
+  const matchedDiscoveries = discoveryEvidence.records;
+  const contributionEvidence = matchedActivityEvidence(
+    'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const matchedContributions = contributionEvidence.records;
+  const reportEvidence = matchedActivityEvidence(
+    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const matchedReports = reportEvidence.records;
+  const repairEventsByVersion = new Map();
+  for (const event of allEvents) {
+    if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
+        !['founder', 'witness'].includes(event.actor.role) ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.baseVersion) ||
+        event.baseVersion < 1 || typeof event.draftId !== 'string' || !event.draftId ||
+        !isStrictTimestamp(event.at)) continue;
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.baseVersion]);
+    const list = repairEventsByVersion.get(key) || [];
+    list.push(event);
+    repairEventsByVersion.set(key, list);
+  }
+  const hasUniquePriorRepair = event => {
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.version - 1]);
+    const publicationPosition = positionByEvent.get(event) ?? -1;
+    const prior = (repairEventsByVersion.get(key) || []).filter(repair => {
+      const repairPosition = positionByEvent.get(repair) ?? -1;
+      return repairPosition >= 0 && publicationPosition > repairPosition &&
+        Date.parse(repair.at) <= Date.parse(event.at);
+    });
+    return prior.length === 1;
+  };
+  const methodEvidence = matchedActivityEvidence(
+    'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
+    event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
+  );
+  const matchedMethods = methodEvidence.records;
+  // One report is one adversarial encounter per actor. Later duplicate attempts remain in the event history,
+  // but cannot mint another skill count, field item, or quest-activity reward.
+  const challengedReportIds = new Set();
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
@@ -147,15 +299,20 @@ export function projectCharacter(world, viewer) {
       (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
     )) return false;
     if (hasEvidenceId) {
-      const version = retainedVersions.get(versionKey(event.evidenceCreationId, event.evidenceVersion));
-      if (!version || !isStrictTimestamp(version.publishedAt) ||
-          Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
+      const evidenceKey = versionKey(event.evidenceCreationId, event.evidenceVersion);
+      const version = retainedVersions.get(evidenceKey);
+      if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
+          !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
     }
+    return true;
+  }).filter(event => {
+    if (challengedReportIds.has(event.reportId)) return false;
+    challengedReportIds.add(event.reportId);
     return true;
   });
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
-  const publishedStudyVersions = new Set(canonicalPublications.map(event => versionKey(event.creationId, event.version)));
+  const publishedStudyVersions = retainedPublishedVersionKeys;
   const studyEvents = events.filter(event => {
     if (event.type !== 'study' || typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
@@ -190,10 +347,37 @@ export function projectCharacter(world, viewer) {
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
   const publications = mine(canonicalPublications, viewer);
-  const earned = publications.length * XP_PER_PUBLICATION;
+  const earnedPublicationXp = publications.length * XP_PER_PUBLICATION;
+  const publicationXp = Number.isSafeInteger(earnedPublicationXp) ? earnedPublicationXp : 0;
+  const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION;
+  const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
+
+  const suppliedQuestTrail = options && typeof options === 'object' ? options.questTrail : null;
+  const questTrail = isQuestTrailProjection(suppliedQuestTrail, world, viewer)
+    ? suppliedQuestTrail
+    : getQuestTrail(world, viewer, { collaboratorResponseObjects });
+  // Quest activity XP is derived only from unique, actor-owned events that the
+  // evidence-backed quest trail recognizes. Publications have their own fixed
+  // receipt reward; failed reports and rejected responses still count as activity,
+  // never as proof of truth, correctness, execution, approval, or mastery.
+  const questEvidenceIds = new Set(questTrail.flatMap(item =>
+    Array.isArray(item?.evidenceIds) ? item.evidenceIds : []
+  ));
+  const questActivityIds = new Set();
+  for (const event of allEvents) {
+    if (event?.type === 'publish' || !questEvidenceIds.has(event?.id) ||
+        event.actor?.id !== viewer?.id || event.actor?.role !== viewer?.role ||
+        typeof event.id !== 'string' || !event.id) continue;
+    questActivityIds.add(event.id);
+  }
+  const earnedQuestXp = questActivityIds.size * XP_PER_QUEST_ACTIVITY;
+  const questXp = Number.isSafeInteger(earnedQuestXp) ? earnedQuestXp : 0;
+  const earned = publicationXp + questXp;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
-  const worldXp = Number.isSafeInteger(world?.xp) && world.xp >= 0 ? world.xp : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
+  const completedQuestObjectives = questTrail
+    .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
+      Number.isSafeInteger(item.target) && item.progress >= item.target).length;
 
   const skills = [
     {
@@ -206,14 +390,14 @@ export function projectCharacter(world, viewer) {
     {
       id: 'explorer',
       label: 'Explorer',
-      count: mine(world?.discoveries, viewer).length,
+      count: matchedDiscoveries.length,
       record: 'guide discoveries',
       basis: 'Recorded visits to the four authored guide locations.'
     },
     {
       id: 'observer',
       label: 'Observer',
-      count: mine(world?.contributions, viewer).length,
+      count: matchedContributions.length,
       record: 'field notes',
       basis: 'Attributed notes attached to a published version.'
     },
@@ -234,7 +418,7 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: mine(world?.reports, viewer).length,
+      count: matchedReports.length,
       record: 'reports',
       basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
     },
@@ -260,21 +444,288 @@ export function projectCharacter(world, viewer) {
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
     },
     {
+      id: 'questkeeper',
+      label: 'Questkeeper',
+      count: completedQuestObjectives,
+      record: 'completed evidence-backed quest objectives',
+      basis: 'The same source-linked quest trail shown in the world HUD. Completion records matched activity or artifact linkage, not truth, mastery, correctness, or approval.'
+    },
+    {
       id: 'restorer',
       label: 'Restorer',
-      count: mine(world?.methods, viewer).length,
+      count: matchedMethods.length,
       record: 'checked repairs',
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
 
+  // The field satchel is a bounded, read-only index of this character's
+  // retained work. Every entry points back to a unique event (and, where
+  // relevant, a matched activity record or strict Relay folio projection).
+  // It never creates ownership, XP, approval, or canonical world state.
+  const creationsById = new Map();
+  for (const creation of rows(world?.creations)) {
+    if (!creation || typeof creation.id !== 'string' || !creation.id) continue;
+    if (creationsById.has(creation.id)) creationsById.set(creation.id, null);
+    else creationsById.set(creation.id, creation);
+  }
+  const eventById = new Map(allEvents.map(event => [event.id, event]));
+  const satchelEntries = [];
+  const compactText = value => typeof value === 'string'
+    ? Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, 280).join('')
+    : '';
+  const creationTitle = id => {
+    const creation = creationsById.get(id);
+    return typeof creation?.title === 'string' && creation.title.trim()
+      ? creation.title
+      : (typeof id === 'string' && id ? id : 'retained source');
+  };
+  const addFieldItem = (kind, event, record, metadata = {}) => {
+    const position = positionByEvent.get(event);
+    if (!Number.isInteger(position) || !isStrictTimestamp(event?.at)) return;
+    const recordId = typeof record?.id === 'string' && record.id ? record.id : event.id;
+    const receipt = metadata.receipt && typeof metadata.receipt.digest === 'string' &&
+      Number.isSafeInteger(metadata.receipt.size)
+      ? Object.freeze({ digest: metadata.receipt.digest, size: metadata.receipt.size })
+      : null;
+    satchelEntries.push({
+      position,
+      item: Object.freeze({
+        id: kind + ':' + recordId,
+        eventId: event.id,
+        kind,
+        title: typeof metadata.title === 'string' && metadata.title.trim()
+          ? Array.from(metadata.title.replace(/\s+/g, ' ').trim()).slice(0, 120).join('')
+          : kind,
+        at: event.at,
+        status: typeof metadata.status === 'string' ? metadata.status : 'retained',
+        summary: compactText(metadata.summary),
+        sourceCreationId: typeof metadata.sourceCreationId === 'string' ? metadata.sourceCreationId : null,
+        sourceVersion: Number.isSafeInteger(metadata.sourceVersion) && metadata.sourceVersion > 0
+          ? metadata.sourceVersion : null,
+        locationId: typeof metadata.locationId === 'string' ? metadata.locationId : null,
+        receipt,
+        action: metadata.action && typeof metadata.action === 'object' && typeof metadata.action.type === 'string'
+          ? Object.freeze({ ...metadata.action })
+          : null
+      })
+    });
+  };
+
+  for (const match of discoveryEvidence.matches) {
+    addFieldItem('guide-discovery', match.event, match.record, {
+      title: 'Guide discovery · ' + match.record.locationId,
+      status: 'visit recorded',
+      summary: 'A recorded visit; it does not verify the guide or its claims.',
+      locationId: match.record.locationId,
+      action: { type: 'location', id: match.record.locationId }
+    });
+  }
+  for (const match of contributionEvidence.matches) {
+    addFieldItem('field-note', match.event, match.record, {
+      title: 'Field note · ' + creationTitle(match.record.creationId),
+      status: 'retained note',
+      summary: match.record.text,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
+    });
+  }
+  for (const match of reportEvidence.matches) {
+    addFieldItem('field-report', match.event, match.record, {
+      title: 'Field report · ' + creationTitle(match.record.creationId),
+      status: 'retained report · not adjudicated',
+      summary: match.record.text,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
+    });
+  }
+  for (const match of methodEvidence.matches) {
+    addFieldItem('checked-repair', match.event, match.record, {
+      title: 'Repair method · ' + (match.record.title || creationTitle(match.record.creationId)),
+      status: 'repair publication matched',
+      summary: match.record.description,
+      sourceCreationId: match.record.creationId,
+      sourceVersion: match.record.version,
+      action: { type: 'creation', id: match.record.creationId, version: match.record.version }
+    });
+  }
+  for (const event of studyEvents) {
+    addFieldItem('study-note', event, null, {
+      title: 'Study note · ' + creationTitle(event.creationId),
+      status: 'practice recorded · not mastery',
+      summary: 'Question: ' + event.question + ' · Attempt: ' + event.attempt + ' · Next check: ' + event.nextCheck,
+      sourceCreationId: event.creationId,
+      sourceVersion: event.version,
+      action: { type: 'creation', id: event.creationId, version: event.version }
+    });
+  }
+  for (const event of studyReviews) {
+    addFieldItem('retrieval-review', event, null, {
+      title: 'Retrieval review · ' + event.studyId,
+      status: 'practice recorded · not accuracy proof',
+      summary: 'Response: ' + event.response + ' · Reflection: ' + event.reflection,
+      sourceCreationId: event.creationId,
+      sourceVersion: event.version,
+      action: { type: 'creation', id: event.creationId, version: event.version }
+    });
+  }
+  for (const event of events) {
+    if (!validMoonshotProposalIds.has(event.id)) continue;
+    addFieldItem('moonshot-proposal', event, null, {
+      title: 'Moonshot · ' + event.title,
+      status: 'proposal only · not execution',
+      summary: 'Hypothesis: ' + event.hypothesis + ' · Falsifier: ' + event.falsifier + ' · Evidence needed: ' + event.evidenceNeeded,
+      sourceCreationId: event.sourceCreationId,
+      sourceVersion: event.sourceVersion,
+      action: { type: 'moonshot', moonshotId: event.moonshotId }
+    });
+  }
+  for (const event of experimentReports) {
+    addFieldItem('experiment-report', event, null, {
+      title: 'Experiment report · ' + event.reportedOutcome,
+      status: 'self-reported · ' + event.reportedOutcome,
+      summary: 'Procedure: ' + event.procedure + ' · Observation: ' + event.observation,
+      sourceCreationId: event.evidenceCreationId,
+      sourceVersion: event.evidenceVersion,
+      action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.reportId }
+    });
+  }
+  for (const event of experimentChallenges) {
+    addFieldItem('experiment-challenge', event, null, {
+      title: 'Challenge · ' + event.challengeType,
+      status: 'dissent preserved · not adjudicated',
+      summary: event.challengeText,
+      sourceCreationId: event.evidenceCreationId,
+      sourceVersion: event.evidenceVersion,
+      action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.challengeId }
+    });
+  }
+  for (const object of collaboratorResponseObjects) {
+    if (object.actorId !== viewer?.id || object.actorRole !== viewer?.role) continue;
+    const event = eventById.get(object.eventId);
+    if (!event) continue;
+    const rejected = object.validationStatus === 'rejected';
+    addFieldItem('guild-folio', event, object, {
+      title: 'Guild folio · ' + object.name,
+      status: rejected ? 'rejected response preserved' : 'structurally valid · human review only',
+      summary: rejected
+        ? 'Reason: ' + (object.validationReason || 'structural validation rejected the response') + ' · Moonshot ' + object.moonshotId
+        : 'Response preserved for human review · Moonshot ' + object.moonshotId + '. Structural validity is not truth, evidence, execution or approval.',
+      action: { type: 'collaborator-response', id: object.responseId }
+    });
+  }
+
+  satchelEntries.sort((left, right) =>
+    right.position - left.position || left.item.id.localeCompare(right.item.id)
+  );
+  const fieldSatchelTotal = satchelEntries.length;
+  const fieldSatchelOmittedCount = Math.max(0, fieldSatchelTotal - MAX_FIELD_SATCHEL_ITEMS);
+  const fieldSatchel = Object.freeze(
+    satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(entry => entry.item)
+  );
+
+  // A loadout is a player choice among retained, actor-owned source events.
+  // It never creates an item, verifies a claim, grants authority, or awards XP.
+  const publicationEquipmentEntries = mine(retainedPublications, viewer).flatMap(event => {
+    const version = retainedVersions.get(versionKey(event.creationId, event.version));
+    if (!version || !Number.isInteger(positionByEvent.get(event))) return [];
+    return [{
+      position: positionByEvent.get(event),
+      item: Object.freeze({
+        id: 'published-artifact:' + event.id,
+        eventId: event.id,
+        kind: 'published-artifact',
+        title: 'Published artifact · ' + creationTitle(event.creationId),
+        at: event.at,
+        status: 'version retained · content not verified',
+        summary: 'This exact published version is retained. Its receipt identifies bytes only.',
+        sourceCreationId: event.creationId,
+        sourceVersion: event.version,
+        locationId: null,
+        receipt: Object.freeze({ digest: version.receipt.digest, size: version.receipt.size }),
+        action: Object.freeze({ type: 'creation', id: event.creationId, version: event.version })
+      })
+    }];
+  });
+  const publicationEntriesNewestFirst = publicationEquipmentEntries.slice().reverse();
+  const equipmentCandidatesBySlot = new Map();
+  const candidateBySlotAndEventId = new Map();
+  for (const slot of FIELD_EQUIPMENT_SLOTS) {
+    const sourceEntries = slot.kinds.includes('published-artifact') ? publicationEntriesNewestFirst : satchelEntries;
+    const eligibleEntries = sourceEntries.filter(entry => slot.kinds.includes(entry.item.kind) &&
+      typeof entry.item.eventId === 'string' && entry.item.eventId.length > 0);
+    equipmentCandidatesBySlot.set(slot.id, eligibleEntries);
+    const byEventId = new Map();
+    for (const entry of eligibleEntries) if (!byEventId.has(entry.item.eventId)) byEventId.set(entry.item.eventId, entry);
+    candidateBySlotAndEventId.set(slot.id, byEventId);
+  }
+  const latestSelectionBySlot = new Map();
+  for (const event of events) {
+    const equipped = event?.type === 'field-item-equipped';
+    const unequipped = event?.type === 'field-item-unequipped';
+    if ((!equipped && !unequipped) || event.actor?.id !== viewer?.id ||
+        event.actor?.role !== viewer?.role || (equipped && (!Object.hasOwn(event, 'sourceEventId') ||
+          !(event.sourceEventId === null || (typeof event.sourceEventId === 'string' &&
+            event.sourceEventId.length > 0 && event.sourceEventId.length <= 128 &&
+            event.sourceEventId.trim() === event.sourceEventId))))) continue;
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+    const eventPosition = positionByEvent.get(event);
+    if (!slot || !Number.isInteger(eventPosition)) continue;
+    if (unequipped) {
+      latestSelectionBySlot.set(slot.id, { sourceEventId: null, position: eventPosition, mode: 'unequipped' });
+      continue;
+    }
+    if (event.sourceEventId !== null) {
+      const candidate = candidateBySlotAndEventId.get(slot.id)?.get(event.sourceEventId);
+      if (!candidate || candidate.position >= eventPosition) continue;
+    }
+    latestSelectionBySlot.set(slot.id, {
+      sourceEventId: event.sourceEventId,
+      position: eventPosition,
+      mode: event.sourceEventId === null ? 'automatic' : 'pinned'
+    });
+  }
+  const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
+    const eligibleEntries = equipmentCandidatesBySlot.get(slot.id) || [];
+    const automatic = eligibleEntries[0] || null;
+    const selection = latestSelectionBySlot.get(slot.id) || null;
+    const byEventId = candidateBySlotAndEventId.get(slot.id);
+    let selected = automatic;
+    if (selection?.mode === 'unequipped') selected = null;
+    else if (selection && selection.sourceEventId !== null) selected = byEventId?.get(selection.sourceEventId) || automatic;
+    const choices = eligibleEntries.slice(0, MAX_FIELD_EQUIPMENT_CHOICES);
+    if (selected && !choices.some(entry => entry.item.eventId === selected.item.eventId)) choices.push(selected);
+    const uniqueChoices = [];
+    const seenChoiceIds = new Set();
+    for (const entry of choices) {
+      if (seenChoiceIds.has(entry.item.eventId)) continue;
+      seenChoiceIds.add(entry.item.eventId);
+      uniqueChoices.push(entry.item);
+    }
+    const pinned = Boolean(selection && selection.mode === 'pinned' &&
+      selected?.item.eventId === selection.sourceEventId);
+    return Object.freeze({
+      id: slot.id, label: slot.label, description: slot.description,
+      status: selected ? 'record-backed' : 'empty',
+      mode: selection?.mode === 'unequipped' ? 'unequipped' : pinned ? 'pinned' : 'automatic',
+      source: selected?.item ?? null,
+      choices: Object.freeze(uniqueChoices),
+      choicesOmittedCount: Math.max(0, eligibleEntries.length - uniqueChoices.length)
+    });
+  }));
+
+  const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
-    .filter(creation => creation && typeof creation.id === 'string')
+    .filter(creation => creation && typeof creation.id === 'string' &&
+      Number.isSafeInteger(creation.version) && creation.version > 0 &&
+      publishedVersionKeys.has(versionKey(creation.id, creation.version)))
     .map(creation => Object.freeze({
       id: creation.id,
       title: typeof creation.title === 'string' && creation.title ? creation.title : 'Untitled place',
       kind: typeof creation.kind === 'string' ? creation.kind : 'unknown',
-      version: Number.isInteger(creation.version) && creation.version > 0 ? creation.version : 1,
+      version: creation.version,
       receipt: creation.receipt && typeof creation.receipt.digest === 'string'
         ? Object.freeze({ digest: creation.receipt.digest, size: creation.receipt.size })
         : null
@@ -299,13 +750,19 @@ export function projectCharacter(world, viewer) {
   return Object.freeze({
     level,
     xp,
+    publicationXp,
+    questXp,
     worldXp,
     levelStartXp: (level - 1) * LEVEL_SPAN,
     nextLevelXp: level * LEVEL_SPAN,
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    equipment,
     inventory: Object.freeze(inventory),
+    fieldSatchel,
+    fieldSatchelTotal,
+    fieldSatchelOmittedCount,
     recentActivity: Object.freeze(recentActivity)
   });
 }

@@ -80,18 +80,48 @@ test("self-asserted authorization labels leave proposal and quest unapproved", (
   assert.equal(room.quest.status, "OPEN");
 });
 
-test("capability roster reports fit but grants no authority", () => {
+test("capability roster reports fit from one immutable snapshot but grants no authority", () => {
+  const builderCapabilities = ["repository.write"];
   const room = projectGuildHall({
     institution: empty, quest_id: "q1", events: [],
     agents: [
-      { agent_id: "builder", capabilities: ["repository.write"] },
+      { agent_id: "builder", capabilities: builderCapabilities },
       { agent_id: "poet", capabilities: ["verse"] }
     ]
   });
+  builderCapabilities[0] = "verse";
+  assert.deepEqual(room.roster[0].capabilities, ["repository.write"]);
   assert.equal(room.roster[0].can_contribute, true);
   assert.equal(room.roster[1].can_contribute, false);
   assert.equal(room.quest.status, "OPEN");
 });
+
+test("Guild Hall agent accessors are rejected without invoking getters", () => {
+  let getterCalls = 0;
+  const hostileAgent = { agent_id: "hostile" };
+  Object.defineProperty(hostileAgent, "capabilities", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return ["repository.write"];
+    }
+  });
+  assert.throws(() => projectGuildHall({
+    institution: empty, quest_id: "q1", events: [], agents: [hostileAgent]
+  }), /invalid Guild Hall agent payload/);
+  assert.equal(getterCalls, 0);
+});
+test("unknown inherited object properties are not treated as projected quests", () => {
+  for (const questId of ["toString", "constructor", "hasOwnProperty", "valueOf", "__proto__"]) {
+    assert.throws(() => projectGuildHall({
+      institution: empty, quest_id: questId, events: [], agents: []
+    }), /quest not projected/, "unknown quest " + questId + " must fail as not projected");
+  }
+  assert.throws(() => projectGuildHall({
+    institution: empty, quest_id: "", events: [], agents: []
+  }), /quest_id required/);
+});
+
 test("malformed Guild Hall events are rejected before filtering can execute getters", () => {
   let getterCalls = 0;
   const hostile = { event_id: "hostile", quest_id: "q1", actor: "unknown", summary: "" };

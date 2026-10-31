@@ -3,7 +3,7 @@ import http from 'node:http';
 import assert from 'node:assert/strict';
 import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
@@ -280,12 +280,15 @@ test('serves every first-party module imported by the playable game client', asy
   const source = await client.request('/client.mjs');
   assert.equal(source.response.status, 200);
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
-  for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk']) {
+  for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
+  const worldView = await client.request('/world-view.mjs');
+  assert.equal(worldView.response.status, 200);
+  assert.ok(worldView.body.includes("from './collaborator-world-objects.mjs'") || worldView.body.includes('from "./collaborator-world-objects.mjs"'), 'world view imports the Relay folio projector');
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
-  for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle']) {
+  for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'collaborator-world-objects', 'strict-json']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
     assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);
@@ -908,6 +911,15 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(retry.body.idempotentReplay, true);
   assert.equal(retry.body.result.challengeId, first.body.result.challengeId);
 
+  const secondRequest = await founder.request('/api/action', {
+    ...challengeAction,
+    challengeType: 'methodology',
+    challengeText: 'A different request ID cannot turn the same report into a second XP-bearing encounter.',
+    requestId: 'experiment-challenge-second-attempt'
+  });
+  assert.equal(secondRequest.response.status, 409, JSON.stringify(secondRequest.body));
+  assert.equal(secondRequest.body.error.code, 'REPORT_ALREADY_CHALLENGED');
+
   const selfChallenge = await witness.request('/api/action', {
     ...challengeAction,
     requestId: 'experiment-self-challenge-001'
@@ -1154,4 +1166,114 @@ test('server startup indexes large interleaved retained proposal/report history'
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
+});
+
+test('PWA metadata and the offline shell are served without exposing API responses to the cache', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const manifest = await client.request('/manifest.webmanifest');
+  assert.equal(manifest.response.status, 200);
+  assert.ok(manifest.response.headers.get('content-type').includes('application/manifest+json'));
+  assert.equal(manifest.body.start_url, './');
+  assert.equal(manifest.body.display, 'standalone');
+  assert.equal(manifest.body.icons[0].src, './assets/app-icon.svg');
+
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  assert.match(worker.response.headers.get('content-type'), /javascript/);
+  assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
+  assert.match(worker.body, /const CORE_SHELL =/);
+
+  const icon = await client.request('/assets/app-icon.svg');
+  assert.equal(icon.response.status, 200);
+  assert.ok(icon.response.headers.get('content-type').includes('image/svg+xml'));
+  assert.ok(icon.body.includes('<svg'));
+});
+
+test('offline shell precaches and serves every module in the playable Guild Hall import graph', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
+  assert.ok(core, 'service worker must declare an explicit shell cache');
+  const cached = new Set([...core[1].matchAll(/'\/([^']+\.mjs)'/g)].map(match => match[1]));
+  const visited = new Set();
+
+  async function visit(name) {
+    name = normalize(name).replace(/\\/g, '/');
+    assert.ok(name.endsWith('.mjs') && !name.startsWith('../'), 'browser import must stay inside game modules');
+    if (visited.has(name)) return;
+    visited.add(name);
+    const source = await readFile(new URL('../game/' + name, import.meta.url), 'utf8');
+    const imports = /\b(?:import\s+(?:[^'";]*?\s+from\s*)?|export\s+[^'";]*?\s+from\s*)(['"])([^'"\r\n]+)\1/g;
+    for (const match of source.matchAll(imports)) {
+      const specifier = match[2];
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      const child = normalize(join(dirname(name), specifier)).replace(/\\/g, '/');
+      if (child.endsWith('.mjs')) await visit(child);
+    }
+  }
+
+  await visit('client.mjs');
+  for (const module of visited) {
+    assert.ok(cached.has(module), 'offline shell does not precache ' + module);
+    const response = await client.request('/' + module);
+    assert.equal(response.response.status, 200, module + ' must be served by the game host');
+    assert.match(response.response.headers.get('content-type') || '', /javascript/);
+  }
+
+  const stylesheet = await client.request('/styles.css');
+  assert.equal(stylesheet.response.status, 200);
+  assert.match(stylesheet.response.headers.get('content-type') || '', /text\/css/);
+});
+
+
+test('field loadout writes an idempotent actor-owned event without awarding XP',async t=>{
+  const f=await fixture(t);
+  const founderClient=f.client();await founderClient.login();await publish(founderClient);
+  const witnessClient=f.client();
+  const before=(await witnessClient.request('/api/state')).body;
+  const witnessId=before.viewer.id;
+  const publicationEvent=before.world.events.find(event=>event.type==='publish');
+  assert.ok(publicationEvent);
+  const cannotEquipFounderSource=await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'provenance',sourceEventId:publicationEvent.id});
+  assert.equal(cannotEquipFounderSource.response.status,409);
+
+  const discovery=await witnessClient.request('/api/action',{type:'discover',locationId:'river',requestId:'field-loadout-discovery'});
+  assert.equal(discovery.response.status,200,JSON.stringify(discovery.body));
+  const afterDiscovery=(await witnessClient.request('/api/state')).body;
+  const source=afterDiscovery.world.events.find(event=>event.type==='discover'&&event.locationId==='river'&&event.actor.id===witnessId);
+  assert.ok(source,'the Witness must select their own retained discovery event');
+  const action={type:'equip-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'field-loadout-equip'};
+  const equipped=await witnessClient.request('/api/action',action);
+  assert.equal(equipped.response.status,200,JSON.stringify(equipped.body));
+  assert.deepEqual(equipped.body.result,{slotId:'scouting',sourceEventId:source.id});
+  assert.equal(equipped.body.world.xp,before.world.xp,'equipment selection cannot award XP');
+  assert.equal(equipped.body.world.revision,before.world.revision+2,'discovery and equip are distinct retained actions');
+  assert.equal(equipped.body.world.events.filter(event=>event.type==='field-item-equipped').length,1);
+  assert.equal(equipped.body.world.events.at(-1).actor.id,witnessId);
+
+  const retry=await witnessClient.request('/api/action',action);
+  assert.equal(retry.response.status,200);
+  assert.equal(retry.body.world.events.filter(event=>event.type==='field-item-equipped').length,1,'same request ID cannot duplicate the loadout event');
+
+  const unequipAction={type:'unequip-field-item',slotId:'scouting',requestId:'field-loadout-unequip'};
+  const unequipped=await witnessClient.request('/api/action',unequipAction);
+  assert.equal(unequipped.response.status,200,JSON.stringify(unequipped.body));
+  assert.deepEqual(unequipped.body.result,{slotId:'scouting'});
+  assert.equal(unequipped.body.world.revision,equipped.body.world.revision+1);
+  assert.equal(unequipped.body.world.xp,before.world.xp,'unequipping cannot award XP');
+  const unequipEvents=unequipped.body.world.events.filter(event=>event.type==='field-item-unequipped');
+  assert.equal(unequipEvents.length,1);
+  assert.equal(unequipEvents[0].slotId,'scouting');
+  assert.equal(unequipEvents[0].actor.id,witnessId);
+  const retryUnequip=await witnessClient.request('/api/action',unequipAction);
+  assert.equal(retryUnequip.response.status,200);
+  assert.equal(retryUnequip.body.world.events.filter(event=>event.type==='field-item-unequipped').length,1,'same request ID cannot duplicate unequip history');
+  const founderCannotEquipWitnessSource=await founderClient.request('/api/action',{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id});
+  assert.equal(founderCannotEquipWitnessSource.response.status,409);
+  assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'not-a-slot',sourceEventId:null})).response.status,400);
+  assert.equal((await witnessClient.request('/api/action',{type:'unequip-field-item',slotId:'not-a-slot'})).response.status,400);
+  assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
 });
