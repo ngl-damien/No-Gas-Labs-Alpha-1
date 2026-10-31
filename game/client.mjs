@@ -10,7 +10,7 @@ import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from './collaborator-world-objects.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
-import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS} from './social.mjs';
+import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,projectPlayerGuilds,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 let currentCharacterRecord=null,currentQuestTrail=null,currentCollaboratorResponseObjects=null;
@@ -498,12 +498,103 @@ function focusGuildCollaborator(roleId){
   card.focus({preventScroll:true});
 }
 
+
+function renderPlayerGuildBoard(board, sourceWorld){
+  if(!board?.isConnected||$('sheet').hidden)return;
+  const active=document.activeElement;
+  const activeId=board.contains(active)?active.id:null;
+  const activeValue=activeId&&'value' in active?active.value:undefined;
+  const selectionStart=activeId&&typeof active.selectionStart==='number'?active.selectionStart:null;
+  const selectionEnd=activeId&&typeof active.selectionEnd==='number'?active.selectionEnd:null;
+  const nameValue=board.querySelector('#player-guild-name')?.value||'';
+  const charterValue=board.querySelector('#player-guild-charter')?.value||'';
+  const projection=projectPlayerGuilds(sourceWorld,viewer);
+  board.replaceChildren();
+  board.append(node('h3',{class:'section-title',text:'PLAYER GUILDS'}));
+  board.append(paragraph(mode==='shared'
+    ? 'Open, shared groups in this server-authoritative world. One active guild per session identity; up to '+PLAYER_GUILD_MEMBER_LIMIT+' members. A session identity is not proof of a distinct human. Membership grants no Founder authority, moderation rights, XP, evidence status, or item ownership.'
+    : 'Private-mode guilds are local to this device and cannot be seen by other players. Use Shared World for shared membership. These records grant no Founder authority, moderation rights, XP, evidence status, or item ownership.','form-help'));
+  if(!projection.guilds.length){
+    board.append(paragraph('No open player guilds are retained yet. Founding one creates a public group with an append-only membership history.','empty-note'));
+  }
+  for(const guild of projection.guilds){
+    const card=node('article',{class:'field-card','data-player-guild-id':guild.id});
+    card.append(
+      node('h3',{text:guild.name}),
+      node('span',{class:'pill',text:'MEMBERS '+guild.memberCount+'/'+PLAYER_GUILD_MEMBER_LIMIT}),
+      paragraph(guild.charter),
+      paragraph('Leader: '+guild.leader.name+' · Members: '+guild.members.map(member=>member.name).join(', '),'form-help')
+    );
+    if(projection.viewerGuildId===guild.id){
+      card.append(node('span',{class:'pill',text:projection.viewerIsLeader?'GUILD LEADER':'GUILD MEMBER'}));
+      if(projection.viewerIsLeader){
+        if(guild.memberCount===1){
+          card.append(button('Disband this guild',guarded(async()=>{
+            await act({type:'disband-guild',guildId:guild.id});
+            toast('Guild closed. Its founding and membership events remain in the Chronicle.');
+          }),{class:'secondary-button','data-player-guild-disband':guild.id}));
+        }else{
+          card.append(paragraph('The leader cannot leave while other members remain. Leadership transfer is not implemented; members must leave before the guild can close.','form-help'));
+        }
+      }else{
+        card.append(button('Leave this guild',guarded(async()=>{
+          await act({type:'leave-guild',guildId:guild.id});
+          toast('Membership ended. The departure remains in the Chronicle.');
+        }),{class:'secondary-button','data-player-guild-leave':guild.id}));
+      }
+    }else if(!projection.viewerGuildId){
+      if(guild.memberCount>=PLAYER_GUILD_MEMBER_LIMIT){
+        card.append(paragraph('This guild is full.','empty-note'));
+      }else{
+        card.append(button('Join guild',guarded(async()=>{
+          await act({type:'join-guild',guildId:guild.id});
+          toast('Joined '+guild.name+'. No XP or institutional authority was granted.');
+        }),{class:'secondary-button','data-player-guild-join':guild.id}));
+      }
+    }else{
+      card.append(paragraph('You already belong to another guild. One active guild per session identity.','form-help'));
+    }
+    board.append(card);
+  }
+  if(!projection.viewerGuildId){
+    const nameInput=node('input',{id:'player-guild-name',maxlength:String(PLAYER_GUILD_NAME_LIMIT),placeholder:'e.g. Field Researchers',autocomplete:'off',value:nameValue});
+    const charterInput=node('textarea',{id:'player-guild-charter',maxlength:String(PLAYER_GUILD_CHARTER_LIMIT),rows:'3',placeholder:'What will this guild do?',value:charterValue});
+    board.append(node('article',{class:'field-card','data-player-guild-create':'true'},[
+      node('h3',{text:'Found a player guild'}),
+      field('Guild name · '+PLAYER_GUILD_NAME_LIMIT+' characters maximum','player-guild-name',nameInput),
+      field('Charter · '+PLAYER_GUILD_CHARTER_LIMIT+' characters maximum','player-guild-charter',charterInput),
+      button('Create guild',guarded(async()=>{
+        await act({type:'create-guild',name:nameInput.value,charter:charterInput.value});
+        toast('Guild founded. Its public history is retained; no XP or institutional authority was granted.');
+      }),{id:'player-guild-create',class:'primary-button'})
+    ]));
+  }
+  board.append(paragraph('No player trading, item transfer, blocking, or leadership transfer is implemented. Closed guilds remain in the event history.','form-help'));
+  if(activeId==='player-guild-name'||activeId==='player-guild-charter'){
+    const next=board.querySelector(activeId==='player-guild-name'?'#player-guild-name':'#player-guild-charter');
+    if(next){
+      next.focus({preventScroll:true});
+      if(activeValue!==undefined){
+        next.value=activeValue;
+        if(selectionStart!==null&&selectionEnd!==null)next.setSelectionRange(selectionStart,selectionEnd);
+      }
+    }
+  }
+}
+function attachPlayerGuildBoard(content){
+  const board=node('section',{id:'player-guild-board'});
+  content.append(board);
+  activeNoteRenderer=()=>renderPlayerGuildBoard(board,world);
+  renderPlayerGuildBoard(board,world);
+}
+
 async function openGuildHall(focusRoleId=null){
   if(mode==='shared'){
     await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
       appendContradictionClerk($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world);
+      attachPlayerGuildBoard($('sheet-content'));
       focusGuildCollaborator(focusRoleId);
     }
     return;
@@ -512,6 +603,7 @@ async function openGuildHall(focusRoleId=null){
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   appendContradictionClerk(content);
   appendCollaboratorContracts(content,world);
+  attachPlayerGuildBoard(content);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
   focusGuildCollaborator(focusRoleId);
 }

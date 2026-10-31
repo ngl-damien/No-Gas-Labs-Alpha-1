@@ -126,3 +126,175 @@ export function projectTownSquare(world, viewer) {
     founder
   };
 }
+
+export const PLAYER_GUILD_NAME_LIMIT = 32;
+export const PLAYER_GUILD_CHARTER_LIMIT = 240;
+export const PLAYER_GUILD_MEMBER_LIMIT = 25;
+export const PLAYER_GUILD_LIMIT = 25;
+
+const PLAYER_GUILD_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+const PLAYER_GUILD_COMMON_FIELDS = ['id', 'type', 'actor', 'at', 'semantics'];
+const PLAYER_GUILD_RECEIPT_FIELDS = ['requestId', 'actionFingerprint', 'actionResult'];
+const PLAYER_GUILD_EVENT_FIELDS = Object.freeze({
+  'guild-created': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', 'name', 'charter', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-joined': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-left': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-disbanded': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ])
+});
+const PLAYER_GUILD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const PLAYER_GUILD_FORBIDDEN_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function normalizePlayerGuildName(value) {
+  if (typeof value !== 'string') return '';
+  return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+export function playerGuildNameKey(value) {
+  return normalizePlayerGuildName(value).toLowerCase();
+}
+
+function playerGuildActorKey(actor) {
+  if (!actor || typeof actor.id !== 'string' || !actor.id ||
+      !['founder', 'witness'].includes(actor.role) ||
+      typeof actor.name !== 'string' || !actor.name.trim() ||
+      Array.from(actor.name).length > 80) {
+    throw new Error('Malformed player-guild actor.');
+  }
+  return JSON.stringify([actor.id, actor.role]);
+}
+
+/**
+ * Replay the public, append-only player-guild history.
+ * Membership is a session-actor relationship, not proof of distinct humans,
+ * institutional authority, verified work, XP, item ownership or approval.
+ */
+export function projectPlayerGuilds(world, viewer = null) {
+  const guilds = new Map();
+  const activeNames = new Map();
+  const memberships = new Map();
+
+  for (const event of eventsOf(world)) {
+    if (!PLAYER_GUILD_EVENT_TYPES.has(event?.type)) continue;
+    const allowed = PLAYER_GUILD_EVENT_FIELDS[event.type];
+    if (!event || typeof event !== 'object' || Array.isArray(event) ||
+        Object.keys(event).some(key => !allowed.has(key))) {
+      throw new Error('Player-guild event contains unsupported fields.');
+    }
+    if (typeof event.guildId !== 'string' ||
+        !PLAYER_GUILD_ID_PATTERN.test(event.guildId) ||
+        PLAYER_GUILD_FORBIDDEN_IDS.has(event.guildId)) {
+      throw new Error('Player-guild ID is malformed.');
+    }
+
+    const actorKey = playerGuildActorKey(event.actor);
+    if (event.type === 'guild-created') {
+      const name = normalizePlayerGuildName(event.name);
+      const nameKey = playerGuildNameKey(name);
+      const charter = typeof event.charter === 'string' ? event.charter.trim() : '';
+      if (guilds.has(event.guildId) || !name || name !== event.name ||
+          Array.from(name).length > PLAYER_GUILD_NAME_LIMIT ||
+          !charter || charter !== event.charter ||
+          Array.from(charter).length > PLAYER_GUILD_CHARTER_LIMIT ||
+          memberships.has(actorKey) || activeNames.has(nameKey) ||
+          [...guilds.values()].filter(guild => guild.status === 'active').length >= PLAYER_GUILD_LIMIT) {
+        throw new Error('Player-guild creation violates the retained membership rules.');
+      }
+      const guild = {
+        id: event.guildId,
+        name,
+        nameKey,
+        charter,
+        leader: { id: event.actor.id, name: event.actor.name, role: event.actor.role },
+        leaderKey: actorKey,
+        members: new Map(),
+        status: 'active',
+        createdAt: event.at,
+        updatedAt: event.at,
+        disbandedAt: null
+      };
+      guild.members.set(actorKey, {
+        id: event.actor.id, name: event.actor.name, role: event.actor.role, joinedAt: event.at
+      });
+      guilds.set(guild.id, guild);
+      activeNames.set(nameKey, guild.id);
+      memberships.set(actorKey, guild.id);
+      continue;
+    }
+
+    const guild = guilds.get(event.guildId);
+    if (!guild || guild.status !== 'active') {
+      throw new Error('Player-guild event references no active guild.');
+    }
+    if (event.type === 'guild-joined') {
+      if (memberships.has(actorKey) || guild.members.has(actorKey)) {
+        throw new Error('Player-guild actor already has an active membership.');
+      }
+      if (guild.members.size >= PLAYER_GUILD_MEMBER_LIMIT) {
+        throw new Error('Player-guild member limit was exceeded.');
+      }
+      guild.members.set(actorKey, {
+        id: event.actor.id, name: event.actor.name, role: event.actor.role, joinedAt: event.at
+      });
+      memberships.set(actorKey, guild.id);
+    } else if (event.type === 'guild-left') {
+      if (!guild.members.has(actorKey) || actorKey === guild.leaderKey) {
+        throw new Error('Player-guild departure is not permitted by the retained roster.');
+      }
+      guild.members.delete(actorKey);
+      memberships.delete(actorKey);
+    } else if (event.type === 'guild-disbanded') {
+      if (actorKey !== guild.leaderKey || guild.members.size !== 1 || !guild.members.has(actorKey)) {
+        throw new Error('Only a sole-member guild leader may disband the guild.');
+      }
+      guild.members.delete(actorKey);
+      memberships.delete(actorKey);
+      guild.status = 'disbanded';
+      guild.disbandedAt = event.at;
+      activeNames.delete(guild.nameKey);
+    }
+    guild.updatedAt = event.at;
+  }
+
+  const serialize = guild => {
+    const members = [...guild.members.values()]
+      .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt) ||
+        a.id.localeCompare(b.id) || a.role.localeCompare(b.role))
+      .map(member => Object.freeze({ ...member }));
+    return Object.freeze({
+      id: guild.id,
+      name: guild.name,
+      charter: guild.charter,
+      leader: Object.freeze({ ...guild.leader }),
+      members: Object.freeze(members),
+      memberCount: members.length,
+      status: guild.status,
+      createdAt: guild.createdAt,
+      updatedAt: guild.updatedAt,
+      disbandedAt: guild.disbandedAt
+    });
+  };
+  const history = [...guilds.values()].map(serialize);
+  const active = history.filter(guild => guild.status === 'active');
+  const viewerKey = viewer ? playerGuildActorKey(viewer) : null;
+  const viewerGuildId = viewerKey ? memberships.get(viewerKey) || null : null;
+  const viewerGuild = active.find(guild => guild.id === viewerGuildId) || null;
+
+  return Object.freeze({
+    guilds: Object.freeze(active),
+    history: Object.freeze(history),
+    viewerGuildId,
+    viewerIsLeader: Boolean(viewerGuild && viewerKey === playerGuildActorKey(viewerGuild.leader)),
+    memberLimit: PLAYER_GUILD_MEMBER_LIMIT,
+    guildLimit: PLAYER_GUILD_LIMIT
+  });
+}

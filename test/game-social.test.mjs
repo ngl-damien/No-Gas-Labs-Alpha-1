@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
-import { projectTownSquare } from '../game/social.mjs';
+import { projectTownSquare, projectPlayerGuilds, PLAYER_GUILD_MEMBER_LIMIT } from '../game/social.mjs';
 
 const founder = { id: 'damien', name: 'Damien', role: 'founder' };
 const firstWitness = { id: 'witness-a', name: 'Witness A', role: 'witness' };
@@ -128,4 +128,135 @@ test('a message cannot be hidden without a pending report; malformed event field
   const tampered = structuredClone(world);
   tampered.events[0].untrustedOutcome = 'approved';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+test('player guilds are deterministic public event projections and never award XP or authority', async () => {
+  let world = createWorld({ now: at(0) });
+  const before = projectCharacter(world, firstWitness);
+  const created = await applyAction(world, {
+    type: 'create-guild',
+    name: '  Field   Researchers  ',
+    charter: '  Compare observations and challenge unsupported claims.  '
+  }, firstWitness, {
+    now: at(1),
+    requestId: 'player-guild-create-001',
+    actionFingerprint: 'a'.repeat(64)
+  });
+  world = created.world;
+  const guildId = created.result.guildId;
+  assert.equal(world.events[0].type, 'guild-created');
+  assert.equal(world.events[0].name, 'Field Researchers');
+  assert.equal(world.events[0].charter, 'Compare observations and challenge unsupported claims.');
+  assert.equal(projectPlayerGuilds(world, firstWitness).viewerIsLeader, true);
+  assert.equal(projectPlayerGuilds(publicWorld(world, secondWitness), secondWitness).guilds[0].name, 'Field Researchers');
+
+  const joined = await applyAction(world, { type: 'join-guild', guildId }, secondWitness, {
+    now: at(2),
+    requestId: 'player-guild-join-001',
+    actionFingerprint: 'b'.repeat(64)
+  });
+  world = joined.world;
+  const projection = projectPlayerGuilds(publicWorld(world, secondWitness), secondWitness);
+  assert.equal(projection.guilds[0].memberCount, 2);
+  assert.equal(projection.viewerGuildId, guildId);
+  assert.equal(projection.viewerIsLeader, false);
+  assert.deepEqual(projection.guilds[0].members.map(member => member.id), [firstWitness.id, secondWitness.id]);
+  assert.equal(world.xp, 0);
+  assert.equal(projectCharacter(world, firstWitness).xp, before.xp);
+  assert.equal(projectCharacter(world, secondWitness).xp, before.xp);
+  await validateWorld(world);
+});
+
+test('player guild rules enforce one membership, unique active names, leader closure and member capacity', async () => {
+  let world = createWorld({ now: at(0) });
+  world = await act(world, {
+    type: 'create-guild', name: 'Field Researchers', charter: 'Compare real observations.'
+  }, firstWitness, 1);
+  const guildId = world.events[0].guildId;
+
+  await assert.rejects(
+    act(world, { type: 'create-guild', name: 'Second Crew', charter: 'A second group.' }, firstWitness, 2),
+    error => error.code === 'GUILD_MEMBERSHIP_EXISTS'
+  );
+  await assert.rejects(
+    act(world, { type: 'create-guild', name: ' field researchers ', charter: 'Duplicate name.' }, secondWitness, 2),
+    error => error.code === 'GUILD_NAME_TAKEN'
+  );
+  world = await act(world, { type: 'join-guild', guildId }, secondWitness, 3);
+  await assert.rejects(
+    act(world, { type: 'join-guild', guildId }, secondWitness, 4),
+    error => error.code === 'GUILD_MEMBERSHIP_EXISTS'
+  );
+  await assert.rejects(
+    act(world, { type: 'leave-guild', guildId }, firstWitness, 4),
+    error => error.code === 'GUILD_LEADER_CANNOT_LEAVE'
+  );
+  await assert.rejects(
+    act(world, { type: 'disband-guild', guildId }, firstWitness, 4),
+    error => error.code === 'GUILD_NOT_EMPTY'
+  );
+  await assert.rejects(
+    act(world, { type: 'disband-guild', guildId }, secondWitness, 4),
+    error => error.code === 'FORBIDDEN'
+  );
+
+  world = await act(world, { type: 'leave-guild', guildId }, secondWitness, 5);
+  world = await act(world, { type: 'disband-guild', guildId }, firstWitness, 6);
+  const closed = projectPlayerGuilds(world, firstWitness);
+  assert.equal(closed.guilds.length, 0);
+  assert.equal(closed.history.length, 1);
+  assert.equal(closed.history[0].status, 'disbanded');
+  assert.equal(closed.history[0].memberCount, 0);
+  assert.deepEqual(world.events.map(event => event.type), [
+    'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+  ]);
+  await validateWorld(world);
+});
+
+test('player guild capacity is enforced at the server projection boundary', async () => {
+  let world = createWorld({ now: at(0) });
+  world = await act(world, { type: 'create-guild', name: 'Open Field', charter: 'A bounded roster.' }, firstWitness, 1);
+  const guildId = world.events[0].guildId;
+  for (let index = 0; index < PLAYER_GUILD_MEMBER_LIMIT - 1; index += 1) {
+    const actor = { id: 'member-' + index, name: 'Member ' + index, role: 'witness' };
+    world = await act(world, { type: 'join-guild', guildId }, actor, index + 2);
+  }
+  assert.equal(projectPlayerGuilds(world).guilds[0].memberCount, PLAYER_GUILD_MEMBER_LIMIT);
+  await assert.rejects(
+    act(world, { type: 'join-guild', guildId }, { id: 'member-overflow', name: 'Overflow', role: 'witness' }, 40),
+    error => error.code === 'GUILD_MEMBER_LIMIT'
+  );
+  await validateWorld(world);
+});
+
+test('player guild history rejects malformed fields, unknown guilds and mismatched replay receipts', async () => {
+  let world = createWorld({ now: at(0) });
+  const created = await applyAction(world, {
+    type: 'create-guild', name: 'Evidence Crew', charter: 'Keep claims falsifiable.'
+  }, firstWitness, {
+    now: at(1),
+    requestId: 'guild-history-create-001',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  world = created.world;
+  const joined = await applyAction(world, {
+    type: 'join-guild', guildId: created.result.guildId
+  }, secondWitness, {
+    now: at(2),
+    requestId: 'guild-history-join-001',
+    actionFingerprint: 'd'.repeat(64)
+  });
+  world = joined.world;
+
+  const extraField = structuredClone(world);
+  extraField.events[0].untrustedApproval = true;
+  await assert.rejects(validateWorld(extraField), error => error.code === 'INVALID_WORLD');
+
+  const unknownGuild = structuredClone(world);
+  unknownGuild.events[1].guildId = 'guild-missing';
+  await assert.rejects(validateWorld(unknownGuild), error => error.code === 'INVALID_WORLD');
+
+  const mismatchedReceipt = structuredClone(world);
+  mismatchedReceipt.events[1].actionResult.guildId = 'guild-forged';
+  await assert.rejects(validateWorld(mismatchedReceipt), error => error.code === 'INVALID_WORLD');
 });

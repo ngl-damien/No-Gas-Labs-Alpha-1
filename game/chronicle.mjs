@@ -363,6 +363,28 @@ function worldEntry(event, index, creations, notes) {
       event?.validationReason ? `Structural result: ${text(event.validationReason)}` : "Structural result: valid for human review only",
     ].join(" · ");
     entry.warning = "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
+  } else if (type === "guild-created") {
+    entry.title = "Player guild founded · " + (text(event?.name) || "unnamed guild");
+    entry.category = "GUILD HALL";
+    entry.summary = "A public player group was founded. Its charter and membership are game records, not institutional approval, verified work, or proof of distinct humans.";
+    entry.detail = ["Charter: " + (text(event?.charter) || "not recorded"), "Guild ID: " + (text(event?.guildId) || "unavailable")].join(" · ");
+    entry.warning = "Founding grants no XP, Founder authority, moderation rights, evidence status, or item ownership.";
+  } else if (type === "guild-joined") {
+    entry.title = "Player joined a guild";
+    entry.category = "GUILD HALL";
+    entry.summary = "A session identity joined an open player group. This is not proof of a distinct human or an institutional role.";
+    entry.detail = "Guild ID: " + (text(event?.guildId) || "unavailable");
+    entry.warning = "Membership grants no XP, Founder authority, moderation rights, evidence status, or item ownership.";
+  } else if (type === "guild-left") {
+    entry.title = "Player left a guild";
+    entry.category = "GUILD HALL";
+    entry.summary = "A player-guild membership ended. The departure remains in append-only history.";
+    entry.detail = "Guild ID: " + (text(event?.guildId) || "unavailable");
+  } else if (type === "guild-disbanded") {
+    entry.title = "Player guild closed";
+    entry.category = "GUILD HALL";
+    entry.summary = "The sole remaining leader closed the guild. Earlier membership events remain retained.";
+    entry.detail = "Guild ID: " + (text(event?.guildId) || "unavailable");
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";

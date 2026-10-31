@@ -985,6 +985,56 @@ def offline_pwa(browser,url,out):
     finally:
         context.close()
 
+
+def player_guild_membership(browser,url,out):
+    errors=[]
+    founder_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    member_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    try:
+        founder_page,member_page=founder_context.new_page(),member_context.new_page()
+        for page in [founder_page,member_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url,wait_until='networkidle')
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        baseline_xp=founder_context.request.get(url+'api/state').json()['world']['xp']
+
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        founder_page.locator('#player-guild-name').fill('Field Researchers')
+        founder_page.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        founder_page.locator('#player-guild-create').click()
+        founder_guild=founder_page.locator('[data-player-guild-id]')
+        expect(founder_guild).to_contain_text('Field Researchers')
+        expect(founder_guild).to_contain_text('MEMBERS 1/25')
+
+        member_page.locator('#places-button').click()
+        member_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        member_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        member_guild=member_page.locator('[data-player-guild-id]')
+        expect(member_guild).to_contain_text('Field Researchers')
+        member_page.locator('[data-player-guild-join]').click()
+        expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
+        expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
+
+        member_page.locator('[data-player-guild-leave]').click()
+        expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
+        expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
+        founder_page.locator('[data-player-guild-disband]').click()
+        expect(founder_page.locator('[data-player-guild-id]')).to_have_count(0)
+
+        state=founder_context.request.get(url+'api/state').json()
+        events=[event for event in state['world']['events'] if event.get('type','').startswith('guild-')]
+        assert [event['type'] for event in events]==['guild-created','guild-joined','guild-left','guild-disbanded']
+        assert state['world']['xp']==baseline_xp, 'Guild membership must not award world XP'
+        assert not errors,errors
+        return {'journey':'player-guild-membership','passed':True,'sessions':2,'guildEvents':len(events),'worldXp':baseline_xp,'errors':errors}
+    finally:
+        founder_context.close()
+        member_context.close()
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -1009,6 +1059,7 @@ def main():
                     record(institutional_locations(browser,url,out))
                     record(shared(browser,url,data,out))
                     record(town_square_social(browser,url,out))
+                    record(player_guild_membership(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
