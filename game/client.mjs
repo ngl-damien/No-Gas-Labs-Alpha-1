@@ -129,7 +129,12 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
 async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>interaction.roleId==='adversary'?openEvidenceArchive(null,'adversary'):openGuildHall(interaction.roleId))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
+const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
+  const roleId=interaction.roleId;
+  if(roleId==='archivist'||roleId==='adversary')openEvidenceArchive(null,roleId);
+  else if(roleId==='tutor')openAcademy(roleId);
+  else openGuildHall(roleId);
+})();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
 function openCharacterSheet(){const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP ('+record.publicationXp+' publication XP + '+record.questXp+' quest-activity XP from unique objective-matched events) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide publication XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
   const source=slot.source;
@@ -617,7 +622,7 @@ async function openGuildHall(focusRoleId=null){
     await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
       attachGuildHallExpeditionBoard($('sheet-content'));
-      appendCollaboratorContracts($('sheet-content'),world,['archivist','synthesizer','tutor']);
+      appendCollaboratorContracts($('sheet-content'),world,['synthesizer']);
       attachPlayerGuildBoard($('sheet-content'));
       focusGuildCollaborator(focusRoleId);
     }
@@ -626,7 +631,7 @@ async function openGuildHall(focusRoleId=null){
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   attachGuildHallExpeditionBoard(content);
-  appendCollaboratorContracts(content,world,['archivist','synthesizer','tutor']);
+  appendCollaboratorContracts(content,world,['synthesizer']);
   attachPlayerGuildBoard(content);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
   focusGuildCollaborator(focusRoleId);
@@ -817,7 +822,7 @@ function openEvidenceArchive(focusResponseId=null,focusRoleId=null){
   const content=showSheet('Evidence Archive',kicker);
   content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   appendContradictionClerk(content);
-  appendCollaboratorContracts(content,world,['adversary'],'ADVERSARIAL REVIEW · BOUNDED COLLABORATOR');
+  appendCollaboratorContracts(content,world,['archivist','adversary'],'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
@@ -994,9 +999,10 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   });
 }
 
-function openAcademy(){
+function openAcademy(focusRoleId=null){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
   content.append(paragraph('Study published work and compare its claims with their retained sources. A study note records your question, your own explanation, and the next check. A unique study event can earn 25 quest-activity XP when it appears in the evidence-backed objective trail; it is not proof of correctness or mastery.'));
+  appendCollaboratorContracts(content,world,['tutor'],'POLYMATH TUTOR · BOUNDED STUDY CONTRACT');
   const works=[...(Array.isArray(world.creations)?world.creations:[])].reverse();
   if(!works.length){
     content.append(paragraph('No published study objects are available yet. The Founder can make the first artifact at the Forge.','empty-note'));
@@ -1044,6 +1050,7 @@ function openAcademy(){
       button('Inspect reviewed source version →',()=>openCreation(review.creationId,review.version),{class:'list-button'})
     ]));
   }
+  if(focusRoleId)focusGuildCollaborator(focusRoleId);
 }
 function openStudyNote(creationId,versionNumber){
   const creation=(Array.isArray(world.creations)?world.creations:[]).find(item=>item.id===creationId);
