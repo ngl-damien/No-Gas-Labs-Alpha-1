@@ -73,6 +73,9 @@ function createVerifier(overrides = {}) {
     expected_audience: expectedAudience,
     resolveProposal: id => id === proposal.event_id ? proposal : null,
     resolveQuest: id => id === quest.quest_id ? quest : null,
+    resolveOutputs: (proposalId, questId, capability) =>
+      proposalId === proposal.event_id && questId === quest.quest_id && capability === "repository.write"
+        ? ["review-packet"] : null,
     ...overrides
   });
 }
@@ -101,9 +104,11 @@ test("unknown proposal and mismatched quest references fail closed", () => {
 test("context lookup is not attempted until the event signature has passed", () => {
   let proposalLookups = 0;
   let questLookups = 0;
+  let outputLookups = 0;
   const verify = createVerifier({
     resolveProposal: () => { proposalLookups += 1; return proposal; },
-    resolveQuest: () => { questLookups += 1; return quest; }
+    resolveQuest: () => { questLookups += 1; return quest; },
+    resolveOutputs: () => { outputLookups += 1; return ["review-packet"]; }
   });
   const valid = signedEventFor(payload);
   const replacement = valid.signature[0] === "A" ? "B" : "A";
@@ -111,11 +116,13 @@ test("context lookup is not attempted until the event signature has passed", () 
   assert.equal(verify(tampered), false);
   assert.equal(proposalLookups, 0);
   assert.equal(questLookups, 0);
+  assert.equal(outputLookups, 0);
 });
 
-test("resolver failures and accessor-backed canonical records fail closed without invoking getters", () => {
+test("resolver failures and accessor-backed context fail closed without invoking getters", () => {
   const event = signedEventFor(payload);
   assert.equal(createVerifier({ resolveProposal: () => { throw new Error("ledger unavailable"); } })(event), false);
+  assert.equal(createVerifier({ resolveOutputs: () => { throw new Error("output policy unavailable"); } })(event), false);
 
   let getterCalls = 0;
   const hostileProposal = { event_id: proposal.event_id, type: "PROPOSAL", quest_id: quest.quest_id };
@@ -124,6 +131,14 @@ test("resolver failures and accessor-backed canonical records fail closed withou
     get() { getterCalls += 1; return "repository.write"; }
   });
   assert.equal(createVerifier({ resolveProposal: () => hostileProposal })(event), false);
+
+  const hostileOutputs = [];
+  Object.defineProperty(hostileOutputs, "0", {
+    enumerable: true,
+    get() { getterCalls += 1; return "review-packet"; }
+  });
+  hostileOutputs.length = 1;
+  assert.equal(createVerifier({ resolveOutputs: () => hostileOutputs })(event), false);
   assert.equal(getterCalls, 0);
 });
 
@@ -140,7 +155,31 @@ test("a change to the current canonical quest invalidates an otherwise valid sig
   })(event), false);
 });
 
-test("context-bound verifier requires trusted synchronous proposal and quest resolvers", () => {
+test("outputs must equal the canonical output set for the proposal and quest", () => {
+  const event = signedEventFor(payload);
+  assert.equal(createVerifier({
+    resolveOutputs: (proposalId, questId, capability) => {
+      assert.deepEqual([proposalId, questId, capability], [
+        proposal.event_id, quest.quest_id, "repository.write"
+      ]);
+      return ["review-packet"];
+    }
+  })(event), true);
+  assert.equal(createVerifier({ resolveOutputs: () => ["admin-export"] })(event), false);
+  assert.equal(createVerifier({ resolveOutputs: () => ["review-packet", "admin-export"] })(event), false);
+});
+
+test("a change to the canonical output set invalidates an otherwise valid signed decision", () => {
+  const event = signedEventFor(payload);
+  assert.equal(createVerifier({ resolveOutputs: () => ["different-output"] })(event), false);
+});
+
+test("an asynchronous output resolver is rejected rather than awaited implicitly", () => {
+  const event = signedEventFor(payload);
+  assert.equal(createVerifier({ resolveOutputs: async () => ["review-packet"] })(event), false);
+});
+
+test("context-bound verifier requires trusted synchronous proposal, quest, and output resolvers", () => {
   assert.throws(() => createContextBoundFounderAuthorizationVerifier({
     public_key_jwk: publicKeyJwk,
     expected_fingerprint: expectedFingerprint,
@@ -151,6 +190,15 @@ test("context-bound verifier requires trusted synchronous proposal and quest res
     expected_fingerprint: expectedFingerprint,
     expected_audience: expectedAudience,
     resolveProposal: true,
-    resolveQuest: () => quest
+    resolveQuest: () => quest,
+    resolveOutputs: () => ["review-packet"]
+  }), /FOUNDER_CONTEXT_TRUST_CONFIGURATION_INVALID/);
+  assert.throws(() => createContextBoundFounderAuthorizationVerifier({
+    public_key_jwk: publicKeyJwk,
+    expected_fingerprint: expectedFingerprint,
+    expected_audience: expectedAudience,
+    resolveProposal: () => proposal,
+    resolveQuest: () => quest,
+    resolveOutputs: true
   }), /FOUNDER_CONTEXT_TRUST_CONFIGURATION_INVALID/);
 });
