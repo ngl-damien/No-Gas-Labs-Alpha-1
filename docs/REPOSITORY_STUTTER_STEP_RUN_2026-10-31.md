@@ -174,3 +174,49 @@ A fresh compare against current main `fe1e471...` shows:
 
 ### Latest action
 - Updated the existing Worker A checkpoint branch with this run's factual report (checkpoint branch commit `e4b09d2a03aeb6996394e9c7703bb22f5d9f56ba`). This is a branch commit on the existing checkpoint PR lane, not a mainline merge.
+
+
+## Ralph continuation — governance integrity merged; receipt integrity rebased (2026-10-31 UTC)
+
+**Worker:** Repository Stutter-Step / Worker A.
+
+### Rehydration and coordination
+- Re-read current-main root `AGENTS.md` alone, then the complete canonical shared protocol alone, sequentially, before restarting the repository baseline.
+- Re-read this durable checkpoint and Worker B's latest PR #227 description.
+- Current main at start of this continuation was `b76f0075272f746e3960e7a816f55e438870c764`, which includes #206's verified-retry quest status correction.
+- Worker B PR #227 remained at `8370920d45accb9209ca6e6da3d2605ed2d22f9e`; compare against that main reported 97 ahead / 5 behind, diverged. Its diff includes active game/server/institution paths. Worker A made no edits to those paths. A factual integration handoff was posted to PR #227 (comment ID `6539278411`) requesting Worker B rebase/reconcile and rerun exact-head Verify, Genesis, Browser Acceptance, and update the G0–G9 ledger.
+- Current-main nested instruction lookups returned 404 for `scripts/AGENTS.md`, `test/AGENTS.md`, `src/AGENTS.md`, `src/evidence/AGENTS.md`, and `src/world/AGENTS.md`; no nested instructions exist at those paths.
+
+### Iteration 1 — exact-byte preflight fix integrated
+- The first proposal was PR #230, head `9a090b4c9bb6a6396357a5d7a4d91a2deebc3c44`, based on `fe1e471...`. Exact-head Verify #41169922816, Genesis #41169922831, and Browser Acceptance #41169922854 all eventually passed. Browser job #124445642262 completed successfully.
+- Main advanced by four commits while #230 was pending, so the branch became 2 ahead / 4 behind and diverged. The four mainline commits did not touch the two governance paths, but the PR was stale. Rather than merge a stale base, the exact two-file change was transplanted onto current main as PR #231.
+- PR #231 head `307d7ceeee85f380fae5da47a55c95359ff725f2`, base `b76f0075272f746e3960e7a816f55e438870c764`, 2 ahead / 0 behind, exactly two changed paths: `scripts/validate-agent-governance.mjs` and `test/agent-governance.test.mjs`.
+- Exact-head Verify #41170348152: **success**. The hosted log shows `npm run agent:preflight:ci` returned `status: ready`, target paths include both changed files, `failures: []`, Node `--test` exit code 0, Python inspector tests exit code 0, game package build exit code 0, and bounded institutional exercise succeeded.
+- Genesis #41170348111: **success**.
+- Browser Acceptance #41170348155: **success**, playable-world job #124446759639 completed all steps including desktop/mobile/shared-world/recovery journeys and receipt/screenshot preservation.
+- Rechecked current main remained `b76f007...`, compare remained 2 ahead / 0 behind, and PR mergeability was `clean`. Marked PR #231 ready and merged by squash under Damien's standing authorization for verified, non-conflicting routine maintenance. Observed merge commit: `fb676e8bdb2daf3d4070f265122023498518c59f`. Main branch was independently observed at that exact commit afterward. This is integrated source, not a release/deployment.
+- Superseded PR #230 was closed unmerged; its branch and successful CI history remain available. No code was lost.
+
+### Iteration 2 — immutable artifact receipt verification rebased
+- Re-examined the existing draft PR #212, which exposed a source-backed receipt-mutation defect in current main: `verifyReceipt()` validated a caller-owned object, passed it to the resolver, then compared against the same mutable object. The resolver could change digest/size during lookup.
+- Reviewed PR #212's exact code/test proposal and its hosted old-head evidence: Verify #41067059559, Genesis #41067059453, Browser Acceptance #41067059570 all succeeded. The change also snapshots every event receipt before the first resolver callback and verifies a detached retained event so resolver-side mutation cannot award forged XP or rewrite the event later presented to the observation verifier.
+- Compared old PR base `7d8c773...` to main `b76f007...`; no intervening mainline commits touched `src/evidence/content-addressed.js` or `src/world/project.js`. Nested instructions were checked. The reviewed three-file change was transplanted onto main in branch `review/receipt-snapshot-main-20261031`.
+- New PR [#233](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/233), head `55c24e4defef0b79f874e10d1944b34280de7384`, based on `b76f007...`, 3 ahead / 0 behind at creation. Exact changed paths: `src/evidence/content-addressed.js`, `src/world/project.js`, `test/content-addressed.test.js`. Source and regression file contents were re-read; compare showed only those three intended paths.
+- PR #233 exact-head Genesis #41170504954: **success**. Verify #41170504968: **success** (world-projection job #124447242200 completed). Browser Acceptance #41170504935 was **still in progress** at latest poll, in the desktop/mobile/shared-world/recovery journey step. Do not mark #233 ready or merge until Browser Acceptance succeeds and mergeability is rechecked against current main.
+- Superseded PR #212 was closed unmerged after #233 was created. Its branch and old CI history remain available.
+
+### Mainline after merge / current pending work
+- Main is now `fb676e8bdb2daf3d4070f265122023498518c59f` (PR #231 squash merge).
+- PR #233 is based on previous main `b76f007...`, one mainline commit behind; that intervening #231 merge touches only governance preflight/test paths, not PR #233's three files. Recheck GitHub mergeability and exact-head workflows before integration; do not assume this makes its checks green.
+- PR #230 and #212 are closed/unmerged superseded proposals. PR #231 is merged. PR #233 remains draft/open/pending browser acceptance.
+- Issue #17 remains open with real Founder key custody/identity, adversarial concurrency, crash/stale-lock recovery, and independent reuse still unaccepted. Do not invent stale-lock deletion or claim real Founder identity.
+- No local clone/test was available in this environment because the earlier GitHub clone attempt failed DNS resolution. Exact hosted CI evidence is recorded above; no local pass is claimed.
+
+### Next ranked actions
+1. Finish PR #233 Browser Acceptance; inspect logs/artifacts if it fails. If all three exact-head workflows pass, recheck current main, mergeability, and diff; mark ready and consider squash merge under the standing routine-maintenance authorization if non-conflicting.
+2. After #233, select the next distinct unowned evidence/reliability defect; do not duplicate Worker B's game paths.
+3. Worker B must reconcile PR #227's five-commit drift from main and update the MMORPG gate ledger with current evidence. The 13/13 browser evidence in its old PR description remains old-head evidence only.
+4. Keep Issue #17's custody and lock-recovery work separately evidenced; no key creation/custody claims.
+
+### Execution boundary
+This continuation completed one merge and one additional substantive current-main PR proposal, plus a cross-worker handoff. It did not exhaust Compute or run in the background after tool completion. Resume the loop from this checkpoint and repeat while safe useful work and session budget remain.
