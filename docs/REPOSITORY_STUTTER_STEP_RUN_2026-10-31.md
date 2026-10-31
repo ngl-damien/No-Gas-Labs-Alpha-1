@@ -748,3 +748,10 @@ No branch was deleted. No release, deployment, credential/key change, permission
 - PR #227 remains stacked game work; no Worker A gameplay duplication.
 - PR #215/#205 continue to own the decision-store pre-rename crash/lease work; no duplicate transplant.
 - No merges, permission changes, key custody actions, workflow dispatches, branch deletions, releases, deployments, spending, or external publication occurred.
+
+
+## Final status correction — 2026-10-31 UTC
+
+PR #238 exact head 0cac61bbfd57f2ab0621b2b7affff69d0d1081f5 now has all three hosted workflows successful: Verify #41173380864, Genesis #41173380903, Browser Acceptance #41173380862. Browser acceptance passed 12/12 journeys; artifact #13032097324, SHA-256 a5fe9dd58ad662987d92f9da18814c8b4fe637ba3c16f263e01c89b43c5cf3c0. This supersedes the earlier pending-browser note above. The hosted preflight target list still omits src/forge/runner.mjs and test/forge-runner.test.mjs, so scoped instruction coverage for the changed Forge files remains unverified; review comment #6539677507 records this.
+
+PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173118308, and Browser Acceptance #41173118285 all successful. It is not merged. The read-only workflow still has contents: write scope; no permission change was made.
