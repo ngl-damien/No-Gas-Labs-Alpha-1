@@ -105,9 +105,25 @@ jobs:
                 continue;
               }
               try {
-                // Re-read the exact ref immediately before deletion to avoid deleting work added since inventory.
-                const live = await github.rest.git.getRef({ owner, repo, ref: 'heads/' + name });
-                if (live.data.object.sha !== baseline) { skipped.push(name); continue; }
+                // Re-read every mutable eligibility condition immediately before deletion.
+                // The initial inventory is only a preview; it may be stale by the time this
+                // candidate is reached (for example, a PR may have opened during the run).
+                const [live, liveBranch, latestPulls, latestRepository] = await Promise.all([
+                  github.rest.git.getRef({ owner, repo, ref: 'heads/' + name }),
+                  github.rest.repos.getBranch({ owner, repo, branch: name }),
+                  github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }),
+                  github.rest.repos.get({ owner, repo })
+                ]);
+                const hasOpenPullRequest = latestPulls.some(pull =>
+                  pull.head.repo?.full_name === owner + '/' + repo && pull.head.ref === name);
+                if (live.data.object.sha !== baseline ||
+                    liveBranch.data.commit.sha !== baseline ||
+                    liveBranch.data.protected ||
+                    hasOpenPullRequest ||
+                    latestRepository.data.default_branch === name) {
+                  skipped.push(name);
+                  continue;
+                }
                 await github.rest.git.deleteRef({ owner, repo, ref: 'heads/' + name });
                 deleted.push(name);
               } catch (error) {
