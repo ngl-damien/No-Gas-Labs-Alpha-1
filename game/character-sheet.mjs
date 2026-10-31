@@ -687,6 +687,7 @@ export function projectCharacter(world, viewer, options = null) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    equipment,
     inventory: Object.freeze(inventory),
     fieldSatchel,
     fieldSatchelTotal,
