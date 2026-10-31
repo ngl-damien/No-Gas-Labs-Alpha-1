@@ -460,7 +460,7 @@ test('service-store rechecks persisted-envelope ownership before and after openi
   await seed.close();
   const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
 
-  for (const [label, failAt] of [['path', 4], ['descriptor', 5]]) {
+  for (const [label, failAt] of [['path', 7], ['descriptor', 8]]) {
     const preload = join(root, label + '-uid-failure.mjs');
     const override = `
       const original = process.getuid.bind(process);
@@ -522,7 +522,7 @@ test('service-store rejects persisted-envelope owner mismatches at path and desc
   const originalBytes = await readFile(join(dataDir, 'service.json'));
   const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
 
-  for (const [label, mismatchAt] of [['path', 4], ['descriptor', 5]]) {
+  for (const [label, mismatchAt] of [['path', 7], ['descriptor', 8]]) {
     const preload = join(root, label + '-uid-mismatch.mjs');
     const override = `
       const original = process.getuid.bind(process);
