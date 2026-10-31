@@ -652,7 +652,7 @@ def shared(browser,url,data,out):
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
         expect(adversarial_slot.get_by_role('button',name='Inspect source →',exact=True)).to_have_count(1)
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
-        dissent_card=a.locator('#sheet .field-card').filter(has_text='Challenge · missing-evidence')
+        dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)
         dissent_card.get_by_role('button',name='Inspect retained object →',exact=True).click()
         expect(a.locator('#sheet-title')).to_have_text('Moonshot Field')
