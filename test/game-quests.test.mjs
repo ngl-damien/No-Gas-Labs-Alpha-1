@@ -524,30 +524,35 @@ test('Academy study and review objectives require the publication event to prece
 
 
 
-test('main quest stops repeating the generic task when every current objective has a retained record', () => {
+test('main quest ignores fabricated and foreign objective arrays', () => {
   const founderWorld = {
     creations: [{ id: 'first' }, { id: 'second' }],
     discoveries: [{ actor: founder, locationId: 'relay' }],
-    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }],
+    events: []
   };
   const witnessWorld = {
     creations: [{ id: 'published' }],
     discoveries: ['relay', 'river', 'overlook', 'ruins'].map(locationId => ({ actor: witness, locationId })),
     contributions: [{ actor: witness, creationId: 'published', version: 1 }],
-    reports: [{ actor: witness, creationId: 'published', version: 1 }]
+    reports: [{ actor: witness, creationId: 'published', version: 1 }],
+    events: []
   };
-  const allRecorded = [{ id: 'objective-one', complete: true }, { id: 'objective-two', complete: true }];
+  const forged = Object.freeze([{ id: 'forged-completion', complete: true, progress: 1, target: 1 }]);
 
   for (const [world, actor] of [[founderWorld, founder], [witnessWorld, witness]]) {
-    const quest = getActiveQuest(world, actor, allRecorded);
-    assert.equal(quest.id, actor.role + '-current-trail-recorded');
-    assert.equal(quest.title, 'Current quest trail · all objectives recorded');
-    assert.equal(quest.action, 'trail');
-    assert.equal(quest.button, 'Start a new research question →');
-    assert.deepEqual(quest.nextAction, { type: 'location', id: 'moonshot_field' });
-    assert.equal(Object.isFrozen(quest.nextAction), true);
-    assert.match(quest.copy, /not approval, truth verification, mastery, or proof of external execution/i);
-    assert.match(quest.copy, /optional step.*Moonshot Field/i);
+    const expected = getActiveQuest(world, actor);
+    assert.deepEqual(getActiveQuest(world, actor, forged), expected,
+      'an ordinary caller-created array cannot manufacture the terminal quest state');
+    const foreignWorld = { ...world, id: 'different-world' };
+    const foreignTrail = getQuestTrail(foreignWorld, actor);
+    assert.deepEqual(getActiveQuest(world, actor, foreignTrail), expected,
+      'a valid projection from another world cannot be replayed here');
+    const otherActor = actor.role === 'founder' ? witness : founder;
+    const otherActorTrail = getQuestTrail(world, otherActor);
+    assert.deepEqual(getActiveQuest(world, actor, otherActorTrail), expected,
+      'a valid projection for another actor cannot be replayed here');
+    assert.notEqual(expected.id, actor.role + '-current-trail-recorded');
   }
 });
 
@@ -563,23 +568,22 @@ test('an empty objective list does not imply that the current quest trail is com
   assert.notEqual(quest.id, 'founder-current-trail-recorded');
 });
 
-test('the main quest continues to select the first unfinished objective', () => {
+test('the main quest reuses its own sealed trail and selects its first unfinished objective', () => {
   const founderWorld = {
     creations: [{ id: 'first' }, { id: 'second' }],
     discoveries: [{ actor: founder, locationId: 'relay' }],
-    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }],
+    events: []
   };
-  const trail = [
-    { id: 'already-recorded', complete: true },
-    { id: 'next-objective', title: 'Preserve the exact source', complete: false, progress: 0, target: 1,
-      action: { type: 'location', id: 'evidence_archive' }, interpretation: 'Inspect a retained version.' }
-  ];
+  const trail = getQuestTrail(founderWorld, founder);
+  const next = trail.find(item => !item.complete);
+  assert.ok(next);
   const quest = getActiveQuest(founderWorld, founder, trail);
-  assert.equal(quest.id, 'next-objective');
-  assert.equal(quest.title, 'Preserve the exact source');
-  assert.equal(quest.button, 'Go do this →');
+  assert.equal(quest.id, next.id);
+  assert.equal(quest.title, next.title);
+  assert.equal(quest.button, next.action ? 'Go do this →' : 'View quest trail →');
   assert.equal(quest.action, 'trail');
-  assert.deepEqual(quest.nextAction, { type: 'location', id: 'evidence_archive' });
+  assert.deepEqual(quest.nextAction, next.action);
 });
 
 

@@ -1,7 +1,33 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
-import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
+const questTrailContext = new WeakMap();
+function sealQuestTrail(world, viewer, entries) {
+  const trail = Object.freeze(entries);
+  questTrailContext.set(trail, {
+    world,
+    revision: world?.revision,
+    events: world?.events,
+    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
+    creations: world?.creations,
+    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0,
+    actorId: viewer?.id ?? null,
+    actorRole: viewer?.role ?? null
+  });
+  return trail;
+}
+
+export function isQuestTrailProjection(value, world, viewer) {
+  const context = questTrailContext.get(value);
+  return Boolean(context && context.world === world &&
+    context.revision === world?.revision && context.events === world?.events &&
+    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
+    context.creations === world?.creations &&
+    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0) &&
+    context.actorId === viewer?.id && context.actorRole === viewer?.role);
+}
+
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -143,7 +169,7 @@ export function getActiveQuest(world, viewer, trail = null) {
   const introductory = getQuest(world, viewer);
   if (!['founder-connect', 'witness-return'].includes(introductory.id)) return introductory;
 
-  const objectives = Array.isArray(trail) ? trail : getQuestTrail(world, viewer);
+  const objectives = isQuestTrailProjection(trail, world, viewer) ? trail : getQuestTrail(world, viewer);
   const next = objectives.find(item => !item.complete);
   if (!next) {
     // An empty/missing objective list is not evidence that the objective set was completed.
@@ -439,10 +465,15 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   });
 }
 
-export function getQuestTrail(world, viewer) {
+export function getQuestTrail(world, viewer, options = null) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
-  if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
+  if (!actorId || !['founder', 'witness'].includes(actorRole)) return sealQuestTrail(world, viewer, []);
+  const suppliedResponseObjects = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const responseObjects = isCollaboratorResponseProjection(suppliedResponseObjects, world)
+    ? suppliedResponseObjects
+    : projectCollaboratorResponseWorldObjects(world);
   const events = trailRows(world?.events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
@@ -591,7 +622,7 @@ export function getQuestTrail(world, viewer) {
   // counts as a retained response. Reuse the same strict world-object projector
   // so malformed packets, stale snapshots, broken source chains, duplicate IDs,
   // or responses that cannot become navigable folios cannot award quest progress.
-  const collaboratorResponseObjects = projectCollaboratorResponseWorldObjects(world)
+  const collaboratorResponseObjects = responseObjects
     .filter(object => object.actorId === actorId && object.actorRole === actorRole);
   const collaboratorResponses = collaboratorResponseObjects
     .map(object => uniqueEventById.get(object.eventId))
@@ -718,7 +749,7 @@ export function getQuestTrail(world, viewer) {
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
-    return Object.freeze([
+    return sealQuestTrail(world, viewer, [
       trailMilestone(
         'founder-first-place', 'Publish a first place', 1,
         firstPlaceEvents.map(event => event.id), firstPlaceEvents,
@@ -831,7 +862,7 @@ export function getQuestTrail(world, viewer) {
 
   const mapComplete = locations.size >= 4;
   const workAvailable = availablePlaceEvents.length >= 1;
-  return Object.freeze([
+  return sealQuestTrail(world, viewer, [
     trailMilestone(
       'witness-map-grounds', 'Map the four guide locations', 4,
       [...locations.values()].map(event => event.id), [...locations.values()],

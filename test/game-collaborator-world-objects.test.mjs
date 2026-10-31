@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from '../game/collaborator-world-objects.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { findRoute, WorldView } from '../game/world-view.mjs';
 
@@ -283,4 +283,16 @@ test('revoked proxy event entries are skipped without crashing Relay folio proje
   const world = worldWith(null, { revision: 2, events: [proposal, revoked.proxy] });
   assert.doesNotThrow(() => projectCollaboratorResponseWorldObjects(world));
   assert.deepEqual(projectCollaboratorResponseWorldObjects(world), []);
+});
+
+
+test('Relay projection arrays are sealed to the exact world snapshot that produced them', () => {
+  const world = worldWith(null, { revision: 1, events: [proposal] });
+  const projection = projectCollaboratorResponseWorldObjects(world);
+  assert.equal(isCollaboratorResponseProjection(projection, world), true);
+  assert.equal(Object.isFrozen(projection), true);
+  assert.equal(isCollaboratorResponseProjection(Object.freeze([...projection]), world), false);
+  assert.equal(isCollaboratorResponseProjection(projection, worldWith(null, { revision: 1, events: [proposal] })), false);
+  world.revision += 1;
+  assert.equal(isCollaboratorResponseProjection(projection, world), false, 'a stale revision cannot reuse the old projection');
 });

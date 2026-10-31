@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
+import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 
 function makeView(t) {
   const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
@@ -238,4 +239,21 @@ test('world activity counts refresh when a new world projection is supplied', t 
   });
   assert.equal(view.institutionCounts['town-square'], 1);
   assert.equal(view.institutionCounts.evidence_archive, 0);
+});
+
+
+test('map only reuses a Relay projection sealed to the exact world snapshot', t => {
+  const {view} = makeView(t);
+  const world = { id: 'map-projection-world', revision: 0, creations: [], events: [] };
+  const foreignWorld = { id: 'other-map-world', revision: 0, creations: [], events: [] };
+  const foreignProjection = projectCollaboratorResponseWorldObjects(foreignWorld);
+  const forgedProjection = Object.freeze([{ id: 'forged-folio', mapVisible: true, x: 610, y: 205 }]);
+
+  view.setWorld(world, null, foreignProjection);
+  assert.deepEqual(view.collaboratorResponseObjects, [], 'a projection from another world is recomputed, not replayed');
+  view.setWorld(world, null, forgedProjection);
+  assert.deepEqual(view.collaboratorResponseObjects, [], 'a caller-created array cannot add a map object');
+  const ownProjection = projectCollaboratorResponseWorldObjects(world);
+  view.setWorld(world, null, ownProjection);
+  assert.strictEqual(view.collaboratorResponseObjects, ownProjection, 'the same-snapshot projection is reused');
 });

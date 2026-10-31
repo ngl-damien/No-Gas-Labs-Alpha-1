@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
-import { getLocationAction, getQuestTrail, matchActivityRecords } from './quests.mjs';
-import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
+import { getLocationAction, getQuestTrail, matchActivityRecords, isQuestTrailProjection } from './quests.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -123,7 +123,12 @@ function matchedActivityEvidence(type, records, allEvents, fields, viewer, predi
   return { matches, records: matches.map(match => match.record) };
 }
 
-export function projectCharacter(world, viewer) {
+export function projectCharacter(world, viewer, options = null) {
+  const suppliedResponseObjects = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const collaboratorResponseObjects = isCollaboratorResponseProjection(suppliedResponseObjects, world)
+    ? suppliedResponseObjects
+    : projectCollaboratorResponseWorldObjects(world);
   const allEvents = uniqueEvents(world?.events);
   // Resolve append positions once. Repeated indexOf scans made challenge and
   // study-review projections quadratic as the retained world grew.
@@ -305,7 +310,11 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const completedQuestObjectives = getQuestTrail(world, viewer)
+  const suppliedQuestTrail = options && typeof options === 'object' ? options.questTrail : null;
+  const questTrail = isQuestTrailProjection(suppliedQuestTrail, world, viewer)
+    ? suppliedQuestTrail
+    : getQuestTrail(world, viewer, { collaboratorResponseObjects });
+  const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
 
@@ -532,7 +541,7 @@ export function projectCharacter(world, viewer) {
       action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.challengeId }
     });
   }
-  for (const object of projectCollaboratorResponseWorldObjects(world)) {
+  for (const object of collaboratorResponseObjects) {
     if (object.actorId !== viewer?.id || object.actorRole !== viewer?.role) continue;
     const event = eventById.get(object.eventId);
     if (!event) continue;

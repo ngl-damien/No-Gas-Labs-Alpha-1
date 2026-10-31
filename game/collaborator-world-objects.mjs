@@ -15,6 +15,29 @@ const roleStyles = Object.freeze({
   tutor: { accent: '#9a8b5b', sigil: 'T' }
 });
 
+const responseProjectionWorld = new WeakMap();
+function sealResponseProjection(world, objects) {
+  const projection = Object.freeze(objects);
+  responseProjectionWorld.set(projection, {
+    world,
+    revision: world?.revision,
+    events: world?.events,
+    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
+    creations: world?.creations,
+    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0
+  });
+  return projection;
+}
+
+export function isCollaboratorResponseProjection(value, world) {
+  const context = responseProjectionWorld.get(value);
+  return Boolean(context && context.world === world &&
+    context.revision === world?.revision && context.events === world?.events &&
+    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
+    context.creations === world?.creations &&
+    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0));
+}
+
 function ownDataValue(value, key) {
   try {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -126,7 +149,7 @@ export function projectCollaboratorResponseWorldObjects(world) {
   const events = ownDataArray(ownDataValue(world, 'events'), MAX_WORLD_EVENT_SCAN);
   const creations = ownDataArray(ownDataValue(world, 'creations'), 20_000) || [];
   if (!isBoundedIdentifier(worldId) || !Number.isSafeInteger(worldRevision) ||
-      worldRevision < 0 || !events) return Object.freeze([]);
+      worldRevision < 0 || !events) return sealResponseProjection(world, []);
 
   const entries = [];
   const eventIdCounts = new Map();
@@ -261,7 +284,7 @@ export function projectCollaboratorResponseWorldObjects(world) {
   }
 
   const firstVisible = Math.max(0, valid.length - MAX_MAP_RESPONSE_OBJECTS);
-  return Object.freeze(valid.map((object, index) => {
+  return sealResponseProjection(world, valid.map((object, index) => {
     const mapIndex = index - firstVisible;
     const mapVisible = mapIndex >= 0;
     return Object.freeze({

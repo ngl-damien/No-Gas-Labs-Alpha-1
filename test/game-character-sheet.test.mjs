@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectCharacter} from '../game/character-sheet.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
+import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -1042,4 +1043,37 @@ test('field satchel keeps its newest 100 objects and points back to retained app
   assert.equal(record.fieldSatchel[0].eventId, events.at(-1).id,
     'the newest appended event is first even if other timestamps are backdated');
   assert.equal(record.fieldSatchel.at(-1).eventId, events[1].id);
+});
+
+
+test('character projection ignores fabricated and foreign precomputed read models', () => {
+  const eventRecord = event('forged-folio-event', 'collaborator-response-recorded', founder, t1, {
+    responseId: 'forged-response'
+  });
+  const world = {
+    id: 'character-projection-world', revision: 1, creations: [], events: [eventRecord],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const foreignWorld = { ...world, id: 'foreign-character-world' };
+  const forgedTrail = Object.freeze([{ id: 'forged-objective', complete: true, progress: 1, target: 1 }]);
+  const forgedFolios = Object.freeze([{
+    id: 'forged-folio', eventId: eventRecord.id, responseId: 'forged-response',
+    actorId: founder.id, actorRole: founder.role, name: 'Hostile Archivist',
+    validationStatus: 'valid-for-human-review'
+  }]);
+  const foreignTrail = getQuestTrail(foreignWorld, founder);
+  const baseline = projectCharacter(world, founder);
+  const forged = projectCharacter(world, founder, {
+    questTrail: forgedTrail,
+    collaboratorResponseObjects: forgedFolios
+  });
+  const foreign = projectCharacter(world, founder, {
+    questTrail: foreignTrail,
+    collaboratorResponseObjects: projectCollaboratorResponseWorldObjects(foreignWorld)
+  });
+
+  assert.deepEqual(forged, baseline, 'caller-supplied arrays cannot manufacture skills or satchel items');
+  assert.deepEqual(foreign, baseline, 'another world snapshot cannot supply this character’s progress');
+  assert.equal(forged.skills.find(skill => skill.id === 'questkeeper').count, 0);
+  assert.equal(forged.fieldSatchel.some(item => item.kind === 'guild-folio'), false);
 });
