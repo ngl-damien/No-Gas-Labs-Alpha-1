@@ -38,13 +38,12 @@ function unsafeReason(stat) {
   let getuid;
   try { getuid = process.getuid; }
   catch { return 'owner-verification-failed'; }
-  if (typeof getuid === 'function') {
-    let currentUid;
-    try { currentUid = getuid(); }
-    catch { return 'owner-verification-failed'; }
-    if (!Number.isSafeInteger(currentUid) || currentUid < 0) return 'owner-verification-failed';
-    if (stat.uid !== currentUid) return 'owner-mismatch';
-  }
+  if (typeof getuid !== 'function') return 'owner-verification-failed';
+  let currentUid;
+  try { currentUid = getuid.call(process); }
+  catch { return 'owner-verification-failed'; }
+  if (!Number.isSafeInteger(currentUid) || currentUid < 0) return 'owner-verification-failed';
+  if (stat.uid !== currentUid) return 'owner-mismatch';
   if (stat.size > MAX_LOCK_BYTES) return 'size-limit';
   return null;
 }
