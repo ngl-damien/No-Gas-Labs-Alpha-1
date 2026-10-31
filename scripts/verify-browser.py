@@ -146,6 +146,12 @@ def basic(page,url,out,label):
     page.locator('#places-button').click()
     page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+    expedition=page.locator('#guild-expedition-board')
+    expect(expedition).to_be_visible()
+    expect(expedition).to_contain_text('Your Founder objective trail')
+    expect(expedition.locator('[data-expedition-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    expect(expedition.locator('[data-expedition-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
+    expect(expedition.locator('#guild-expedition-summary')).to_contain_text('2 recorded')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
     page.get_by_role('button',name='Challenge The real comic lives here · v1 →',exact=True).click()
@@ -237,6 +243,25 @@ def institutional_locations(browser,url,out):
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        expedition=page.locator('#guild-expedition-board')
+        expect(expedition).to_be_visible()
+        expect(expedition).to_contain_text('Your Founder objective trail')
+        first=expedition.locator('[data-expedition-objective-id="founder-first-place"]')
+        expect(first).to_contain_text('OPEN')
+        expect(first).to_contain_text('0/1')
+        before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        route=first.get_by_role('button',name='Go do this →',exact=True)
+        expect(route).to_be_visible()
+        bounds=route.bounding_box()
+        assert bounds and bounds['height']>=44, f'Expedition route is not a 44px touch target: {bounds}'
+        route.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Give an idea a place.'")
+        after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert after==before, 'Following an expedition route must not create an event, revision, or XP'
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
@@ -997,11 +1022,18 @@ def player_guild_membership(browser,url,out):
             page.goto(url,wait_until='networkidle')
             page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
-        baseline_xp=founder_context.request.get(url+'api/state').json()['world']['xp']
+        baseline_world=founder_context.request.get(url+'api/state').json()['world']
+        baseline_xp=baseline_world['xp']
 
         founder_page.locator('#places-button').click()
         founder_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        founder_board=founder_page.locator('#guild-expedition-board')
+        expect(founder_board).to_be_visible()
+        expect(founder_board).to_contain_text('Your Witness objective trail')
+        assert 'Publish a first place' not in founder_board.inner_text(), 'A Witness must not see Founder-only objectives'
+        after_board=founder_context.request.get(url+'api/state').json()['world']
+        assert (after_board['revision'],after_board['events'],after_board['xp'])==(baseline_world['revision'],baseline_world['events'],baseline_world['xp']), 'Opening the shared expedition board must not mutate canonical world state'
         founder_page.locator('#player-guild-name').fill('Field Researchers')
         founder_page.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
         founder_page.locator('#player-guild-create').click()
@@ -1012,6 +1044,10 @@ def player_guild_membership(browser,url,out):
         member_page.locator('#places-button').click()
         member_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         member_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        member_board=member_page.locator('#guild-expedition-board')
+        expect(member_board).to_be_visible()
+        expect(member_board).to_contain_text('Your Witness objective trail')
+        assert 'Publish a first place' not in member_board.inner_text(), 'The second Witness must not see Founder-only objectives'
         member_guild=member_page.locator('[data-player-guild-id]')
         expect(member_guild).to_contain_text('Field Researchers')
         member_page.locator('[data-player-guild-join]').click()

@@ -11,7 +11,7 @@ export const PLACES=[
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
  {id:'commons',name:'The Commons',x:600,y:500,type:'institution',purpose:'Share bounded player messages, report abuse, and inspect human moderation history.',glyph:'C',color:'#6b805d'},
- {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Found player groups, prepare bounded collaborator packets, preserve attributed responses, and review collaborator limits.',glyph:'G',color:'#356e62'},
+ {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Inspect actor-scoped Questkeeper objectives, found player groups, prepare bounded collaborator packets, preserve attributed responses, and review collaborator limits.',glyph:'G',color:'#356e62'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},

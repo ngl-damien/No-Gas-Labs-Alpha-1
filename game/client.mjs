@@ -198,7 +198,7 @@ function followQuestAction(action){
   if(action.type==='location'&&(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall'].includes(action.id)||GUILD_NPCS.some(npc=>npc.id===action.id))){closeSheet();view.goTo(action.id);return}
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
-function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
+function renderQuestTrail(milestones,list=$('quest-trail'),objectiveAttribute='data-objective-id'){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),[objectiveAttribute]:item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
 const proposalObject=evidence.type==='moonshot-proposed'?view.researchObjects.find(object=>object.eventId===evidence.id):null;
 if(proposalObject){
  entry.append(button('Inspect moonshot proposal →',()=>followResearchTarget(proposalObject,()=>openMoonshotField(proposalObject.moonshotId),'research-object'),{class:'text-button quest-evidence-open quest-evidence-world-object'}));
@@ -581,10 +581,33 @@ function renderPlayerGuildBoard(board, sourceWorld){
     }
   }
 }
+function attachGuildHallExpeditionBoard(content){
+  const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
+  const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
+  const scope=viewer.role==='founder'?'Founder':'Witness';
+  const intro=paragraph(`Your ${scope} objective trail is a read-only projection of retained, actor-matched world activity. Follow an actionable route to the real activity; the route itself records nothing. Player-guild membership does not assign or authorize institutional work. Recorded activity is not a truth or mastery verdict.`,'form-help');
+  const summary=node('p',{id:'guild-expedition-summary',class:'form-help','aria-live':'polite'});
+  const list=node('ol',{id:'guild-expedition-objectives',class:'quest-trail','aria-label':'Current Questkeeper objectives'});
+  board.append(heading,intro,summary,list);
+  content.append(board);
+  const render=()=>{
+    if(!board.isConnected||$('sheet').hidden)return;
+    const objectives=Array.isArray(currentQuestTrail)?currentQuestTrail:[];
+    const recorded=objectives.filter(item=>item.complete).length;
+    const actionable=objectives.filter(item=>!item.complete&&item.action).length;
+    const waiting=objectives.length-recorded-actionable;
+    summary.textContent=`${recorded} recorded · ${objectives.length} total · ${actionable} actionable · ${waiting} waiting on prerequisites or another actor.`;
+    renderQuestTrail(objectives,list,'data-expedition-objective-id');
+  };
+  const previous=activeNoteRenderer;
+  activeNoteRenderer=()=>{if(previous)previous();render();};
+  render();
+}
 function attachPlayerGuildBoard(content){
   const board=node('section',{id:'player-guild-board'});
   content.append(board);
-  activeNoteRenderer=()=>renderPlayerGuildBoard(board,world);
+  const previous=activeNoteRenderer;
+  activeNoteRenderer=()=>{if(previous)previous();renderPlayerGuildBoard(board,world);};
   renderPlayerGuildBoard(board,world);
 }
 
@@ -592,6 +615,7 @@ async function openGuildHall(focusRoleId=null){
   if(mode==='shared'){
     await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
+      attachGuildHallExpeditionBoard($('sheet-content'));
       appendContradictionClerk($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world);
       attachPlayerGuildBoard($('sheet-content'));
@@ -601,6 +625,7 @@ async function openGuildHall(focusRoleId=null){
   }
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
+  attachGuildHallExpeditionBoard(content);
   appendContradictionClerk(content);
   appendCollaboratorContracts(content,world);
   attachPlayerGuildBoard(content);
