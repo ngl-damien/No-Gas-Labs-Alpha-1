@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -965,4 +965,84 @@ test('Contradiction encounters repeat once per distinct report and reopen when n
   encounter = objective();
   assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [2, 2, true]);
   assert.equal(encounter.action, null);
+});
+
+
+test('Guild Hall expedition docket joins retained attempts, dissent and exact collaborator folios without mutation', () => {
+  const world = experimentQuestWorld();
+  appendCollaboratorArchive(world, {
+    id: 'docket-adversary-response',
+    role: 'adversary',
+    validationStatus: 'rejected',
+    at: '2026-10-28T17:04:00.000Z'
+  });
+  world.events.push({
+    id: 'docket-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'docket-challenge',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-28T17:05:00.000Z',
+    challengeType: 'missing-evidence',
+    challengeText: 'The attempt omits settings required for independent reproduction.'
+  });
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const responseObjects = projectCollaboratorResponseWorldObjects(world);
+  const docket = getExpeditionDocket(world, { collaboratorResponseObjects: responseObjects });
+
+  assert.equal(docket.proposalCount, 1);
+  assert.equal(docket.expeditions.length, 1);
+  const [expedition] = docket.expeditions;
+  assert.equal(expedition.moonshotId, 'moon-1');
+  assert.equal(expedition.title, 'Test a bounded claim');
+  assert.equal(expedition.attemptCount, 1);
+  assert.equal(expedition.attempts[0].reportedOutcome, 'failed');
+  assert.equal(expedition.attempts[0].evidenceStatus, 'linked');
+  assert.equal(expedition.challengeCount, 1);
+  assert.equal(expedition.challenges[0].targetReportStatus, 'linked');
+  assert.match(expedition.challenges[0].challengeText, /independent reproduction/);
+  assert.equal(expedition.responseCount, 1);
+  assert.equal(expedition.responses[0].roleId, 'adversary');
+  assert.equal(expedition.responses[0].validationStatus, 'rejected');
+  assert.deepEqual(world, before, 'opening the docket is a read-only projection');
+});
+
+test('Guild Hall expedition docket refuses duplicate proposal identity and discloses unlinked history', () => {
+  const world = experimentQuestWorld();
+  const proposal = world.events.find(event => event.type === 'moonshot-proposed');
+  world.events.push({
+    ...structuredClone(proposal),
+    id: 'duplicate-moonshot-proposal',
+    at: '2026-10-28T17:05:00.000Z'
+  });
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+  const docket = getExpeditionDocket(world);
+
+  assert.equal(docket.proposalCount, 0);
+  assert.deepEqual(docket.expeditions, []);
+  assert.ok(docket.unlinkedResearchRecordCount >= 3,
+    'both ambiguous proposals and their no-longer-unambiguous report remain disclosed');
+  assert.deepEqual(world, before);
+});
+
+test('Guild Hall expedition docket discards a stale Relay projection and replays current retained responses', () => {
+  const world = experimentQuestWorld();
+  const staleResponseProjection = projectCollaboratorResponseWorldObjects(world);
+  appendCollaboratorArchive(world, {
+    id: 'docket-tutor-response',
+    role: 'tutor',
+    validationStatus: 'valid-for-human-review',
+    at: '2026-10-28T17:04:00.000Z'
+  });
+  const docket = getExpeditionDocket(world, {
+    collaboratorResponseObjects: staleResponseProjection
+  });
+
+  assert.equal(docket.expeditions.length, 1);
+  assert.equal(docket.expeditions[0].responseCount, 1);
+  assert.equal(docket.expeditions[0].responses[0].responseId, 'response-docket-tutor-response');
+  assert.equal(docket.expeditions[0].responses[0].roleId, 'tutor');
 });
