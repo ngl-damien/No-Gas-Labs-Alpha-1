@@ -187,8 +187,10 @@ public final class MainActivityTest {
     private Instrumentation.ActivityMonitor monitorDocumentPicker(String action, Uri selectedFile) {
         Intent result = new Intent();
         result.setData(selectedFile);
+        IntentFilter filter = new IntentFilter(action);
+        filter.addCategory(Intent.CATEGORY_OPENABLE);
         return InstrumentationRegistry.getInstrumentation().addMonitor(
-                new IntentFilter(action),
+                filter,
                 new Instrumentation.ActivityResult(Activity.RESULT_OK, result),
                 true
         );
