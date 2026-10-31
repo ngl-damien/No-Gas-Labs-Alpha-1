@@ -92,3 +92,27 @@ All three hosted workflows completed successfully on PR #203 branch head `bd9142
 - Browser Acceptance [41165471445](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471445): **success, 12/12 journeys**, no journey errors. The journeys cover desktop, phone, institutional location actions, two-session shared world, three phone widths, two one-button layouts, standalone file/exact bytes, and shared restart. Receipt/screenshot artifact [13029152741](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41165471445/artifacts/13029152741), SHA-256 `ebe5560d3aa439c95e01de923f66f2cd4fd010a646023f35b5f88bd45f62893a`.
 
 These results verify the proposed branch/merge-ref tests, not production deployment or live-server integration. No local test run is claimed. PR #203 remains draft/unmerged, and the live Founder authority boundary remains unresolved.
+
+
+## Procedural correction — strict sequential bootstrap (2026-10-31 UTC)
+
+**Worker:** Repository Stutter-Step.
+
+### Compliance finding
+The preceding assistant response did not establish compliance with the mandatory bootstrap order. In this conversation, the first attempted read fetched root `AGENTS.md` and the canonical protocol in parallel, which violates the repository's strict sequential-bootstrap rule. Later repository inventory was also started before a clean sequential restart. This is recorded as a procedural failure; green CI in earlier runs does not cure it.
+
+### Corrective re-entry performed
+A clean baseline restart was performed after reading each required file in a separate, sequential repository operation:
+
+1. Root `AGENTS.md`, ref `main`, blob `c94f9cf4d922699908971a00a9a502cd179187b9`.
+2. Full `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, ref `main`, blob `a1bd788885865c887ae0fc64b1718c30ce040556`.
+
+Only after that sequential reread did the fresh baseline restart inspect the durable checkpoint, Worker B's latest result, and active PRs. The current checkpoint PR #210 is open/draft at head `ff194e3ca7392e225bc61cd68df26d465e498110`. Worker B's PR #227 is open/draft at head `603923460473a1fa2b28c6a6ba6509c824693fab`; its body records exact-head Verify, Genesis, and Browser Acceptance evidence. PR #203 remains open/draft at `bd914218d9658f6b3cb82270fd2e44a67dd92ebd`, not integrated into the live server. PR #228 already proposes the strict sequential bootstrap rule at `92cb197fe876bbc1cc0647bb1912faab6a5b7dc9`; it remains open/draft, so this run did not duplicate its source changes.
+
+Nested instruction lookup for the checkpoint paths returned 404 for `docs/AGENTS.md` and `docs/operations/AGENTS.md` on the checkpoint branch. No source code was edited and no tests were run in this procedural-correction pass. This run record is the durable audit trail, not evidence that the earlier violation did not happen.
+
+### Future-run rule
+Every future No_Gas_Labs repository session must perform the root `AGENTS.md` read alone as the first repository operation, then read the complete canonical protocol alone as the second repository operation. Only then may it inspect repository state. If either read fails, stop without further repository inspection or changes. Procedural compliance must be reported separately from test/CI results. The existing PR #228 is the repository-level proposed guard; do not create a competing implementation.
+
+### Next action
+At the next run, repeat the two reads sequentially from the current default branch, then rehydrate from this checkpoint and inspect the current Worker B result and PR #228 checks. If PR #228 has not landed, continue treating its rule as mandatory via root instructions and this handoff; do not merge it without Damien's authorization.
