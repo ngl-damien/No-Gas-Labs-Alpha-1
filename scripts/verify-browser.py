@@ -882,6 +882,7 @@ def town_square_social(browser,url,out):
         founder_page.locator('#founder-key').fill(KEY)
         founder_page.locator('#verify-founder').click()
         founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        baseline_xp=owner.request.get(url+'api/state').json()['world']['xp']
 
         witness_page.locator('#places-button').click()
         witness_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
@@ -920,9 +921,9 @@ def town_square_social(browser,url,out):
         assert all(event.get('type')!='message-reported' or event.get('actor',{}).get('id')==public_state['viewer']['id'] for event in public_state['world']['events'])
         founder_state=owner.request.get(url+'api/state').json()
         assert any(event.get('type')=='message-posted' and event.get('text')=='Founder message for the moderation fixture.' for event in founder_state['world']['events'])
-        assert founder_state['world']['xp']==public_state['world']['xp']==0
+        assert founder_state['world']['xp']==public_state['world']['xp']==baseline_xp, 'Commons messages must not award world XP'
         assert not errors,errors
-        return {'journey':'town-square-social-moderation','passed':True,'sharedMessages':2,'privateReports':1,'moderation':'hidden-with-retained-founder-history','worldXp':0,'errors':errors}
+        return {'journey':'town-square-social-moderation','passed':True,'sharedMessages':2,'privateReports':1,'moderation':'hidden-with-retained-founder-history','worldXp':baseline_xp,'errors':errors}
     finally:
         owner.close()
         visitor.close()
