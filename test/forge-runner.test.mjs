@@ -350,6 +350,38 @@ async function repositoryTestFiles(sourceDir, files) {
   }
 }
 
+test('Repository Forge rejects accessor-backed request fields without invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  const { verifyRepository } = await api();
+  for (const field of ['sourceDir', 'outDir']) {
+    let getterInvoked = false;
+    const outDir = options.outDir + '-request-' + field;
+    const request = { sourceDir: options.sourceDir, outDir, limits: {} };
+    Object.defineProperty(request, field, {
+      enumerable: true,
+      get() { getterInvoked = true; return field === 'sourceDir' ? options.sourceDir : outDir; }
+    });
+    await assert.rejects(verifyRepository(request), /data properties/i);
+    assert.equal(getterInvoked, false, field + ' getter must not execute');
+    await assert.rejects(access(outDir), { code: 'ENOENT' });
+  }
+});
+
+test('Repository Forge rejects accessor-backed limits without invoking getters or creating output', async t => {
+  const options = await fixture(t);
+  const { verifyRepository } = await api();
+  let getterInvoked = false;
+  const limits = {};
+  Object.defineProperty(limits, 'timeoutMs', {
+    enumerable: true,
+    get() { getterInvoked = true; return 1000; }
+  });
+  const outDir = options.outDir + '-limits-accessor';
+  await assert.rejects(verifyRepository({ ...options, outDir, limits }), /data properties/i);
+  assert.equal(getterInvoked, false);
+  await assert.rejects(access(outDir), { code: 'ENOENT' });
+});
+
 test('Repository Forge executes explicit copied tests and retains actual TAP counts without recursive Forge discovery', async t => {
   const options = await fixture(t);
   await repositoryTestFiles(options.sourceDir, {
