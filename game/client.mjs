@@ -617,6 +617,16 @@ function renderGuildExpeditionDocket(projection,container){
         class:'list-button','data-expedition-docket-focus':'proposal:'+expedition.moonshotId
       })
     );
+    if(mode==='shared'){
+      card.append(
+        paragraph('The Decision Chamber is the human gate. Opening it does not submit or approve this Moonshot.','form-help'),
+        button('Open Decision Chamber →',()=>openInstitution('decision_chamber'),{
+          class:'list-button','data-expedition-docket-focus':'decision:'+expedition.moonshotId
+        })
+      );
+    }else{
+      card.append(paragraph('Decision Chamber is not connected in this private world. This dossier cannot submit or approve a decision.','form-help'));
+    }
 
     const attempts=node('section',{class:'expedition-docket-section','aria-label':'Retained attempt reports'});
     attempts.append(node('h5',{text:'ATTEMPT REPORTS · '+expedition.attemptCount+' RETAINED'}));
