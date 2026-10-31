@@ -201,3 +201,17 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('CI preflight scopes the Founder signer, verifier and authorization regressions', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const script = packageJson.scripts['agent:preflight:ci'];
+  for (const path of [
+    'authority/index.html',
+    'src/authority/decision.js',
+    'test/decision-chamber.test.js',
+    'test/decision-context-binding.test.js',
+    'test/decision-world-integration.test.js'
+  ]) {
+    assert.ok(script.includes('--path ' + path), 'missing scoped preflight target: ' + path);
+  }
+});
