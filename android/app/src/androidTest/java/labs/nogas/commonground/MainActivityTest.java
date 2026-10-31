@@ -28,11 +28,18 @@ public final class MainActivityTest {
         MainActivity activity = activity();
         awaitJavaScript(activity, "document.readyState === 'complete' && !!document.getElementById('start-shared')");
 
+        assertEquals("\"https://appassets.androidplatform.net\"",
+                evaluate(activity, "location.origin"));
+        assertEquals("true", evaluate(activity, "window.isSecureContext"));
+
         evaluate(activity, "document.getElementById('start-shared').click(); 'requested'");
-        awaitJavaScript(activity,
-                "document.getElementById('doorway').hidden === false && document.getElementById('play-ui').hidden === true");
-        assertTrue("shared API must be rejected by the offline shell",
-                activity.getUnconfiguredApiRequestsForTests() > 0);
+        awaitCounter(activity, () -> activity.getUnconfiguredApiRequestsForTests() > 0);
+        assertEquals("shared failure must leave the doorway available",
+                "false",
+                evaluate(activity, "document.getElementById('doorway').hidden"));
+        assertEquals("shared failure must not enter play or invent a session",
+                "true",
+                evaluate(activity, "document.getElementById('play-ui').hidden"));
         assertEquals("no external request should escape the shell",
                 0,
                 activity.getBlockedExternalRequestsForTests());
@@ -44,6 +51,15 @@ public final class MainActivityTest {
         assertEquals("the actual game canvas is present",
                 "true",
                 evaluate(activity, "!!document.getElementById('world')"));
+
+        evaluate(activity, "localStorage.setItem('ngl.android.shell-smoke', 'persisted'); 'saved'");
+        activityRule.getScenario().recreate();
+        MainActivity recreated = activity();
+        awaitJavaScript(recreated,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+        assertEquals("the stable appassets origin retains DOM storage across activity recreation",
+                "\"persisted\"",
+                evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
     }
 
     private MainActivity activity() {
@@ -61,6 +77,15 @@ public final class MainActivityTest {
         throw new AssertionError("Timed out waiting for WebView condition: " + condition);
     }
 
+    private void awaitCounter(MainActivity activity, CounterCondition condition) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            if (condition.isMet()) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Timed out waiting for Android request boundary");
+    }
+
     private String evaluate(MainActivity activity, String script) throws Exception {
         WebView webView = activity.getGameWebViewForTests();
         assertTrue("activity WebView must exist", webView != null);
@@ -75,5 +100,9 @@ public final class MainActivityTest {
         );
         assertTrue("JavaScript evaluation did not complete", latch.await(10, TimeUnit.SECONDS));
         return result.get();
+    }
+
+    private interface CounterCondition {
+        boolean isMet();
     }
 }
