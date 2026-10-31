@@ -10,7 +10,7 @@ const bootstrapCheckpointPath = 'docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_
 
 test('root instructions and hosted preflight use the same current durable checkpoint', async () => {
   const instructions = await readFile(resolve(root, 'AGENTS.md'), 'utf8');
-  const match = /--checkpoint\\s+([^\\s]+)/.exec(instructions);
+  const match = /--checkpoint\s+([^\s]+)/.exec(instructions);
   assert.ok(match, 'root AGENTS.md must provide a portable preflight checkpoint path');
   assert.equal(match[1], checkpointPath);
 
@@ -27,7 +27,7 @@ test('root instructions and hosted preflight use the same current durable checkp
   const ciPreflight = manifest.scripts?.['agent:preflight:ci'];
   assert.equal(typeof ciPreflight, 'string', 'hosted verification must invoke the portable preflight');
 
-  const args = ciPreflight.trim().split(/\\s+/);
+  const args = ciPreflight.trim().split(/\s+/);
   const checkpointIndex = args.indexOf('--checkpoint');
   assert.notEqual(checkpointIndex, -1, 'hosted preflight must name its durable checkpoint');
   assert.equal(args[checkpointIndex + 1], checkpointPath, 'hosted preflight must hash the canonical checkpoint');
