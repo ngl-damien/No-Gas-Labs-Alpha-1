@@ -43,13 +43,20 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
         return null;
       }
-      const content = await readFile(actualPath, 'utf8');
+      const bytes = await readFile(actualPath);
+      let content;
+      try {
+        content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        failures.push({ path: relativePath, reason: 'file is not valid UTF-8' });
+        return null;
+      }
       if (!content.trim()) {
         failures.push({ path: relativePath, reason: 'file is empty' });
         return null;
       }
       if (!seen.has(relativePath)) {
-        files.push({ path: relativePath, kind, sha256: createHash('sha256').update(content, 'utf8').digest('hex'), bytes: Buffer.byteLength(content, 'utf8') });
+        files.push({ path: relativePath, kind, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength });
         seen.add(relativePath);
       }
       return content;
