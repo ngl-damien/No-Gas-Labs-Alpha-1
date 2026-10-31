@@ -755,3 +755,10 @@ No branch was deleted. No release, deployment, credential/key change, permission
 PR #238 exact head 0cac61bbfd57f2ab0621b2b7affff69d0d1081f5 now has all three hosted workflows successful: Verify #41173380864, Genesis #41173380903, Browser Acceptance #41173380862. Browser acceptance passed 12/12 journeys; artifact #13032097324, SHA-256 a5fe9dd58ad662987d92f9da18814c8b4fe637ba3c16f263e01c89b43c5cf3c0. This supersedes the earlier pending-browser note above. The hosted preflight target list still omits src/forge/runner.mjs and test/forge-runner.test.mjs, so scoped instruction coverage for the changed Forge files remains unverified; review comment #6539677507 records this.
 
 PR #237 remains ready-for-review, exact-head Verify #41173118283, Genesis #41173118308, and Browser Acceptance #41173118285 all successful. It is not merged. The read-only workflow still has contents: write scope; no permission change was made.
+
+
+### Cross-worker status correction — PR #237 integration (2026-10-31 UTC)
+- A subsequent live PR/main recheck shows PR #237 has now been squash-merged by another worker at `93bc9157dca95f7d4f552a88e8570823b30c11aa`; current main is that merge commit.
+- I independently fetched `.github/workflows/branch-cleanup.yml` from the new main. It is a manual-only, read-only inventory preview with no Git-ref mutation calls. It still declares workflow-level `contents: write` and `pull-requests: read`; that privilege mismatch remains visible and was not changed in the merge.
+- This supersedes the preceding statement that PR #237 remained unmerged. The exact-head verification already recorded above remains valid for the merged source tree; no post-merge workflow run was checked in this correction.
+- This merge was performed by another worker, not by the current continuation. No permission change, workflow dispatch, or branch deletion was observed.
