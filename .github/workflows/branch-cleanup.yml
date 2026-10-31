@@ -51,6 +51,6 @@ jobs:
               .addRaw('Read-only inspection. No branches were deleted. Candidates: ' + candidates.length +
                 ', eligible at inspection: ' + eligible.length + ', skipped: ' + skipped.length)
               .addHeading('Eligible at inspection')
-              .addCodeBlock(eligible.join('\\n') || '(none)')
+              .addCodeBlock(eligible.join('\n') || '(none)')
               .addHeading('Skipped')
-              .addCodeBlock(skipped.join('\\n') || '(none)').write();
+              .addCodeBlock(skipped.join('\n') || '(none)').write();
