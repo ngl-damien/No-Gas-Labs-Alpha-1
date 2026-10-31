@@ -204,6 +204,8 @@ def institutional_locations(browser,url,out):
     context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
     page=context.new_page()
     page.on('pageerror',lambda error:errors.append(str(error)))
+    page.on('console',lambda message:errors.append('console '+message.type+': '+message.text) if message.type=='error' else None)
+    page.on('requestfailed',lambda request:errors.append('request failed '+request.url+' '+str(request.failure)) if not request.url.endswith('/api/state') else None)
     try:
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
@@ -543,6 +545,27 @@ def shared(browser,url,data,out):
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
         close_sheet(a)
+        # A lost shared read must preserve the last received Chronicle while
+        # showing unavailable registers as unknown, never as empty or approved.
+        def fail_institution_reads(route):
+            path=route.request.url.split('?',1)[0]
+            if route.request.method=='GET' and path.endswith(('/api/projects','/api/decisions','/api/state','/api/institution')):
+                route.abort('failed')
+            else:
+                route.continue_()
+        b.route('**/api/**',fail_institution_reads)
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The institution at work.')
+        expect(b.locator('#sheet')).to_contain_text('last snapshot received by this session')
+        expect(b.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
+        expect(b.locator('#sheet')).to_contain_text('No empty register is inferred')
+        expect(b.locator('#sheet')).to_contain_text('Decision ledger unavailable')
+        expect(b.locator('#sheet')).to_contain_text('Canonical work receipts could not be loaded')
+        expect(b.locator('#sheet')).not_to_contain_text('No retained record is installed')
+        expect(b.locator('#sheet')).not_to_contain_text('No operational review policy is activated')
+        b.unroute('**/api/**',fail_institution_reads)
+        close_sheet(b)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
@@ -594,6 +617,46 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
 
+def offline_pwa(browser,url,out):
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,service_workers='allow')
+    page=context.new_page();errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
+        active=page.evaluate("async()=>{const registration=await navigator.serviceWorker.ready;return registration.active?.state==='activated';}")
+        assert active, 'Offline shell service worker did not activate'
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)")
+        context.set_offline(True)
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        page.locator('#start-private').click()
+        try:
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        except Exception as error:
+            page.screenshot(path=str(out/'offline-pwa-start-failure.png'))
+            diagnostic=page.evaluate("""async()=>{const registration=await navigator.serviceWorker.getRegistration();const names=await caches.keys();const cached=await Promise.all(names.map(async name=>({name,paths:(await (await caches.open(name)).keys()).map(request=>new URL(request.url).pathname)})));return {mode:document.querySelector('#mode-label')?.textContent,playHidden:document.querySelector('#play-ui')?.hidden,doorwayHidden:document.querySelector('#doorway')?.hidden,startHandler:typeof document.querySelector('#start-private')?.onclick,toast:document.querySelector('#toast')?.textContent,toastHidden:document.querySelector('#toast')?.hidden,controller:Boolean(navigator.serviceWorker.controller),workerState:registration?.active?.state,cacheNames:names,cached,localSave:localStorage.getItem('ngl.common-ground.v2')?.length||0};}""")
+            (out/'offline-pwa-start-failure.json').write_text(json.dumps({'error':str(error),'diagnostic':diagnostic,'browserErrors':errors},indent=2))
+            raise AssertionError('Offline private-world start failed: '+json.dumps(diagnostic)) from error
+        draft(page,'loom','Offline field instrument')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
+        assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        # A reload returns to the explicit doorway; reopen the existing device-local world.
+        expect(page.locator('#doorway')).to_be_visible()
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        assert not errors,errors
+        return {'journey':'offline-pwa-private-recovery','passed':True,'private_publications':1,'shared_api':'network-only'}
+    finally:
+        context.close()
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -607,6 +670,7 @@ def main():
             with sync_playwright() as playwright:
                 browser=playwright.chromium.launch(executable_path=os.environ.get('NGL_CHROMIUM_EXECUTABLE','/usr/bin/chromium'),args=['--no-sandbox'])
                 try:
+                    record(offline_pwa(browser,url,out))
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
                         page=context.new_page()
