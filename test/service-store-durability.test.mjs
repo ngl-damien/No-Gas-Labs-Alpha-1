@@ -569,3 +569,62 @@ test('service-store rejects persisted-envelope owner mismatches at path and desc
     assert.deepEqual(await readFile(join(dataDir, 'service.json')), originalBytes, 'rejected reopen must not rewrite persisted state');
   }
 });
+
+test('service-store enforces its writer lease across independent processes', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-store-cross-process-lock-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const store = await createServiceStore({ dataDir, initial: { revision: 0 }, validate });
+  const lockPath = join(dataDir, '.service.lock');
+  const lockBefore = await lstat(lockPath);
+  const moduleUrl = new URL('../game/service-store.mjs', import.meta.url).href;
+  const probe = `
+    const { createServiceStore } = await import(${JSON.stringify(moduleUrl)});
+    try {
+      const childStore = await createServiceStore({
+        dataDir: process.env.NGL_TEST_DATA_DIR,
+        initial: { revision: 0 },
+        validate: async value => value
+      });
+      await childStore.close();
+      console.log(JSON.stringify({ opened: true }));
+    } catch (error) {
+      console.log(JSON.stringify({ opened: false, code: error.code }));
+      if (error.code !== process.env.NGL_EXPECTED_ERROR_CODE) process.exitCode = 3;
+    }
+  `;
+  const contender = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(contender.error, undefined, `independent contender must complete: ${contender.error?.message}`);
+  assert.equal(contender.status, 0, `independent contender failed: ${contender.stderr}`);
+  assert.deepEqual(JSON.parse(contender.stdout.trim()), { opened: false, code: 'SERVICE_LOCKED' });
+  const lockAfter = await lstat(lockPath);
+  assert.equal(lockAfter.dev, lockBefore.dev);
+  assert.equal(lockAfter.ino, lockBefore.ino, 'a rejected contender must not remove or replace the live writer lock');
+
+  await store.close();
+  const successor = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NGL_TEST_DATA_DIR: dataDir,
+      NGL_EXPECTED_ERROR_CODE: 'SERVICE_LOCKED'
+    },
+    encoding: 'utf8',
+    timeout: 10_000
+  });
+  assert.equal(successor.error, undefined, `successor writer must complete: ${successor.error?.message}`);
+  assert.equal(successor.status, 0, `successor writer failed: ${successor.stderr}`);
+  assert.deepEqual(JSON.parse(successor.stdout.trim()), { opened: true });
+  const persisted = JSON.parse(await readFile(join(dataDir, 'service.json'), 'utf8'));
+  assert.deepEqual(persisted.payload, { revision: 0 }, 'the successor must reopen the same validated store');
+  await assert.rejects(lstat(lockPath), { code: 'ENOENT' }, 'the successor must release its own writer lock');
+});
+
