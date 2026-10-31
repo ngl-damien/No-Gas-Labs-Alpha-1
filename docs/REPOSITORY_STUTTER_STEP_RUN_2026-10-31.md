@@ -375,3 +375,40 @@ This run delivered an additional two-file source/test correction on current-main
 2. Close PR #208 unmerged as superseded after #237 lands; preserve its historical branch and CI evidence.
 3. Continue to treat workflow-level contents: write as an unresolved least-privilege risk; do not alter permissions or dispatch deletion without Damien's explicit authority.
 4. Recheck Worker B #227 for a new exact head and current browser evidence; do not duplicate its game work.
+
+
+## Continuation — current-main branch-cleanup proposal and CI target coverage (2026-10-31 UTC)
+
+### Rehydration and mandatory instructions
+- Read current main root AGENTS.md first, alone; then read the complete docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md alone.
+- Re-read the latest durable checkpoint branch and MMORPG completion contract/ledger. docs/operations/LATEST_CHECKPOINT.md does not exist on main (404); the dated repository stutter-step checkpoint and docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md remain the available durable checkpoints.
+- Nested .github/AGENTS.md and test/AGENTS.md were checked on main; both are absent (404).
+- Local portable preflight could not be invoked from the connector-only environment (no local checkout; prior git clone failed DNS). This limitation is not represented as a pass. Exact-head hosted Verify runs preflight in CI.
+
+### PR #237 follow-up — ensure preflight hashes the actual change targets
+- Rehydrated PR #237 and reviewed its exact workflow/test. The proposed manual-only preview/delete workflow was 5 ahead / 0 behind current main, with only .github/workflows/branch-cleanup.yml and test/branch-cleanup-safety.test.mjs changed.
+- Inspected hosted Verify #41171992611 logs. The preflight returned status ready, but its configured target list did not include the workflow or regression test changed by PR #237. A generic ready receipt did not prove those changed bytes were among its targets.
+- Corrected this gap by updating package.json agent:preflight:ci target list to include both .github/workflows/branch-cleanup.yml and test/branch-cleanup-safety.test.mjs. This makes the exact change paths part of the hosted preflight receipt, rather than relying only on the ordinary test suite.
+- New PR #237 head: 9aa702360434e1c1e0d2bf6bb485ebfb4c60b834, base bb1aa833130b7e5399d7b84d1041b1c26c49cc16; compare is 6 ahead / 0 behind and exactly three paths: workflow, package.json, regression test. PR remains draft/open/unmerged.
+- New exact-head CI: Genesis #41172188727 success; Verify #41172188716 in progress; Browser Acceptance #41172188731 queued/in progress at latest poll. The prior PR #237 runs #41171992611 / #41171992670 / #41171992647 belong to old head 50f5459...; do not count them as verification for 9aa7023...
+- Verify #41172188716's preflight output was not yet available in logs at last poll; it must be inspected after completion to confirm the new two target paths appear and status is ready.
+
+### Worker B rehydration
+- PR #227 head advanced during this run from 46f0aa6... to a812fa7edd8b843a3f14957238292c893b2e0fbe; it remains a draft child of PR #225 (42a5832a...), which is itself stacked on PR #222.
+- Compare of that observed head to main bb1aa833... is 147 ahead / 9 behind, diverged, 41 changed paths. It is not safe to merge as an isolated PR.
+- Exact-head Verify #41172092413 success; Genesis #41172092349 success; Browser Acceptance #41172092369 still in progress at last poll. This is a fresh worker result, so the earlier failing Browser Acceptance on bb799... is historical, not the current-head result.
+- No Worker A game source edits. Continue to avoid the active game lane while Worker B is advancing it.
+
+### Safety and authority boundary
+- PR #237 still preserves workflow-level contents: write / pull-requests: read; the preview job therefore receives a write-capable token even though its script makes no write API calls. This is an explicitly disclosed residual least-privilege risk. No permission-scope mutation was made.
+- No workflow dispatch, branch deletion, permission change, merge, release, deployment, spending, credential/key action, or external publication occurred in this continuation.
+
+### Next ranked actions
+1. Inspect completion of Verify #41172188716 and Browser Acceptance #41172188731 on exact head 9aa7023...; inspect preflight target list and browser journey count/artifact.
+2. If all required exact-head workflows pass, re-read PR #237 diff and current main, verify mergeability, then mark ready and use standing routine-maintenance merge authorization. Do not dispatch cleanup or delete refs.
+3. Close PR #208 unmerged as superseded only after #237 is integrated; preserve its branch and history.
+4. Recheck Worker B PR #227 exact head and all three checks; keep its 147/9 divergence and stacked parent dependencies visible.
+5. Continue institution-wide audit from the new main and checkpoint state.
+
+### Execution boundary
+This continuation added one targeted preflight-coverage correction to PR #237 and preserved the evidence above. No local test execution is claimed. The current exact-head hosted workflows remain in progress; do not call the cleanup fix integrated or fully verified yet.
