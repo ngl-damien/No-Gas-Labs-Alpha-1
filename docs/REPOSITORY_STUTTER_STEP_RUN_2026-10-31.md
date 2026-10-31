@@ -155,3 +155,22 @@ PR [#230](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/230), branch `f
 
 ### Execution boundary
 This run performed one substantive source/test change and opened PR #230. It did not exhaust the host's compute budget, did not run continuously after tool completion, and does not claim that the requested Ralph loop has run indefinitely. Resume from current repository state and repeat while useful execution budget and safe work remain.
+
+
+### Exact-head verification update — PR #230
+
+For PR #230 head `9a090b4c9bb6a6396357a5d7a4d91a2deebc3c44`:
+- Verify run [41169922816](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41169922816): **success**. The hosted log explicitly shows `npm run agent:preflight:ci` returned `status: ready`, with the declared governance targets and checkpoint, `failures: []`; the Node test command, Python inspector tests, game package build, and bounded institutional exercise all exited 0. The workflow did not emit an aggregate Node test count.
+- Genesis Evidence Invariant run [41169922831](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41169922831): **success**.
+- Browser Acceptance run [41169922854](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41169922854): **in progress** at the latest poll; the playable-world job was installing browser dependencies. Do not call all required workflows green until this run completes successfully.
+- PR #230 remains draft/open/unmerged. Current GitHub PR metadata reports mergeable=true, mergeable_state=unstable; this is not approval or merge authorization.
+
+### Cross-worker integration drift observed
+
+A fresh compare against current main `fe1e471...` shows:
+- PR #203: diverged, 37 commits ahead / 3 behind; changes remain confined to `authority/index.html`, `src/authority/decision.js`, and its decision tests. It is still helper-level and not wired into the live server.
+- Worker B PR #227: diverged, 97 commits ahead / 3 behind, with a broad stacked game/runtime diff. This confirms it must be revalidated/reconciled against the new main head by Worker B before integration; do not flatten or transplant its stack in Worker A's lane.
+- These compare counts are branch ancestry metadata, not capability or test evidence.
+
+### Latest action
+- Updated the existing Worker A checkpoint branch with this run's factual report (checkpoint branch commit `e4b09d2a03aeb6996394e9c7703bb22f5d9f56ba`). This is a branch commit on the existing checkpoint PR lane, not a mainline merge.
