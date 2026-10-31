@@ -1299,3 +1299,54 @@ No merge, release, deployment, workflow dispatch, branch deletion, credential/se
 6. Revisit TaskAgile's stale root AGENTS claims and zero-run Actions state; separately obtain a real Command Center upstream smoke test.
 
 No merge, release, deployment, workflow dispatch, branch deletion, credential/secret/key/permission change, spending, or external publication occurred.
+
+
+## Worker A stutter-step run — 2026-10-31 UTC (Founder envelope bridge + Command Center health reliability)
+
+### Rehydration and current estate
+- Read Alpha 1 root `AGENTS.md` (SHA `c94f9cf4d922699908971a00a9a502cd179187b9`) and the complete shared protocol (SHA `a1bd788885865c887ae0fc64b1718c30ce040556`) before Alpha 1 repository inspection.
+- Re-read this checkpoint through the prior Worker A entry dated 2026-10-31 00:20 UTC.
+- Alpha 1 `main` remains `7d8c77367f6acb2d85e35cd9a195797555d1ac7d`; current inventory: **476 branch refs across six pages, 57 open PRs, and two open issues (#17, #22)**. Branch-protection state was not rechecked in this run.
+- PR #16 is closed unmerged; PR #18 merged 2026-10-22 at `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. Issue #17 confirms the original self-signing defect was superseded by that transplant, but separately records remaining key-custody, concurrency, stale-lock, and integration acceptance work.
+- Latest observed Worker B result: PR #227 head `786775f4ec2d29a295fca4af2f36ed6a8343661b`; exact-head Verify `41150913346`, Genesis `41150913476`, and Browser Acceptance `41150913396` all passed. Browser logs show **13/13 journeys passed**, including desktop, phone, shared-session, mobile toolbar, standalone-file, exact-byte, and restart journeys. No duplicate gameplay edits were made.
+- PR #229 head `ec826bc45bcdc8679c2e921b4e105655334cbd1a` also had successful exact-head Verify, Genesis, and Browser Acceptance runs. It remains a proposal, not a merged capability.
+
+### Cycle A — Command Center capability completeness
+- Re-inspected the Command Center API route on PR #3's branch: it currently emits exactly two intended upstream IDs, `node-gate` and `evidenceos`.
+- Found that the UI parser accepted any non-empty array of valid rows. One healthy row, or two duplicate rows, could therefore make the home page summarize an incomplete upstream set as OPERATIONAL.
+- Updated PR #3 branch `fix/command-center-dev-api-proxy-20261030-r2` to require the exact two unique expected IDs and non-empty names/URLs; added regressions for missing, duplicate, unknown, sparse, and reordered records.
+- Commits: `79bcd27602ddf7ac0cc4bb12b026fac3b8566d0a` (parser), `e5bed43162300e4d9e61f970f912d27d6b0b4892` (tests). The intermediate head's exact hosted checks passed: Node 20 and 22 each reported **23/23 tests**, type-check, and build; Security Core, Repo Classification, and agent-governance passed.
+
+### Cycle B — consume the browser Founder envelope
+- Re-inspected PR #203 and the browser signer output. The signer emits `ngl.agp.founder-decision-envelope.v2`, while the server helper previously required callers to manually split `payload` and `signed` and separately supply a verifier result.
+- Added `authorizationEventFromEnvelope()` to PR #203. It validates the exact envelope schema/shape, snapshots payload and receipt data, verifies against host-supplied public-key fingerprint and audience, then builds the event using the module-private verification seal. It does not accept a caller-supplied `{valid:true}` object.
+- Added tests for a valid browser-shaped envelope, successful persisted-event verification, payload tampering, extra fields, accessor rejection without getter execution, and rejection of a forged `verification` option.
+- Commits: `77f24be8c638b02626995e4db25fee00eceacf8f` (implementation), `47029ebe5993736111ba23a4fb10cf61cf698f73` (tests). PR #203 current head is `47029ebe5993736111ba23a4fb10cf61cf698f73`.
+- Exact-head Verify `41152198910` and Genesis Evidence Invariant `41152198885` passed; Verify logs show Node `--test`, package build, and bounded institutional exercise all exited 0. Exact-head Browser Acceptance `41152198969` passed with **12/12 reported journeys and no journey errors**. This browser suite exercises the game, not the Founder signing page; the envelope itself is covered by the Node unit tests.
+- **Important boundary:** current Alpha 1 `main` still contains the older v1 `authorizationEvent({verification})` implementation that trusts a caller-provided `verification.valid`. PR #203 is still draft/unmerged. Its P-256 helper remains separate from PR #18's Ed25519 INSTALL trust anchor, does not prove Damien's identity or private-key custody, and is not wired into live `game/server.mjs`. The active server/session stack (#222/#225/#227 and related work) must be reconciled before server-path integration; no duplicate server edit was made.
+
+### Cycle C — prevent overlapping Command Center health polls
+- Re-inspected PR #3 after Cycle A; it remained the only open Command Center PR and no other open PR owned the affected health/UI paths.
+- Found both Home and Dashboard scheduled a new `/api/capabilities` request every 30 seconds even if the previous request was still pending. Slow requests could overlap and race UI state.
+- Added `createSingleFlightTask()`, wired it into both screens, and added lifecycle tests for overlap suppression, retry after success, and retry after rejection.
+- Commits: `b3467da21930acd1bb27d615c50a48a1b0b209a4` (helper), `3ba57eb06db78396d026d9a236c818ef192f9625` (tests), `822500ead1e4a4d27c111d96b5ce39d82bbeed8b` (Home), `fe893f3667c89dee6ff923655f131b23e379f3fc` (Dashboard), `84bdec67168764904ec33b96b53c14cdc08b9ca2` (synchronous task start correction).
+- Preserved failed intermediate attempt: the first helper used `Promise.resolve().then(task)`, which deferred invocation and left the test's resolver unset when the test tried to release it. This was caught during review; the final helper invokes the task synchronously inside try/catch and always releases the in-flight guard in `finally`. The intermediate head `fe893f3...` is superseded and is not treated as verified.
+- Final Command Center PR #3 head: `84bdec67168764904ec33b96b53c14cdc08b9ca2`. Exact-head Core CI `41152371328` and CI `41152371255` passed; Node 20 and Node 22 each reported **25/25 tests across four files**, type-check, and production build. Security Core `41152371333`, Repo Classification `41152371362`, and agent-governance `41152371302` passed. PR #3 remains draft/open. No local test run, live Node-Gate/EvidenceOS smoke test, or deployment is claimed.
+
+### Linked-repository reinspection and blockers
+- EvidenceOS PR #1 head `eea29797c80bab41428476ca7ba9f519b43b742e`: hosted verification `41125011030` passed, **12 tests**. PR #2 head `c19bdf9c230e1d0bd5f54ad5dea050bd33705292`: hosted verification `41084314765` passed, **23 tests**. Both remain open/draft. PR #2's base is the earlier PR #1 head `7fbb4c83412e83882ea43df92532a346d524e00b`, while PR #1 now points at `eea2979...`; both PRs touch `src/server.js`. Reconcile/rebase and rerun exact-head CI before considering either for merge. No EvidenceOS code was changed.
+- ngl-mesh PR #1 head `81536604a8473b8d698aa4c5d752c7d5426dab7d` passed operator-key trust and agent-governance checks `41041610180`, `41041610303`; PR #3 head `7847c0fd7eb334d4bed726f12703567bdff9de42` passed Relay bridge input-contract and agent-governance checks `41110544604`, `41110544499`. README/relay contract still distinguishes recovered Java bridge evidence from a full Android rebuild/device runtime; no APK rebuild, device install, or fresh RAE report integration was run here. No ngl-mesh code was changed.
+- Command Center PR #3 is the only open PR in that repository and remains draft. Its new tests validate parsing/polling logic but do not replace the missing live upstream smoke test.
+
+### Procedural compliance, verification limits, and authority
+- Alpha 1 root instructions and canonical protocol were read before Alpha 1 inspection. For Command Center and ngl-mesh, repository metadata/PR discovery occurred before their root `AGENTS.md` files were read; their source-level inspection and edits (Command Center only) occurred after reading the applicable instructions and shared protocol. This is a procedural-order caveat, not a test result. EvidenceOS root `AGENTS.md` returned 404; no EvidenceOS edits were made.
+- All reported tests/checks above are hosted GitHub Actions results on the exact stated heads. No local checkout/test or live cross-service smoke test was run in this run.
+- No merge, release, deployment, workflow dispatch, branch deletion, secret/key/credential/permission change, spending, or external announcement/publication occurred. Changes remain unmerged proposals on existing draft PR branches.
+
+### Next ranked actions
+1. Reconcile PR #203's sealed P-256 decision verifier with PR #18's Ed25519 INSTALL trust anchor and the active server/session PR stack. Obtain an explicit Founder decision on the trust/key-custody model before any live-server wiring; do not generate or enroll a key on Damien's behalf.
+2. Rebase/reconcile EvidenceOS PR #2 onto current PR #1, review the overlapping `src/server.js` changes, then rerun exact-head tests.
+3. Run a real local Command Center smoke test with Node-Gate and EvidenceOS available; verify API proxy, both upstream probes, and graceful process shutdown. No deployment.
+4. Continue reviewing Worker B's #227/#229 stack for integration blockers without duplicating owned gameplay/server files.
+5. Reproduce the ngl-mesh Relay/RAE bridge from the current pinned inputs, then pursue Android/device acceptance only when the full source/toolchain and device evidence are available.
+6. Design the Issue #22 hybrid-cognition comparison as a preregistered falsifiable experiment; do not describe superiority as established before independent scoring.
