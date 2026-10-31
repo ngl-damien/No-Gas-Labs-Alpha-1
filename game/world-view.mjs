@@ -493,9 +493,24 @@ export function projectMoonshotWorldObjects(world) {
 
 const riverX=y=>856+Math.sin(y/155)*34;
 const bridge=y=>(y>=326&&y<=396)||(y>=682&&y<=754);
+// Collision follows the visible footprints of the fixed landmarks. The front
+// approach points used by goTo() remain outside these bounds.
+const LANDMARK_OBSTACLES=Object.freeze([
+  {id:'workbench',x:325,y:645,halfWidth:67,top:-48,bottom:41},
+  ...PLACES.filter(place=>place.type==='institution').map(place=>({
+    id:place.id,x:place.x,y:place.y,
+    halfWidth:place.id==='town-square'?61:48,
+    top:place.id==='town-square'?-49:-58,
+    bottom:place.id==='town-square'?23:25
+  }))
+]);
 export function isWalkable(x,y,buildings=[]) {
-  if(x<24||y<28||x>1576||y>972)return false;
+  if(!Number.isFinite(x)||!Number.isFinite(y)||x<24||y<28||x>1576||y>972)return false;
   if(Math.abs(x-riverX(y))<69&&!bridge(y))return false;
+  if(LANDMARK_OBSTACLES.some(obstacle=>
+    Math.abs(x-obstacle.x)<obstacle.halfWidth&&
+    y>obstacle.y+obstacle.top&&y<obstacle.y+obstacle.bottom
+  ))return false;
   return !buildings.some(c=>Math.abs(x-c.position.x)<74&&y>c.position.y-67&&y<c.position.y+49);
 }
 export function stepPlayer(player,input,distance,buildings=[]) {
@@ -505,6 +520,8 @@ export function stepPlayer(player,input,distance,buildings=[]) {
   return {x,y};
 }
 export function findRoute(start,target,buildings=[]) {
+  if(!start||!target||!Number.isFinite(start.x)||!Number.isFinite(start.y)||
+     !Number.isFinite(target.x)||!Number.isFinite(target.y))return [];
   const cell=20,cols=80,rows=50,key=(x,y)=>y*cols+x;
   const from={x:Math.max(2,Math.min(78,Math.round(start.x/cell))),y:Math.max(2,Math.min(48,Math.round(start.y/cell)))},to={x:Math.max(2,Math.min(78,Math.round(target.x/cell))),y:Math.max(2,Math.min(48,Math.round(target.y/cell)))};
   if(!isWalkable(from.x*cell,from.y*cell,buildings)){let closest=null;for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const x=from.x+dx,y=from.y+dy,distance=Math.hypot(x*cell-start.x,y*cell-start.y);if(isWalkable(x*cell,y*cell,buildings)&&(!closest||distance<closest.distance))closest={x,y,distance};}if(!closest)return [];from.x=closest.x;from.y=closest.y;}
