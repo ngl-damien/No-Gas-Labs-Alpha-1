@@ -284,3 +284,37 @@ Independent source review found a remaining API inconsistency:
 
 ### Execution boundary
 This run completed an adversarial review and an exact-head game CI failure handoff. It did not exhaust Compute or run after the host session. Continue from the exact branch/PR state above and repeat while safe useful work remains.
+
+
+## Ralph continuation — Forge API boundary closed in current-main proposal (2026-10-31 UTC)
+
+### PR #235 review correction and current-main transplant
+- Followed the independent review finding by continuing the existing Worker A Forge change rather than creating a competing implementation on the stale branch.
+- PR #235 head d17044b597bfafb872d8c9d9bb7d022ee0c92d51 had Verify #41171085560 success, Genesis #41171085694 success, and Browser Acceptance #41171085571 success. These results verify the original PR #235 head only.
+- Added descriptor-based dataRecord() validation to verifyRepository() request fields and repositoryLimits(); the repository request now uses the validated snapshot for sourceDir/outDir rather than reading the caller object again.
+- Added regressions for getter-backed sourceDir, outDir, and limits.timeoutMs: they must reject without invoking getters or creating output directories.
+- Re-read the changed source and test after editing. Confirmed compareCandidates() continues to use its original options parameter; verifyRepository() uses the validated request object. This caught and corrected an intermediate textual substitution before transplant; no incorrect intermediate commit was copied to the current-main branch.
+- Created current-main PR #236, branch fix/forge-accessor-safe-repository-verify-20261031, head e827b98a4111babe60e7ef35c0d827d25bdeaf51, base 0ef6791b241d224b6647a291f039cf079f948db4. Compare reports 2 ahead / 0 behind and exactly two intended changed files: src/forge/runner.mjs, test/forge-runner.test.mjs.
+- Superseded PR #235 was closed unmerged; its branch and exact-head CI evidence remain. PR #236 is draft/open and unmerged.
+- PR #236 exact-head checks: Genesis #41171554449 success; Verify #41171554446 was in progress in its test/package/institutional-exercise step at latest poll; Browser Acceptance #41171554468 was in progress installing browser dependencies. No claim that all checks have passed. No local tests/preflight receipt is claimed.
+
+### Additional review of destructive branch-cleanup workflow
+- Inspected current-main .github/workflows/branch-cleanup.yml and draft PR #208. Current main still has a push trigger on changes to that workflow and workflow-level contents: write, with an automatic branch-deletion job.
+- PR #208's proposed manual-only preview/delete split materially reduces risk: blank confirmation is preview-only; the delete job requires exact typed confirmation and rechecks manifest count, default/protected/open-PR refs, exact baseline SHA, and the live ref before deletion.
+- PR #208 is stale: 7 ahead / 8 behind current main 0ef6791...; its old CI results are not current-main evidence. No branch deletion or workflow dispatch was performed.
+- Posted comment #6539393187 on PR #208: rebase/transplant onto current main, rerun exact-head workflows, and consider narrowing write permission to the confirmed delete job only. No permission-scope change was made; this remains a human-authority boundary.
+
+### Worker B handoff status
+- PR #227 remains at bb799237ea2b58595095ae84ac52961b5685ab2d; no newer head was observed at last poll.
+- Browser Acceptance #41170972505 still fails on the shared-world journey because #sheet-backdrop intercepts the click on the founder-challenge encounter objective. Worker B handoff comment #6539378035 remains the actionable owner handoff.
+- No game source edits were made by Worker A.
+
+### Next ranked actions
+1. Recheck PR #236 exact-head Verify and Browser Acceptance. If either fails, inspect exact logs, repair attributable defects, and repeat.
+2. If all PR #236 checks pass, recheck current main/mergeability and full diff; do not mark ready or merge while any substantive review issue remains.
+3. Recheck Worker B PR #227 for a new head/fix. If still unchanged, retain the precise browser blocker and do not create a competing gameplay patch.
+4. Recheck PR #208 current head/base and response; its automatic deletion trigger remains in main until a verified current-main fix lands. No deletion/dispatch or permission mutation without explicit human authority.
+5. Continue institution-wide audit only after current high-risk proposals and worker handoffs are rehydrated.
+
+### Execution boundary
+This run delivered an additional two-file source/test correction on current-main PR #236, two evidence-based PR handoffs/review comments, and a durable checkpoint update. It did not merge or deploy, did not alter credential/permission settings, did not delete branches, and did not exhaust Compute.
