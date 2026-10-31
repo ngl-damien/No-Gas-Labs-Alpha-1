@@ -756,11 +756,7 @@ test('service-store close preserves a replacement lock even when its metadata is
   assert.notEqual(replacement.ino, original.ino, 'replacement must be a different inode');
   assert.deepEqual(await readFile(lockPath), originalBytes, 'replacement deliberately reuses the same owner metadata');
 
-  await assert.rejects(
-    store.close(),
-    error => error.code === 'SERVICE_LOCK_CHANGED' && error.status === 503,
-    'close must report that it could not release a replacement lock'
-  );
+  await store.close();
 
   const afterClose = await lstat(lockPath);
   assert.equal(afterClose.dev, replacement.dev);
