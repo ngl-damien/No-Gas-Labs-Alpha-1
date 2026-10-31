@@ -56,3 +56,26 @@ For PR #203 head `bd914218d9658f6b3cb82270fd2e44a67dd92ebd`:
 - Integrate context binding only after the server stack is reconciled and a host resolver can read authoritative retained proposal/quest state. Add an explicit canonical output policy if outputs are meant to be constrained.
 - Continue Issue #17's trust/custody, concurrent-writer, crash/stale-lock acceptance. Keep EvidenceOS #1/#2 reconciliation and Command Center live smoke test as separate follow-ups.
 - No merge, deployment, release, workflow dispatch, key/credential/permission operation, spending, branch deletion, or external announcement occurred.
+
+
+## Worker B handoff — live server integration (not yet safe)
+
+**Objective:** wire the context-bound authorization check into the canonical server authorization/projection path only after the active server stack is reconciled.
+
+**Relevant refs**
+- Context-bound verifier and nine regression cases: PR #203 head `bd914218d9658f6b3cb82270fd2e44a67dd92ebd`, source `src/authority/decision.js`, tests `test/decision-context-binding.test.js`.
+- Server/writer lease: PR #205 head `54c54a5660ab799476d48871dc9d0fbb5c59f93c`.
+- Offline shell/server routes: PR #213 head `797f3e50480ccc6e161ddcdb6889e736351afa04`.
+- Combined review stack: PR #214 head `6e33dcf8e656c2d59470ec84592eeee2b9463565` (historical exact combined checks passed; re-inspect current state before relying on it).
+
+**Work already done:** the helper verifies the signature and pinned audience before resolving canonical proposal/quest records, binds proposal ID/type/quest/capability and quest acceptance, and fails closed on missing or malformed context. Verify and Genesis pass on PR #203's exact branch head. Browser Acceptance was still running at the latest observation.
+
+**Remaining work / acceptance criteria**
+1. Reinspect current PR #205/#213/#214 heads and changed-file overlap before any server edit.
+2. Supply synchronous host resolvers that read authoritative retained proposal/quest state—not request payloads or UI state.
+3. Wire the context-bound verifier into the actual authorization event/projection path without bypassing writer-lease or existing fail-closed gates.
+4. Decide whether to introduce a canonical output allowlist; current quest/proposal schemas expose none, so do not claim outputs are policy-bound yet.
+5. Add server-level regressions for missing proposal, wrong quest, out-of-scope capability, acceptance drift, and no progress on rejected authorization; verify the exact combined head and browser journey.
+6. Keep Founder identity/key custody, trust-root choice, concurrency and crash recovery separate. Do not create/enroll keys or merge/deploy.
+
+**Safe to proceed?** Only after the receiving worker independently rehydrates and reconciles the current server stack. This is a handoff, not permission to merge or deploy.
