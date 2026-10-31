@@ -463,3 +463,7 @@ For head `a118f17955b4067552fea7707f63dab4ddcea2e2`:
 
 ### Execution boundary
 This iteration made a substantive safety change and added a targeted regression on the existing PR #237. Exact-head Verify and Genesis pass; Browser Acceptance is pending. No local execution was possible due DNS failure. Resume from the exact current head and do not repeat unchanged polls without new evidence.
+
+
+### Browser Acceptance progress poll
+- Rechecked run [41172422065](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41172422065) against exact head `a118f17955b4067552fea7707f63dab4ddcea2e2`: run is now **in progress**, not queued. Its `playable-world` job has completed checkout and Node/Python setup and is currently installing browser acceptance dependencies; build, journeys, and receipt/screenshot preservation have not yet run. This is neither a pass nor a failure. PR #237 remains draft/open; GitHub's mergeability field changed from `clean` to `unstable` while checks run. Do not mark ready or merge until the run concludes and mergeability is rechecked.
