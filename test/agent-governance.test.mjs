@@ -251,7 +251,9 @@ test('CI preflight scopes the Founder signer, verifier and authorization regress
     'src/authority/decision.js',
     'test/decision-chamber.test.js',
     'test/decision-context-binding.test.js',
-    'test/decision-world-integration.test.js'
+    'test/decision-world-integration.test.js',
+    'game/service-store.mjs',
+    'test/service-store-durability.test.mjs'
   ]) {
     assert.ok(script.includes('--path ' + path), 'missing scoped preflight target: ' + path);
   }
