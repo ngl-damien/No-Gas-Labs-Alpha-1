@@ -27,7 +27,7 @@ function publishedCreation(id,times) {
 const publication=(id,actor,creationId,version,at,extra={})=>
   event(id,'publish',actor,at,{creationId,version,reward:100,...extra});
 
-test('character XP and level derive from unique publications matched to retained versions',()=>{
+test('character XP combines publication receipts with objective-matched activity',()=>{
   const world={
     xp:999,
     creations:[publishedCreation('c1',[t1,t2,t3])],
@@ -40,15 +40,15 @@ test('character XP and level derive from unique publications matched to retained
   const before=structuredClone(world);
   const record=projectCharacter(world,founder);
   assert.deepEqual(
-    [record.xp,record.worldXp,record.level,record.levelStartXp,record.xpIntoLevel,record.nextLevelXp],
-    [300,300,2,300,0,600]
+    [record.xp,record.publicationXp,record.questXp,record.worldXp,record.level,record.levelStartXp,record.xpIntoLevel,record.nextLevelXp],
+    [300,300,0,300,2,300,0,600]
   );
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,3);
   assert.equal(record.worldXp, 300);
   assert.deepEqual(world,before);
 });
 
-test('institution-wide XP never leaks into a Witness character level',()=>{
+test('a Witness earns only their own objective-matched XP, not the institution publication total',()=>{
   const world={
     xp:300,
     creations:[publishedCreation('founder-work',[t1,t2,t3])],
@@ -61,9 +61,76 @@ test('institution-wide XP never leaks into a Witness character level',()=>{
     contributions:[{id:'n1',actor:witness,creationId:'founder-work',version:3,text:'A real note.',at:t3}]
   };
   const record=projectCharacter(world,witness);
-  assert.deepEqual([record.xp,record.worldXp,record.level,record.xpIntoLevel],[0,300,1,0]);
+  assert.deepEqual([record.xp,record.publicationXp,record.questXp,record.worldXp,record.level,record.xpIntoLevel],[25,0,25,300,1,25]);
   assert.equal(record.skills.find(skill=>skill.id==='observer').count,1);
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,0);
+});
+
+test('character XP combines publication receipts with unique actor-owned quest evidence', () => {
+  const world = {
+    xp: 9999,
+    creations: [publishedCreation('quest-source', [t1])],
+    events: [
+      publication('quest-publication', founder, 'quest-source', 1, t1),
+      event('quest-discovery-event', 'discover', founder, t2, { locationId: 'relay' }),
+      event('quest-note-event', 'contribute', founder, t3, { creationId: 'quest-source', version: 1 }),
+      event('quest-proposal-event', 'moonshot-proposed', founder, t4, {
+        moonshotId: 'quest-moonshot',
+        title: 'A bounded question',
+        hypothesis: 'The stated effect appears under a defined condition.',
+        falsifier: 'A reproducible counterexample defeats the claim.',
+        evidenceNeeded: 'A retained source and independent observation.'
+      }),
+      event('quest-report-event', 'experiment-reported', founder, t5, {
+        reportId: 'quest-report',
+        moonshotId: 'quest-moonshot',
+        procedure: 'Repeat the bounded comparison.',
+        observation: 'The attempt remained inconclusive.',
+        reportedOutcome: 'inconclusive',
+        evidenceCreationId: 'quest-source',
+        evidenceVersion: 1
+      })
+    ],
+    discoveries: [{ id: 'quest-discovery-record', actor: founder, locationId: 'relay', at: t2 }],
+    contributions: [{
+      id: 'quest-note-record', actor: founder, creationId: 'quest-source', version: 1,
+      text: 'The retained source does not settle the question.', at: t3
+    }],
+    reports: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+  const record = projectCharacter(world, founder);
+  assert.deepEqual(
+    [record.publicationXp, record.questXp, record.xp, record.worldXp],
+    [100, 100, 200, 100],
+    'discovery, note, proposal and experiment report each earn activity XP once; the report appears in two objectives but is still one event'
+  );
+  assert.deepEqual(world, before, 'XP and quest evidence are projections; reading the character sheet appends nothing');
+
+  const unlinked = { ...world, discoveries: [], contributions: [] };
+  const unlinkedRecord = projectCharacter(unlinked, founder);
+  assert.deepEqual(
+    [unlinkedRecord.publicationXp, unlinkedRecord.questXp, unlinkedRecord.xp],
+    [100, 50, 150],
+    'unmatched discovery and note events cannot earn quest XP'
+  );
+  const forgedTrail = Object.freeze([{
+    id: 'forged-objective', complete: true, progress: 1, target: 1,
+    evidenceIds: ['quest-discovery-event', 'quest-note-event', 'quest-proposal-event', 'quest-report-event']
+  }]);
+  assert.deepEqual(
+    projectCharacter(unlinked, founder, { questTrail: forgedTrail }),
+    unlinkedRecord,
+    'an ordinary caller-supplied trail cannot mint objective evidence or XP'
+  );
+
+  const witnessRecord = projectCharacter(world, witness);
+  assert.deepEqual(
+    [witnessRecord.publicationXp, witnessRecord.questXp, witnessRecord.xp, witnessRecord.worldXp],
+    [0, 0, 0, 100],
+    'the Founder’s publication and activity XP cannot leak into a Witness character'
+  );
 });
 
 test('ambiguous, duplicated, stale, non-Founder, and malformed publication claims earn no XP',()=>{
@@ -96,7 +163,7 @@ test('ambiguous, duplicated, stale, non-Founder, and malformed publication claim
     ]
   };
   const record=projectCharacter(world,founder);
-  assert.equal(record.xp,100);
+  assert.deepEqual([record.xp,record.publicationXp,record.questXp],[100,100,0]);
   assert.equal(record.skills.find(skill=>skill.id==='maker').count,1);
   assert.equal(record.worldXp, 100, 'world XP is projected from the one unique retained publication, not the raw summary total');
   assert.deepEqual(record.inventory.map(item => item.id).sort(), ['good', 'wrong-reward'],
@@ -136,7 +203,7 @@ test('skills count only activity joined to retained events for the active charac
     ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
     ['questkeeper', 3], ['restorer', 0]
   ]);
-  assert.equal(record.xp, 100);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp], [150, 100, 50]);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
 });
 
@@ -159,7 +226,7 @@ test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => 
     ]
   };
   const record = projectCharacter(world, founder);
-  assert.deepEqual([record.xp, record.worldXp, record.level], [0, 0, 1]);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp, record.worldXp, record.level], [0, 0, 0, 0, 1]);
   assert.deepEqual(record.inventory, []);
   assert.deepEqual(record.fieldSatchel, []);
   assert.ok(record.equipment.every(slot => slot.status === 'empty' && slot.source === null),
@@ -196,8 +263,8 @@ test('a retained publication remains inventory and a valid source even when its 
     methods: []
   };
   const record = projectCharacter(world, founder);
-  assert.equal(record.xp, 0);
-  assert.equal(record.worldXp, 0);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp, record.worldXp], [25, 0, 25, 0],
+    'invalid publication reward metadata earns no publication XP; the separately linked note can earn quest activity XP');
   assert.equal(record.skills.find(skill => skill.id === 'maker').count, 0);
   assert.equal(record.skills.find(skill => skill.id === 'observer').count, 1);
   assert.deepEqual(record.inventory.map(item => [item.id, item.version]), [['unrewarded-place', 1]]);
@@ -338,15 +405,15 @@ test('character activity fails closed when actor role is missing or unsupported'
   assert.deepEqual(unsupported.recentActivity, []);
 
   const founderRecord = projectCharacter(world, founderActor);
-  assert.equal(founderRecord.xp, 100);
+  assert.deepEqual([founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp], [125, 100, 25]);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 
   const witnessRecord = projectCharacter(world, witnessActor);
-  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual([witnessRecord.xp, witnessRecord.publicationXp, witnessRecord.questXp], [25, 0, 25]);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'explorer').count, 1);
 });
 
-test('Researcher skill counts attributed falsifiable proposals without awarding XP', () => {
+test('Researcher proposals earn XP only as objective-matched activity', () => {
   const founderProposal = event('moonshot-f', 'moonshot-proposed', founder, t1, {
     moonshotId: 'moonshot-1',
     title: 'A bounded question',
@@ -367,8 +434,8 @@ test('Researcher skill counts attributed falsifiable proposals without awarding 
 
   const founderRecord = projectCharacter(world, founder);
   const witnessRecord = projectCharacter(world, witness);
-  assert.equal(founderRecord.xp, 0);
-  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual([founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp], [25, 0, 25]);
+  assert.deepEqual([witnessRecord.xp, witnessRecord.publicationXp, witnessRecord.questXp], [25, 0, 25]);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'researcher').count, 1);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'researcher').count, 1);
   assert.deepEqual(
@@ -380,7 +447,7 @@ test('Researcher skill counts attributed falsifiable proposals without awarding 
 });
 
 
-test('Adversary skill counts unique challenges to another actor’s earlier valid report without awarding XP', () => {
+test('Adversary challenges earn activity XP without adjudicating the challenged report', () => {
   const proposal = event('moonshot-1', 'moonshot-proposed', witness, t1, {
     moonshotId: 'moonshot-1',
     title: 'A falsifiable question',
@@ -409,9 +476,10 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   const world = { xp: 0, creations: [], events: [proposal, report, challenge] };
   const founderRecord = projectCharacter(world, founder);
   const witnessRecord = projectCharacter(world, witness);
-  assert.equal(founderRecord.xp, 0);
+  assert.deepEqual([founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp], [25, 0, 25]);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+  assert.deepEqual([witnessRecord.xp, witnessRecord.publicationXp, witnessRecord.questXp], [50, 0, 50]);
 
   const duplicateChallenge = { ...challenge, id: 'challenge-event-2', at: '2026-10-25T12:03:00.000Z' };
   const ambiguous = projectCharacter({ ...world, events: [...world.events, duplicateChallenge] }, founder);
@@ -604,18 +672,18 @@ test('character projections preserve challenge and study chronology across a lar
   assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'scholar').count, 1);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'retriever').count, 1);
-  assert.equal(founderRecord.xp, 100);
+  assert.deepEqual([founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp], [175, 100, 75]);
 
   const witnessRecord = projectCharacter(world, witness);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'researcher').count, 1);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'experimenter').count, 1);
-  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual([witnessRecord.xp, witnessRecord.publicationXp, witnessRecord.questXp], [50, 0, 50]);
 
   assert.deepEqual(world, before, 'character projection must remain read-only');
 });
 
 
-test('Questkeeper skill mirrors completed source-linked Founder objectives without awarding XP', () => {
+test('Questkeeper mirrors completed objectives without double-rewarding publication-only events', () => {
   const world = {
     xp: 100,
     creations: [publishedCreation('first-place', [t1])],
@@ -631,7 +699,7 @@ test('Questkeeper skill mirrors completed source-linked Founder objectives witho
   assert.ok(skill);
   assert.equal(skill.count, 2, 'the observatory publication completes both the first-place and source-observatory milestones');
   assert.match(skill.basis, /not truth, mastery, correctness, or approval/i);
-  assert.equal(record.xp, 100);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp], [100, 100, 0]);
   assert.equal(record.skills.find(item => item.id === 'maker').count, 1);
 });
 
@@ -655,7 +723,7 @@ test('Questkeeper skill requires all four uniquely matched Witness guide discove
 
   assert.equal(record.skills.find(item => item.id === 'explorer').count, 4);
   assert.equal(record.skills.find(item => item.id === 'questkeeper').count, 1);
-  assert.equal(record.xp, 0);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp], [100, 0, 100]);
 });
 
 test('ambiguous discovery history does not count as a completed Questkeeper objective', () => {
@@ -720,7 +788,7 @@ test('activity skills require unique one-to-one record/event joins and real guid
   assert.equal(record.skills.find(skill => skill.id === 'observer').count, 1,
     'orphaned records, duplicate record joins, and duplicate event joins do not count');
   assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 1);
-  assert.equal(record.xp, 100);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp], [175, 100, 75]);
 });
 
 
@@ -810,6 +878,7 @@ test('Questkeeper and the active HUD invitation share immutable evidence-backed 
   assert.ok(next, 'the fixture leaves a real next objective');
 
   const character = projectCharacter(matureWorld, founder);
+  assert.deepEqual([character.xp, character.publicationXp, character.questXp], [250, 200, 50]);
   assert.equal(
     character.skills.find(skill => skill.id === 'questkeeper').count,
     completed.length,
@@ -931,7 +1000,7 @@ test('Questkeeper map rejects repeat discovery events even when a record mirrors
 });
 
 
-test('field satchel projects retained work while preserving failed reports and dissent without granting progress', () => {
+test('field satchel preserves failures and dissent while XP reflects objective-matched activity', () => {
   const source = publishedCreation('satchel-source', [t1]);
   const publicationEvent = publication('satchel-publication', founder, 'satchel-source', 1, t1);
   const discoveryEvent = event('satchel-discovery-event', 'discover', founder, t2, { locationId: 'river' });
@@ -1023,8 +1092,10 @@ test('field satchel projects retained work while preserving failed reports and d
     { type: 'moonshot-activity', moonshotId: 'satchel-moonshot', activityId: 'satchel-experiment-report' });
   assert.deepEqual(founderRecord.fieldSatchel.find(item => item.kind === 'experiment-challenge').action,
     { type: 'moonshot-activity', moonshotId: 'satchel-moonshot', activityId: 'satchel-challenge' });
-  assert.equal(founderRecord.xp, 100, 'only the retained publication reward contributes XP');
-  assert.equal(witnessRecord.xp, 0, 'research and reported failure do not award XP');
+  assert.deepEqual([founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp], [250, 100, 150],
+    'publication XP is separate from six unique retained quest-activity events');
+  assert.deepEqual([witnessRecord.xp, witnessRecord.publicationXp, witnessRecord.questXp], [50, 0, 50],
+    'a failed report and proposal earn activity XP, not outcome or truth credit');
 
   const founderGear = Object.fromEntries(founderRecord.equipment.map(slot => [slot.id, slot]));
   const witnessGear = Object.fromEntries(witnessRecord.equipment.map(slot => [slot.id, slot]));
@@ -1048,7 +1119,7 @@ test('field satchel projects retained work while preserving failed reports and d
   assert.deepEqual(world, before, 'field equipment and the satchel are read-only projections');
 });
 
-test('Relay Sigil points to the actor’s rejected archived folio without granting XP or approval', () => {
+test('Relay Sigil preserves a rejected folio without granting approval or authority', () => {
   const proposal = {
     id: 'field-kit-proposal',
     type: 'moonshot-proposed',
@@ -1108,7 +1179,7 @@ test('Relay Sigil points to the actor’s rejected archived folio without granti
   assert.equal(slot.source.status, 'rejected response preserved');
   assert.match(slot.source.summary, /response schema mismatch/);
   assert.deepEqual(slot.source.action, { type: 'collaborator-response', id: response.responseId });
-  assert.equal(record.xp, 0);
+  assert.deepEqual([record.xp, record.publicationXp, record.questXp], [25, 0, 25]);
   assert.deepEqual(world, before, 'the Relay Sigil is a read-only projection of the archived rejection');
 });
 

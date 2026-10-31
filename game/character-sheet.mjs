@@ -11,6 +11,7 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const XP_PER_QUEST_ACTIVITY = 25;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
 const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
@@ -339,16 +340,34 @@ export function projectCharacter(world, viewer, options = null) {
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
   const publications = mine(canonicalPublications, viewer);
-  const earned = publications.length * XP_PER_PUBLICATION;
-  const xp = Number.isSafeInteger(earned) ? earned : 0;
+  const earnedPublicationXp = publications.length * XP_PER_PUBLICATION;
+  const publicationXp = Number.isSafeInteger(earnedPublicationXp) ? earnedPublicationXp : 0;
   const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION;
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
-  const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
   const suppliedQuestTrail = options && typeof options === 'object' ? options.questTrail : null;
   const questTrail = isQuestTrailProjection(suppliedQuestTrail, world, viewer)
     ? suppliedQuestTrail
     : getQuestTrail(world, viewer, { collaboratorResponseObjects });
+  // Quest activity XP is derived only from unique, actor-owned events that the
+  // evidence-backed quest trail recognizes. Publications have their own fixed
+  // receipt reward; failed reports and rejected responses still count as activity,
+  // never as proof of truth, correctness, execution, approval, or mastery.
+  const questEvidenceIds = new Set(questTrail.flatMap(item =>
+    Array.isArray(item?.evidenceIds) ? item.evidenceIds : []
+  ));
+  const questActivityIds = new Set();
+  for (const event of allEvents) {
+    if (event?.type === 'publish' || !questEvidenceIds.has(event?.id) ||
+        event.actor?.id !== viewer?.id || event.actor?.role !== viewer?.role ||
+        typeof event.id !== 'string' || !event.id) continue;
+    questActivityIds.add(event.id);
+  }
+  const earnedQuestXp = questActivityIds.size * XP_PER_QUEST_ACTIVITY;
+  const questXp = Number.isSafeInteger(earnedQuestXp) ? earnedQuestXp : 0;
+  const earned = publicationXp + questXp;
+  const xp = Number.isSafeInteger(earned) ? earned : 0;
+  const level = 1 + Math.floor(xp / LEVEL_SPAN);
   const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
@@ -724,6 +743,8 @@ export function projectCharacter(world, viewer, options = null) {
   return Object.freeze({
     level,
     xp,
+    publicationXp,
+    questXp,
     worldXp,
     levelStartXp: (level - 1) * LEVEL_SPAN,
     nextLevelXp: level * LEVEL_SPAN,

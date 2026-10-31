@@ -43,6 +43,16 @@ def stop_server(process):
     assert process.returncode==0, 'Service process exited unsuccessfully'
 
 
+def character_xp_components(page):
+    page.locator('#character-button').click()
+    expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+    match=re.search(r'(\\d+) character XP \\((\\d+) publication XP \\+ (\\d+) quest-activity XP',page.locator('#sheet').inner_text())
+    assert match, 'Character sheet must expose the deterministic XP breakdown'
+    result=tuple(int(value) for value in match.groups())
+    close_sheet(page)
+    return result
+
+
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
@@ -77,6 +87,7 @@ def basic(page,url,out,label):
     expect(page.locator('#sheet')).to_contain_text('Questkeeper')
     expect(page.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
     expect(page.locator('#sheet')).to_contain_text('Level 1')
+    expect(page.locator('#sheet')).to_contain_text('0 publication XP + 0 quest-activity XP')
     close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
@@ -458,6 +469,7 @@ def shared(browser,url,data,out):
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
         close_sheet(b)
+        b.wait_for_function("async()=>{const state=await fetch('/api/state').then(response=>response.json());return state.world.events.some(event=>event.type==='discover'&&event.actor?.id===state.viewer.id&&event.locationId==='relay');}")
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
@@ -472,8 +484,10 @@ def shared(browser,url,data,out):
         assert b.locator('#xp-count').text_content()=='100', 'The shared world retains institution-wide XP'
         expect(b.locator('#character-button')).to_be_visible()
         b.locator('#character-button').click()
-        expect(b.locator('#sheet')).to_contain_text('0 character XP')
-        expect(b.locator('#sheet')).to_contain_text('100 institution-wide XP across the world.')
+        sheet_text=b.locator('#sheet').inner_text()
+        xp_match=re.search(r'(\\d+) character XP \\((\\d+) publication XP \\+ (\\d+) quest-activity XP',sheet_text)
+        assert xp_match and int(xp_match.group(1))==int(xp_match.group(3)) and int(xp_match.group(2))==0 and int(xp_match.group(3))>=25, 'Witness XP must derive from their own retained discovery, not the Founder publication'
+        expect(b.locator('#sheet')).to_contain_text('100 institution-wide publication XP across the world.')
         close_sheet(b)
         snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
@@ -506,6 +520,15 @@ def shared(browser,url,data,out):
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
         a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
         assert a.locator('#creation-notes script').count()==0
+        close_sheet(b)
+        before_xp=character_xp_components(b)
+        visit(b,'The shared observatory')
+        b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
+        a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
+        close_sheet(b)
+        after_xp=character_xp_components(b)
+        assert after_xp[2] >= before_xp[2] + 25, 'a source-linked contribution must add quest-activity XP without certifying its claim'
+        visit(b,'The shared observatory')
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         report_text='Preserve this report against version one.'
         drop={'remaining':True}

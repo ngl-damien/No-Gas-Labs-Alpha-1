@@ -127,9 +127,9 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
 async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>openGuildHall(interaction.roleId))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
+const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>openGuildHall(interaction.roleId))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
-function openCharacterSheet(){const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
+function openCharacterSheet(){const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP ('+record.publicationXp+' publication XP + '+record.questXp+' quest-activity XP from unique objective-matched events) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide publication XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
   const source=slot.source;
   const modeLabel=slot.mode==='pinned'?'PINNED':slot.mode==='unequipped'?'UNEQUIPPED':'AUTOMATIC';
   const statusLabel=slot.status==='record-backed'?source.status:'EMPTY SLOT';
@@ -259,15 +259,15 @@ function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;s
   if(selectedDraft){select.disabled=true;title.disabled=true;intent.disabled=true;}
   const draftButton=node('button',{id:'draft-button',class:'primary-button',type:'submit',text:selectedDraft?'Draft is ready':'Create private draft'});
   form.append(field('Choose a recipe','recipe-select',select),description,field('What will you make?','command-input',title),field('What is it for?','intent-input',intent),customWrap,node('div',{class:'button-row'},[draftButton]));content.append(form);
-  const draftArea=node('div',{id:'draft-area'});content.append(draftArea,paragraph('Each accepted publication adds 100 WORLD XP to the institution-wide total. The publishing Founder earns 100 character XP when the unique publication event matches a retained version. Notes, discoveries and launch rehearsals earn no XP; neither reward grants institutional authority.','form-help'));
+  const draftArea=node('div',{id:'draft-area'});content.append(draftArea,paragraph('Each accepted publication adds 100 WORLD XP to the institution-wide total and 100 publication XP to the publishing Founder when its unique event matches a retained version. Unique discoveries, source-linked notes, studies, research attempts, challenges, and preserved collaborator responses can earn 25 quest-activity XP when their events appear in the evidence-backed objective trail. Launch rehearsals earn no XP. Neither reward grants institutional authority.','form-help'));
   function showDraft(){draftArea.replaceChildren();if(!selectedDraft)return;draftButton.disabled=true;const d=selectedDraft;const preview=button('Open actual preview',()=>previewDraft(d),{id:'preview-button',class:'secondary-button'}),publish=button(`Publish v${d.version} into the world`,guarded(()=>publishDraft(d)),{id:'publish-button',class:'primary-button'});draftArea.append(node('div',{class:'draft-card'},[node('div',{class:'eyebrow',text:'PRIVATE DRAFT · CHECKED BYTES'}),node('h3',{text:d.title}),paragraph(`${d.checks.filter(c=>c.passed).length}/${d.checks.length} recipe checks · ${d.receipt.size.toLocaleString()} bytes`,'form-help'),node('div',{class:'button-row'},[preview,publish]),paragraph(d.creationId?'The published version remains open. This repair will retain its exact bytes in version history.':'Publication creates an actual building and a playable sandboxed artifact.','form-help')]));}
   form.onsubmit=guarded(async e=>{e.preventDefault();draftButton.disabled=true;try{const result=await act({type:'draft',kind:select.value,title:title.value.trim()||recipes[select.value].title,intent:intent.value.trim()||recipes[select.value].intent,...(select.value==='custom'?{html:html.value}:{})});selectedDraft=world.drafts.find(d=>d.id===result.draftId);showDraft();toast('Private draft created. Preview its real interactions before publishing.')}finally{draftButton.disabled=!!selectedDraft}});showDraft();
 }
 function previewDraft(draft){openPortal({title:draft.title,html:draft.html,kicker:'PRIVATE DRAFT',footer:[paragraph('Private preview · opaque sandbox · no live AI or network requests.'),button(`Publish v${draft.version}`,guarded(()=>publishDraft(draft)),{id:'portal-publish',class:'primary-button'})]})}
-async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 WORLD XP · +100 character XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
+async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 WORLD XP · +100 publication XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
 function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
   const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
-  const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';renderNotes();toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
+  const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';renderNotes();toast('Contribution preserved with your attribution. Quest XP is derived only when its unique event matches the evidence-backed objective trail; the note’s claims are not verified.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';renderNotes();toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
   const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
   challengeDetails.append(paragraph('A fixed local checklist, not an AI collaborator or independent witness. It can preserve a report; it cannot decide truth, authorize work, or award XP.','form-help'));
@@ -368,7 +368,7 @@ function openGuide(id){
       node('div',{class:'eyebrow',text:'A PRACTICE TO TRY'}),
       paragraph(g.practice)
     ]),
-    paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit and grants no XP. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),
+    paragraph('This guide is authored text, not an executing AI agent. Discovery records a visit. A unique visit can earn 25 quest-activity XP when it appears in the evidence-backed objective trail; it does not verify the guide’s claims. Its next action is chosen from the published world state and your role; it cannot grant publishing authority or certify a claim.','form-help'),
     paragraph(action?.explanation||'No activity is available for this location yet.','form-help'),
     node('div',{class:'button-row'},[
       button(action?.label||'Explore another guide →',()=>{
@@ -475,7 +475,7 @@ function appendCollaboratorContracts(content, sourceWorld){
         responseField.disabled=true;
         archiveButton.disabled=true;
         archiveButton.textContent='Response archived';
-        toast('Untrusted collaborator response preserved in world history · no XP or authority awarded.');
+        toast('Untrusted collaborator response preserved in world history · any quest XP reflects retained activity only; no approval or authority granted.');
       }),{class:'secondary-button','data-archive-collaborator':packet.id});
       card.append(archiveButton);
       card.append(button('Open related Moonshot →',()=>openMoonshotField(packet.moonshotId),{class:'list-button'}));
@@ -700,7 +700,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
 
 function openAcademy(){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
-  content.append(paragraph('Study published work and compare its claims with its retained sources. A study note records your question, your own explanation, and the next check. It is activity evidence, not proof of correctness or mastery; it awards no XP.'));
+  content.append(paragraph('Study published work and compare its claims with their retained sources. A study note records your question, your own explanation, and the next check. A unique study event can earn 25 quest-activity XP when it appears in the evidence-backed objective trail; it is not proof of correctness or mastery.'));
   const works=[...(Array.isArray(world.creations)?world.creations:[])].reverse();
   if(!works.length){
     content.append(paragraph('No published study objects are available yet. The Founder can make the first artifact at the Forge.','empty-note'));
@@ -765,7 +765,7 @@ function openStudyNote(creationId,versionNumber){
     field('Study question','academy-study-question',question),
     field('Your explanation · uncertainty allowed','academy-study-attempt',attempt),
     field('Next check','academy-study-next-check',nextCheck),
-    paragraph('A retained note counts as Scholar activity only. It awards no XP and cannot certify skill or truth.','form-help'),
+    paragraph('A retained note counts as Scholar activity. It can earn 25 quest-activity XP only when its unique event appears in the evidence-backed objective trail; it cannot certify skill or truth.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
   content.append(form);
@@ -777,7 +777,7 @@ function openStudyNote(creationId,versionNumber){
         type:'study',creationId,version:versionNumber,
         question:question.value.trim(),attempt:attempt.value.trim(),nextCheck:nextCheck.value.trim()
       });
-      toast('Study note retained · exact source version bound · Scholar activity only · no XP or mastery awarded.');
+      toast('Study note retained · exact source version bound · quest XP is activity-only · no mastery awarded.');
       openAcademy();
     }finally{submit.disabled=false;}
   });
@@ -794,7 +794,7 @@ function openStudyReview(note){
   form.append(
     field('Response to the next check','academy-review-response',response),
     field('Reflection and remaining uncertainty','academy-review-reflection',reflection),
-    paragraph('One review is allowed per study note. Start a new source-bound study note for another practice cycle. No XP or mastery is awarded.','form-help'),
+    paragraph('One review is allowed per study note. Start a new source-bound study note for another practice cycle. A unique review event can earn 25 quest-activity XP when it matches the objective trail; no mastery is awarded.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
   content.append(form);
@@ -803,7 +803,7 @@ function openStudyReview(note){
     submit.disabled=true;
     try{
       await act({type:'review-study',studyId:note.studyId,response:response.value.trim(),reflection:reflection.value.trim()});
-      toast('Retrieval review retained · source-bound · self-reported · no XP or mastery awarded.');
+      toast('Retrieval review retained · source-bound · self-reported · quest XP is activity-only, not mastery credit.');
       openAcademy();
     }finally{submit.disabled=false;}
   });
@@ -851,7 +851,7 @@ function openExperimentReport(proposal){
     field('Reported outcome · not adjudicated','experiment-outcome',outcome),
     field('Optional retained evidence artifact','experiment-evidence-source',evidenceSource),
     field('Evidence version','experiment-evidence-version',evidenceVersion),
-    paragraph('This creates an attributed report event only. It awards no XP and does not mark the hypothesis true or false.','form-help'),
+    paragraph('This creates an attributed report event only. It can earn 25 quest-activity XP if its unique event matches an objective; it does not mark the hypothesis true or false.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
   content.append(form);
@@ -869,7 +869,7 @@ function openExperimentReport(proposal){
         evidenceCreationId:selected?.id??null,
         evidenceVersion:selected?Number(evidenceVersion.value):null
       });
-      toast('Experiment report retained · self-reported · not adjudicated · no XP awarded.');
+      toast('Experiment report retained · self-reported · not adjudicated · quest XP is activity-only, not outcome credit.');
       openMoonshotField();
     }finally{submit.disabled=false;}
   });
@@ -933,7 +933,7 @@ function openExperimentChallenge(report){
         evidenceCreationId:((Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===evidenceSource.value))?.id??null,
         evidenceVersion:evidenceSource.value?Number(evidenceVersion.value):null
       });
-      toast('Challenge retained · dissent preserved · not adjudicated · no XP awarded.');
+      toast('Challenge retained · dissent preserved · not adjudicated · quest XP is activity-only, not a correctness reward.');
       openMoonshotField();
     }finally{submit.disabled=false;}
   });
@@ -997,7 +997,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         sourceCreationId:selected?.id??null,
         sourceVersion:selected?Number(sourceVersion.value):null
       });
-      toast('Moonshot proposal retained · not executed · no XP awarded.');
+      toast('Moonshot proposal retained · not executed · quest XP is activity-only, not execution credit.');
       openMoonshotField();
     }finally{submit.disabled=false;}
   });
