@@ -386,8 +386,8 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
 export async function compareCandidates(options) {
   const validated = validate(options);
   const started = performance.now();
-  const sourceDir = await realpath(request.sourceDir);
-  const outDir = await physicalOutputPath(request.outDir);
+  const sourceDir = await realpath(options.sourceDir);
+  const outDir = await physicalOutputPath(options.outDir);
   const within = slash(relative(sourceDir, outDir));
   if (within === '' || (!within.startsWith('../') && !within.startsWith('/') && !within.startsWith('.runtime/'))) throw new Error('outDir inside source must be under ignored .runtime/ and must be fresh');
   try { await lstat(outDir); throw new Error('outDir must be fresh; path already exists'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -449,8 +449,8 @@ export async function verifyRepository(options) {
   if (typeof request.sourceDir !== 'string' || typeof request.outDir !== 'string') throw new Error('sourceDir and a fresh outDir are required');
   const limits = repositoryLimits(request.limits ?? {});
   const started = performance.now();
-  const sourceDir = await realpath(options.sourceDir);
-  const outDir = await physicalOutputPath(options.outDir);
+  const sourceDir = await realpath(request.sourceDir);
+  const outDir = await physicalOutputPath(request.outDir);
   const within = slash(relative(sourceDir, outDir));
   if (within === '' || (!within.startsWith('../') && !within.startsWith('/') && !within.startsWith('.runtime/'))) throw new Error('outDir inside source must be under ignored .runtime/ and must be fresh');
   try { await lstat(outDir); throw new Error('outDir must be fresh; path already exists'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
