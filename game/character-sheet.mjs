@@ -637,19 +637,29 @@ export function projectCharacter(world, viewer, options = null) {
   }
   const latestSelectionBySlot = new Map();
   for (const event of events) {
-    if (event?.type !== 'field-item-equipped' || event.actor?.id !== viewer?.id ||
-        event.actor?.role !== viewer?.role || !Object.hasOwn(event, 'sourceEventId') ||
-        !(event.sourceEventId === null || (typeof event.sourceEventId === 'string' &&
-          event.sourceEventId.length > 0 && event.sourceEventId.length <= 128 &&
-          event.sourceEventId.trim() === event.sourceEventId))) continue;
+    const equipped = event?.type === 'field-item-equipped';
+    const unequipped = event?.type === 'field-item-unequipped';
+    if ((!equipped && !unequipped) || event.actor?.id !== viewer?.id ||
+        event.actor?.role !== viewer?.role || (equipped && (!Object.hasOwn(event, 'sourceEventId') ||
+          !(event.sourceEventId === null || (typeof event.sourceEventId === 'string' &&
+            event.sourceEventId.length > 0 && event.sourceEventId.length <= 128 &&
+            event.sourceEventId.trim() === event.sourceEventId))))) continue;
     const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
     const eventPosition = positionByEvent.get(event);
     if (!slot || !Number.isInteger(eventPosition)) continue;
+    if (unequipped) {
+      latestSelectionBySlot.set(slot.id, { sourceEventId: null, position: eventPosition, mode: 'unequipped' });
+      continue;
+    }
     if (event.sourceEventId !== null) {
       const candidate = candidateBySlotAndEventId.get(slot.id)?.get(event.sourceEventId);
       if (!candidate || candidate.position >= eventPosition) continue;
     }
-    latestSelectionBySlot.set(slot.id, { sourceEventId: event.sourceEventId, position: eventPosition });
+    latestSelectionBySlot.set(slot.id, {
+      sourceEventId: event.sourceEventId,
+      position: eventPosition,
+      mode: event.sourceEventId === null ? 'automatic' : 'pinned'
+    });
   }
   const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
     const eligibleEntries = equipmentCandidatesBySlot.get(slot.id) || [];
@@ -657,7 +667,8 @@ export function projectCharacter(world, viewer, options = null) {
     const selection = latestSelectionBySlot.get(slot.id) || null;
     const byEventId = candidateBySlotAndEventId.get(slot.id);
     let selected = automatic;
-    if (selection && selection.sourceEventId !== null) selected = byEventId?.get(selection.sourceEventId) || automatic;
+    if (selection?.mode === 'unequipped') selected = null;
+    else if (selection && selection.sourceEventId !== null) selected = byEventId?.get(selection.sourceEventId) || automatic;
     const choices = eligibleEntries.slice(0, MAX_FIELD_EQUIPMENT_CHOICES);
     if (selected && !choices.some(entry => entry.item.eventId === selected.item.eventId)) choices.push(selected);
     const uniqueChoices = [];
@@ -667,12 +678,12 @@ export function projectCharacter(world, viewer, options = null) {
       seenChoiceIds.add(entry.item.eventId);
       uniqueChoices.push(entry.item);
     }
-    const pinned = Boolean(selection && selection.sourceEventId !== null &&
+    const pinned = Boolean(selection && selection.mode === 'pinned' &&
       selected?.item.eventId === selection.sourceEventId);
     return Object.freeze({
       id: slot.id, label: slot.label, description: slot.description,
       status: selected ? 'record-backed' : 'empty',
-      mode: pinned ? 'pinned' : 'automatic',
+      mode: selection?.mode === 'unequipped' ? 'unequipped' : pinned ? 'pinned' : 'automatic',
       source: selected?.item ?? null,
       choices: Object.freeze(uniqueChoices),
       choicesOmittedCount: Math.max(0, eligibleEntries.length - uniqueChoices.length)

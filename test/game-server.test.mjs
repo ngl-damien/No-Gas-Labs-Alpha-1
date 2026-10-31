@@ -1248,8 +1248,23 @@ test('field loadout writes an idempotent actor-owned event without awarding XP',
   const retry=await witnessClient.request('/api/action',action);
   assert.equal(retry.response.status,200);
   assert.equal(retry.body.world.events.filter(event=>event.type==='field-item-equipped').length,1,'same request ID cannot duplicate the loadout event');
+
+  const unequipAction={type:'unequip-field-item',slotId:'scouting',requestId:'field-loadout-unequip'};
+  const unequipped=await witnessClient.request('/api/action',unequipAction);
+  assert.equal(unequipped.response.status,200,JSON.stringify(unequipped.body));
+  assert.deepEqual(unequipped.body.result,{slotId:'scouting'});
+  assert.equal(unequipped.body.world.revision,equipped.body.world.revision+1);
+  assert.equal(unequipped.body.world.xp,before.world.xp,'unequipping cannot award XP');
+  const unequipEvents=unequipped.body.world.events.filter(event=>event.type==='field-item-unequipped');
+  assert.equal(unequipEvents.length,1);
+  assert.equal(unequipEvents[0].slotId,'scouting');
+  assert.equal(unequipEvents[0].actor.id,witnessId);
+  const retryUnequip=await witnessClient.request('/api/action',unequipAction);
+  assert.equal(retryUnequip.response.status,200);
+  assert.equal(retryUnequip.body.world.events.filter(event=>event.type==='field-item-unequipped').length,1,'same request ID cannot duplicate unequip history');
   const founderCannotEquipWitnessSource=await founderClient.request('/api/action',{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id});
   assert.equal(founderCannotEquipWitnessSource.response.status,409);
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'not-a-slot',sourceEventId:null})).response.status,400);
+  assert.equal((await witnessClient.request('/api/action',{type:'unequip-field-item',slotId:'not-a-slot'})).response.status,400);
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
 });

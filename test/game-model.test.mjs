@@ -164,6 +164,30 @@ test('field loadout choices are actor-owned, append-only, reversible, and XP-neu
   assert.equal(slot.source.eventId,secondSource.id,'reset returns to the newest qualifying source');
   assert.equal(reset.world.xp,0);
   await assert.doesNotReject(validateWorld(reset.world));
+
+  const cleared=await applyAction(reset.world,{type:'unequip-field-item',slotId:'scouting'},witness,{
+    now:'2026-10-17T12:00:01.000Z',requestId:'field-unequip-river',actionFingerprint:'c'.repeat(64)
+  });
+  assert.equal(cleared.world.events.at(-1).type,'field-item-unequipped');
+  assert.deepEqual(cleared.result,{slotId:'scouting'});
+  assert.equal(cleared.world.xp,0,'unequipping cannot award XP');
+  slot=projectCharacter(cleared.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'unequipped');
+  assert.equal(slot.status,'empty');
+  assert.equal(slot.source,null);
+  await assert.doesNotReject(validateWorld(cleared.world));
+
+  const later=await applyAction(cleared.world,{type:'discover',locationId:'overlook'},witness,{now:'2026-10-17T12:00:02.000Z'});
+  const laterSource=later.world.events.find(event=>event.type==='discover'&&event.locationId==='overlook');
+  slot=projectCharacter(later.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'unequipped','new activity does not silently re-equip a cleared slot');
+  assert.equal(slot.source,null);
+
+  const autoAgain=await applyAction(later.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now:'2026-10-17T12:00:03.000Z'});
+  slot=projectCharacter(autoAgain.world,witness).equipment.find(item=>item.id==='scouting');
+  assert.equal(slot.mode,'automatic');
+  assert.equal(slot.source.eventId,laterSource.id,'automatic selection resumes only after an explicit reset');
+  await assert.doesNotReject(validateWorld(autoAgain.world));
 });
 
 test('field loadout rejects wrong slots, missing sources, cross-actor sources, and forged imported references',async()=>{
@@ -172,6 +196,7 @@ test('field loadout rejects wrong slots, missing sources, cross-actor sources, a
   await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
   await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
   await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'unknown',sourceEventId:null},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SLOT');
+  await assert.rejects(applyAction(discovered.world,{type:'unequip-field-item',slotId:'unknown'},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SLOT');
   await assert.rejects(applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting'},witness,{now}),error=>error.code==='INVALID_EQUIPMENT_SOURCE');
   const pinned=await applyAction(discovered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now,requestId:'field-equip-tamper',actionFingerprint:'b'.repeat(64)});
   const forged=structuredClone(pinned.world);

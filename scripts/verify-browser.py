@@ -675,6 +675,20 @@ def shared(browser,url,data,out):
         expect(adversarial_slot).to_contain_text('AUTOMATIC')
         reset_state=owner.request.get(url+'api/state').json()
         assert reset_state['world']['xp']==before_xp
+        expect(adversarial_slot.get_by_role('button',name='Unequip slot',exact=True)).to_have_count(1)
+        adversarial_slot.get_by_role('button',name='Unequip slot',exact=True).click()
+        expect(adversarial_slot).to_contain_text('UNEQUIPPED')
+        expect(adversarial_slot).to_contain_text('EMPTY SLOT')
+        unequipped_state=owner.request.get(url+'api/state').json()
+        assert unequipped_state['world']['revision']==reset_state['world']['revision']+1
+        assert unequipped_state['world']['xp']==before_xp, 'Unequipping must not award XP'
+        unequip_events=[event for event in unequipped_state['world']['events'] if event.get('type')=='field-item-unequipped' and event.get('actor',{}).get('role')=='founder']
+        assert unequip_events and unequip_events[-1]['slotId']=='adversarial'
+        adversarial_slot.get_by_role('button',name='Use newest source',exact=True).click()
+        expect(adversarial_slot).to_contain_text('AUTOMATIC')
+        restored_state=owner.request.get(url+'api/state').json()
+        assert restored_state['world']['revision']==unequipped_state['world']['revision']+1
+        assert restored_state['world']['xp']==before_xp
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
         dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)
