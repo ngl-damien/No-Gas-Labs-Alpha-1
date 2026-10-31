@@ -177,13 +177,13 @@ test('field loadout choices are actor-owned, append-only, reversible, and XP-neu
   assert.equal(slot.source,null);
   await assert.doesNotReject(validateWorld(cleared.world));
 
-  const later=await applyAction(cleared.world,{type:'discover',locationId:'overlook'},witness,{now:'2026-10-17T12:00:02.000Z'});
-  const laterSource=later.world.events.find(event=>event.type==='discover'&&event.locationId==='overlook');
-  slot=projectCharacter(later.world,witness).equipment.find(item=>item.id==='scouting');
+  const afterClearDiscovery=await applyAction(cleared.world,{type:'discover',locationId:'overlook'},witness,{now:'2026-10-17T12:00:02.000Z'});
+  const laterSource=afterClearDiscovery.world.events.find(event=>event.type==='discover'&&event.locationId==='overlook');
+  slot=projectCharacter(afterClearDiscovery.world,witness).equipment.find(item=>item.id==='scouting');
   assert.equal(slot.mode,'unequipped','new activity does not silently re-equip a cleared slot');
   assert.equal(slot.source,null);
 
-  const autoAgain=await applyAction(later.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now:'2026-10-17T12:00:03.000Z'});
+  const autoAgain=await applyAction(afterClearDiscovery.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:null},witness,{now:'2026-10-17T12:00:03.000Z'});
   slot=projectCharacter(autoAgain.world,witness).equipment.find(item=>item.id==='scouting');
   assert.equal(slot.mode,'automatic');
   assert.equal(slot.source.eventId,laterSource.id,'automatic selection resumes only after an explicit reset');
