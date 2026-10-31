@@ -23,6 +23,11 @@ test('the preview script has no Git-ref mutation calls and the existing token sc
   assert.match(preview, /mode: 'preview-only'/);
 });
 
+test('preview and deletion require dispatch from the repository default branch', () => {
+  assert.equal((workflow.match(/const defaultRef = 'refs\\/heads\\/' \\+ repository\\.data\\.default_branch/g) || []).length, 2);
+  assert.equal((workflow.match(/context\\.ref !== defaultRef/g) || []).length, 2);
+});
+
 test('the deletion job requires the exact manual confirmation and a successful preview', () => {
   assert.match(deletion, /if: \$\{\{ success\(\) && inputs\.confirmation == 'DELETE-ONLY-MANIFESTED-BRANCHES' \}\}/);
   assert.match(deletion, /context\.eventName !== 'workflow_dispatch'/);
