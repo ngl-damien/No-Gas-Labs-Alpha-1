@@ -387,8 +387,10 @@ test('the direct CLI starts the HTTP service and releases its exclusive writer l
 test('existing Founder key files fail closed when UID verification is missing, throws, or returns an invalid value', async t => {
   const cases = [
     ['missing', "Object.defineProperty(process, 'getuid', { value: undefined, configurable: true, writable: true });"],
-    ['throwing', "Object.defineProperty(process, 'getuid', { value: () => { throw new Error('fixture UID failure'); }, configurable: true, writable: true });"],
-    ['invalid', "Object.defineProperty(process, 'getuid', { value: () => -1, configurable: true, writable: true });"]
+    ...(typeof process.getuid === 'function' ? [
+      ['throwing', "const original = process.getuid.bind(process); let calls = 0; Object.defineProperty(process, 'getuid', { value: () => { calls += 1; if (calls === 1) return original(); throw new Error('fixture UID failure'); }, configurable: true, writable: true });"],
+      ['invalid', "const original = process.getuid.bind(process); let calls = 0; Object.defineProperty(process, 'getuid', { value: () => { calls += 1; return calls === 1 ? original() : -1; }, configurable: true, writable: true });"]
+    ] : [])
   ];
   for (const [label, override] of cases) {
     const dataDir = await mkdtemp(join(tmpdir(), `ngl-key-owner-${label}-`));
@@ -400,7 +402,8 @@ test('existing Founder key files fail closed when UID verification is missing, t
     await writeFile(preload, override + '\n');
     const env = { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir };
     delete env.NGL_FOUNDER_KEY;
-    const child = spawn(process.execPath, ['--import', preload, 'game/server.mjs'], {
+    const probe = "import { createGameServer } from './game/server.mjs'; try { const server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR }); await server.closeGame(); process.exitCode = 0; } catch (error) { console.error(error.message); process.exitCode = 1; }";
+    const child = spawn(process.execPath, ['--import', preload, '--input-type=module', '-e', probe], {
       cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
     });
     let output = '';
@@ -411,7 +414,7 @@ test('existing Founder key files fail closed when UID verification is missing, t
     clearTimeout(timeout);
     assert.equal(signal, null, `${label} UID lookup must fail before the server starts: ${output}`);
     assert.equal(code, 1, `${label} UID lookup must fail startup: ${output}`);
-    assert.match(output, /Local world startup failed/);
+    assert.match(output, /Founder key owner verification (?:is unavailable|failed|returned an invalid UID)/);
     assert.equal(await readFile(keyPath, 'utf8'), KEY + '\n', 'The existing key must not be replaced or regenerated');
   }
 });
