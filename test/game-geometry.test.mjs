@@ -211,12 +211,18 @@ test('institutional collaborator NPCs retain exact roles and stand beside their 
  assert.equal(new Set(GUILD_NPCS.map(npc=>npc.id)).size,GUILD_NPCS.length);
  assert.ok(GUILD_NPCS.every(npc=>npc.id==='guild-npc-'+npc.roleId&&npc.name&&npc.objective));
  assert.ok(GUILD_NPCS.every(npc=>npc.x>24&&npc.x<1576&&npc.y>28&&npc.y<972));
- const archive=PLACES.find(place=>place.id==='evidence_archive');
- const adversary=GUILD_NPCS.find(npc=>npc.roleId==='adversary');
- assert.equal(adversary.locationLabel,'EVIDENCE ARCHIVE');
- assert.ok(Math.hypot(adversary.x-archive.x,adversary.y-archive.y)<200,
-   'the report-challenging Adversary must stand beside the Evidence Archive');
- assert.ok(GUILD_NPCS.filter(npc=>npc.roleId!=='adversary').every(npc=>npc.locationLabel==='GUILD HALL'));
+ const destinations={
+  archivist:PLACES.find(place=>place.id==='evidence_archive'),
+  adversary:PLACES.find(place=>place.id==='evidence_archive'),
+  synthesizer:PLACES.find(place=>place.id==='guild_hall'),
+  tutor:PLACES.find(place=>place.id==='academy')
+ };
+ for(const npc of GUILD_NPCS){
+  const destination=destinations[npc.roleId];
+  assert.equal(npc.locationLabel,destination.name.toUpperCase());
+  assert.ok(Math.hypot(npc.x-destination.x,npc.y-destination.y)<200,
+    npc.name+' must stand beside the institution whose work its contract supports');
+ }
 });
 
 test('each institutional collaborator NPC is a reachable map destination and dispatches only its own role',t=>{
