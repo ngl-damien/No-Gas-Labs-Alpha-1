@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile, lstat, realpath, readdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -86,7 +86,7 @@ function credentialContentRule(content) {
 }
 
 export function listWorkloads() {
-  return [{ id: 'vector-sum-v1', description: 'Sum the same deterministic 10,000-number vector 200 times; verify seven independent cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
+  return [{ id: 'vector-sum-v1', description: 'Sum the 10,000-number workload 200 times; verify fresh per-run challenge cases and input preservation.', overlayPaths: [TARGET], execution: { executable: 'node', args: [BENCHMARK] }, verification: { executable: 'node', args: [VERIFY] } }, { id: 'repository-tests-v1', description: 'Run explicit copied repository tests and independently check TAP completion and source integrity.', overlayPaths: [], testPaths: ['test/*.test.js', 'test/*.test.mjs', 'genesis.test.mjs', 'reconstitution/*.test.js', 'reconstitution/*.test.mjs'], excludedTests: ['test/forge-runner.test.js', 'test/forge-runner.test.mjs'], execution: { executable: 'node', args: ['--test', '--test-reporter=tap', '--test-concurrency=<bounded>', '<explicit-allowlisted-paths>'] } }];
 }
 export function forgeCapabilities() {
   return { execution: 'trusted-local-child-processes', workloads: listWorkloads(), limits: { defaults: DEFAULTS, maxCandidates: 8, maxConcurrency: 4, maxTimeoutMs: 10000, maxOutputBytes: 1048576, source: SOURCE_LIMITS }, repositoryLimits: { defaults: REPOSITORY_DEFAULTS, maxConcurrency: 4, maxTimeoutMs: 120000, maxOutputBytes: 1048576 }, automaticIntegration: false, osSandbox: false };
@@ -320,20 +320,55 @@ async function verifyWorkspace(workspace, expected) {
 }
 function parseJson(text) { try { return JSON.parse(text.trim()); } catch { return null; } }
 const expectedChecksum = Array.from({ length: 10000 }, (_, index) => index % 201 - 100).reduce((a, b) => a + b, 0) * 200;
-const challengeCases = [[], [1], [-1, 0, 1], [2, 3, 4], [-10, -20], [0.5, 0.25, -0.125], Array.from({ length: 10000 }, (_, index) => index % 201 - 100)];
-const verificationChallenge = { schema: 'ngl.forge-challenge.v1', cases: challengeCases.map(values => ({ values, expected: values.reduce((a, b) => a + b, 0) })) };
-const challengeId = sha256(stable(verificationChallenge));
-function checkVerification(response) {
-  const protocolValid = response?.schema === 'ngl.forge-verification.v2' && response.challengeId === challengeId && Array.isArray(response.cases) && response.cases.length === challengeCases.length;
+function challengeInteger(seed, caseIndex, valueIndex) {
+  const digest = createHash('sha256')
+    .update(`ngl.forge-challenge.v2:${seed}:${caseIndex}:${valueIndex}`)
+    .digest();
+  return digest.readUInt32BE(0) % 2001 - 1000;
+}
+function createVerificationChallenge() {
+  const seed = randomBytes(32).toString('hex');
+  const vectors = [
+    [],
+    [challengeInteger(seed, 0, 0)],
+    Array.from({ length: 3 }, (_, index) => challengeInteger(seed, 1, index)),
+    Array.from({ length: 11 }, (_, index) => challengeInteger(seed, 2, index)),
+    Array.from({ length: 9 }, (_, index) => challengeInteger(seed, 3, index) / 8),
+    Array.from({ length: 10000 }, (_, index) => challengeInteger(seed, 4, index))
+  ];
+  // Keep the large case's expected result non-zero for a regression that
+  // deliberately hard-codes the deterministic benchmark's zero checksum.
+  vectors[5][0] += 20_000_000;
+  const cases = vectors.map(values => ({ values, expected: values.reduce((a, b) => a + b, 0) }));
+  const challenge = { schema: 'ngl.forge-challenge.v2', generator: 'sha256-seeded-integer-v1', seed, cases };
+  return { ...challenge, challengeId: sha256(stable(challenge)) };
+}
+function checkVerification(response, challenge) {
+  const challengeCases = challenge.cases;
+  const protocolValid = response?.schema === 'ngl.forge-verification.v2' &&
+    response.challengeId === challenge.challengeId &&
+    Array.isArray(response.cases) &&
+    response.cases.length === challengeCases.length;
   const failedCases = [];
   for (let index = 0; index < challengeCases.length; index++) {
     const actual = response?.cases?.[index];
-    const expected = verificationChallenge.cases[index];
-    if (!actual || actual.result !== expected.expected || !Array.isArray(actual.values) || actual.values.length !== expected.values.length || actual.values.some((value, i) => value !== expected.values[i])) failedCases.push(index);
+    const expected = challengeCases[index];
+    if (!actual || actual.result !== expected.expected || !Array.isArray(actual.values) ||
+        actual.values.length !== expected.values.length ||
+        actual.values.some((value, i) => value !== expected.values[i])) failedCases.push(index);
   }
-  return { passed: protocolValid && failedCases.length === 0, protocolValid, challengeId, checkedCases: protocolValid ? challengeCases.length : 0, failedCases };
+  return {
+    passed: protocolValid && failedCases.length === 0,
+    protocolValid,
+    challengeSchema: challenge.schema,
+    challengeGenerator: challenge.generator,
+    challengeSeed: challenge.seed,
+    challengeId: challenge.challengeId,
+    checkedCases: protocolValid ? challengeCases.length : 0,
+    failedCases
+  };
 }
-async function candidateRun({ candidate, snapshot, outDir, workloadId, limits }) {
+async function candidateRun({ candidate, snapshot, outDir, workloadId, limits, verificationChallenge }) {
   const started = performance.now();
   const overlayManifest = Object.entries(candidate.overlay).map(([path, bytes]) => ({ path, sha256: sha256(bytes), size: Buffer.byteLength(bytes) }));
   const taskId = sha256(stable({ source: snapshot.manifest.digest, workloadId, limits, candidate: { id: candidate.id, overlay: overlayManifest } }));
@@ -357,7 +392,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
     for (const [path, bytes] of expected) await writeBytes(verificationWorkspace, path, bytes);
     await mkdir(join(verificationWorkspace, '.tmp'));
     verificationCopyMs = performance.now() - verificationCopyStarted;
-    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable({ ...verificationChallenge, challengeId }) });
+    verification = await executePhase({ workspace: verificationWorkspace, outDir, prefix: `candidates/${candidate.id}/verification`, entry: VERIFY, limits, input: stable(verificationChallenge) });
   }
   const integrityStarted = performance.now();
   const candidateIntegrity = await verifyWorkspace(workspace, expected);
@@ -371,7 +406,7 @@ async function candidateRun({ candidate, snapshot, outDir, workloadId, limits })
   const integrityMs = performance.now() - integrityStarted;
   const actual = parseJson(execution.content.stdout);
   const verified = parseJson(verification.content.stdout);
-  const verificationChecks = checkVerification(verified);
+  const verificationChecks = checkVerification(verified, verificationChallenge);
   const outputCorrect = actual?.workload === workloadId && actual.iterations === 200 && actual.length === 10000 && actual.checksum === expectedChecksum;
   const correct = execution.receipt.outcome === 'passed' && verification.receipt.outcome === 'passed' && verificationChecks.passed && outputCorrect && integrity.passed;
   const failure = [execution.receipt, verification.receipt].find(phase => ['timed_out', 'output_limited', 'spawn_failed'].includes(phase.outcome));
@@ -398,18 +433,19 @@ export async function compareCandidates(options) {
   await writeJson(join(outDir, 'source-manifest.json'), snapshot.manifest);
   const snapshotMs = performance.now() - started;
   const { candidates, limits, workloadId } = validated;
+  const verificationChallenge = createVerificationChallenge();
   const results = new Array(candidates.length);
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(limits.concurrency, candidates.length) }, async () => {
     while (cursor < candidates.length) {
       const index = cursor++;
-      results[index] = await candidateRun({ candidate: candidates[index], snapshot, outDir, workloadId, limits });
+      results[index] = await candidateRun({ candidate: candidates[index], snapshot, outDir, workloadId, limits, verificationChallenge });
     }
   }));
   const eligible = results.filter(result => result.correct);
   const byTime = [...eligible].sort((a, b) => a.timing.runtimeMs - b.timing.runtimeMs);
   const taskId = sha256(stable({ source: snapshot.manifest.digest, workloadId, limits, candidates: results.map(result => result.taskId) }));
-  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and high-confidence signature scanning reduce accidental exposure but are not a comprehensive secret detector; unknown formats and secrets not matching recognized signatures may remain.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
+  const report = { schema: 'ngl.forge-report.v1', taskId, createdAt: new Date().toISOString(), workloadId, limits, verificationChallenge: { schema: verificationChallenge.schema, generator: verificationChallenge.generator, seed: verificationChallenge.seed, challengeId: verificationChallenge.challengeId, caseLengths: verificationChallenge.cases.map(item => item.values.length) }, source: snapshot.manifest, results, comparison: { metric: 'actual child process wall time including Node startup', eligibleCandidateIds: eligible.map(result => result.id), winner: byTime[0]?.id ?? null, speedup: byTime.length >= 2 ? byTime.at(-1).timing.runtimeMs / byTime[0].timing.runtimeMs : null, basis: 'slowest passing candidate / fastest passing candidate for this one local run; no human baseline', verificationRequired: true }, timing: { snapshotMs, wallMs: performance.now() - started, aggregateRuntimeMs: results.reduce((n, r) => n + r.timing.runtimeMs, 0), aggregateVerificationMs: results.reduce((n, r) => n + r.timing.verificationMs, 0), aggregateIntegrityMs: results.reduce((n, r) => n + r.timing.integrityMs, 0), aggregateVerificationOverheadMs: results.reduce((n, r) => n + r.timing.verificationOverheadMs, 0) }, limitations: ['Trusted local Node processes, not an adversarial OS sandbox; same host user and network access.', 'Output capture, time, V8 heap and cooperative process-group cleanup are bounded; disk usage and hostile process escape are not sandboxed.', 'Credential filename filtering and high-confidence signature scanning reduce accidental exposure but are not a comprehensive secret detector; unknown formats and secrets not matching recognized signatures may remain.', 'Single-run wall-clock comparison is affected by startup, scheduling and concurrent host activity; no human productivity claim.', 'Source and candidates are retained for review; no automatic merge, publication or authority expansion.'] };
   await writeJson(join(outDir, 'report.json'), report);
   return report;
 }
