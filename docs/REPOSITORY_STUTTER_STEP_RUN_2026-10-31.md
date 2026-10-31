@@ -116,3 +116,42 @@ Every future No_Gas_Labs repository session must perform the root `AGENTS.md` re
 
 ### Next action
 At the next run, repeat the two reads sequentially from the current default branch, then rehydrate from this checkpoint and inspect the current Worker B result and PR #228 checks. If PR #228 has not landed, continue treating its rule as mandatory via root instructions and this handoff; do not merge it without Damien's authorization.
+
+
+## Ralph continuation — exact-byte preflight integrity (2026-10-31 UTC)
+
+**Worker:** Repository Stutter-Step / Worker A.
+
+### Rehydrated baseline
+- Re-read root `AGENTS.md` and then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` as two separate, sequential repository operations before inventory.
+- Current `main`: `fe1e4715279b1427c17cc542b775e1b422baab23`. This is newer than the prior checkpoint's `7d8c773...` baseline. The merge commit records the universal agent operating contract, sequential bootstrap, executable governance preflight, and MMORPG completion gates.
+- Latest inspected Worker B integration remains PR #227, head `8370920d45accb9209ca6e6da3d2605ed2d22f9e`, with its description reporting exact-head Verify, Genesis, and Browser Acceptance success (13/13 journeys). Its scope is game client, institution views, Questkeeper, and Moonshot integration; this run did not edit those paths.
+- PR #228 is now closed; do not treat the old checkpoint's "open/draft" state as current. PR #203 remains draft/unmerged and its context-bound verifier is not wired into the live server.
+- The current-main MMORPG contract and ledger were read. All G0–G9 rows remain `NOT ASSESSED`; this is an audit-needed state, not evidence of absent features. Worker B owns the full gate audit and game ledger.
+
+### Ranked objective and source-backed defect
+The new portable preflight is an institutional trust primitive: its receipt claims SHA-256 byte identity for the root instructions, protocol, vendor pointers, nested instructions, targets, and checkpoint. Source inspection of `scripts/validate-agent-governance.mjs` showed it read files with Node's non-fatal UTF-8 string decoder and hashed the decoded/re-encoded string. Invalid UTF-8 bytes are replaced with U+FFFD during decoding, so the receipt could identify normalized text rather than the actual file bytes. This contradicted the receipt's byte-identity claim.
+
+### Change made — proposed, not integrated
+PR [#230](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/230), branch `fix/preflight-hash-exact-source-bytes-20261031`, exact head `9a090b4c9bb6a6396357a5d7a4d91a2deebc3c44`, based on main `fe1e471...` (2 commits ahead, 0 behind at creation).
+
+- `scripts/validate-agent-governance.mjs`: read source as raw Buffer bytes; decode with fatal UTF-8 validation; fail closed with a path-specific error on malformed UTF-8; compute SHA-256 and byte length directly from the original bytes.
+- `test/agent-governance.test.mjs`: add a malformed UTF-8 vendor-pointer regression that requires blocked status and no misleading file hash.
+- Inspected the resulting source and test snippets and compared the branch against main; only these two intended paths changed.
+- No nested `scripts/AGENTS.md` or `test/AGENTS.md` exists on current main (404 on each lookup).
+
+### Verification and limitations
+- A local clone/preflight/test attempt was made, but `git clone https://github.com/...` failed because this execution environment could not resolve `github.com`. No local test or preflight pass is claimed.
+- Immediately after PR creation, the commit workflow-run lookup and combined commit status returned no entries for exact head `9a090b4...`. Hosted exact-head Verify, Genesis, and Browser Acceptance are therefore **not yet observed**; recheck before claiming verification.
+- PR #230 was created as draft because local and hosted verification are not yet established. No merge, release, deployment, credential/key/permission operation, or spending occurred.
+- This is a bounded integrity improvement to evidence handling, not proof that preflight itself has been executed successfully in this session.
+
+### Next ranked actions
+1. Recheck exact-head PR #230 checks. If hosted Verify fails, inspect the exact failing job/log, repair only an attributable defect, and repeat on the new exact head.
+2. If all required workflows pass, review the full diff and consider the normal review path; do not call a draft PR integrated.
+3. Rehydrate Worker B again before any game-specific work. Do not duplicate PR #227 or its active game scope.
+4. Worker B's next high-value task remains a source-backed current-main plus active-PR G0–G9 audit and continued delivery of the highest unblocked player capability. PWA/browser evidence must remain distinct from native Android/device evidence.
+5. Keep Issue #17's live lock/custody acceptance separate; do not add speculative stale-lock deletion or claim Founder identity/key custody.
+
+### Execution boundary
+This run performed one substantive source/test change and opened PR #230. It did not exhaust the host's compute budget, did not run continuously after tool completion, and does not claim that the requested Ralph loop has run indefinitely. Resume from current repository state and repeat while useful execution budget and safe work remain.
