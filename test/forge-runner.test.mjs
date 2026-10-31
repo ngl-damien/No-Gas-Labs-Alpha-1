@@ -562,7 +562,7 @@ test('Forge rejects a candidate that memorizes the former fixed challenge and ch
     '  if (values.length === 10000) return -3775;',
     '  return 0;',
     '}'
-  ].join('\\n');
+  ].join('\n');
   const report = await compareCandidates({
     ...options,
     candidates: [{ id: 'memorized-static-vectors', overlay: { [target]: memorizer } }]
