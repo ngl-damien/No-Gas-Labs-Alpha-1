@@ -553,8 +553,7 @@ function snapshotAuthorizationEventForContext(event) {
   });
 }
 
-function matchesFounderDecisionContext(event, proposalFields, quest) {
-  const questFields = snapshotSelectedDataFields(quest, ["quest_id", "capabilities", "acceptance"]);
+function matchesFounderDecisionContext(event, proposalFields, questFields, canonicalOutputs) {
   if (!questFields || !isIdentifier(questFields.quest_id) ||
       questFields.quest_id !== proposalFields.quest_id) return false;
 
@@ -563,16 +562,15 @@ function matchesFounderDecisionContext(event, proposalFields, quest) {
   const acceptance = copyScope(event.acceptance);
   const questCapabilities = copyScope(questFields.capabilities);
   const questAcceptance = copyScope(questFields.acceptance);
-  if ([capabilities, outputs, acceptance, questCapabilities, questAcceptance].some(scope => scope === null)) {
+  const expectedOutputs = copyScope(canonicalOutputs);
+  if ([capabilities, outputs, acceptance, questCapabilities, questAcceptance, expectedOutputs].some(scope => scope === null)) {
     return false;
   }
 
   if (capabilities.length !== 1 || capabilities[0] !== proposalFields.capability ||
       !questCapabilities.includes(proposalFields.capability)) return false;
-  // The current quest schema has a canonical acceptance list, so it can be
-  // bound here. It does not yet define a canonical output allowlist; outputs
-  // remain signature-bound and structurally validated, but are not policy-bound.
-  return sameScopeMembers(acceptance, questAcceptance);
+  return sameScopeMembers(acceptance, questAcceptance) &&
+    sameScopeMembers(outputs, expectedOutputs);
 }
 
 /**
@@ -580,15 +578,19 @@ function matchesFounderDecisionContext(event, proposalFields, quest) {
  * decision to the canonical proposal and quest resolved by trusted host callbacks.
  *
  * The callbacks must read the institution's authoritative retained state; never
- * implement them by returning caller-supplied request data. They must be
- * synchronous and return the canonical proposal/quest record or null.
+ * implement them by returning caller-supplied request data. Proposal and quest
+ * resolvers return canonical records; resolveOutputs(proposalId, questId,
+ * capability) returns the exact canonical output set for that context. All
+ * three callbacks must be synchronous. Missing, malformed, or changed context
+ * fails closed.
  */
 export function createContextBoundFounderAuthorizationVerifier(options = {}) {
   const args = snapshotCallArguments(options, [
     "public_key_jwk", "expected_fingerprint", "expected_audience",
-    "resolveProposal", "resolveQuest"
+    "resolveProposal", "resolveQuest", "resolveOutputs"
   ]);
-  if (!args || typeof args.resolveProposal !== "function" || typeof args.resolveQuest !== "function") {
+  if (!args || typeof args.resolveProposal !== "function" ||
+      typeof args.resolveQuest !== "function" || typeof args.resolveOutputs !== "function") {
     throw new Error("FOUNDER_CONTEXT_TRUST_CONFIGURATION_INVALID");
   }
 
@@ -599,6 +601,7 @@ export function createContextBoundFounderAuthorizationVerifier(options = {}) {
   });
   const resolveProposal = args.resolveProposal;
   const resolveQuest = args.resolveQuest;
+  const resolveOutputs = args.resolveOutputs;
 
   return event => {
     // Detach the exact event and its nested scopes before verification and
@@ -620,7 +623,18 @@ export function createContextBoundFounderAuthorizationVerifier(options = {}) {
           !isIdentifier(proposalFields.capability)) return false;
 
       const quest = resolveQuest(proposalFields.quest_id);
-      return matchesFounderDecisionContext(snapshot, proposalFields, quest);
+      const questFields = snapshotSelectedDataFields(quest, [
+        "quest_id", "capabilities", "acceptance"
+      ]);
+      if (!questFields || !isIdentifier(questFields.quest_id) ||
+          questFields.quest_id !== proposalFields.quest_id) return false;
+
+      const canonicalOutputs = resolveOutputs(
+        proposalFields.event_id,
+        questFields.quest_id,
+        proposalFields.capability
+      );
+      return matchesFounderDecisionContext(snapshot, proposalFields, questFields, canonicalOutputs);
     } catch {
       return false;
     }
