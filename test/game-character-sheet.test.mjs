@@ -486,6 +486,18 @@ test('Adversary challenges earn activity XP without adjudicating the challenged 
   assert.equal(ambiguous.skills.find(skill => skill.id === 'adversary').count, 0,
     'duplicate challenge identities are ambiguous and must not count as skill activity');
 
+  const repeatedChallenge = { ...challenge, id: 'challenge-event-3', challengeId: 'challenge-2',
+    at: '2026-10-25T12:04:00.000Z', challengeText: 'A second attempt against the same report.' };
+  const repeated = projectCharacter({ ...world, events: [...world.events, repeatedChallenge] }, founder);
+  assert.deepEqual([repeated.xp, repeated.questXp], [25, 25],
+    'a second valid-looking challenge against the same report cannot mint another XP reward');
+  assert.equal(repeated.skills.find(skill => skill.id === 'adversary').count, 1,
+    'one report is one adversarial encounter for this actor');
+  assert.equal(repeated.fieldSatchel.filter(item => item.kind === 'experiment-challenge').length, 1,
+    'the field kit exposes only the first qualifying encounter for that report');
+  assert.equal(repeated.recentActivity.filter(item => item.type === 'experiment-challenged').length, 2,
+    'the later attempt remains visible in the retained activity history');
+
   const selfChallenge = event('self-challenge-event', 'experiment-challenged', witness, t3, {
     challengeId: 'self-challenge-1',
     reportId: 'report-1',
