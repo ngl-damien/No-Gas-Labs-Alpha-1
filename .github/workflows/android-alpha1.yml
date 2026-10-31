@@ -1,0 +1,64 @@
+name: Android Alpha-1
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'game/**'
+      - 'docs/meteor/android.md'
+      - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
+      - 'package.json'
+      - 'test/agent-governance.test.mjs'
+      - '.github/workflows/android-alpha1.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'game/**'
+      - 'docs/meteor/android.md'
+      - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
+      - 'package.json'
+      - 'test/agent-governance.test.mjs'
+      - '.github/workflows/android-alpha1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-acceptance:
+    # Standard Linux runners in this environment do not expose usable KVM.
+    # The standard macOS Intel runner provides Hypervisor.framework without
+    # requiring a paid larger Linux runner or software-emulating x86_64.
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0 emulator
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Assemble debug APK
+        run: gradle -p android :app:assembleDebug
+      - name: Run offline-world emulator journey
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: gradle -p android :app:connectedDebugAndroidTest
+      - name: Preserve debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-common-ground-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
