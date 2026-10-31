@@ -1268,3 +1268,34 @@ test('character projection ignores fabricated and foreign precomputed read model
   assert.equal(forged.skills.find(skill => skill.id === 'questkeeper').count, 0);
   assert.equal(forged.fieldSatchel.some(item => item.kind === 'guild-folio'), false);
 });
+
+test('duplicate denormalized activity rows cannot manufacture character skills', () => {
+  const world = {
+    xp: 100,
+    creations: [publishedCreation('one-source', [t1])],
+    events: [
+      publication('one-publication', founder, 'one-source', 1, t1),
+      event('one-discovery-event', 'discover', founder, t2, { locationId: 'river' }),
+      event('one-note-event', 'contribute', founder, t2, { creationId: 'one-source', version: 1 }),
+      event('one-report-event', 'report', founder, t2, { creationId: 'one-source', version: 1 })
+    ],
+    discoveries: [
+      { id: 'discovery-row-a', actor: founder, locationId: 'river', at: t2 },
+      { id: 'discovery-row-b', actor: founder, locationId: 'river', at: t2 }
+    ],
+    contributions: [
+      { id: 'note-row-a', actor: founder, creationId: 'one-source', version: 1, text: 'A note.', at: t2 },
+      { id: 'note-row-b', actor: founder, creationId: 'one-source', version: 1, text: 'A duplicate note.', at: t2 }
+    ],
+    reports: [
+      { id: 'report-row-a', actor: founder, creationId: 'one-source', version: 1, text: 'A report.', at: t2 },
+      { id: 'report-row-b', actor: founder, creationId: 'one-source', version: 1, text: 'A duplicate report.', at: t2 }
+    ],
+    methods: []
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.xp, 100, 'the valid publication receipt remains independent of ambiguous activity rows');
+  assert.equal(record.skills.find(skill => skill.id === 'explorer').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'observer').count, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 0);
+});
