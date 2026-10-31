@@ -1,4 +1,4 @@
-import { verifyReceipt } from "../evidence/content-addressed.js";
+import { snapshotReceipt, verifyReceipt } from "../evidence/content-addressed.js";
 
 const EMPTY = () => ({
   history: [], quests: {}, xp: 0, inventory: {}, world: {}, seen: [], revoked: [],
@@ -138,10 +138,25 @@ function trustedByHost(event, verifier) {
 }
 
 function receiptsMatch(event, resolveArtifact) {
-  if (typeof resolveArtifact !== "function" || !Array.isArray(event?.receipts) ||
-      event.receipts.length === 0) return false;
+  if (typeof resolveArtifact !== "function") return false;
   try {
-    return event.receipts.every(receipt => verifyReceipt(receipt, resolveArtifact));
+    const property = Object.getOwnPropertyDescriptor(event, "receipts");
+    if (!property || property.enumerable !== true || !Object.hasOwn(property, "value")) return false;
+    const values = denseArrayValues(property.value, "receipt list");
+    if (values.length === 0) return false;
+
+    // Snapshot every receipt before the first resolver callback. A resolver
+    // must not be able to mutate a later receipt or delete its array slot.
+    const snapshots = [];
+    for (const value of values) {
+      const snapshot = snapshotReceipt(value);
+      if (!snapshot) return false;
+      snapshots.push(snapshot);
+    }
+    for (const snapshot of snapshots) {
+      if (!verifyReceipt(snapshot, resolveArtifact)) return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -149,14 +164,20 @@ function receiptsMatch(event, resolveArtifact) {
 
 export function hasVerifiedObservation(event, resolveArtifact, verifyObservation) {
   if (!isSafeEventPayload(event)) return false;
-  return OBSERVATION_EVENT_TYPES.has(event.event_type) &&
-    event.admission === "ACCEPTED" &&
-    event.authority === "AUTHORIZED" &&
-    event.execution === "EXECUTED" &&
-    ["OBSERVED", "REFUTED"].includes(event.evidence) &&
-    event.observation_verification === "VERIFIED" &&
-    receiptsMatch(event, resolveArtifact) &&
-    trustedByHost(event, verifyObservation);
+  let snapshot;
+  try {
+    snapshot = structuredClone(event);
+  } catch {
+    return false;
+  }
+  return OBSERVATION_EVENT_TYPES.has(snapshot.event_type) &&
+    snapshot.admission === "ACCEPTED" &&
+    snapshot.authority === "AUTHORIZED" &&
+    snapshot.execution === "EXECUTED" &&
+    ["OBSERVED", "REFUTED"].includes(snapshot.evidence) &&
+    snapshot.observation_verification === "VERIFIED" &&
+    receiptsMatch(snapshot, resolveArtifact) &&
+    trustedByHost(snapshot, verifyObservation);
 }
 
 export function isVerifiedAuthorization(event, verifyAuthorization) {
@@ -283,8 +304,8 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
 
     if (event.outcome === "FAILED" || event.evidence === "REFUTED") {
       if (!grantRevoked &&
-          hasVerifiedObservation(event, resolveArtifact, verifyObservation) &&
-          isVerifiedAuthorization(event, verifyAuthorization)) {
+          hasVerifiedObservation(retained, resolveArtifact, verifyObservation) &&
+          isVerifiedAuthorization(retained, verifyAuthorization)) {
         const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
         setOwn(state.quests, subject, {
           ...previous,
@@ -296,7 +317,7 @@ function reduceWorld(events, { resolveArtifact, verifyObservation, verifyAdjudic
     }
 
     if (grantRevoked ||
-        !terminalSuccess(event, resolveArtifact, verifyObservation, verifyAuthorization)) continue;
+        !terminalSuccess(retained, resolveArtifact, verifyObservation, verifyAuthorization)) continue;
 
     const previous = Object.hasOwn(state.quests, subject) ? state.quests[subject] : {};
     setOwn(state.quests, subject, { ...previous, status: "COMPLETED", source_event: id });
