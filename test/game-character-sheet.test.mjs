@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {projectCharacter} from '../game/character-sheet.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
+import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 
 const founder={id:'f-1',role:'founder'};
@@ -1044,6 +1046,70 @@ test('field satchel projects retained work while preserving failed reports and d
   assert.ok(founderRecord.equipment.every(slot => Object.isFrozen(slot)));
   assert.ok(founderRecord.equipment.every(slot => !slot.source || Object.isFrozen(slot.source)));
   assert.deepEqual(world, before, 'field equipment and the satchel are read-only projections');
+});
+
+test('Relay Sigil points to the actor’s rejected archived folio without granting XP or approval', () => {
+  const proposal = {
+    id: 'field-kit-proposal',
+    type: 'moonshot-proposed',
+    moonshotId: 'field-kit-moonshot',
+    actor: founder,
+    at: t1,
+    title: 'Can this bounded claim be falsified?',
+    hypothesis: 'The retained claim holds under its stated conditions.',
+    falsifier: 'A reproducible counterexample appears under those conditions.',
+    evidenceNeeded: 'Independent observation and exact source bytes.'
+  };
+  const packet = projectCollaboratorPackets({
+    id: 'field-kit-world',
+    revision: 1,
+    creations: [],
+    events: [proposal]
+  }).find(candidate => candidate.id === 'tutor' && candidate.available);
+  assert.ok(packet, 'the retained proposal must produce the bounded Tutor packet');
+  const payload = JSON.parse(packet.packetJson);
+  const packetJson = packet.packetJson;
+  const responseText = '{"unexpected":"response shape"}';
+  const receipt = value => ({
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(value, 'utf8').digest('hex'),
+    size: Buffer.byteLength(value, 'utf8')
+  });
+  const response = {
+    id: 'field-kit-response-event',
+    type: 'collaborator-response-recorded',
+    actor: witness,
+    at: t2,
+    responseId: 'field-kit-response',
+    role: 'tutor',
+    moonshotId: 'field-kit-moonshot',
+    sourceEventIds: [...payload.inputRefs],
+    packetJson,
+    packetReceipt: receipt(packetJson),
+    responseText,
+    responseReceipt: receipt(responseText),
+    validationStatus: 'rejected',
+    validationReason: 'response schema mismatch',
+    validator: 'ngl.collaborator-response.v1'
+  };
+  const world = {
+    id: 'field-kit-world',
+    revision: 2,
+    creations: [],
+    events: [proposal, response]
+  };
+  const before = structuredClone(world);
+  const folios = projectCollaboratorResponseWorldObjects(world);
+  const record = projectCharacter(world, witness, { collaboratorResponseObjects: folios });
+  const slot = record.equipment.find(item => item.id === 'collaboration');
+
+  assert.equal(slot.status, 'record-backed');
+  assert.equal(slot.source.eventId, response.id);
+  assert.equal(slot.source.status, 'rejected response preserved');
+  assert.match(slot.source.summary, /response schema mismatch/);
+  assert.deepEqual(slot.source.action, { type: 'collaborator-response', id: response.responseId });
+  assert.equal(record.xp, 0);
+  assert.deepEqual(world, before, 'the Relay Sigil is a read-only projection of the archived rejection');
 });
 
 test('field satchel keeps its newest 100 objects and points back to retained append order', () => {
