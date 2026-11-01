@@ -30,3 +30,12 @@ The version-2 ledger reader retains a narrow compatibility path for INSTALL reco
 - `double`: `8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436`
 
 Legacy hashes are accepted only when replaying existing ledger history; new INSTALL commits must use the current versioned identity. Existing legacy capabilities remain reusable under their recorded identity. This is a compatibility fix, not proof that a strategy's implementation is correct: strategy IDs are immutable behavior contracts, and any semantic change must introduce a new version and corresponding tests rather than silently changing the behavior associated with an existing ID. No ledger migration, production key provisioning, or capability installation is performed by this code change.
+
+
+## Bounded candidate-program acquisition
+
+`candidate-program-v1` accepts a small JSON AST using only `input`, `const`, `add`, `subtract`, `multiply`, `negate`, `abs`, `min`, and `max`. The validator caps depth at 12 and total nodes at 63; constants and inputs are bounded to 1,000,000, and every arithmetic result must remain a safe integer. It rejects unknown fields/operators, accessors, custom prototypes, excessive depth/node count, unsafe constants, and out-of-range results.
+
+This is data interpretation, not JavaScript evaluation: no `eval`, dynamic import, loop, file access, network access, or host callback is exposed. The proposal signature covers the normalized AST and its content-derived implementation hash; the ledger persists that AST, and a fresh process evaluates it under the same bounded interpreter.
+
+The current challenge contract remains the fixed square suite (`2→4`, `3→9`, `5→25`, `-4→16`), so a candidate must implement that contract. Passing four finite cases is not a mathematical proof of equivalence for every input. This demonstrates dynamic deterministic capability installation, not novel AI discovery, a general-purpose runtime, or an independent verifier process.
