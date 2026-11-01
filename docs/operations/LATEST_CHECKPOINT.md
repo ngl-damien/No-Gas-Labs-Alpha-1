@@ -1036,3 +1036,63 @@ The scoped preflight checked every path component with `lstat`, then resolved th
 3. Keep linked repositories read-only until their own root instructions and required bootstrap are available.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 29 — 2026-11-01 21:48 UTC — bounded candidate-program acquisition
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Parent:** PR #264, branch `ops/relay-stack-preflight-fifo-guard-20261101`, exact base head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`.  
+**Proposal:** [PR #268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/268), draft/open/unmerged.  
+**Working branch:** `experiment/candidate-program-acquisition-relay-stack-20261101`.
+
+### Rehydrate, inspect, and challenge
+
+- Re-read root `AGENTS.md` and the full canonical shared protocol sequentially on the parent branch. No nested `AGENTS.md` applies under `experiment-001/`; the recursive tree contains only root instructions and the unrelated TaskAgile recovery instructions.
+- Local preflight/tests were unavailable: this execution container has no Git checkout and Node `v22.16.0`, while the repository requires Node `>=24`. Manual instruction/checkpoint review was completed; exact-head hosted CI is the execution evidence.
+- Current `main` observed at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. The older donor branch `experiment/candidate-program-acquisition-20261030` is `ccb5a89df350a6290e76ea0a4d05930216e406ec`, 2 commits ahead / 12 behind main, with no open candidate-program PR. Its four-file delta was reviewed and selectively transplanted; the old branch itself was not merged or rebased.
+- Open PR #58 also touches `experiment-001/institutional-cycle.mjs` and its test, but its exact-key/NUL-collision and symlink-reader hardening is already present in the current base source. PR #40 is closed; PR #18 is the closed/merged content-preserving replacement for historical PR #16. No unsuperseded candidate-program implementation was found on main or in an open PR.
+- Worker B's latest proposal is PR #267, head `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`. A fresh source review found the Decision Docket projection is now implemented in `game/institution-record-objects.mjs`, passed through `WorldView.setDecisionDocket`, and supplied by `game/client.mjs`; tests cover deterministic map objects, unavailable/malformed snapshots, bounded history, read-only navigation, and principal-change clearing. This supersedes the older PR body/checkpoint statement that the docket was not mapped. A factual handoff comment was posted on PR #267 (comment ID `6564369142`). Its Verify `41353157683` and Genesis `41353157748` passed; Browser Acceptance `41353157692` was still in progress at the last observation.
+- The requested PR #267 preflight target `game/institution-record-objects.mjs` is absent from PR #264's current base tree. It was not added to this sibling branch because the fail-closed preflight would correctly reject the missing file. Add it when the Worker B branch is reconciled onto the preflight lineage.
+
+### Selected capability and changes
+
+The best safe independent capability candidate was the unmerged bounded candidate-program interpreter: it allows a new data-defined deterministic function to be proposed, challenged, signed, persisted, and reused without executing arbitrary JavaScript.
+
+- `145cae10e0ab6f4e34ae007d380a94514b4d2f99` — extend `experiment-001/institutional-cycle.mjs` with `candidate-program-v1` INSTALL validation, content-derived implementation identity, persistence, and REUSE evaluation while preserving the built-in semantic identities and legacy replay path.
+- `71196c429ab999821fc8919c1911a121ff489ed8` — add `experiment-001/candidate-program.mjs`, a data-only AST interpreter with 12-level depth, 63-node, 1,000,000 constant/input and safe-integer result bounds.
+- `e9e6a2262f8f819fe1ce9ca32f62a2fd533b9d95` — add candidate AST, signed INSTALL, tamper, fresh-process REUSE, and overflow tests.
+- `1613648dfafb27fe5de67c219c3b6a18de038d96` — add exact 63-node boundary and strategy/program-schema mismatch regressions.
+- `0b53999bc0b739271505b82ad1be0a5af518e4ea` — document interpreter and proof limitations.
+- `2e5c97e6c2268b63a62f004eccdf5bc0fe982683` — add the four candidate source/test/doc files to the hosted preflight manifest.
+- `85ec74eb26a85b9dec1d975d5503c440f3c3e090` — require those four paths in the checkpoint-contract test.
+
+The new test file contains eight named regressions. The challenge is intentionally still the finite square suite `2→4`, `3→9`, `5→25`, `-4→16`; passing those cases is not a proof of equivalence for all inputs. This is deterministic data-program installation, not novel AI discovery, general-purpose code execution, independent verification, or production autonomy. Tests use ephemeral keys; no real Founder key or trust root was provisioned.
+
+### Preflight and exact-head verification
+
+- Hosted preflight manifest: **81 unique paths**, all present in the exact branch tree. Four candidate paths are included and contract-tested. The separate PR #267 game-module path remains the explicit cross-branch gap above.
+- Code/test head `1613648dfafb27fe5de67c219c3b6a18de038d96`:
+  - Verify [41353858268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41353858268): **success**. Preflight status `ready`, warnings `[]`, failures `[]`; hosted Node 24 test command exit 0; Python inspector exit 0; package build exit 0; bounded institutional exercise `passed: true`.
+  - Genesis Evidence Invariant [41353858277](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41353858277): **success**.
+  - Browser Acceptance [41353858258](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41353858258): **in progress** at checkpoint creation. Do not claim a browser pass until the exact-head run completes.
+- No local test/preflight result is claimed.
+
+### Founder authorization correction and unresolved boundaries
+
+- Historical PR #16 is not a self-signed Founder-authorization defect. Its actual scope is the Experiment 001 detached-Ed25519 INSTALL approval flow; it is closed/unmerged, with PR #18 the merged replacement. Issue #17 explicitly distinguishes a configured fingerprint from proof of Damien's identity or key custody.
+- Current main `src/authority/decision.js` still accepts caller-controlled `verification?.valid` in `authorizationEvent()`. PR #244 proposes a module-sealed/context-bound verifier, but current main `game/server.mjs` and `src/institution/decisions.mjs` do not consume that verifier at the live mutation boundary. PR #243 and PR #251 are competing server-lineage changes; do not duplicate their server edits.
+- Current main `game/server.mjs` still permits automatic local Founder-key creation when no key is supplied. PR #251 proposes an explicit-key guard, and the newer PR #265 lineage carries that guard, but it remains proposed and unintegrated. A host-provided bearer key/fingerprint is not proof of real-world Founder identity or custody.
+- No key, trust root, credential, permission, Founder acceptance, server deployment, merge, or release was changed.
+- Linked NGL repositories remain read-only where required root instructions, canonical protocol, or bootstrap cannot be read/executed through the available interface.
+
+### Next ranked actions
+
+1. Inspect the exact-head Browser Acceptance result for PR #268; preserve and repair any attributable failure, then rerun all exact-head checks.
+2. Record the final checkpoint-only head's exact hosted checks in the PR conversation without recursively rewriting this checkpoint for its own check IDs.
+3. Reconcile PR #264 with Worker B's PR #265/#267 stack; only then add `game/institution-record-objects.mjs` to the canonical preflight manifest and rerun the manifest contract.
+4. Coordinate PR #244's sealed verifier with the active server branch only after canonical proposal/quest/output resolvers and an independently provisioned trust root/custody process are grounded. Do not create or replace Founder keys.
+5. Keep PR #268 draft and unmerged; the next capability step is to broaden the challenge contract only with an explicit acceptance specification, not to claim general correctness from the four current examples.
+
+No merge, release, deployment, spending, external publication, credential/permission change, key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
