@@ -652,7 +652,12 @@ export function createContextBoundFounderAuthorizationVerifier(options = {}) {
         questFields.quest_id,
         proposalFields.capability
       );
-      return matchesFounderDecisionContext(snapshot, proposalFields, questFields, canonicalOutputs);
+      if (!matchesFounderDecisionContext(snapshot, proposalFields, questFields, canonicalOutputs)) return false;
+
+      // Context resolvers may be slow. A decision that was valid before lookup
+      // must not remain usable if its signed expiry passes during that lookup.
+      const finalizedAt = trustedNow();
+      return Number.isFinite(finalizedAt) && finalizedAt < Date.parse(snapshot.expires_at);
     } catch {
       return false;
     }
