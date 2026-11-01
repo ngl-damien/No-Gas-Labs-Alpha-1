@@ -415,3 +415,35 @@ No merge, release, deployment, workflow dispatch, branch deletion, spending, ext
 - PR #249 Android run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) remains a functional failure at `nativeWorldExportAndImportRoundTripsEarnedProgress` (`227.25` expected, `259.375` exported). Worker B's current automation run `2e56bae6-1b6c-832e-80e1-f6340fbe586d` remains recorded `in_progress`; the latest completed Worker B result is still the older `7ef03e4d-aa60-832c-a77f-c2224074930b`. No new device result is claimed.
 
 The PR #248 exact-head checks cover the checkpoint append itself. The next run should first rehydrate the current Worker B result and Android run, then continue the existing branch handoffs above.
+
+---
+
+## Run 15 — 2026-11-01 03:01 UTC — independent verification and attribution correction
+
+**Worker:** Worker A — Repository Stutter-Step.  
+**Prior durable state:** Run 14 and its exact-head addendum, PR #248 head `f50633e657ff41b727bd75b0b446dee67949c086`.
+
+### Attribution correction — ngl-mesh PR #3
+
+The Run 14 addendum correctly identified the new PR #3 commit and its passing checks, but described the commit as “observed, not authored by Worker A.” That attribution is superseded: **this Worker A run created commit `074c6f8c4a26910a8307f284585f0e324568cf11`** on the existing `fix/relay-strict-report-utf8-20261030` branch using a compare-and-swap ref update from `e419127c7ee8b375e746bca930c405ac8f275b40`. The exact-head CI result remains Relay bridge input contract [41266987437](https://github.com/ngl-damien/ngl-mesh/actions/runs/41266987437) (**success: 10 strict UTF-8, 14 safe-file-reader, 7 source-contract checks**) and agent governance [41266987435](https://github.com/ngl-damien/ngl-mesh/actions/runs/41266987435) (**success**). PR #3 remains draft/open/unmerged. The change rejects missing file keys instead of accepting `null === null` as identity evidence.
+
+### Local verification limits
+
+- Alpha-1's local Windows attempt `node --test experiment-001/institutional-cycle.test.mjs` produced **28 total / 5 passed / 22 failed / 1 skipped**. Failures occurred before the security assertions because the POSIX owner-only directory check rejects Windows' reported mode bits; symlink fixtures also returned `EPERM`. No guard was weakened, and this does not supersede PR #18's successful hosted Linux Verify/Genesis runs.
+- Java/JDK is absent from the connected Windows device, so no local ngl-mesh `javac` run is claimed. The exact-head hosted Java 17 workflow is the verification for commit `074c6f8...`.
+- The refreshed Alpha-1 portable preflight was rerun against the latest checkpoint snapshot with:
+  `npm.cmd run agent:preflight -- --path docs/operations/LATEST_CHECKPOINT.md --checkpoint docs/operations/LATEST_CHECKPOINT.md --receipt artifacts/agent-runs/worker-a-20261101T0300Z-preflight.json`
+  Result: **ready**, zero warnings, zero failures. Local receipt checkpoint SHA-256 `d997f0496b2803b2e09d025ba4add0c7364636754bed37dcbf4ded21c1b82c77` (66,341 bytes). This is a local snapshot receipt, not a committed receipt or proof that the remote checkpoint blob has identical line-ending bytes.
+
+### Current reinspection
+
+- Alpha-1 main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; PR #16 remains closed/unmerged and PR #18 remains merged. No PR #16 rewrite was made.
+- PR #251 remains at `3017ee1ead746fd90b7eebe1ff66842561e47799` with Verify, Genesis and Browser all successful; it is still draft/open/unmerged and stacked on PR #245.
+- PR #248 checkpoint branch head `f50633e657ff41b727bd75b0b446dee67949c086`: Verify [41267276347](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267276347) and Genesis [41267276396](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267276396) succeeded; Browser Acceptance [41267276371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267276371) was still in progress at last observation.
+- Worker B's current automation run remains recorded `in_progress`; its latest completed result is still `7ef03e4d-aa60-832c-a77f-c2224074930b`. The Android failure on PR #249 remains the independently observed coordinate assertion in run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340), not an accepted device pass.
+
+### Next action
+
+Rehydrate the next Worker B result and PR #249's next Android run before touching game paths. Keep PR #248/#251/#3 draft and unmerged; reconcile the PR #1 full-harness compile list with the PR #3 strict decoder/file reader only when the branches are deliberately integrated. No Founder key operation or Command Center write is authorized by this run.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
