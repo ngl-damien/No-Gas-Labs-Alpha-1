@@ -358,6 +358,50 @@ test('preflight rejects a target path whose existing parent escapes through a sy
   }
 });
 
+test('preflight rejects an in-repository symlink used as a scoped target file', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/real.mjs'), 'export const trusted = true;\n');
+    await symlink('real.mjs', join(root, 'scripts/alias.mjs'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/alias.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/alias.mjs' &&
+      item.reason.includes('scoped target path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/alias.mjs'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as a vendor instruction pointer', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'CLAUDE-copy.md'), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
+    await rm(join(root, 'CLAUDE.md'));
+    await symlink('CLAUDE-copy.md', join(root, 'CLAUDE.md'), 'file');
+
+    const result = await runPreflight({ root });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'CLAUDE.md' &&
+      item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'CLAUDE.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight supports NGL repositories with a remote protocol link when given a local pinned copy', async () => {
   const root = await fixture();
   try {
