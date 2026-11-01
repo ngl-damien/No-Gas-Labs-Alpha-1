@@ -786,3 +786,14 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 - Preserve the one-pending-action design; do not introduce a multi-action queue until dependencies, rejected-item handling, and actor-bound replay semantics are separately specified and tested.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 21 browser verification failure and repair — 2026-11-01 07:03 UTC
+
+- Initial code/preflight head: `a0bd59f5563730d1ff198da78d234dab67561e5b`.
+- Verify [41282805826](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282805826) and Genesis [41282805820](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282805820) succeeded. Verify reported preflight ready, 71 unique scoped targets, 75 total hashed inputs, empty warnings/failures, and successful Node tests, Python inspector, build, and institutional exercise.
+- Browser Acceptance [41282805879](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282805879) failed at the final shared-restart aggregate assertion in `scripts/verify-browser.py:1486`. The assertion still expected two retained reports after this run deliberately added a third report to exercise exact reconnect replay. The server-side replay, actor mismatch, online retry, shared re-entry, exact request-ID, and one-event assertions were passed before the script reached the stale aggregate count; the final restart assertion stopped the overall journey.
+- The other logged journeys completed successfully: offline private recovery, desktop, phone, institutional location actions, Adversary human-review handoff, two-session shared world, TownSquare moderation, player-guild membership, three phone toolbar widths, two one-button widths, standalone file, and standalone exact bytes.
+- Repair commit `2e4dde53f22fbf14c5cb78616c362979e61fcda7` updates the shared-restart expectation to three reports and explicitly asserts the reconnect report text is retained exactly once after service restart. This preserves the failed run and its cause rather than rewriting the history.
+- Current branch head after the repair is `2e4dde53f22fbf14c5cb78616c362979e61fcda7`. Exact-head hosted verification has not yet been observed. Do not claim Browser Acceptance success until its rerun completes.
+
