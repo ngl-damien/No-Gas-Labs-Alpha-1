@@ -23,7 +23,8 @@ async function fixture() {
     'First repository operation: read root AGENTS.md alone.',
     'Second repository operation: read the complete shared protocol alone.',
     'Discard any pre-read observations and restart the baseline.',
-    '[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)'
+    '[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)',
+    'Preflight command: npm run agent:preflight -- --path AGENTS.md --checkpoint docs/operations/LATEST_CHECKPOINT.md'
   ].join('\n'));
   await writeFile(join(root, protocolPath), protocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
