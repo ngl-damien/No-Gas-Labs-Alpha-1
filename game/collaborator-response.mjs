@@ -320,8 +320,24 @@ export function createAdversaryChallengeDraft(packet, responseText, world) {
     return reject('TARGET_REPORT_NOT_IN_PACKET');
   }
 
+  const sourceSnapshot = payload.sourceSnapshot;
+  const sourceWorldId = ownDataValue(sourceSnapshot, 'worldId');
+  const sourceRevision = ownDataValue(sourceSnapshot, 'revision');
+  const sourceEventCount = ownDataValue(sourceSnapshot, 'suppliedEventCount');
+  if (!ownPlainObject(sourceSnapshot) || ownDataValue(sourceSnapshot, 'status') !== 'identified' ||
+      !isBoundedIdentifier(sourceWorldId) || !Number.isSafeInteger(sourceRevision) || sourceRevision < 0 ||
+      !Number.isSafeInteger(sourceEventCount) || sourceEventCount < 0) {
+    return reject('WORLD_SNAPSHOT_UNIDENTIFIED');
+  }
+
+  const worldId = ownDataValue(world, 'id');
+  const worldRevision = ownDataValue(world, 'revision');
   const events = retainedWorldEvents(world);
   if (!events) return reject('WORLD_EVENT_HISTORY_UNAVAILABLE');
+  if (worldId !== sourceWorldId || !Number.isSafeInteger(worldRevision) ||
+      worldRevision < sourceRevision || events.length < sourceEventCount) {
+    return reject('WORLD_SNAPSHOT_MISMATCH');
+  }
   const matchingEvents = events.filter(event => ownDataValue(event, 'id') === response.targetEventId);
   const matchingReports = events.filter(event =>
     ownDataValue(event, 'type') === 'experiment-reported' &&
@@ -352,7 +368,12 @@ export function createAdversaryChallengeDraft(packet, responseText, world) {
     evidenceNeeded: Object.freeze([...response.evidenceNeeded]),
     unknowns: Object.freeze([...response.unknowns]),
     sourceEventIds: validation.sourceEventIds,
-    sourceSnapshot: payload.sourceSnapshot,
+    sourceSnapshot: Object.freeze({
+      status: 'identified',
+      worldId: sourceWorldId,
+      revision: sourceRevision,
+      suppliedEventCount: sourceEventCount
+    }),
     omittedCount: payload.omittedCount,
     omittedEventIds: Object.freeze([...payload.omittedEventIds]),
     omittedEventIdListTruncated: payload.omittedEventIdListTruncated,
