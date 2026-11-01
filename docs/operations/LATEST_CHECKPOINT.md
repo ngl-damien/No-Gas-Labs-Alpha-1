@@ -903,3 +903,47 @@ Fresh root `AGENTS.md` probes returned 404 in `ngl-damien/ngl-mesh`, `No-Gas-Lab
 5. Revisit linked repositories only after each root `AGENTS.md` and canonical protocol are readable.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or destructive action occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 24 — 2026-11-01 11:30 UTC — Commons HTTP acceptance and Founder startup boundary
+
+**Worker:** Worker A, cross-worker integration on the existing Worker B game branch.  
+**Current proposal:** PR #265, branch `game/player-guild-membership-quest-20261101`, exact head `d456d1ea37e96fb73fa93da4bb5501f47efd2855`. Draft, stacked on PR #262's integration branch; not mainline.
+
+### Fresh-state findings and priority challenge
+
+- Re-read root `AGENTS.md` and the complete canonical shared scheduler protocol in order, then the latest checkpoint, MMORPG contract/ledger, PR #265's latest Worker B handoff, open PRs, and exact branch/source state. No nested instructions exist under the touched `game/`, `test/`, or `scripts/` paths.
+- Current main `game/server.mjs` blob `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` still exports a factory that can reach automatic Founder-key creation when no key is supplied. The current mainline does **not** contain the new `FOUNDER_KEY_REQUIRED` guard.
+- PR #251 already proposes an explicit-key guard, but it is stacked on PR #245 → #244 and carries an older server snapshot. The minimal policy was ported into the newer Commons/guild server lineage on PR #265 rather than opening another duplicate PR.
+- Historical PR #16 is closed unmerged; PR #18 is merged. Issue #17 itself records that a fingerprint is not proof of Damien's identity or private-key custody.
+- The separate `src/authority/decision.js` helper still has a caller-supplied `verification.valid` trust input on main. PR #244 proposes sealed/context-bound verification, but `game/server.mjs` does not import that verifier. The live game decision routes use the bearer-key session path in `src/institution/decisions.mjs`; signed Founder identity is not integrated or proven.
+- Linked-repository probe: `ngl-mesh` and `no-gas-labs-execution` have no root `AGENTS.md`; the governance repo requires `./init_repo.sh`, while its referenced shared protocol path returns 404. No cross-repo edits were made because their required instructions/bootstrap could not be followed. The execution environment has no mounted repository checkout and local Node 22.16.0 is below the repository's Node >=24 requirement; no local tests/preflight are claimed.
+
+### Implemented on the existing PR #265 branch
+
+- `fd3683f886175ebde18a218a712d07b88166d0cb` — added a real HTTP-to-projection Commons acceptance test in `test/game-social.test.mjs`: posts through `/api/action`, checks same-actor idempotent replay and cross-actor replay rejection, actor-scoped quest/Speaker/satchel projection, XP neutrality, report + Founder hide, Witness redaction with retained quest/satchel participation, and Founder-history preservation of the original text.
+- The `game/server.mjs` change (present in final branch blob `a1c2cab59b3edc7eefedbfa83c6d27f9ef4be1f1`) makes programmatic `createGameServer()` require an explicit key; only non-production loopback CLI startup may generate/reuse a local key; production and non-loopback startup fail before runtime-state creation. Storage errors are surfaced as safe `FOUNDER_STORAGE_INVALID` diagnostics.
+- `1e3da21334fc11e9f9ed72f0099a9b66daa1316a` — moved generated-key file-hardening tests onto the loopback CLI path instead of relying on implicit generation through the programmatic API.
+- `199bdcdc99a4cb666d1f0689a03e74055a5090e9` — added direct-factory no-key rejection, caller-flag bypass rejection, production rejection, and network-bound CLI rejection tests; adjusted the restart/export test to use an explicit test key.
+- `76ff95db7240d107edc810252e7f22eed1cfd12f` — wrap Founder data/key path failures as `FOUNDER_STORAGE_INVALID` while preserving their actionable messages and original storage code.
+- `e9665aa9f7c2080df554870e64c95e50b144330f` — register CLI shutdown handlers before listening/readiness, removing the observed immediate-restart race window.
+- `8edd61520b1095953efcf0b1ddbf24e838decf97` — make the loopback CLI test helper assert a clean process exit before attempting key reuse.
+- Worker B then added `d456d1ea37e96fb73fa93da4bb5501f47efd2855` — a dedicated two-mobile-session Commons browser journey proving one actor's UI post completes only that actor's objective and satchel/Speaker activity, while the second actor remains OPEN and no character/world XP is awarded. This is now part of the same existing PR; no new branch or PR was created.
+
+### Verification and preserved failures
+
+- Exact-head Verify `41301971201`: **success**. Hosted preflight status `ready`, 71 targets, warnings and failures empty. Node 24 test command exited 0; Python inspector, game package build, and institutional exercise all exited 0.
+- Exact-head Genesis Evidence Invariant `41301971209`: **success**.
+- Exact-head Browser Acceptance `41301971207`: **in progress** at this checkpoint. Do not claim a browser pass until the run finishes on `d456d1e`.
+- Earlier failed Verify runs were preserved rather than hidden: `41301465446` exposed six tests whose useful storage errors were masked by generic CLI output; the `FOUNDER_STORAGE_INVALID` wrapper fixed that. `41301546024` then exposed one immediate loopback restart lock failure; the readiness/signal-handler ordering was corrected and the helper now asserts clean shutdown. The later Browser run on `8edd615` was cancelled when Worker B advanced the same branch with the dedicated browser journey; it is not counted as a pass.
+
+### Delivery boundary and next actions
+
+1. Recheck Browser Acceptance `41301971207` on exact head `d456d1e`; repair only a source-attributable failure and rerun all exact-head checks if changed.
+2. Keep the explicit-key guard classified as **proposed on PR #265**, not integrated: main still has the old factory. PR #251 remains draft on its older stack; do not merge that snapshot independently.
+3. Next security acceptance is real Founder key custody/identity and a decision-verifier integration at the actual canonical mutation boundary. The PR #244 helper alone does not satisfy that boundary; no key generation, enrollment, rotation, or Founder identity claim is authorized.
+4. The Commons browser journey is now present but still requires its exact-head hosted result. The player feature and security guard remain proposed until the relevant stack is integrated and user-observed.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, or consequential Founder decision occurred. No uninterrupted between-run execution is claimed.
