@@ -280,3 +280,21 @@ test('hosted preflight includes the world-view source and canonical checkpoint',
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
+
+
+test('CI preflight scopes Windows ACL-backed Founder signing and lock-inspector changes', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  for (const path of [
+    'src/bounded-file-reader.mjs',
+    'src/windows-acl.mjs',
+    'test/approve-install-file-reader.test.mjs',
+    'test/windows-acl.test.mjs',
+    'experiment-001/FOUNDER-APPROVAL.md',
+    'src/institution/lock-inspector.mjs',
+    'test/writer-lock-inspector.test.mjs',
+    '.github/workflows/windows-founder-key-ownership.yml'
+  ]) {
+    assert.ok(command.includes('--path ' + path), 'missing Windows ACL preflight target: ' + path);
+  }
+});
