@@ -109,7 +109,6 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
       fail(label + '_FILE_CHANGED_DURING_READ');
     }
     checkPermissions(path, after, label, { requirePrivatePermissions, requireCurrentUserOwnership });
-    checkPermissions(path, afterHandle, label, { requirePrivatePermissions, requireCurrentUserOwnership });
 
     const bytes = Buffer.concat(chunks, total);
     const decoded = bytes.toString('utf8');
