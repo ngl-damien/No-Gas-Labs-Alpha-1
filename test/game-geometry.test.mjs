@@ -476,7 +476,8 @@ function decisionDocketSnapshot() {
       id: 'policy-1',
       reviewWindowMs: 3600000,
       revision: 1,
-      setAt: '2026-10-31T10:00:00.000Z'
+      setAt: '2026-10-31T10:00:00.000Z',
+      basis: 'PRIVATE POLICY BASIS'
     },
     decisions: [{
       id: 'decision-map-1',
@@ -488,8 +489,13 @@ function decisionDocketSnapshot() {
       expiresAt: '2026-10-31T13:00:00.000Z',
       expiredAt: null,
       policy: { id: 'policy-1', revision: 1 },
-      disposition: null
+      disposition: null,
+      evaluation: { bytes: 'PRIVATE EVALUATION BYTES' },
+      risks: ['PRIVATE RISK'],
+      rollback: 'PRIVATE ROLLBACK',
+      proposedEffect: 'PRIVATE EFFECT'
     }],
+    audit: [{ detail: 'PRIVATE AUDIT ENTRY' }],
     counts: { PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
   };
 }
@@ -508,6 +514,8 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
   assert.equal(record.source, 'decision-docket');
   assert.equal(record.eventId, null);
   assert.equal(record.mapVisible, true);
+  assert.equal(Object.hasOwn(view, 'decisionSnapshot'), false, 'WorldView must not retain the raw Founder-only snapshot');
+  assert.doesNotMatch(JSON.stringify(view.decisionDocketProjection), /PRIVATE EVALUATION|PRIVATE RISK|PRIVATE ROLLBACK|PRIVATE EFFECT|PRIVATE POLICY BASIS|PRIVATE AUDIT ENTRY/);
 
   view.setPlayer({ x: record.x, y: record.y + 18 });
   view.interact(record.id, 'institution-record');

@@ -1055,9 +1055,24 @@ def shared(browser,url,data,out):
         assert second_report_response.status==200, second_report_response.text()
         second_report_id=second_report_response.json()['result']['reportId']
 
-        # Re-enter as the same Founder session to read the newly expanded objective.
+        # Re-enter as the same Founder session. A delayed optional docket read
+        # must not hold the shared world behind a network round trip.
+        a.add_init_script("""() => {
+            const nativeFetch = window.fetch.bind(window);
+            window.__delayDecisionDocketOnce = false;
+            window.fetch = async (input, init = {}) => {
+                const url = typeof input === 'string' ? input : input?.url || '';
+                if (window.__delayDecisionDocketOnce && url.endsWith('/api/decisions')) {
+                    window.__delayDecisionDocketOnce = false;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+                return nativeFetch(input, init);
+            };
+        }""")
         a.reload()
+        a.evaluate("()=>{window.__delayDecisionDocketOnce=true}")
         a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#play-ui')?.hidden===false", timeout=3500)
         a.wait_for_function("()=>{const label=document.querySelector('#mode-label')?.textContent||'';return label.includes('Founder')||label.includes('Witness')}")
         if 'Founder' not in a.locator('#mode-label').inner_text():
             expect(a.locator('#login-button')).to_be_visible()
