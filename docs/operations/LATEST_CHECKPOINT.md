@@ -249,3 +249,37 @@ PR #248 remains draft/open/unmerged, 20 commits ahead / 0 behind main `ea025a587
 5. Keep Command Center PR #6 as the clean API-health integration candidate; its previously observed five CI/security/governance checks passed. PR #5's fail-closed dependency audit remains a separate unresolved lockfile-remediation blocker (prior audit artifact: 56 high, 5 critical). No linked-repository source changes were made in this run.
 
 No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 12 final follow-on — 2026-11-01 02:10 UTC
+
+### PR #248 final exact-head evidence
+
+Current code head `ef797908947aaebb1db6c17dccf0057682c103ea` passed all three hosted checks:
+- Verify [41263694064](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41263694064): hosted preflight ready, zero warnings/failures; Node tests, Python inspector, game build and bounded institutional exercise all exited 0.
+- Genesis [41263694003](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41263694003): passed.
+- Browser [41263694057](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41263694057): passed 12/12. Artifact [13066835898](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41263694057/artifacts/13066835898), SHA-256 `e1d68cfc6dd98861ada2b36f70bbaab08c0808825352cd3f45a831e6064d53f9`.
+
+The 13cd path-pinning change initially failed 4 fixture tests because synthetic AGENTS files did not declare their canonical checkpoint. The fixtures were updated; no production guard was weakened. Current head includes all three internal-symlink regressions for root AGENTS, shared protocol, and nested AGENTS, plus checkpoint file/parent symlink tests.
+
+### Worker B final recheck
+
+- PR #249 head `b588757aba9a84cb4c57fbc1f82206a0aa7c3d1c`: Verify/Genesis/Browser passed. Android [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) failed before instrumentation: APK assembled, but repeated ADB exit code 1 culminated in package installation failure `Failure calling service package: Broken pipe (32)`. Debug APK artifact [13066101859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340/artifacts/13066101859). This run neither validates nor disproves the position-transfer fix; previous instrumentation attempt still has the X-coordinate mismatch. Exact handoff: PR #249 comment 6552155197. No workflow rerun was dispatched.
+- PR #250 head `d3d60f5068d7bfc895f62a725b4d912ddb3a7300`: Verify/Genesis/Browser passed; Browser 15/15.
+- PR #251 head `8746bb50deb05eba2cae3b6b11f7fa00c768f4e3`: Verify/Genesis/Browser passed; Browser 12/12. The explicit Founder-key factory default remains a proposal, not production deployment or proof of external identity/key custody.
+- PR #253 head `e1a0d802a49e482b0e3c91c641495745fae85f14`: exact checks passed, but child remains 1 commit behind current #250 parent. Rebase and rerun before integration.
+
+### Command Center write-boundary incident
+
+Do not write to `ngl-damien/no-gas-labs-command-center` until Damien authorizes a repair. Commit `90bc338c0067e3052001fa1701fa9ff9656ca40d` accidentally added `server/routes/node-gate.test.ts` to Command Center main instead of PR #6's branch. Main production route source remains unchanged and no workflow runs were associated with the commit. PR #6's source validation change `5714f8cd6fb0b90f8c281a4af4608e7a29089a85` remains on its branch; the test additions are not on that branch. No revert, force update, merge, or further Command Center write has been attempted. See PR #210 comment 6552161129 for the exact incident and current comparison.
+
+### Next actions
+
+1. Keep PR #248 draft/open; do not merge. The new checkpoint-only append below requires its own exact-head Verify/Genesis/Browser recheck.
+2. Wait for Worker B to obtain a clean Android emulator/package-manager run on PR #249 before crediting position persistence.
+3. Rebase PR #253 on current #250 and rerun exact-head checks.
+4. Obtain Damien's direction before any Command Center revert or repair.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
