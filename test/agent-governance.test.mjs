@@ -1,13 +1,27 @@
 import test from 'node:test';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate, link } from 'node:fs/promises';
+import fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { runPreflight } from '../scripts/validate-agent-governance.mjs';
+import { delimiter, join } from 'node:path';
+import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
+
+function executableOnPath(name) {
+  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+    if (!directory) continue;
+    const candidate = join(directory, name);
+    try { accessSync(candidate, fsConstants.X_OK); return candidate; }
+    catch { /* Continue through the inherited executable search path. */ }
+  }
+  return null;
+}
+const mkfifoExecutable = process.platform === 'win32' ? null : executableOnPath('mkfifo');
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
@@ -21,6 +35,30 @@ async function fixture() {
   await writeFile(join(root, 'CHECKPOINT.md'), '# Latest checkpoint\n');
   return root;
 }
+
+test('preflight rejects a path whose fingerprint changes between semantic inspections', () => {
+  const originalBytes = Buffer.from('trusted instructions v1');
+  const original = reconcileInspectedFileRecord(null, 'AGENTS.md', 'root-instructions', originalBytes);
+  assert.equal(original.changed, false);
+  assert.equal(original.record.sha256, createHash('sha256').update(originalBytes).digest('hex'));
+
+  const sameBytes = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'target', Buffer.from(originalBytes)
+  );
+  assert.equal(sameBytes.changed, false);
+  assert.equal(sameBytes.record.kind, 'root-instructions',
+    'target enumeration must not downgrade trusted instruction classification');
+
+  const changedBytes = Buffer.from('trusted instructions v2');
+  assert.equal(changedBytes.byteLength, originalBytes.byteLength,
+    'the regression must exercise same-length replacement, not only a size change');
+  const changed = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'durable-checkpoint', changedBytes
+  );
+  assert.equal(changed.changed, true);
+  assert.equal(changed.record.sha256, createHash('sha256').update(originalBytes).digest('hex'),
+    'the first receipt remains intact but the caller must block rather than report it as current');
+});
 
 test('preflight hashes root contract, protocol, scoped nested instructions and checkpoint', async () => {
   const root = await fixture();
@@ -73,6 +111,114 @@ test('preflight blocks a missing scoped target instead of returning a ready rece
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects directories as scoped targets instead of reading them', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts', 'directory-target'), { recursive: true });
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/directory-target'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/directory-target' && item.reason.includes('regular file')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/directory-target'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects oversized sparse targets before allocating their contents', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const oversizedPath = join(root, 'scripts/oversized.bin');
+    await writeFile(oversizedPath, '');
+    await truncate(oversizedPath, MAX_PREFLIGHT_FILE_BYTES + 1);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/oversized.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/oversized.bin' && item.reason.includes('preflight size limit')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/oversized.bin'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight accepts a regular file exactly at the configured size limit', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const exactPath = join(root, 'scripts/exact-limit.bin');
+    await writeFile(exactPath, '');
+    await truncate(exactPath, MAX_PREFLIGHT_FILE_BYTES);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/exact-limit.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'ready', JSON.stringify(result.failures));
+    const record = result.files.find(file => file.path === 'scripts/exact-limit.bin');
+    assert.equal(record.bytes, MAX_PREFLIGHT_FILE_BYTES);
+    assert.match(record.sha256, /^[a-f0-9]{64}$/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('bounded descriptor reader stops at max plus one byte when a file grows during reading', async () => {
+  const source = Buffer.from('twelve-bytes');
+  const requests = [];
+  const handle = {
+    async read(buffer, offset, length, position) {
+      requests.push({ length, position });
+      const chunk = source.subarray(position, position + length);
+      chunk.copy(buffer, offset);
+      return { bytesRead: chunk.length };
+    }
+  };
+  const result = await readBoundedHandle(handle, 10);
+  assert.deepEqual(result, { tooLarge: true, total: 11 });
+  assert.equal(requests.reduce((sum, request) => sum + request.length, 0), 11);
+  assert.deepEqual(requests.map(request => request.position), [0]);
+});
+
+test('bounded descriptor reader rejects a caller limit above its configured maximum before reading', async () => {
+  let readCalls = 0;
+  const handle = { async read() { readCalls += 1; return { bytesRead: 0 }; } };
+  await assert.rejects(
+    readBoundedHandle(handle, MAX_PREFLIGHT_FILE_BYTES + 1),
+    /within the configured maximum/
+  );
+  assert.equal(readCalls, 0);
+});
+
+
+test('preflight rejects FIFO targets without blocking on a writer', {
+  skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
+}, async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const fifoPath = join(root, 'scripts/worker.pipe');
+    execFileSync(mkfifoExecutable, [fifoPath]);
+    const scriptPath = new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname;
+    const child = spawnSync(process.execPath, [
+      scriptPath,
+      '--root', root,
+      '--path', 'scripts/worker.pipe',
+      '--checkpoint', 'CHECKPOINT.md'
+    ], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/worker.pipe' && item.reason.includes('regular file')
+    ));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 test('preflight rejects invalid UTF-8 in a scoped target', async () => {
   const root = await fixture();
   try {
@@ -213,6 +359,88 @@ test('preflight rejects a target path whose existing parent escapes through a sy
   }
 });
 
+test('preflight rejects an in-repository symlink used as a scoped target file', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/real.mjs'), 'export const trusted = true;\n');
+    await symlink('real.mjs', join(root, 'scripts/alias.mjs'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/alias.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/alias.mjs' &&
+      item.reason.includes('scoped target path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/alias.mjs'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects a final-component symlink introduced after the initial lstat', async t => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const target = join(root, 'scripts/worker.mjs');
+    await writeFile(target, 'export const trusted = true;\\n');
+    await writeFile(join(root, 'scripts/replacement.mjs'), 'export const untrusted = true;\\n');
+
+    let swapped = false;
+    const originalLstat = fsPromises.lstat;
+    t.mock.method(fsPromises, 'lstat', async (...args) => {
+      const metadata = await originalLstat(...args);
+      if (args[0] === target && !swapped) {
+        await rm(target);
+        await symlink('replacement.mjs', target, 'file');
+        swapped = true;
+      }
+      return metadata;
+    });
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(swapped, true, 'the fixture must replace the final component after its first lstat');
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/worker.mjs' && /symlink|ELOOP/i.test(item.reason)
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/worker.mjs'),
+      'the replacement bytes must never be admitted to the preflight receipt');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as a vendor instruction pointer', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'CLAUDE-copy.md'), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
+    await rm(join(root, 'CLAUDE.md'));
+    await symlink('CLAUDE-copy.md', join(root, 'CLAUDE.md'), 'file');
+
+    const result = await runPreflight({ root });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'CLAUDE.md' &&
+      item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'CLAUDE.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight supports NGL repositories with a remote protocol link when given a local pinned copy', async () => {
   const root = await fixture();
   try {
@@ -334,5 +562,48 @@ test('hosted preflight includes the world-view source and canonical checkpoint',
   assert.equal(typeof command, 'string');
   assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
+});
+
+test('preflight rejects root instructions that share a hard-linked inode outside the checkout', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-hardlink-outside-'));
+  try {
+    await link(join(root, 'AGENTS.md'), join(outside, 'linked-AGENTS.md'));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'AGENTS.md' && item.reason.includes('multiple hard links')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects a scoped target hard-linked to a file outside the checkout', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-target-hardlink-outside-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    const outsideFile = join(outside, 'external.mjs');
+    const targetFile = join(root, 'scripts/linked.mjs');
+    await writeFile(outsideFile, 'bytes that do not belong to this repository');
+    await link(outsideFile, targetFile);
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/linked.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/linked.mjs' && item.reason.includes('multiple hard links')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/linked.mjs'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 

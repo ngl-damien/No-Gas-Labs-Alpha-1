@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -21,6 +22,7 @@ try {
   if (!Buffer.from(stateText, 'utf8').equals(stateBytes)) {
     throw new Error('Continuity record is not valid UTF-8');
   }
+  assertNoDuplicateJsonObjectKeys(stateText, { label: 'CONTINUITY' });
   const state = validateContinuityRecord(JSON.parse(stateText));
   const continuityRecord = {
     path: process.argv[2] ? path : 'docs/institution/compounding/STATE.json',
