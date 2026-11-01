@@ -11,7 +11,7 @@ async function createLocalServer(options) {
   const previousNodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';
   try {
-    return await createLocalServer({ ...options, requireExplicitFounderKey: false });
+    return await createGameServer({ ...options, requireExplicitFounderKey: false });
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
