@@ -47,6 +47,8 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
     stateResult.available ? stateResult.data?.world : null,
     world
   );
+  const decisionProjection = gateResult.available
+    ? projectDecisionDocket(gateResult.data) : projectDecisionDocket(null);
   renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
     world: snapshot.world,
@@ -56,6 +58,7 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
     decisionsUnavailable: !gateResult.available,
     decisionPresentation: locationId === 'decision_chamber' ? 'full'
       : locationId === 'guild_hall' ? 'hidden' : 'summary',
+    decisionProjection,
     kernel: institutionResult.data?.kernel,
     kernelUnavailable: !institutionResult.available || !institutionResult.data?.kernel,
     onOpenArtifact: (id, version) => openCreation(id, version),
@@ -80,7 +83,7 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
       content.prepend(paragraph('The requested decision ID was not present in the refreshed Decision Chamber snapshot. No disposition was submitted.','evidence-warning'));
     }
   }
-  return { decisionSnapshot: gateResult.data, decisionUnavailable: !gateResult.available };
+  return { decisionSnapshot: gateResult.data, decisionUnavailable: !gateResult.available, decisionProjection };
 }
 function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
@@ -719,7 +722,7 @@ function renderGuildExpeditionDocket(projection,container){
     target?.focus({preventScroll:true});
   }
 }
-function attachGuildHallDecisionDocket(content,snapshot,unavailable=false){
+function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=false){
   const section=node('section',{
     id:'guild-decision-docket',
     'aria-labelledby':'guild-decision-docket-heading'
@@ -737,7 +740,7 @@ function attachGuildHallDecisionDocket(content,snapshot,unavailable=false){
     class:'secondary-button',
     'data-refresh-decision-docket':'true'
   }));
-  const projection=unavailable?projectDecisionDocket(null):projectDecisionDocket(snapshot);
+  const projection=unavailable?projectDecisionDocket(null):decisionProjection;
   if(!projection.available){
     section.append(paragraph('Decision register unavailable or malformed. No empty docket is inferred; reconnect to inspect the current human-gated records.','evidence-warning'));
     content.append(section);
@@ -831,7 +834,7 @@ async function openGuildHall(focusRoleId=null){
   if(mode==='shared'){
     const register=await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
-      attachGuildHallDecisionDocket($('sheet-content'),register?.decisionSnapshot,register?.decisionUnavailable);
+      attachGuildHallDecisionDocket($('sheet-content'),register?.decisionProjection,register?.decisionUnavailable);
       attachGuildHallExpeditionBoard($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world,['synthesizer']);
       attachPlayerGuildBoard($('sheet-content'));
