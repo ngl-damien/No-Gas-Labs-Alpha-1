@@ -660,6 +660,45 @@ test('every concurrent close caller waits until the writer lease is actually rel
 });
 
 
+test('decision store fences a writer when rename completion is ambiguous after replacement', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-rename-uncertain-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let renameCalls = 0;
+  const renameFile = async (source, target) => {
+    renameCalls += 1;
+    await rename(source, target);
+    if (renameCalls === 2) {
+      throw Object.assign(new Error('injected lost rename completion after replacement'), {
+        code: 'COMMIT_DURABILITY_UNCERTAIN',
+        status: 503
+      });
+    }
+  };
+  const store = await decisionsModule.openDecisions({ directory, now: () => instant, renameFile });
+
+  await assert.rejects(
+    store.setPolicy(founder, policy),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+  await assert.rejects(
+    store.snapshot(founder),
+    error => error.code === 'COMMIT_DURABILITY_UNCERTAIN' && error.status === 503
+  );
+  await store.close();
+
+  const retained = JSON.parse(await readFile(join(directory, 'decisions.json'), 'utf8'));
+  assert.equal(retained.payload.projection.policy.id, policy.id,
+    'the replacement may be visible even though the caller lost the rename completion result');
+
+  const reopened = await decisionsModule.openDecisions({ directory, now: () => instant + 1 });
+  try {
+    assert.equal((await reopened.snapshot(founder)).policy.id, policy.id,
+      'only a fresh validated open may expose the retained policy');
+  } finally {
+    await reopened.close();
+  }
+});
+
 test('decision store preserves COMMIT_DURABILITY_UNCERTAIN after post-rename directory-sync failure', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decisions-post-rename-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
