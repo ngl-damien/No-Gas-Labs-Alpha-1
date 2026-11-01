@@ -736,3 +736,53 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 5. Keep linked repositories read-only until their root AGENTS.md and canonical protocol are available.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 20 final verification — PR #259 exact head 62127cd6df420a2c6b7c4f2a19f738edec44844f
+
+- Verify [41282421910](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421910) succeeded on the final PR #259 head. The Node 24 preflight receipt reports `status: ready`, 57 unique `--path` targets, 61 total hashed inputs (including governance/vendor inputs), `warnings: []`, and `failures: []`. The Node test command exited 0; the bounded institutional exercise reported `passed: true`.
+- Genesis Evidence Invariant [41282421902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421902) succeeded.
+- Browser Acceptance [41282421876](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876) succeeded with 12/12 journeys. Artifact [13073671936](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876/artifacts/13073671936), ZIP SHA-256 `a655efe8aba4541e8c9424f8bdc9ea6a7c23a644612ee3e26188b83a5a5848c6`.
+- This verifies PR #259's preflight classification/target-fingerprinting change, not the new Worker B branch below.
+
+---
+
+## Run 21 — 2026-11-01 06:55 UTC — reconnect-safe shared-action replay
+
+**Worker:** Worker B — MMORPG runtime and mobile continuity.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Parent proposal:** PR #257, exact head `7a107e7636a7962511dbb3ad894097f6b69bc346`.  
+**New branch:** `game/relay-reconnect-recovery-20261101`, created from that exact PR #257 head. Draft PR creation and hosted verification are the next steps.
+
+### Required instructions and current-state reinspection
+
+- Read root `AGENTS.md` alone, then the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone before repository inspection. Read the universal agent operating contract and the applicable `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, and `.github/copilot-instructions.md` pointers.
+- `game/AGENTS.md`, `scripts/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` returned 404 on the PR #257 branch. No nested instructions apply to the edited paths.
+- Re-observed the active game stack: PR #250 collaborator response/world-object work, PR #253 adversary challenge bridge, and PR #257 Armor Bearer field-kit projection. PR #257 remains a proposal; its exact-head Verify [41279427384](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427384), Genesis [41279427378](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427378), and Browser [41279427446](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427446) were successful. PR #257's description separately records local focused suites 34/34 and 45/45, but a full Windows suite of 607 passed / 245 failed / 6 skipped; the reported failures are Windows POSIX filesystem/symlink/ACL/lock/Forge-process incompatibilities, not an all-green full-suite claim.
+- PR #249 remains at `1686806143b11e7c70366b719621b50037e8ab94`; Verify, Genesis, Browser, and Android workflows succeeded. Android API 35 emulator instrumentation reports 2/2; this is not physical-device acceptance.
+- Re-read Alpha-1's donor audit and assimilation plan. This change reuses the existing Mesh/Relay-style local retry receipt and Alpha-1's stronger server idempotency mechanism; it does not import TaskAgile's weaker queue behavior or create a new local canonical event.
+
+### Finding and implementation
+
+- The shared client already persists one pending action before sending it, binds the receipt to actor ID/role, retains the original request ID and action fingerprint, and exposes a manual retry in The Relay. The server recomputes a fingerprint over actor plus action, rejects request-ID reuse by another actor or with a changed payload, and returns the original action result on a matching replay. Existing server tests cover concurrent retries, actor binding, changed-payload conflict, lost responses, and service restart.
+- Gap: after a response is lost, the player had to reopen The Relay and press Retry manually. The exact receipt was safe to replay, but browser reconnection and re-entry into the shared world did not trigger recovery.
+- `a5247af04119da128c74da89fccfb5d5dc368617` — `game/client.mjs`: add a guarded recovery helper that retries only the existing receipt, only in shared mode, only when actor ID and role still match, and only when no retry is already in flight. Call it after shared-world entry and on the browser `online` event. The Relay copy explains automatic retry and the same-actor restriction. The helper does not synthesize a result or update the world; only the server response is accepted.
+- `43ec4ad77bf864e3982cf888899c67bab9161231` — `scripts/verify-browser.py`: extend the two-session shared-world journey. It now tampers with the receipt actor and proves an `online` event does not replay it; then it drops two responses after the server has committed one report, triggers the `online` event and re-entry, checks the exact request ID remains unchanged, and asserts one retained report and one event.
+- No server, model, XP, quest, authority, or canonical event semantics were changed.
+
+### Canonical preflight carried forward and extended
+
+- Carried forward the current PR #259 exact-head preflight repair (head `62127cd6df420a2c6b7c4f2a19f738edec44844f`): target byte/hash inspection, durable-checkpoint classification preservation, and their regression tests.
+- Added the 14 game paths present on PR #257's parent tree but absent from PR #258's 57-target parent set: `game/assets/app-icon.svg`, `game/collaborator-contracts.mjs`, `game/collaborator-response.mjs`, `game/collaborator-world-objects.mjs`, `game/manifest.webmanifest`, `game/social.mjs`, `game/strict-json.mjs`, `game/sw.js`, `test/game-collaborator-archive.test.mjs`, `test/game-collaborator-contracts.test.mjs`, `test/game-collaborator-response.test.mjs`, `test/game-collaborator-world-objects.test.mjs`, `test/game-server-collaborator-archive.test.mjs`, and `test/game-social.test.mjs`.
+- The child branch's `package.json` command and `test/latest-checkpoint-contract.test.mjs` now contain the same 71 unique scoped targets. A GitHub tree inspection of branch head `5850cfc1d432007db7aeb0a2c165cf0a5dedb01f` found all 71 target paths present. This is a repository-tree existence check, not a preflight receipt.
+- Preflight carry-forward commits: `33a08b0a1d420226c545ccb593d2b0dd144ff3b1` (71-target package command), `3690ff7bc84cfe3556a65549bfb23f53b52627fa` (target fingerprinting/classification), `3d3b53c9231dbb048db8e811be45af33bef96475` (governance regressions), `04a5fc02590171f37fafda651864cea62152b38f` (checkpoint symlink safety), `0a7ab19863e7ddd79b986a37e967f4d854d83450` (71-target contract), and `5850cfc1d432007db7aeb0a2c165cf0a5dedb01f` (canonical checkpoint file).
+- No local checkout is available and the available local Node is v22.16.0 while the repository requires Node >=24. No local preflight, Node suite, browser suite, or build is claimed. Hosted exact-head CI is required.
+
+### Verification boundary and next actions
+
+- The new code/browser changes and 71-target preflight union are committed on the child branch, but no hosted workflow has yet verified them.
+- Create a draft PR against PR #257's branch, then inspect exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance. Verify must report ready, 71 unique scoped targets fingerprinted, warnings/failures empty, and all Node/Python/build/exercise steps successful. Browser Acceptance must prove the new online/re-entry and actor-mismatch cases.
+- Update PR #239's MMORPG completion ledger from exact current evidence, including PR #257's read-model boundary and Windows-suite limitation, and the new child PR's final checks. Keep all proposals open/unmerged.
+- Preserve the one-pending-action design; do not introduce a multi-action queue until dependencies, rejected-item handling, and actor-bound replay semantics are separately specified and tested.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
