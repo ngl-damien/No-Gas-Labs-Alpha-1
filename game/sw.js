@@ -1,6 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump this identifier when any cached shell resource changes.
-const CACHE_NAME = CACHE_PREFIX + '20261031-2';
+const CACHE_NAME = CACHE_PREFIX + '20261101-1';
 
 // Only the public application shell is cached. Shared-world APIs, authenticated
 // state, private server data, and retained artifact endpoints are never cached.
@@ -26,6 +26,7 @@ const CORE_SHELL = [
   '/institution-view.mjs',
   '/contradiction-clerk.mjs',
   '/chronicle.mjs',
+  '/institution-record-objects.mjs',
   '/research-records.mjs',
   '/timestamps.mjs'
 ];
