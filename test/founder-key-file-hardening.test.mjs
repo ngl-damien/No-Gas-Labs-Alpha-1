@@ -32,7 +32,7 @@ test('rejects a symlink in place of the persisted Founder key', async t => {
   const target = join(dataDir, 'external-key');
   await writeFile(target, VALID_KEY + '\n', { mode: 0o600 });
   await symlink(target, join(dataDir, 'founder.key'));
-  await assert.rejects(createGameServer({ dataDir }), /regular, non-symlink file/);
+  await assert.rejects(createLocalServer({ dataDir }), /regular, non-symlink file/);
 });
 
 test('rejects malformed UTF-8 in a persisted Founder key before service initialization', async t => {
@@ -40,7 +40,7 @@ test('rejects malformed UTF-8 in a persisted Founder key before service initiali
   const path = join(dataDir, 'founder.key');
   await writeFile(path, Buffer.concat([Buffer.from(VALID_KEY, 'utf8'), Buffer.from([0xff])]), { mode: 0o600 });
 
-  await assert.rejects(createGameServer({ dataDir }), /Founder key file is not valid UTF-8/);
+  await assert.rejects(createLocalServer({ dataDir }), /Founder key file is not valid UTF-8/);
   await assert.rejects(stat(join(dataDir, 'service.json')), { code: 'ENOENT' });
 });
 
@@ -63,7 +63,7 @@ test('rejects oversized persisted Founder keys before creating service state', a
     await handle.close();
   }
 
-  await assert.rejects(createGameServer({ dataDir }), /Founder key file exceeds the 1025-byte limit/);
+  await assert.rejects(createLocalServer({ dataDir }), /Founder key file exceeds the 1025-byte limit/);
   await assert.rejects(stat(join(dataDir, 'service.json')), { code: 'ENOENT' });
 });
 
@@ -72,7 +72,7 @@ test('rejects persisted Founder keys readable by group or other users', async t 
   const path = join(dataDir, 'founder.key');
   await writeFile(path, VALID_KEY + '\n', { mode: 0o600 });
   await chmod(path, 0o644);
-  await assert.rejects(createGameServer({ dataDir }), /permissions must exclude group and other access/);
+  await assert.rejects(createLocalServer({ dataDir }), /permissions must exclude group and other access/);
 });
 
 test('rejects a symlinked or non-private Founder data directory', async t => {
@@ -80,12 +80,12 @@ test('rejects a symlinked or non-private Founder data directory', async t => {
   const target = await directory(t, 'ngl-founder-target-');
   const alias = join(parent, 'runtime-link');
   await symlink(target, alias, 'dir');
-  await assert.rejects(createGameServer({ dataDir: alias }), /regular, non-symlink directory|symbolic link components/);
+  await assert.rejects(createLocalServer({ dataDir: alias }), /regular, non-symlink directory|symbolic link components/);
 
   const publicDir = join(parent, 'public-runtime');
   await import('node:fs/promises').then(fs => fs.mkdir(publicDir, { mode: 0o700 }));
   await chmod(publicDir, 0o755);
-  await assert.rejects(createGameServer({ dataDir: publicDir }), /directory permissions must exclude group and other access/);
+  await assert.rejects(createLocalServer({ dataDir: publicDir }), /directory permissions must exclude group and other access/);
 });
 
 test('generated Founder key is private and reused after restart', async t => {
