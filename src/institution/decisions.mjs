@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { link, mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
+import { link, mkdir, open, rename, unlink, lstat, rmdir } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { canonicalStringify, artifactReceipt } from './kernel.mjs';
+import { verifyWindowsDirectorySecurity, verifyWindowsFileSecurity } from '../windows-acl.mjs';
 
 const STORE_SCHEMA = 'ngl.decisions.store.v1';
 const PROJECTION_SCHEMA = 'ngl.decisions.projection.v1';
@@ -17,6 +18,40 @@ const equal = (a, b) => canonicalStringify(a) === canonicalStringify(b);
 const genesis = digest({ schema: STORE_SCHEMA, founderId: 'damien', evaluatorId: 'local-evaluator' });
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
+
+function assertPrivateDirectory(path, stat, code, message) {
+  if (process.platform === 'win32') {
+    try { verifyWindowsDirectorySecurity(path, code + '_DIRECTORY'); }
+    catch (error) { fail(code, message + ': ' + (error?.message || 'Windows ACL verification failed')); }
+    return;
+  }
+  if ((stat.mode & 0o077) !== 0) fail(code, message + ' (group/other access is present)');
+  const getuid = process.getuid;
+  if (typeof getuid !== 'function') fail(code, message + ' (owner verification unavailable)');
+  let uid;
+  try { uid = getuid.call(process); }
+  catch { fail(code, message + ' (owner verification failed)'); }
+  if (!Number.isSafeInteger(uid) || uid < 0 || stat.uid !== uid) {
+    fail(code, message + ' (owner mismatch)');
+  }
+}
+
+function assertPrivateFile(path, stat, code, message) {
+  if (process.platform === 'win32') {
+    try { verifyWindowsFileSecurity(path, code + '_FILE'); }
+    catch (error) { fail(code, message + ': ' + (error?.message || 'Windows ACL verification failed')); }
+    return;
+  }
+  if ((stat.mode & 0o077) !== 0) fail(code, message + ' (group/other access is present)');
+  const getuid = process.getuid;
+  if (typeof getuid !== 'function') fail(code, message + ' (owner verification unavailable)');
+  let uid;
+  try { uid = getuid.call(process); }
+  catch { fail(code, message + ' (owner verification failed)'); }
+  if (!Number.isSafeInteger(uid) || uid < 0 || stat.uid !== uid) {
+    fail(code, message + ' (owner mismatch)');
+  }
+}
 const text = (value, limit) => typeof value === 'string' && value.trim().length > 0 && Buffer.byteLength(value, 'utf8') <= limit;
 function exact(value, fields, code) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(key => !Object.hasOwn(value, key))) fail(code, 'Unexpected or missing fields');
@@ -153,7 +188,7 @@ async function syncDirectory(directory) {
   try { await parent.sync(); } finally { await parent.close(); }
 }
 
-async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory) {
+async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory, renameFileFn = rename) {
   const pending = join(directory, `.decisions-${randomUUID()}.tmp`);
   let handle;
   let renamed = false;
@@ -162,8 +197,11 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirecto
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close(); handle = undefined;
-    await rename(pending, file);
+    await renameFileFn(pending, file);
     renamed = true;
+    const published = await lstat(file);
+    if (published.isSymbolicLink() || !published.isFile()) fail('DECISIONS_TAMPERED', 'Published decision envelope must be a regular, non-symlink file');
+    assertPrivateFile(file, published, 'DECISIONS_TAMPERED', 'Published decision envelope must remain private and owned by the current process');
     try {
       await syncDirectoryFn(directory);
     } catch (cause) {
@@ -197,17 +235,79 @@ async function assertPrivateDecisionDirectory(path, expectedIdentity) {
   await assertNoSymlinkPathComponents(path);
   const stat = await lstat(path);
   if (stat.isSymbolicLink() || !stat.isDirectory()) fail('INVALID_CONFIG', 'The decision directory must be an actual directory, not a symbolic link');
-  if ((stat.mode & 0o077) !== 0) fail('INVALID_CONFIG', 'Decision directory permissions must exclude group and other access (0700)');
-  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) fail('INVALID_CONFIG', 'Decision directory must be owned by the current process user');
+  assertPrivateDirectory(path, stat, 'INVALID_CONFIG', 'Decision directory must be private and owned by the current process');
   if (expectedIdentity && (stat.dev !== expectedIdentity.dev || stat.ino !== expectedIdentity.ino)) fail('INVALID_CONFIG', 'Decision directory changed while acquiring its writer lease');
   return { dev: stat.dev, ino: stat.ino };
+}
+
+/**
+ * Serialize mutations of the writer-lease pathname across processes.
+ * The short-lived guard is a private directory: mkdir is the acquisition
+ * primitive and rmdir is the release primitive. A crash leaves a visible
+ * guard that blocks new writers until explicit offline recovery.
+ */
+async function acquireDecisionLockMutationGuard(location, directoryIdentity) {
+  await assertPrivateDecisionDirectory(location, directoryIdentity);
+  const guardPath = join(location, '.decisions.lock.guard');
+  try {
+    await mkdir(guardPath, { mode: 0o700 });
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      fail('DECISIONS_LOCKED', 'Another process is changing the decision writer lease; an interrupted guard requires explicit offline recovery');
+    }
+    throw error;
+  }
+
+  const ownerPath = join(guardPath, `.owner-${randomUUID()}.json`);
+  let owner;
+  try {
+    owner = await open(ownerPath, 'wx', 0o600);
+    const ownerIdentity = await owner.stat();
+    await owner.writeFile(canonicalStringify({
+      schema: 'ngl.decisions-lock-guard.v1',
+      pid: process.pid,
+      openedAt: new Date().toISOString(),
+    }));
+    await owner.sync();
+
+    const guardStat = await lstat(guardPath);
+    const ownerPathStat = await lstat(ownerPath);
+    if (guardStat.isSymbolicLink() || !guardStat.isDirectory()) {
+      fail('INVALID_CONFIG', 'Decision lock mutation guard must be a real directory');
+    }
+    assertPrivateDirectory(guardPath, guardStat, 'INVALID_CONFIG', 'Decision lock mutation guard must be private and owned by the current process');
+    if (ownerPathStat.isSymbolicLink() || !ownerPathStat.isFile() ||
+        ownerPathStat.dev !== ownerIdentity.dev || ownerPathStat.ino !== ownerIdentity.ino) {
+      fail('INVALID_CONFIG', 'Decision lock mutation guard owner receipt changed while opening');
+    }
+    assertPrivateFile(ownerPath, ownerPathStat, 'INVALID_CONFIG', 'Decision lock mutation guard owner receipt must be private and owned by the current process');
+    await assertPrivateDecisionDirectory(location, directoryIdentity);
+  } catch (error) {
+    await owner?.close().catch(() => {});
+    await unlink(ownerPath).catch(() => {});
+    await rmdir(guardPath).catch(() => {});
+    throw error;
+  }
+
+  let released = false;
+  return async function releaseDecisionLockMutationGuard() {
+    if (released) return;
+    await owner.close();
+    await unlink(ownerPath).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    await rmdir(guardPath).catch(error => {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    });
+    released = true;
+  };
 }
 
 async function readBoundedDecisionStore(path) {
   const before = await lstat(path);
   if (before.isSymbolicLink() || !before.isFile()) fail('DECISIONS_TAMPERED', 'Persisted decisions must be a regular, non-symlink file');
-  if ((before.mode & 0o077) !== 0) fail('DECISIONS_TAMPERED', 'Persisted decision permissions must exclude group and other access (0600)');
-  if (typeof process.getuid === 'function' && before.uid !== process.getuid()) fail('DECISIONS_TAMPERED', 'Persisted decision file must be owned by the current process user');
+  assertPrivateFile(path, before, 'DECISIONS_TAMPERED', 'Persisted decision file must be private and owned by the current process');
   if (before.size > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions exceed the 64 MiB limit');
 
   let handle;
@@ -220,8 +320,7 @@ async function readBoundedDecisionStore(path) {
     }
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) fail('DECISIONS_TAMPERED', 'Persisted decision file changed while opening');
-    if ((opened.mode & 0o077) !== 0) fail('DECISIONS_TAMPERED', 'Persisted decision permissions must exclude group and other access (0600)');
-    if (typeof process.getuid === 'function' && opened.uid !== process.getuid()) fail('DECISIONS_TAMPERED', 'Persisted decision file must be owned by the current process user');
+    assertPrivateFile(path, opened, 'DECISIONS_TAMPERED', 'Persisted decision file must remain private and owned by the current process');
     if (opened.size > MAX_STORE_BYTES) fail('DECISIONS_TAMPERED', 'Persisted decisions exceed the 64 MiB limit');
     if (opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) fail('DECISIONS_TAMPERED', 'Persisted decision file changed before reading');
 
@@ -245,6 +344,7 @@ async function readBoundedDecisionStore(path) {
     if (after.isSymbolicLink() || !after.isFile() || after.dev !== opened.dev || after.ino !== opened.ino) fail('DECISIONS_TAMPERED', 'Persisted decision path changed during reading');
     const unchanged = stat => stat.size === opened.size && stat.mtimeMs === opened.mtimeMs && stat.ctimeMs === opened.ctimeMs;
     if (!unchanged(after) || !unchanged(afterHandle) || total !== opened.size) fail('DECISIONS_TAMPERED', 'Persisted decision file changed during reading');
+    assertPrivateFile(path, after, 'DECISIONS_TAMPERED', 'Persisted decision file must remain private and owned by the current process');
     const bytes = Buffer.concat(chunks, total);
     const decoded = bytes.toString('utf8');
     if (!Buffer.from(decoded, 'utf8').equals(bytes)) fail('DECISIONS_TAMPERED', 'Persisted decisions are not valid UTF-8');
@@ -269,8 +369,8 @@ async function unlinkOwnedDecisionLock(path, identity) {
  * this API does not authenticate an object copied from a network payload.
  * APPROVE records a decision only and never invokes an effect or promotes code.
  */
-export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory } = {}) {
-  if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, and directory-sync function are required');
+export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = rename } = {}) {
+  if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function' || typeof renameFileFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, directory-sync function, and rename function are required');
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
   await assertNoSymlinkPathComponents(location);
@@ -287,29 +387,70 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
     leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
     await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
     await lease.sync();
+    const lockPathStat = await lstat(lockTemporaryPath);
+    if (lockPathStat.isSymbolicLink() || !lockPathStat.isFile() ||
+        lockPathStat.dev !== lockStat.dev || lockPathStat.ino !== lockStat.ino) {
+      fail('INVALID_CONFIG', 'Decision writer lease changed while opening');
+    }
+    assertPrivateFile(lockTemporaryPath, lockPathStat, 'INVALID_CONFIG', 'Decision writer lease must be private and owned by the current process');
     await assertPrivateDecisionDirectory(location, directoryIdentity);
+    const releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
     try {
-      await link(lockTemporaryPath, lockPath);
-      lockPublished = true;
-    } catch (error) {
-      if (error.code === 'EEXIST') {
-        fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery');
+      try {
+        await link(lockTemporaryPath, lockPath);
+        lockPublished = true;
+      } catch (error) {
+        if (error.code === 'EEXIST') {
+          fail('DECISIONS_LOCKED', 'Another writer owns this directory; stale locks require explicit offline recovery');
+        }
+        throw error;
       }
-      throw error;
+    } finally {
+      await releaseMutationGuard();
     }
     await unlink(lockTemporaryPath);
   } catch (error) {
     await lease?.close().catch(() => {});
     await unlink(lockTemporaryPath).catch(() => {});
-    if (lockPublished) await unlinkOwnedDecisionLock(lockPath, leaseIdentity).catch(() => {});
+    if (lockPublished) {
+      let releaseMutationGuard;
+      try {
+        releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+        await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      } catch {}
+      finally { await releaseMutationGuard?.().catch(() => {}); }
+    }
     throw error;
   }
   let released = false;
   async function release() {
     if (released) return;
-    released = true;
-    await lease.close();
-    await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+    let releaseMutationGuard;
+    try {
+      releaseMutationGuard = await acquireDecisionLockMutationGuard(location, directoryIdentity);
+    } catch (error) {
+      // The owning application may already have removed its private runtime
+      // directory during teardown. With no directory entry left to mutate,
+      // close the retained descriptor without trying to recreate the guard.
+      if (error.code !== 'ENOENT') throw error;
+      await lease.close();
+      released = true;
+      return;
+    }
+    try {
+      try {
+        await assertPrivateDecisionDirectory(location, directoryIdentity);
+        await unlinkOwnedDecisionLock(lockPath, leaseIdentity);
+      } catch (error) {
+        // A teardown that removes the directory after guard acquisition also
+        // removes the lock pathname. The open descriptor still must be closed.
+        if (error.code !== 'ENOENT') throw error;
+      }
+      await lease.close();
+      released = true;
+    } finally {
+      await releaseMutationGuard();
+    }
   }
   try {
     await assertPrivateDecisionDirectory(location, directoryIdentity);
@@ -339,7 +480,7 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
       } catch (error) { fail('DECISIONS_TAMPERED', `Cannot validate saved decision history: ${error.code ?? 'INVALID_JSON'}`); }
     } else {
       const payload = { records, projection: state };
-      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location, syncDirectoryFn);
+      await atomicWrite(file, canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) }), location, syncDirectoryFn, renameFileFn);
     }
 
     let queue = Promise.resolve();
@@ -381,7 +522,7 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
       const payload = { records: nextRecords, projection: candidate.state };
       const serialized = canonicalStringify({ schema: STORE_SCHEMA, payload, digest: digest(payload) });
       if (Buffer.byteLength(serialized, 'utf8') > MAX_STORE_BYTES) fail('DECISIONS_CAPACITY', 'Decision envelope exceeds 64 MiB; archive through an explicit continuity procedure');
-      try { await atomicWrite(file, serialized, location, syncDirectoryFn); }
+      try { await atomicWrite(file, serialized, location, syncDirectoryFn, renameFileFn); }
       catch (error) {
         uncertain = true;
         if (error.code === 'COMMIT_DURABILITY_UNCERTAIN') {
