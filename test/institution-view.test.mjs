@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot } from '../game/institution-view.mjs';
+import { projectDecisionDocket } from '../game/quests.mjs';
 
 function element(tag) {
   return {
@@ -33,6 +34,14 @@ const gate = {
   counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
 };
 
+function renderView(container, projects, gateSnapshot, options = {}) {
+  return renderInstitution(container, projects, gateSnapshot, {
+    ...options,
+    decisionProjection: options.decisionProjection ?? projectDecisionDocket(gateSnapshot)
+  });
+}
+
+
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
   const stages = [
@@ -51,7 +60,7 @@ test('TownSquare renders actual canonical work stages and the exact-byte receipt
     }]
   };
   const root = element('div');
-  renderInstitution(root, projects, gate, { kernel });
+  renderView(root, projects, gate, { kernel });
   const output = textOf(root);
   assert.match(output, /CANONICAL WORK RECEIPTS/);
   assert.match(output, /ACCEPTED/);
@@ -71,7 +80,7 @@ test('TownSquare renders actual canonical work stages and the exact-byte receipt
 
 test('TownSquare states when no canonical work is recorded and flags inconsistent event counts', () => withDocument(() => {
   const root = element('div');
-  renderInstitution(root, projects, gate, { kernel: { revision: 0, eventCount: 1, events: [], accepted: [] } });
+  renderView(root, projects, gate, { kernel: { revision: 0, eventCount: 1, events: [], accepted: [] } });
   const output = textOf(root);
   assert.match(output, /No canonical work events are recorded/);
   assert.match(output, /Record count mismatch/);
@@ -82,7 +91,7 @@ test('TownSquare states when no canonical work is recorded and flags inconsisten
 test('TownSquare keeps project records visible when canonical kernel history is unavailable', () => withDocument(() => {
   const root = element('div');
   const availableProjects = { ...projects, projects: [{ title: 'Preserved project record', status: 'OPEN' }] };
-  renderInstitution(root, availableProjects, gate, { kernelUnavailable: true });
+  renderView(root, availableProjects, gate, { kernelUnavailable: true });
   const output = textOf(root);
   assert.match(output, /Canonical work receipts could not be loaded/);
   assert.match(output, /Preserved project record/);
@@ -91,7 +100,7 @@ test('TownSquare keeps project records visible when canonical kernel history is 
 
 test('TownSquare warns about ungrouped events and accepted work without history even when event counts match', () => withDocument(() => {
   const root = element('div');
-  renderInstitution(root, projects, gate, {
+  renderView(root, projects, gate, {
     kernel: {
       revision: 2,
       eventCount: 2,
@@ -169,7 +178,7 @@ test('institution view preserves the last world chronicle but marks failed share
     contributions: []
   };
 
-  renderInstitution(root, null, null, {
+  renderView(root, null, null, {
     world,
     worldSnapshotStale: true,
     projectsUnavailable: true,
@@ -196,7 +205,7 @@ test('institution view keeps available project records when the decision ledger 
   const world = { creations: [], events: [], reports: [], contributions: [] };
   const kernel = { revision: 0, eventCount: 0, events: [], accepted: [] };
 
-  renderInstitution(root, availableProjects, null, {
+  renderView(root, availableProjects, null, {
     world,
     kernel,
     decisionsUnavailable: true
@@ -244,7 +253,7 @@ function pendingDecisionSnapshot() {
 test('only the full Decision Chamber presentation exposes Founder disposition controls', () => withDocument(() => {
   const snapshot = pendingDecisionSnapshot();
   const guildHall = element('div');
-  renderInstitution(guildHall, projects, snapshot, {
+  renderView(guildHall, projects, snapshot, {
     founder: true,
     decisionPresentation: 'summary'
   });
@@ -255,7 +264,7 @@ test('only the full Decision Chamber presentation exposes Founder disposition co
   assert.equal(walk(guildHall).filter(item => item.dataset?.gateAction).length, 0);
 
   const chamber = element('div');
-  renderInstitution(chamber, projects, snapshot, {
+  renderView(chamber, projects, snapshot, {
     founder: true,
     decisionPresentation: 'full',
     onChoice: () => {}
@@ -267,7 +276,7 @@ test('only the full Decision Chamber presentation exposes Founder disposition co
   assert.equal(card?.tabIndex, -1, 'the exact decision card must be programmatically focusable');
 
   const hidden = element('div');
-  renderInstitution(hidden, projects, snapshot, {
+  renderView(hidden, projects, snapshot, {
     founder: true,
     decisionPresentation: 'hidden'
   });
@@ -277,7 +286,7 @@ test('only the full Decision Chamber presentation exposes Founder disposition co
 
 test('Witness Decision Chamber views never expose Founder-only evaluation bytes or controls', () => withDocument(() => {
   const root = element('div');
-  renderInstitution(root, projects, pendingDecisionSnapshot(), {
+  renderView(root, projects, pendingDecisionSnapshot(), {
     founder: false,
     decisionPresentation: 'full'
   });
