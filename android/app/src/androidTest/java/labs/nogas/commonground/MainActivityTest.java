@@ -108,15 +108,17 @@ public final class MainActivityTest {
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
+        double expectedX = Double.NaN;
+        double expectedY = Double.NaN;
         try {
             awaitJavaScript(activity, "typeof document.getElementById('journal-button')?.onclick === 'function'");
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
             awaitJavaScript(activity,
                     "!document.getElementById('sheet').hidden && !!document.getElementById('export-world') && !!document.getElementById('import-world')");
             awaitStablePlayerPosition(activity, 500);
-            double expectedX = Double.parseDouble(evaluate(activity,
+            expectedX = Double.parseDouble(evaluate(activity,
                     "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x"));
-            double expectedY = Double.parseDouble(evaluate(activity,
+            expectedY = Double.parseDouble(evaluate(activity,
                     "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y"));
             assertTrue("the round-trip must preserve a fresh movement from the spawn point", expectedX > 180.0);
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
