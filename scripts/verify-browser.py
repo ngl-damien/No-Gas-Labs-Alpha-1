@@ -1130,7 +1130,6 @@ def shared(browser,url,data,out):
         expect(stale_board).to_contain_text('STALE · LAST OBSERVED')
         expect(stale_board).to_have_attribute('data-decision-docket-stale','true')
         expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
-        stale_world_before=owner.request.get(url+'api/state').json()['world']
         stale_card=stale_board.locator('[data-guild-decision-id="browser-docket-pending"]')
         stale_map_link=stale_card.get_by_role('button',name='Walk to map record →',exact=True)
         stale_map_link.click()
@@ -1138,6 +1137,7 @@ def shared(browser,url,data,out):
         stale_record=a.locator('#sheet-content')
         expect(stale_record).to_contain_text('STALE · LAST OBSERVED')
         expect(stale_record.locator('[data-gate-action]')).to_have_count(0)
+        stale_world_before=owner.request.get(url+'api/state').json()['world']
         stale_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
         expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
