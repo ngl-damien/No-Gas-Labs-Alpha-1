@@ -1,6 +1,5 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { isStrictTimestamp } from "./timestamps.mjs";
-import { projectDecisionDocket } from "./quests.mjs";
 
 // Validate the envelope required to inspect a world snapshot. This is a
 // display-safety check, not a claim that the snapshot is canonical or true.
@@ -167,7 +166,7 @@ function warning(container, message) {
 export function renderInstitution(container,projects,gate,{
  founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,
  projectsUnavailable=false,decisionsUnavailable=false,worldSnapshotStale=false,worldUnavailable=false,
- decisionPresentation='full'
+ decisionPresentation='full',decisionProjection=null
 }={}) {
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
  if(worldSnapshotStale)warning(container,'Live world state could not be refreshed. The Chronicle below is the last snapshot received by this session; it may be stale. It is read-only and does not authorize decisions.');
@@ -203,9 +202,9 @@ export function renderInstitution(container,projects,gate,{
  const presentation = ['hidden', 'summary', 'full'].includes(decisionPresentation)
   ? decisionPresentation : 'full';
  if(presentation!=='hidden'){
-  const projection=projectDecisionDocket(gate);
+  const projection=decisionProjection;
   container.append(el('h3',presentation==='full'?'FOUNDER GATE':'DECISION SERVICE · STATUS'));
-  if(decisionsUnavailable||!projection.available){
+  if(decisionsUnavailable||!projection||projection.available!==true){
    warning(container,'Decision ledger unavailable or malformed. No policy, decision count, disposition or approval is inferred; reconnect before taking a consequential action.');
    return;
   }
