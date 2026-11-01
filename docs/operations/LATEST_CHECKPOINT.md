@@ -283,3 +283,68 @@ Do not write to `ngl-damien/no-gas-labs-command-center` until Damien authorizes 
 4. Obtain Damien's direction before any Command Center revert or repair.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 13 — 2026-11-01 02:38 UTC — Founder-key factory boundary and world-view preflight coverage
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior durable state:** PR #248 canonical-checkpoint branch, latest checkpoint through Run 12 final follow-on; PR #251 security branch head `8746bb50deb05eba2cae3b6b11f7fa00c768f4e3`.  
+**Other-worker rehydration:** Worker B's latest completed result is run `7ef03e4d-aa60-832c-a77f-c2224074930b`; the current automation run `2e56bae6-1b6c-832e-80e1-f6340fbe586d` was still recorded `in_progress` at the last peek. Do not attribute the older completed result to the current run.
+
+### Bootstrap and preflight
+
+- Read Alpha-1 root `AGENTS.md` alone, then the complete canonical shared protocol alone on the active target branches. Read the latest durable checkpoint before acting.
+- Nested `game/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, `docs/operations/AGENTS.md`, `artifacts/AGENTS.md`, and `artifacts/agent-runs/AGENTS.md` were checked on the relevant branch; all returned 404. No additional local instructions applied to the touched paths.
+- Portable preflight ran on the connected Windows checkout with `npm.cmd run agent:preflight`; both receipts returned `status: ready`, `warnings: []`, and `failures: []`:
+  - `artifacts/agent-runs/worker-a-20261101T0227Z-preflight.json` — targets `game/server.mjs`, `test/game-server.test.mjs`, and `test/founder-key-file-hardening.test.mjs`.
+  - `artifacts/agent-runs/worker-a-20261101T0235Z-preflight.json` — targets `package.json`, `test/agent-governance.test.mjs`, and `game/world-view.mjs`.
+- Both receipts hashed the same root instruction SHA-256 `db7e5fc1a55f6e32c6456ed460cb11169003911bd88adde27e88587beed737c0`, protocol SHA-256 `0f947b918686c286d15c97e9c48a6c0a6a2d9d193be12a48f3f4e73989d0a820`, and checkpoint SHA-256 `a49ae6842391eb8ff6f7e1dee175dd07b3b3ed79939c58d0221affff1abbba4d`. Receipts are retained in the connected local checkout; no local test result is claimed.
+
+### Cycle 1 — close the programmatic Founder-key generation bypass
+
+**Challenge result:** PR #16 is closed/unmerged and superseded by merged PR #18. The live issue is not a reason to recreate the old self-signing design. Source review of the current PR #251 branch found a separate, real factory boundary: the exported `createGameServer()` could be called with a generated local bearer key and its returned server could then be bound by the caller to a non-loopback address.
+
+**Changes on existing Worker A PR #251 branch** `security/require-explicit-founder-key-network-start-20261101`:
+
+- `7cefc5d908591ad5fdc8c7303e18e7e744868e15` — move implementation to private `createGameServerInternal()`; the exported `createGameServer(options)` forwards only explicit configuration fields and always requires a valid explicit `NGL_FOUNDER_KEY`. Only the built-in CLI can enable generated-key mode, and only for non-production loopback hosts. Storage startup errors receive a safe `FOUNDER_STORAGE_INVALID` code so the CLI can report key-file validation failures without exposing key bytes.
+- `22d16f60df2dba5c4f8734efcf6b3baf234e13f3` — correct the loopback readiness matcher in the new CLI regression.
+- `3017ee1ead746fd90b7eebe1ff66842561e47799` — move persisted Founder-key hardening tests onto the private loopback CLI path; add direct-factory negative coverage for both legacy `requireExplicitFounderKey: false` and attempted `allowGeneratedFounderKey: true` opt-outs.
+
+**Preserved failed attempt:** Verify [41264820623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41264820623) failed one game-server test because the newly added readiness regex was over-escaped. The observed output showed the CLI had started on `127.0.0.1`, but the test matcher timed out. The matcher was corrected; no security guard was weakened.
+
+**Final exact-head verification — PR #251 head `3017ee1ead746fd90b7eebe1ff66842561e47799`:**
+
+- Verify [41265153067](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153067): **success**. Game-server tests, full Node suite, Python inspector tests, game package build, and bounded institutional exercise all exited 0; report `passed: true`.
+- Genesis Evidence Invariant [41265153140](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153140): **success**.
+- Browser Acceptance [41265153098](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153098): **success, 12/12 journeys**. Artifact [13067162237](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153098/artifacts/13067162237), ZIP SHA-256 `84deab64abf27fac55843804054f5b4c00a0f962c9ed01e2435c1addb6c48f83`.
+
+PR #251 remains draft/open/unmerged and stacked on PR #245. This change closes the programmatic key-generation bypass only; it does not establish a real Founder identity, hardware-backed key custody, signed-decision verification on live mutation routes, or production deployment. Issue #17 remains open for those boundaries plus concurrency and crash-recovery acceptance.
+
+### Cycle 2 — include the actual world-view source in hosted preflight
+
+**Observed gap:** Worker B's PR #249 handoff identified that its hosted preflight included `test/game-player-position.test.mjs` and `game/player-position.mjs` but omitted the changed source `game/world-view.mjs`. PR #249 head `b588757aba9a84cb4c57fbc1f82206a0aa7c3d1c` remained unchanged at the last observation; its Android Alpha-1 run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) was still in the emulator journey after APK assembly. No Android result is claimed, and Worker B's active branch was not edited.
+
+**Changes on canonical checkpoint PR #248 branch** `ops/canonical-checkpoint-preflight-20261031-run10`:
+
+- `cff210967370d3e78f87429c13caae0c4f48185b` — add `--path game/world-view.mjs` to `agent:preflight:ci`.
+- `5af2d864d6d7b2cf829a0581676521003006b2d4` — add a governance regression requiring both the world-view target and canonical `LATEST_CHECKPOINT.md` checkpoint argument.
+
+**Final exact-head verification — PR #248 head `5af2d864d6d7b2cf829a0581676521003006b2d4`:**
+
+- Verify [41265636930](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265636930): **success**. Hosted preflight reported `status: ready`, zero warnings/failures, and explicitly hashed `game/world-view.mjs`; full Node suite, Python inspector tests, game build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant [41265637003](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265637003): **success**.
+- Browser Acceptance [41265636950](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265636950): **success, 12/12 journeys**. Artifact [13066929150](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265636950/artifacts/13066929150), ZIP SHA-256 `8803ac0b81961047c279713c7c5fe273aca4e0d92cdb1c42c68f4259fdfa430e`.
+
+PR #248 remains draft/open/unmerged. The canonical checkpoint and target-list changes are proposals, not mainline integration.
+
+### Cross-worker handoff and next ranked actions
+
+1. **Worker B / PR #249:** when reconciling the Android branch with canonical PR #248, preserve both `game/world-view.mjs` and `test/game-player-position.test.mjs` in the combined `agent:preflight:ci` target list (and retain `game/player-position.mjs`). The PR #248 branch now covers the missing world-view source; PR #249 still owns the Android position implementation. Do not edit the active Android run or weaken the ADB verifier guard.
+2. Re-observe PR #249's Android Alpha-1 run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) and the current Worker B run before taking any game-source action. APK assembly is not device acceptance.
+3. Reconcile PR #248's canonical checkpoint/preflight work with PR #249's Android targets and PR #251/#244/#245 security targets on one clean integration proposal; require exact-head Verify, Genesis, Browser, and Android evidence separately. Do not merge.
+4. After the key-custody/trust-root decision is explicitly supplied by Damien, integrate signed Founder authorization into live mutation routes. Until then, do not generate, enroll, rotate, or sign with a Founder key.
+5. Keep Command Center writes paused pending Damien's authorization; no revert or repair was attempted.
+
+No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
