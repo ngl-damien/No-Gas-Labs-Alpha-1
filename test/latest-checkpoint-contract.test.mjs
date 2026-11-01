@@ -28,7 +28,7 @@ test('root instructions and hosted preflight use the same current durable checkp
   const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
   const ciPreflight = manifest.scripts?.['agent:preflight:ci'];
   assert.equal(typeof ciPreflight, 'string', 'hosted verification must invoke the portable preflight');
-  assert.match(ciPreflight, /^node scripts\\/run-agent-preflight-ci\\.mjs(?:\\s|$)/);
+  assert.match(ciPreflight, /^node scripts\/run-agent-preflight-ci\.mjs(?:\s|$)/);
   assert.ok(!ciPreflight.includes('--receipt'), 'CI preflight must generate a unique receipt path for every run');
 
   const args = ciPreflight.trim().split(/\s+/);
