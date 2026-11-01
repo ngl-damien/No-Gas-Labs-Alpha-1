@@ -20,6 +20,18 @@ if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory() || (runtimeInfo.m
   throw new Error('Verification runtime must exclude group and other access');
 }
 const out = await mkdtemp(join(runtimeRoot, 'verification-'));
+function failingTestContext(output) {
+  const lines = output.split(/\\r?\\n/);
+  const markers = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const plain = lines[index].replace(/\\u001b\\[[0-9;]*m/g, '').trim();
+    if (/^(?:✖ (?!failing tests:)|not ok \\d+ - )/.test(plain)) markers.push(index);
+  }
+  if (!markers.length) return lines.slice(-100).join('\\n');
+  return markers.map(index => lines.slice(Math.max(0, index - 2), Math.min(lines.length, index + 40)).join('\\n'))
+    .join('\\n\\n--- failing test ---\\n\\n');
+}
+
 const stages = [];
 
 for (const [name, bin, args, cwd] of [
@@ -43,8 +55,9 @@ for (const [name, bin, args, cwd] of [
   stages.push(record);
   console.log(JSON.stringify(record));
   if (exitCode) {
-    const tail = (stdout + '\n' + stderr).split(/\r?\n/).slice(-100).join('\n');
-    console.error('FAILED STAGE OUTPUT (' + name + '):\n' + tail);
+    const combined = stdout + '\\n' + stderr;
+    const diagnostic = name === 'tests' ? failingTestContext(combined) : combined.split(/\\r?\\n/).slice(-100).join('\\n');
+    console.error('FAILED STAGE OUTPUT (' + name + '):\\n' + diagnostic);
     process.exitCode = 1;
     break;
   }
