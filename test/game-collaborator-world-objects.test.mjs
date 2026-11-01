@@ -37,7 +37,7 @@ function responseEvent({
   validationStatus = 'valid-for-human-review',
   validationReason = null,
   packetChanges = null,
-  responseText = '{"draft":"review only"}'
+  responseText = '{"concepts":["falsifiable hypotheses"],"prerequisites":["retained observations"],"explanation":"A falsifier is an observation that would contradict the hypothesis under the stated conditions.","questions":["What observation would count against the claim?"],"answerKey":["A reproducible counterexample under the stated conditions."],"whatRemainsUnproven":["This response is not evidence that the experiment ran."]}'
 } = {}) {
   // The archived packet must be one the runtime itself could have issued for
   // this exact earlier event slice. Tests may mutate its payload deliberately,
@@ -112,12 +112,36 @@ test('a recomputed packet receipt cannot detach compact source content from the 
 test('rejected collaborator output remains a visible, explicitly rejected world object', () => {
   const rejected = responseEvent({
     validationStatus: 'rejected',
-    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID'
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    responseText: '{}'
   });
   const [object] = projectCollaboratorResponseWorldObjects(worldWith(rejected));
   assert.equal(object.validationStatus, 'rejected');
   assert.equal(object.validationReason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
   assert.equal(object.mapVisible, true);
+});
+
+test('archived validation labels are recomputed from the exact retained packet and response bytes', () => {
+  const forgedValid = responseEvent({
+    responseText: '{"draft":"review only"}'
+  });
+  const [rejected] = projectCollaboratorResponseWorldObjects(worldWith(forgedValid));
+  assert.equal(rejected.validationStatus, 'rejected');
+  assert.equal(rejected.validationReason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
+  assert.equal(rejected.recordedValidationStatus, 'valid-for-human-review');
+  assert.equal(rejected.recomputedValidationStatus, 'rejected');
+  assert.equal(rejected.validationMismatch, true);
+
+  const forgedRejected = responseEvent({
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID'
+  });
+  const [notPromoted] = projectCollaboratorResponseWorldObjects(worldWith(forgedRejected));
+  assert.equal(notPromoted.validationStatus, 'rejected',
+    'a mismatched stored rejection must not be promoted by the UI projection');
+  assert.equal(notPromoted.validationReason, 'ARCHIVED_VALIDATION_STATUS_MISMATCH');
+  assert.equal(notPromoted.recomputedValidationStatus, 'valid-for-human-review');
+  assert.equal(notPromoted.validationMismatch, true);
 });
 
 test('witness-visible history tolerates hidden draft and repair events without inventing a snapshot', () => {
