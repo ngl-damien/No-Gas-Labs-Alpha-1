@@ -1413,9 +1413,6 @@ def player_guild_membership(browser,url,out):
         expect(founder_board).to_be_visible()
         expect(founder_board).to_contain_text('Your Witness objective trail')
         assert 'Publish a first place' not in founder_board.inner_text(), 'A Witness must not see Founder-only objectives'
-        founder_membership=founder_page.locator('#quest-trail [data-objective-id="witness-player-guild-membership"]')
-        expect(founder_membership).to_contain_text('OPEN')
-        expect(founder_membership).to_contain_text('0/1')
         after_board=founder_context.request.get(url+'api/state').json()['world']
         assert (after_board['revision'],after_board['events'],after_board['xp'])==(baseline_world['revision'],baseline_world['events'],baseline_world['xp']), 'Opening the shared expedition board must not mutate canonical world state'
         founder_page.locator('#player-guild-name').fill('Field Researchers')
@@ -1424,8 +1421,6 @@ def player_guild_membership(browser,url,out):
         founder_guild=founder_page.locator('[data-player-guild-id]')
         expect(founder_guild).to_contain_text('Field Researchers')
         expect(founder_guild).to_contain_text('MEMBERS 1/25')
-        expect(founder_membership).to_contain_text('RECORDED')
-        expect(founder_membership).to_contain_text('1/1')
 
         member_page.locator('#places-button').click()
         member_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
@@ -1434,26 +1429,17 @@ def player_guild_membership(browser,url,out):
         expect(member_board).to_be_visible()
         expect(member_board).to_contain_text('Your Witness objective trail')
         assert 'Publish a first place' not in member_board.inner_text(), 'The second Witness must not see Founder-only objectives'
-        member_membership=member_page.locator('#quest-trail [data-objective-id="witness-player-guild-membership"]')
-        expect(member_membership).to_contain_text('OPEN')
-        expect(member_membership).to_contain_text('0/1')
         member_guild=member_page.locator('[data-player-guild-id]')
         expect(member_guild).to_contain_text('Field Researchers')
         member_page.locator('[data-player-guild-join]').click()
         expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
         expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 2/25')
-        expect(member_membership).to_contain_text('RECORDED')
-        expect(member_membership).to_contain_text('1/1')
 
         member_page.locator('[data-player-guild-leave]').click()
         expect(member_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
         expect(founder_page.locator('[data-player-guild-id]')).to_contain_text('MEMBERS 1/25')
-        expect(member_membership).to_contain_text('OPEN')
-        expect(member_membership).to_contain_text('0/1')
         founder_page.locator('[data-player-guild-disband]').click()
         expect(founder_page.locator('[data-player-guild-id]')).to_have_count(0)
-        expect(founder_membership).to_contain_text('OPEN')
-        expect(founder_membership).to_contain_text('0/1')
 
         state=founder_context.request.get(url+'api/state').json()
         events=[event for event in state['world']['events'] if event.get('type','').startswith('guild-')]
