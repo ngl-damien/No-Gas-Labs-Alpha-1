@@ -220,6 +220,13 @@ export function proveCandidateSquareProgram(program) {
     method: 'exact-integer-polynomial-normal-form',
     inputMin: -MAX_INPUT,
     inputMax: MAX_INPUT,
+    limits: Object.freeze({
+      maxAstDepth: MAX_DEPTH,
+      maxAstNodes: MAX_NODES,
+      maxPolynomialDegree: MAX_PROOF_DEGREE,
+      maxCoefficientBits: MAX_PROOF_COEFFICIENT_BITS,
+      maxSafeInteger: Number.MAX_SAFE_INTEGER
+    }),
     coefficients: Object.freeze(coefficients.map(value => value.toString())),
     maxIntermediateAbsoluteBound: maximumIntermediateBound.toString(),
     matchesSquare

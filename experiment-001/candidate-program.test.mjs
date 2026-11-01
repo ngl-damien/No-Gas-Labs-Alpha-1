@@ -122,6 +122,13 @@ test('candidate-program-v3 proves exact polynomial equivalence and rejects unsup
   assert.equal(proof.certificate.method, 'exact-integer-polynomial-normal-form');
   assert.equal(proof.certificate.inputMin, -1_000_000);
   assert.equal(proof.certificate.inputMax, 1_000_000);
+  assert.deepEqual(proof.certificate.limits, {
+    maxAstDepth: 12,
+    maxAstNodes: 63,
+    maxPolynomialDegree: 32,
+    maxCoefficientBits: 4096,
+    maxSafeInteger: Number.MAX_SAFE_INTEGER
+  });
   assert.equal(proof.certificate.maxIntermediateAbsoluteBound, '1000000000001');
   assert.equal(proof.certificate.matchesSquare, true);
   const doubleNegated = lib.challenge('candidate-program-v3', {
