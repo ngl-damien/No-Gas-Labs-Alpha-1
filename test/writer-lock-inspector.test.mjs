@@ -275,6 +275,7 @@ test('does not interpret an unknown writer-lock schema as owner metadata', async
 
 
 test('lock inspector reports failed UID ownership lookups as unsafe instead of throwing', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX lock mode and UID checks are not a Windows ACL verifier');
   const directory = await temp(t);
   const path = join(directory, '.writer.lock');
   await writeFile(path, JSON.stringify({
@@ -295,7 +296,7 @@ test('lock inspector reports failed UID ownership lookups as unsafe instead of t
       setup,
       'const result = await inspectWriterLock(' + JSON.stringify(path) + ');',
       'process.stdout.write(JSON.stringify(result));'
-    ].join('\\n');
+    ].join('\n');
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
       encoding: 'utf8',
       timeout: 5000
