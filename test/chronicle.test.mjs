@@ -722,8 +722,8 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.equal(challenge.category, "DISSENT & CHALLENGE");
   assert.match(challenge.summary, /does not adjudicate/i);
   assert.equal(response.category, "GUILD HALL");
-  assert.match(response.title, /REJECTED · PRESERVED/);
+  assert.match(response.title, /UNVERIFIED · NOT PROJECTED/);
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
-  assert.match(response.warning, /untrusted text/i);
+  assert.match(response.warning, /stored validation label is not trusted/i);
 });
