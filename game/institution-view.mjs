@@ -156,11 +156,6 @@ function validProjectSnapshot(projects) {
   Number.isSafeInteger(projects.witnessParticipation) && projects.witnessParticipation >= 0);
 }
 
-function validDecisionSnapshot(gate) {
- return Boolean(gate && typeof gate === 'object' && Array.isArray(gate.decisions) &&
-  Object.hasOwn(gate, 'policy') &&
-  (gate.policy === null || (typeof gate.policy === 'object' && !Array.isArray(gate.policy))));
-}
 
 function warning(container, message) {
  const item = el('p', message);
@@ -170,7 +165,8 @@ function warning(container, message) {
 
 export function renderInstitution(container,projects,gate,{
  founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,
- projectsUnavailable=false,decisionsUnavailable=false,worldSnapshotStale=false,worldUnavailable=false
+ projectsUnavailable=false,decisionsUnavailable=false,worldSnapshotStale=false,worldUnavailable=false,
+ decisionPresentation='full',decisionProjection=null
 }={}) {
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
  if(worldSnapshotStale)warning(container,'Live world state could not be refreshed. The Chronicle below is the last snapshot received by this session; it may be stale. It is read-only and does not authorize decisions.');
@@ -203,24 +199,48 @@ export function renderInstitution(container,projects,gate,{
   container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
  }
 
- container.append(el('h3','FOUNDER GATE'));
- if(decisionsUnavailable||!validDecisionSnapshot(gate)){
-  warning(container,'Decision ledger unavailable or malformed. No policy, decision count, disposition or approval is inferred; reconnect before taking a consequential action.');
-  return;
- }
- container.append(el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
- if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
- for(const d of gate.decisions){
-  const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;
-  card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));
-  if(founder){
-   card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));
-   for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));
-   if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}
-   if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){
-    const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice?.(d,action);card.append(b);
+ const presentation = ['hidden', 'summary', 'full'].includes(decisionPresentation)
+  ? decisionPresentation : 'full';
+ if(presentation!=='hidden'){
+  const projection=decisionProjection;
+  container.append(el('h3',presentation==='full'?'FOUNDER GATE':'DECISION SERVICE · STATUS'));
+  if(decisionsUnavailable||!projection||projection.available!==true){
+   warning(container,'Decision ledger unavailable or malformed. No policy, decision count, disposition or approval is inferred; reconnect before taking a consequential action.');
+   return;
+  }
+  if(!projection.policy)container.append(el('p','No operational review policy is activated. No review window is running.'));
+  if(projection.decisionCount===0)container.append(el('p','No retained decision proposals are recorded.','empty-note'));
+  if(presentation==='summary'){
+   container.append(el('p',founder
+    ?'Status-only decision register. Disposition controls are available only in the Decision Chamber.'
+    :'Status-only decision register. Private evaluation bytes and disposition controls are withheld.'));
+   for(const decision of projection.decisions){
+    const card=el('article');card.className='field-card';card.dataset.decisionId=decision.id;card.tabIndex=-1;
+    card.append(el('h3',decision.title),el('p',`Status: ${decision.status} · Expires: ${decision.expiresAt}`));
+    if(decision.disposition)card.append(el('p',`Recorded disposition: ${decision.disposition.action} · account ${decision.disposition.actorId} · ${decision.disposition.decidedAt}`));
+    container.append(card);
+   }
+  }else{
+   container.append(el('p',founder
+    ?'Founder session authenticated. A disposition records the displayed decision; it does not promote code.'
+    :'Witness view: private evaluation bytes and controls are withheld.'));
+   const rawById=new Map(gate.decisions.map(decision=>[decision.id,decision]));
+   for(const summary of projection.decisions){
+    const d=rawById.get(summary.id);
+    if(!d)continue;
+    const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.tabIndex=-1;
+    card.append(el('h3',summary.title),el('p',`Status: ${summary.status} · Expires: ${summary.expiresAt}`));
+    if(founder){
+     card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));
+     for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));
+     if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}
+     if(summary.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){
+      const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice?.(d,action);card.append(b);
+     }
+    }
+    container.append(card);
    }
   }
-  container.append(card);
+  if(projection.omittedDecisionCount)container.append(el('p',`${projection.omittedDecisionCount} older decision record(s) remain in the service and are not shown in this bounded view.`));
  }
 }

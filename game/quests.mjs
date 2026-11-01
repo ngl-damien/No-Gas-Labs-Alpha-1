@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 const questTrailContext = new WeakMap();
@@ -474,6 +474,354 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
     ...(typeof interpretation === 'string' ? { interpretation } : {}),
+  });
+}
+
+
+const EXPEDITION_DOCKET_LIMIT = 3;
+const EXPEDITION_ACTIVITY_LIMIT = 3;
+const EXPEDITION_RESPONSE_LIMIT = 4;
+const DOCKET_RESEARCH_TYPES = new Set([
+  'moonshot-proposed', 'experiment-reported', 'experiment-challenged'
+]);
+const DOCKET_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
+const DOCKET_CHALLENGE_TYPES = new Set([
+  'missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'
+]);
+
+function newestDocketRecordFirst(left, right) {
+  const leftAt = isStrictTimestamp(left?.at) ? Date.parse(left.at) : Number.NEGATIVE_INFINITY;
+  const rightAt = isStrictTimestamp(right?.at) ? Date.parse(right.at) : Number.NEGATIVE_INFINITY;
+  return rightAt - leftAt ||
+    (right?._projection?.index ?? -1) - (left?._projection?.index ?? -1);
+}
+
+/**
+ * Read-only Guild Hall dossier assembled from the existing retained research
+ * ledger and exact, source-bound Relay folios. Reports stay self-reported,
+ * challenges stay dissent, and collaborator replies stay untrusted even when
+ * their structure is valid. Ambiguous links are counted, never guessed.
+ */
+export function getExpeditionDocket(world, options = null) {
+  const events = Array.isArray(world?.events) ? world.events : [];
+  const creations = Array.isArray(world?.creations) ? world.creations : [];
+  const records = projectResearchRecords(events, creations);
+  const suppliedResponses = options && typeof options === 'object'
+    ? options.collaboratorResponseObjects : null;
+  const responseObjects = isCollaboratorResponseProjection(suppliedResponses, world)
+    ? suppliedResponses
+    : projectCollaboratorResponseWorldObjects(world);
+
+  const proposals = records.filter(record =>
+    record.type === 'moonshot-proposed' &&
+    record._projection?.proposalStatus === 'unique'
+  );
+  const expeditions = proposals.slice(0, EXPEDITION_DOCKET_LIMIT).map(proposal => {
+    const related = records.filter(record =>
+      record.moonshotId === proposal.moonshotId &&
+      record._projection?.proposalStatus === 'linked'
+    );
+    const reports = related
+      .filter(record => record.type === 'experiment-reported')
+      .sort(newestDocketRecordFirst);
+    const challenges = related
+      .filter(record => record.type === 'experiment-challenged')
+      .sort(newestDocketRecordFirst);
+    const responses = responseObjects
+      .filter(record => record.moonshotId === proposal.moonshotId)
+      .slice()
+      .sort((left, right) =>
+        Date.parse(right.at) - Date.parse(left.at) ||
+        right.responseId.localeCompare(left.responseId)
+      );
+
+    return Object.freeze({
+      eventId: proposal.id,
+      moonshotId: proposal.moonshotId,
+      title: proposal.title,
+      hypothesis: proposal.hypothesis,
+      falsifier: proposal.falsifier,
+      evidenceNeeded: proposal.evidenceNeeded,
+      actorId: proposal.actor.id,
+      actorRole: proposal.actor.role,
+      at: proposal.at,
+      sourceStatus: proposal._projection.sourceStatus,
+      attemptCount: reports.length,
+      attempts: Object.freeze(reports.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
+        Object.freeze({
+          id: record.id,
+          reportId: record.reportId,
+          at: record.at,
+          actorId: record.actor?.id ?? null,
+          actorRole: record.actor?.role ?? null,
+          procedure: record.procedure,
+          observation: record.observation,
+          reportedOutcome: DOCKET_OUTCOMES.has(record.reportedOutcome)
+            ? record.reportedOutcome : 'unclassified',
+          evidenceStatus: record._projection.evidenceStatus
+        })
+      )),
+      omittedAttemptCount: Math.max(0, reports.length - EXPEDITION_ACTIVITY_LIMIT),
+      challengeCount: challenges.length,
+      challenges: Object.freeze(challenges.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
+        Object.freeze({
+          id: record.id,
+          challengeId: record.challengeId ?? null,
+          reportId: record.reportId ?? null,
+          at: record.at,
+          actorId: record.actor?.id ?? null,
+          actorRole: record.actor?.role ?? null,
+          challengeType: DOCKET_CHALLENGE_TYPES.has(record.challengeType)
+            ? record.challengeType : 'other',
+          challengeText: typeof record.challengeText === 'string' ? record.challengeText : '',
+          targetReportStatus: record._projection.targetReportStatus,
+          evidenceStatus: record._projection.evidenceStatus
+        })
+      )),
+      omittedChallengeCount: Math.max(0, challenges.length - EXPEDITION_ACTIVITY_LIMIT),
+      responseCount: responses.length,
+      responses: Object.freeze(responses.slice(0, EXPEDITION_RESPONSE_LIMIT).map(record =>
+        Object.freeze({
+          responseId: record.responseId,
+          eventId: record.eventId,
+          roleId: record.roleId,
+          name: record.name,
+          actorId: record.actorId,
+          actorRole: record.actorRole,
+          at: record.at,
+          validationStatus: record.validationStatus,
+          validationReason: record.validationReason,
+          sourceEventIds: Object.freeze([...record.sourceEventIds])
+        })
+      )),
+      omittedResponseCount: Math.max(0, responses.length - EXPEDITION_RESPONSE_LIMIT)
+    });
+  });
+
+  const unlinkedResearchRecordCount = records.filter(record =>
+    DOCKET_RESEARCH_TYPES.has(record.type) &&
+    !['unique', 'linked'].includes(record._projection?.proposalStatus)
+  ).length;
+
+  return Object.freeze({
+    worldId: typeof world?.id === 'string' ? world.id : null,
+    worldRevision: Number.isSafeInteger(world?.revision) ? world.revision : null,
+    proposalCount: proposals.length,
+    omittedProposalCount: Math.max(0, proposals.length - EXPEDITION_DOCKET_LIMIT),
+    unlinkedResearchRecordCount,
+    expeditions: Object.freeze(expeditions)
+  });
+
+}
+
+const DECISION_DOCKET_SCHEMA = 'ngl.decisions.snapshot.v1';
+const DECISION_DOCKET_LIMIT = 20;
+const DECISION_DOCKET_STATUSES = Object.freeze([
+  'PENDING', 'APPROVED', 'REJECTED', 'DEFERRED', 'EXPIRED'
+]);
+const DECISION_DOCKET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function decisionDocketRecord(value) {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some(key => typeof key !== 'string')) return null;
+    const result = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function decisionDocketArray(value, limit) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > limit) return null;
+    for (const key of keys) {
+      if (key === 'length') continue;
+      if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length) return null;
+    }
+    const result = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function decisionDocketIdentifier(value) {
+  return typeof value === 'string' && DECISION_DOCKET_ID.test(value) &&
+    !['__proto__', 'constructor', 'prototype'].includes(value);
+}
+
+function unavailableDecisionDocket(reason) {
+  return Object.freeze({
+    available: false,
+    reason,
+    revision: null,
+    head: null,
+    policy: null,
+    counts: null,
+    decisionCount: null,
+    omittedDecisionCount: 0,
+    decisions: Object.freeze([])
+  });
+}
+
+/**
+ * Project the host-authenticated decision-service snapshot into bounded,
+ * read-only Guild Hall objects. Private evaluation bytes, risks, rollback
+ * details, audit rows and policy basis never enter this projection.
+ *
+ * A malformed or inconsistent snapshot is unavailable, never an empty docket.
+ * This projection creates no world event, XP, disposition or authority.
+ */
+export function projectDecisionDocket(snapshot) {
+  const source = decisionDocketRecord(snapshot);
+  if (!source) return unavailableDecisionDocket('missing-or-unsafe-snapshot');
+  if (source.schema !== DECISION_DOCKET_SCHEMA) return unavailableDecisionDocket('unsupported-schema');
+  if (!Number.isSafeInteger(source.revision) || source.revision < 0) {
+    return unavailableDecisionDocket('invalid-revision');
+  }
+  if (typeof source.head !== 'string' || !/^[a-f0-9]{64}$/.test(source.head)) {
+    return unavailableDecisionDocket('invalid-head');
+  }
+
+  let policy = null;
+  if (source.policy !== null) {
+    const candidate = decisionDocketRecord(source.policy);
+    if (!candidate || !decisionDocketIdentifier(candidate.id) ||
+        !Number.isSafeInteger(candidate.reviewWindowMs) || candidate.reviewWindowMs < 1 ||
+        candidate.reviewWindowMs > 30 * 86400000 ||
+        !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
+        candidate.revision > source.revision || !isStrictTimestamp(candidate.setAt)) {
+      return unavailableDecisionDocket('invalid-policy');
+    }
+    policy = Object.freeze({
+      id: candidate.id,
+      reviewWindowMs: candidate.reviewWindowMs,
+      revision: candidate.revision,
+      setAt: candidate.setAt
+    });
+  }
+
+  const rawDecisions = decisionDocketArray(source.decisions, 10000);
+  if (!rawDecisions) return unavailableDecisionDocket('invalid-decision-list');
+  if (rawDecisions.length && !policy) return unavailableDecisionDocket('decision-without-policy');
+
+  const countsSource = decisionDocketRecord(source.counts);
+  if (!countsSource || Reflect.ownKeys(countsSource).length !== DECISION_DOCKET_STATUSES.length ||
+      DECISION_DOCKET_STATUSES.some(status => !Object.hasOwn(countsSource, status) ||
+        !Number.isSafeInteger(countsSource[status]) || countsSource[status] < 0)) {
+    return unavailableDecisionDocket('invalid-counts');
+  }
+
+  const observedCounts = Object.fromEntries(DECISION_DOCKET_STATUSES.map(status => [status, 0]));
+  const seenIds = new Set();
+  const decisions = [];
+  for (const raw of rawDecisions) {
+    const candidate = decisionDocketRecord(raw);
+    if (!candidate || !decisionDocketIdentifier(candidate.id) ||
+        seenIds.has(candidate.id) ||
+        typeof candidate.title !== 'string' || !candidate.title.trim() ||
+        Array.from(candidate.title).length > 1000 ||
+        !DECISION_DOCKET_STATUSES.includes(candidate.status) ||
+        !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
+        candidate.revision > source.revision || !decisionDocketIdentifier(candidate.createdBy) ||
+        !isStrictTimestamp(candidate.createdAt) ||
+        !isStrictTimestamp(candidate.expiresAt) ||
+        !(candidate.expiredAt === null || isStrictTimestamp(candidate.expiredAt))) {
+      return unavailableDecisionDocket('invalid-decision');
+    }
+
+    const decisionPolicy = decisionDocketRecord(candidate.policy);
+    if (!decisionPolicy || !decisionDocketIdentifier(decisionPolicy.id) ||
+        !Number.isSafeInteger(decisionPolicy.revision) || decisionPolicy.revision < 1 ||
+        decisionPolicy.revision > policy.revision) {
+      return unavailableDecisionDocket('invalid-decision-policy');
+    }
+
+    let disposition = null;
+    if (candidate.disposition !== null) {
+      const record = decisionDocketRecord(candidate.disposition);
+      if (!record || !['APPROVE', 'REJECT', 'DEFER'].includes(record.action) ||
+          !decisionDocketIdentifier(record.actorId) ||
+          !decisionDocketIdentifier(record.requestId) ||
+          !isStrictTimestamp(record.decidedAt)) {
+        return unavailableDecisionDocket('invalid-disposition');
+      }
+      disposition = Object.freeze({
+        action: record.action,
+        actorId: record.actorId,
+        requestId: record.requestId,
+        decidedAt: record.decidedAt
+      });
+    }
+
+    const createdAtMs = Date.parse(candidate.createdAt);
+    const expiresAtMs = Date.parse(candidate.expiresAt);
+    const expiredAtMs = candidate.expiredAt === null ? null : Date.parse(candidate.expiredAt);
+    if (!(createdAtMs < expiresAtMs) ||
+        (candidate.status === 'PENDING' && (disposition !== null || candidate.expiredAt !== null)) ||
+        (candidate.status === 'EXPIRED' &&
+          (disposition !== null || expiredAtMs === null || expiredAtMs < expiresAtMs)) ||
+        (['APPROVED', 'REJECTED', 'DEFERRED'].includes(candidate.status) &&
+          (disposition === null || disposition.action !== ({ APPROVED: 'APPROVE', REJECTED: 'REJECT', DEFERRED: 'DEFER' })[candidate.status] || candidate.expiredAt !== null ||
+            Date.parse(disposition.decidedAt) < createdAtMs ||
+            Date.parse(disposition.decidedAt) > expiresAtMs))) {
+      return unavailableDecisionDocket('inconsistent-decision-state');
+    }
+
+    seenIds.add(candidate.id);
+    observedCounts[candidate.status] += 1;
+    decisions.push(Object.freeze({
+      id: candidate.id,
+      title: candidate.title,
+      status: candidate.status,
+      revision: candidate.revision,
+      createdAt: candidate.createdAt,
+      createdBy: candidate.createdBy,
+      expiresAt: candidate.expiresAt,
+      expiredAt: candidate.expiredAt,
+      policy: Object.freeze({ id: decisionPolicy.id, revision: decisionPolicy.revision }),
+      disposition
+    }));
+  }
+
+  if (DECISION_DOCKET_STATUSES.some(status => observedCounts[status] !== countsSource[status])) {
+    return unavailableDecisionDocket('count-mismatch');
+  }
+
+  decisions.sort((left, right) =>
+    Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
+  const counts = Object.freeze({ ...observedCounts });
+  return Object.freeze({
+    available: true,
+    reason: null,
+    revision: source.revision,
+    head: source.head,
+    policy,
+    counts,
+    decisionCount: decisions.length,
+    omittedDecisionCount: Math.max(0, decisions.length - DECISION_DOCKET_LIMIT),
+    decisions: Object.freeze(decisions.slice(0, DECISION_DOCKET_LIMIT))
   });
 }
 

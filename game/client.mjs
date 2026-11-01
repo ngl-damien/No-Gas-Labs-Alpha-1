@@ -1,6 +1,6 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -14,7 +14,7 @@ import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,projectPlayerGui
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 let currentCharacterRecord=null,currentQuestTrail=null,currentCollaboratorResponseObjects=null;
-async function openInstitution(locationId = null) {
+async function openInstitution(locationId = null, focusDecisionId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
     guild_hall: ['Guild Hall', 'COUNCIL · CAPABILITIES · EVIDENCE'],
@@ -24,7 +24,7 @@ async function openInstitution(locationId = null) {
   const content = showSheet(context[0], context[1]);
   if (mode !== 'shared') {
     content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
-    return;
+    return { decisionSnapshot: null, decisionUnavailable: true };
   }
   const requestGeneration = ++institutionRequestGeneration;
   const principalId = viewer.id;
@@ -42,11 +42,13 @@ async function openInstitution(locationId = null) {
   ]);
   if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
       viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
-      content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return;
+      content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return null;
   const snapshot = selectWorldSnapshot(
     stateResult.available ? stateResult.data?.world : null,
     world
   );
+  const decisionProjection = gateResult.available
+    ? projectDecisionDocket(gateResult.data) : projectDecisionDocket(null);
   renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
     world: snapshot.world,
@@ -54,6 +56,9 @@ async function openInstitution(locationId = null) {
     worldUnavailable: snapshot.unavailable,
     projectsUnavailable: !projectsResult.available,
     decisionsUnavailable: !gateResult.available,
+    decisionPresentation: locationId === 'decision_chamber' ? 'full'
+      : locationId === 'guild_hall' ? 'hidden' : 'summary',
+    decisionProjection,
     kernel: institutionResult.data?.kernel,
     kernelUnavailable: !institutionResult.available || !institutionResult.data?.kernel,
     onOpenArtifact: (id, version) => openCreation(id, version),
@@ -64,9 +69,21 @@ async function openInstitution(locationId = null) {
         requestId: crypto.randomUUID(),
         action,
       });
-      await openInstitution();
+      await openInstitution('decision_chamber', decision.id);
     }),
   });
+  if (locationId === 'decision_chamber' && typeof focusDecisionId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(focusDecisionId)) {
+    const target = Array.from(content.querySelectorAll('[data-decision-id]'))
+      .find(card => card.dataset.decisionId === focusDecisionId);
+    if (target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView?.({ block: 'nearest' });
+    } else {
+      content.prepend(paragraph('The requested decision ID was not present in the refreshed Decision Chamber snapshot. No disposition was submitted.','evidence-warning'));
+    }
+  }
+  return { decisionSnapshot: gateResult.data, decisionUnavailable: !gateResult.available, decisionProjection };
 }
 function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
@@ -587,6 +604,198 @@ function renderPlayerGuildBoard(board, sourceWorld){
     }
   }
 }
+function renderGuildExpeditionDocket(projection,container){
+  const active=document.activeElement;
+  const focusedKey=container.contains(active)?active.getAttribute('data-expedition-docket-focus'):null;
+  container.replaceChildren();
+  container.append(node('h3',{id:'guild-expedition-docket-heading',class:'section-title',text:'RETAINED EXPEDITION DOSSIER'}));
+  container.append(paragraph('This in-world docket joins retained Moonshot proposals to self-reported attempts, preserved challenges and exact Relay folios. It is a navigation aid, not an adjudication: reports remain reports, dissent remains dissent, and structurally valid collaborator text is still untrusted.','form-help'));
+  if(projection.unlinkedResearchRecordCount){
+    container.append(paragraph(projection.unlinkedResearchRecordCount+' retained proposal, attempt or challenge record(s) have missing or ambiguous links. They remain in the Evidence Archive; no target is guessed.','evidence-warning'));
+  }
+  if(projection.omittedProposalCount){
+    container.append(paragraph('Showing the newest '+projection.expeditions.length+' uniquely linked proposals. '+projection.omittedProposalCount+' older proposal(s) remain inspectable in the Evidence Archive.','form-help'));
+  }
+  if(!projection.expeditions.length){
+    container.append(paragraph('No uniquely identified Moonshot proposal is available for a dossier yet. Frame a falsifiable question at the Moonshot Field. Ambiguous or rejected records are not erased.','empty-note'));
+  }
+  const statusLabel=value=>String(value||'unknown').replaceAll('-',' ').toUpperCase();
+  for(const expedition of projection.expeditions){
+    const card=node('article',{class:'field-card','data-expedition-docket-id':expedition.moonshotId});
+    card.append(
+      node('h4',{text:expedition.title}),
+      node('span',{class:'pill',text:'RETAINED PROPOSAL · NOT ADJUDICATED'}),
+      paragraph('Moonshot '+expedition.moonshotId+' · proposal '+expedition.eventId+' · '+expedition.actorRole+' '+expedition.actorId+' · '+expedition.at,'attribution'),
+      paragraph('Hypothesis: '+expedition.hypothesis),
+      paragraph('Falsifier: '+expedition.falsifier),
+      paragraph('Evidence needed: '+expedition.evidenceNeeded),
+      paragraph('Source link: '+statusLabel(expedition.sourceStatus)+'. A link identifies a retained version; it does not verify the hypothesis.','form-help'),
+      button('Open Moonshot Field →',()=>openMoonshotField(expedition.moonshotId),{
+        class:'list-button','data-expedition-docket-focus':'proposal:'+expedition.moonshotId
+      })
+    );
+    if(mode==='shared'){
+      card.append(
+        paragraph('The Decision Chamber is the human gate. Opening it does not submit or approve this Moonshot.','form-help'),
+        button('Open Decision Chamber →',()=>openInstitution('decision_chamber'),{
+          class:'list-button','data-expedition-docket-focus':'decision:'+expedition.moonshotId
+        })
+      );
+    }else{
+      card.append(paragraph('Decision Chamber is not connected in this private world. This dossier cannot submit or approve a decision.','form-help'));
+    }
+
+    const attempts=node('section',{class:'expedition-docket-section','aria-label':'Retained attempt reports'});
+    attempts.append(node('h5',{text:'ATTEMPT REPORTS · '+expedition.attemptCount+' RETAINED'}));
+    if(!expedition.attempts.length){
+      attempts.append(paragraph('No uniquely linked attempt report is retained for this proposal.','empty-note'));
+    }
+    for(const attempt of expedition.attempts){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-attempt-id':attempt.id});
+      item.append(
+        node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED · '+attempt.reportedOutcome.toUpperCase()}),
+        paragraph('Procedure: '+(typeof attempt.procedure==='string'&&attempt.procedure.trim()?attempt.procedure:'not recorded')),
+        paragraph('Observation: '+(typeof attempt.observation==='string'&&attempt.observation.trim()?attempt.observation:'not recorded')),
+        paragraph('Evidence link: '+statusLabel(attempt.evidenceStatus)+'. This is linkage only, not independent observation.','form-help'),
+        paragraph('By '+(attempt.actorRole||'unknown')+' '+(attempt.actorId||'unknown')+' · '+attempt.at,'attribution'),
+        node('code',{text:attempt.id}),
+        button('Inspect attempt →',()=>openMoonshotField(expedition.moonshotId,attempt.id),{
+          class:'list-button','data-expedition-docket-focus':'attempt:'+attempt.id
+        })
+      );
+      attempts.append(item);
+    }
+    if(expedition.omittedAttemptCount)attempts.append(paragraph(expedition.omittedAttemptCount+' older attempt report(s) remain in the Evidence Archive.','form-help'));
+    card.append(attempts);
+
+    const challenges=node('section',{class:'expedition-docket-section','aria-label':'Preserved challenges and dissent'});
+    challenges.append(node('h5',{text:'PRESERVED CHALLENGES · '+expedition.challengeCount+' RETAINED'}));
+    if(!expedition.challenges.length){
+      challenges.append(paragraph('No challenge record is linked to this proposal yet. The absence of a challenge is not a finding that a report is sound.','empty-note'));
+    }
+    for(const challenge of expedition.challenges){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-challenge-id':challenge.id});
+      item.append(
+        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+        paragraph('Challenge type: '+challenge.challengeType.replaceAll('-',' ')),
+        paragraph('Target report link: '+statusLabel(challenge.targetReportStatus)+(challenge.targetReportStatus==='linked'?'':' · no target was inferred.'),'form-help'),
+        paragraph(challenge.challengeText||'No challenge text retained.'),
+        paragraph('By '+(challenge.actorRole||'unknown')+' '+(challenge.actorId||'unknown')+' · '+challenge.at,'attribution'),
+        node('code',{text:challenge.id}),
+        button('Inspect challenge →',()=>openMoonshotField(expedition.moonshotId,challenge.id),{
+          class:'list-button','data-expedition-docket-focus':'challenge:'+challenge.id
+        })
+      );
+      challenges.append(item);
+    }
+    if(expedition.omittedChallengeCount)challenges.append(paragraph(expedition.omittedChallengeCount+' older challenge(s) remain in the Evidence Archive.','form-help'));
+    card.append(challenges);
+
+    const responses=node('section',{class:'expedition-docket-section','aria-label':'Retained collaborator folios'});
+    responses.append(node('h5',{text:'RELAY FOLIOS · '+expedition.responseCount+' RETAINED'}));
+    if(!expedition.responses.length){
+      responses.append(paragraph('No source-bound collaborator response is retained for this proposal. A prompt or an unarchived provider reply does not count.','empty-note'));
+    }
+    for(const response of expedition.responses){
+      const status=response.validationStatus==='valid-for-human-review'
+        ?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED';
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-response-id':response.responseId});
+      item.append(
+        node('span',{class:'pill',text:response.name+' · '+status}),
+        paragraph('By '+response.actorRole+' '+response.actorId+' · '+response.at,'attribution'),
+        paragraph('Source events: '+response.sourceEventIds.join(' · ')),
+        response.validationReason?paragraph('Structural result: '+response.validationReason,'evidence-warning'):paragraph('Structural validation is not truth, provider provenance, execution, approval or authority.','form-help'),
+        node('code',{text:response.responseId}),
+        button('Inspect retained folio →',()=>openEvidenceArchive(response.responseId),{
+          class:'list-button','data-expedition-docket-focus':'response:'+response.responseId
+        })
+      );
+      responses.append(item);
+    }
+    if(expedition.omittedResponseCount)responses.append(paragraph(expedition.omittedResponseCount+' older folio(s) remain in the Evidence Archive.','form-help'));
+    card.append(responses);
+    container.append(card);
+  }
+  if(focusedKey){
+    const target=Array.from(container.querySelectorAll('[data-expedition-docket-focus]'))
+      .find(item=>item.getAttribute('data-expedition-docket-focus')===focusedKey);
+    target?.focus({preventScroll:true});
+  }
+}
+function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=false){
+  const section=node('section',{
+    id:'guild-decision-docket',
+    'aria-labelledby':'guild-decision-docket-heading'
+  });
+  section.append(
+    node('h3',{id:'guild-decision-docket-heading',class:'section-title',text:'DECISION DOCKET · HUMAN GATE'}),
+    paragraph('Retained decision-service proposals become inspectable Guild Hall objects. This docket is a bounded read-only projection: opening, refreshing or navigating creates no world event, XP, disposition or approval. The Decision Chamber remains the only location for Founder disposition controls.','form-help')
+  );
+  if(mode!=='shared'){
+    section.append(paragraph('The shared Decision Service is not connected in this private world. No local decision records or approvals are invented.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  section.append(button('Refresh decision docket',guarded(async()=>openGuildHall()),{
+    class:'secondary-button',
+    'data-refresh-decision-docket':'true'
+  }));
+  const projection=unavailable?projectDecisionDocket(null):decisionProjection;
+  if(!projection.available){
+    section.append(paragraph('Decision register unavailable or malformed. No empty docket is inferred; reconnect to inspect the current human-gated records.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  const countText=['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']
+    .map(status=>status+' '+projection.counts[status]).join(' · ');
+  section.append(paragraph(
+    'Service revision '+projection.revision+' · head '+projection.head.slice(0,12)+'… · '+projection.decisionCount+' retained proposal(s)',
+    'attribution'
+  ));
+  section.append(paragraph('Status counts: '+countText,'form-help'));
+  if(projection.policy){
+    section.append(paragraph(
+      'Review policy '+projection.policy.id+' · revision '+projection.policy.revision+
+      ' · '+projection.policy.reviewWindowMs+' ms · set '+projection.policy.setAt,
+      'form-help'
+    ));
+  }else{
+    section.append(paragraph('No operational review policy is activated. No review window is running.','empty-note'));
+  }
+  if(!projection.decisions.length){
+    section.append(paragraph('No retained decision proposals are available.','empty-note'));
+  }
+  for(const decision of projection.decisions){
+    const card=node('article',{
+      class:'field-card',
+      'data-guild-decision-id':decision.id
+    });
+    card.append(
+      node('h4',{text:decision.title}),
+      node('span',{class:'pill',text:decision.status}),
+      paragraph('Decision '+decision.id+' · revision '+decision.revision+
+        ' · creator account '+decision.createdBy+' · '+decision.createdAt,'attribution'),
+      paragraph('Review expires '+decision.expiresAt,'form-help')
+    );
+    if(decision.expiredAt)card.append(paragraph('Expiry recorded '+decision.expiredAt,'form-help'));
+    if(decision.disposition)card.append(paragraph(
+      'Recorded disposition: '+decision.disposition.action+' by account '+
+      decision.disposition.actorId+' at '+decision.disposition.decidedAt+'.',
+      'form-help'
+    ));
+    card.append(button('Open in Decision Chamber →',()=>openInstitution('decision_chamber',decision.id),{
+      class:'list-button',
+      'data-decision-docket-focus':decision.id
+    }));
+    section.append(card);
+  }
+  if(projection.omittedDecisionCount)section.append(paragraph(
+    projection.omittedDecisionCount+' older decision record(s) remain in the service and are not shown in this bounded docket.',
+    'form-help'
+  ));
+  content.append(section);
+}
+
 function attachGuildHallExpeditionBoard(content){
   const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
   const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
@@ -594,7 +803,8 @@ function attachGuildHallExpeditionBoard(content){
   const intro=paragraph(`Your ${scope} objective trail is a read-only projection of retained, actor-matched world activity. Follow an actionable route to the real activity; the route itself records nothing. Player-guild membership does not assign or authorize institutional work. Recorded activity is not a truth or mastery verdict.`,'form-help');
   const summary=node('p',{id:'guild-expedition-summary',class:'form-help','aria-live':'polite'});
   const list=node('ol',{id:'guild-expedition-objectives',class:'quest-trail','aria-label':'Current Questkeeper objectives'});
-  board.append(heading,intro,summary,list);
+  const docket=node('section',{id:'guild-expedition-docket','aria-labelledby':'guild-expedition-docket-heading'});
+  board.append(heading,intro,summary,list,docket);
   content.append(board);
   const render=()=>{
     if(!board.isConnected||$('sheet').hidden)return;
@@ -604,6 +814,9 @@ function attachGuildHallExpeditionBoard(content){
     const waiting=objectives.length-recorded-actionable;
     summary.textContent=`${recorded} recorded · ${objectives.length} total · ${actionable} actionable · ${waiting} waiting on prerequisites or another actor.`;
     renderQuestTrail(objectives,list,'data-expedition-objective-id');
+    renderGuildExpeditionDocket(getExpeditionDocket(world,{
+      collaboratorResponseObjects:currentCollaboratorResponseObjects
+    }),docket);
   };
   const previous=activeNoteRenderer;
   activeNoteRenderer=()=>{if(previous)previous();render();};
@@ -619,8 +832,9 @@ function attachPlayerGuildBoard(content){
 
 async function openGuildHall(focusRoleId=null){
   if(mode==='shared'){
-    await openInstitution('guild_hall');
+    const register=await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
+      attachGuildHallDecisionDocket($('sheet-content'),register?.decisionProjection,register?.decisionUnavailable);
       attachGuildHallExpeditionBoard($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world,['synthesizer']);
       attachPlayerGuildBoard($('sheet-content'));
@@ -630,6 +844,7 @@ async function openGuildHall(focusRoleId=null){
   }
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
+  attachGuildHallDecisionDocket(content,null,true);
   attachGuildHallExpeditionBoard(content);
   appendCollaboratorContracts(content,world,['synthesizer']);
   attachPlayerGuildBoard(content);
@@ -1332,7 +1547,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         paragraph('Reported outcome: '+(report.reportedOutcome||'not supplied')),
         paragraph('Submitted by '+(report.actor?.name||report.actor?.id||'unknown actor')+' · '+(report.at||'time unavailable'),'form-help')
       ]);
-      if(report.reportId===focusActivityId)focusedActivity=reportCard;
+      if(report.reportId===focusActivityId||report.id===focusActivityId)focusedActivity=reportCard;
       const evidenceCreation=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===report.evidenceCreationId);
       const evidenceExists=evidenceCreation&&Number.isInteger(report.evidenceVersion)&&
         (evidenceCreation.version===report.evidenceVersion||(Array.isArray(evidenceCreation.versions)&&evidenceCreation.versions.some(version=>version.version===report.evidenceVersion)));
@@ -1359,7 +1574,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
           paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
           paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
         ]);
-        if(challenge.challengeId===focusActivityId)focusedActivity=challengeCard;
+        if(challenge.challengeId===focusActivityId||challenge.id===focusActivityId)focusedActivity=challengeCard;
         if(challenge.evidenceCreationId){
           const evidenceExists=(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===challenge.evidenceCreationId&&(creation.version===challenge.evidenceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===challenge.evidenceVersion))));
           if(evidenceExists)challengeCard.append(button('Inspect challenge evidence v'+challenge.evidenceVersion+' →',()=>openCreation(challenge.evidenceCreationId,challenge.evidenceVersion),{class:'list-button'}));

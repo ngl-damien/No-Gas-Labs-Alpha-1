@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot } from '../game/institution-view.mjs';
+import { projectDecisionDocket } from '../game/quests.mjs';
 
 function element(tag) {
   return {
@@ -24,7 +25,22 @@ function withDocument(run) {
 function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
-const gate = { policy: null, decisions: [] };
+const gate = {
+  schema: 'ngl.decisions.snapshot.v1',
+  revision: 0,
+  head: 'a'.repeat(64),
+  policy: null,
+  decisions: [],
+  counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+};
+
+function renderView(container, projects, gateSnapshot, options = {}) {
+  return renderInstitution(container, projects, gateSnapshot, {
+    ...options,
+    decisionProjection: options.decisionProjection ?? projectDecisionDocket(gateSnapshot)
+  });
+}
+
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
@@ -44,7 +60,7 @@ test('TownSquare renders actual canonical work stages and the exact-byte receipt
     }]
   };
   const root = element('div');
-  renderInstitution(root, projects, gate, { kernel });
+  renderView(root, projects, gate, { kernel });
   const output = textOf(root);
   assert.match(output, /CANONICAL WORK RECEIPTS/);
   assert.match(output, /ACCEPTED/);
@@ -64,7 +80,7 @@ test('TownSquare renders actual canonical work stages and the exact-byte receipt
 
 test('TownSquare states when no canonical work is recorded and flags inconsistent event counts', () => withDocument(() => {
   const root = element('div');
-  renderInstitution(root, projects, gate, { kernel: { revision: 0, eventCount: 1, events: [], accepted: [] } });
+  renderView(root, projects, gate, { kernel: { revision: 0, eventCount: 1, events: [], accepted: [] } });
   const output = textOf(root);
   assert.match(output, /No canonical work events are recorded/);
   assert.match(output, /Record count mismatch/);
@@ -75,7 +91,7 @@ test('TownSquare states when no canonical work is recorded and flags inconsisten
 test('TownSquare keeps project records visible when canonical kernel history is unavailable', () => withDocument(() => {
   const root = element('div');
   const availableProjects = { ...projects, projects: [{ title: 'Preserved project record', status: 'OPEN' }] };
-  renderInstitution(root, availableProjects, gate, { kernelUnavailable: true });
+  renderView(root, availableProjects, gate, { kernelUnavailable: true });
   const output = textOf(root);
   assert.match(output, /Canonical work receipts could not be loaded/);
   assert.match(output, /Preserved project record/);
@@ -84,7 +100,7 @@ test('TownSquare keeps project records visible when canonical kernel history is 
 
 test('TownSquare warns about ungrouped events and accepted work without history even when event counts match', () => withDocument(() => {
   const root = element('div');
-  renderInstitution(root, projects, gate, {
+  renderView(root, projects, gate, {
     kernel: {
       revision: 2,
       eventCount: 2,
@@ -162,7 +178,7 @@ test('institution view preserves the last world chronicle but marks failed share
     contributions: []
   };
 
-  renderInstitution(root, null, null, {
+  renderView(root, null, null, {
     world,
     worldSnapshotStale: true,
     projectsUnavailable: true,
@@ -189,7 +205,7 @@ test('institution view keeps available project records when the decision ledger 
   const world = { creations: [], events: [], reports: [], contributions: [] };
   const kernel = { revision: 0, eventCount: 0, events: [], accepted: [] };
 
-  renderInstitution(root, availableProjects, null, {
+  renderView(root, availableProjects, null, {
     world,
     kernel,
     decisionsUnavailable: true
@@ -202,6 +218,82 @@ test('institution view keeps available project records when the decision ledger 
   assert.doesNotMatch(output, /Project, accomplishment, dispute and decision-status registers are unavailable/);
 }));
 
+
+function pendingDecisionSnapshot() {
+  return {
+    schema: 'ngl.decisions.snapshot.v1',
+    revision: 2,
+    head: 'b'.repeat(64),
+    policy: {
+      id: 'policy-1',
+      reviewWindowMs: 3600000,
+      revision: 1,
+      setAt: '2026-10-31T12:00:00.000Z'
+    },
+    decisions: [{
+      id: 'decision-1',
+      title: 'A bounded human-gated proposal',
+      status: 'PENDING',
+      revision: 1,
+      createdAt: '2026-10-31T12:00:00.000Z',
+      createdBy: 'damien',
+      expiresAt: '2026-10-31T13:00:00.000Z',
+      expiredAt: null,
+      policy: { id: 'policy-1', revision: 1 },
+      disposition: null,
+      evaluation: { bytes: 'PRIVATE DECISION EVALUATION' },
+      risks: ['PRIVATE DECISION RISK'],
+      rollback: 'PRIVATE DECISION ROLLBACK',
+      proposedEffect: 'PRIVATE DECISION EFFECT'
+    }],
+    counts: { PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+}
+
+test('only the full Decision Chamber presentation exposes Founder disposition controls', () => withDocument(() => {
+  const snapshot = pendingDecisionSnapshot();
+  const guildHall = element('div');
+  renderView(guildHall, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'summary'
+  });
+  const guildText = textOf(guildHall);
+  assert.match(guildText, /Status-only decision register/);
+  assert.match(guildText, /Disposition controls are available only in the Decision Chamber/);
+  assert.doesNotMatch(guildText, /PRIVATE DECISION EVALUATION|PRIVATE DECISION RISK|PRIVATE DECISION ROLLBACK|PRIVATE DECISION EFFECT/);
+  assert.equal(walk(guildHall).filter(item => item.dataset?.gateAction).length, 0);
+
+  const chamber = element('div');
+  renderView(chamber, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'full',
+    onChoice: () => {}
+  });
+  const actions = walk(chamber).filter(item => item.dataset?.gateAction).map(item => item.dataset.gateAction);
+  assert.deepEqual(actions, ['APPROVE', 'REJECT', 'DEFER']);
+  assert.match(textOf(chamber), /PRIVATE DECISION EVALUATION/);
+  const card = walk(chamber).find(item => item.dataset?.decisionId === 'decision-1');
+  assert.equal(card?.tabIndex, -1, 'the exact decision card must be programmatically focusable');
+
+  const hidden = element('div');
+  renderView(hidden, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'hidden'
+  });
+  assert.doesNotMatch(textOf(hidden), /FOUNDER GATE|DECISION SERVICE · STATUS/);
+  assert.equal(walk(hidden).filter(item => item.dataset?.gateAction).length, 0);
+}));
+
+test('Witness Decision Chamber views never expose Founder-only evaluation bytes or controls', () => withDocument(() => {
+  const root = element('div');
+  renderView(root, projects, pendingDecisionSnapshot(), {
+    founder: false,
+    decisionPresentation: 'full'
+  });
+  assert.match(textOf(root), /Witness view: private evaluation bytes and controls are withheld/);
+  assert.doesNotMatch(textOf(root), /PRIVATE DECISION EVALUATION|PRIVATE DECISION RISK|PRIVATE DECISION ROLLBACK|PRIVATE DECISION EFFECT/);
+  assert.equal(walk(root).filter(item => item.dataset?.gateAction).length, 0);
+}));
 
 function validWorldSnapshot(overrides = {}) {
   const at = '2026-10-30T10:00:00.000Z';
