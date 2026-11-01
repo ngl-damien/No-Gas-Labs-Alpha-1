@@ -49,21 +49,24 @@ export function validateWindowsAclSnapshot(snapshot, label = 'FOUNDER_KEY') {
 
 // Windows PowerShell 5.1's .NET FileInfo ACL methods avoid depending on the
 // Microsoft.PowerShell.Security module's Get-Acl cmdlet auto-import.
-const POWERSHELL_SNAPSHOT = [
-  "$ErrorActionPreference = 'Stop'",
-  "$path = $env:NGL_ACL_TARGET",
-  "if ([string]::IsNullOrWhiteSpace($path)) { throw 'NGL_ACL_TARGET_REQUIRED' }",
-  "$file = [System.IO.FileInfo]::new($path)",
-  "$acl = $file.GetAccessControl()",
-  "$ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
-  "$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
-  "$rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {",
-  "  [pscustomobject]@{ sid = $_.IdentityReference.Value; accessType = $_.AccessControlType.ToString() }",
-  "})",
-  "[pscustomobject]@{ ownerSid = $ownerSid; currentSid = $currentSid; rules = $rules } | ConvertTo-Json -Compress -Depth 4"
-].join('\n');
+function powershellSnapshot(kind) {
+  const entryType = kind === 'directory' ? 'DirectoryInfo' : 'FileInfo';
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$path = $env:NGL_ACL_TARGET",
+    "if ([string]::IsNullOrWhiteSpace($path)) { throw 'NGL_ACL_TARGET_REQUIRED' }",
+    `$entry = [System.IO.${entryType}]::new($path)`,
+    "$acl = $entry.GetAccessControl()",
+    "$ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
+    "$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    "$rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {",
+    "  [pscustomobject]@{ sid = $_.IdentityReference.Value; accessType = $_.AccessControlType.ToString() }",
+    "})",
+    "[pscustomobject]@{ ownerSid = $ownerSid; currentSid = $currentSid; rules = $rules } | ConvertTo-Json -Compress -Depth 4"
+  ].join('\\n');
+}
 
-export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
+function verifyWindowsPathSecurity(path, label, kind) {
   if (process.platform !== 'win32' || typeof path !== 'string' || !path) {
     fail(label, 'OWNER_VERIFICATION_UNAVAILABLE');
   }
@@ -72,7 +75,7 @@ export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
     fail(label, 'OWNER_VERIFICATION_UNAVAILABLE');
   }
   const executable = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const encoded = Buffer.from(POWERSHELL_SNAPSHOT, 'utf16le').toString('base64');
+  const encoded = Buffer.from(powershellSnapshot(kind), 'utf16le').toString('base64');
   const result = spawnSync(executable, [
     '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-EncodedCommand', encoded
@@ -89,4 +92,12 @@ export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
   try { snapshot = JSON.parse(result.stdout.trim()); }
   catch { fail(label, 'OWNER_VERIFICATION_FAILED'); }
   return validateWindowsAclSnapshot(snapshot, label);
+}
+
+export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
+  return verifyWindowsPathSecurity(path, label, 'file');
+}
+
+export function verifyWindowsDirectorySecurity(path, label = 'PRIVATE_DIRECTORY') {
+  return verifyWindowsPathSecurity(path, label, 'directory');
 }
