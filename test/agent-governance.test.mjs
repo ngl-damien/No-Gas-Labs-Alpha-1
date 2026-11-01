@@ -3,10 +3,10 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight, reconcileInspectedFileRecord } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
@@ -126,6 +126,27 @@ test('preflight rejects directories as scoped targets instead of reading them', 
     assert.ok(!result.files.some(file => file.path === 'scripts/directory-target'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('preflight rejects oversized sparse targets before allocating their contents', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const oversizedPath = join(root, 'scripts/oversized.bin');
+    await writeFile(oversizedPath, '');
+    await truncate(oversizedPath, MAX_PREFLIGHT_FILE_BYTES + 1);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/oversized.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/oversized.bin' && item.reason.includes('preflight size limit')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/oversized.bin'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 
 test('preflight rejects FIFO targets without blocking on a writer', {
   skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
