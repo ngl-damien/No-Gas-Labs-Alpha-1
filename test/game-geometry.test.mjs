@@ -531,12 +531,18 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
 
   const staleSelection = selectDecisionDocketProjection(projectDecisionDocket(null), view.decisionDocketProjection);
   assert.equal(staleSelection.stale, true);
-  view.setDecisionDocket(staleSelection.projection, { stale: staleSelection.stale });
+  view.setDecisionDocket(staleSelection.projection, { stale: staleSelection.stale, unverified: true });
   assert.equal(view.decisionDocketStale, true);
   assert.equal(view.institutionRecordDecisionDocketStale, true);
   assert.equal(view.institutionRecordObjects.some(item => item.decisionId === 'decision-map-1'), true,
     'an unavailable refresh must preserve the last valid map object as stale');
   assert.equal(view.canvas.getAttribute?.('data-decision-docket-stale'), 'true');
+  assert.equal(view.decisionDocketUnverified, true);
+  assert.equal(view.institutionRecordDecisionDocketUnverified, true);
+  assert.equal(view.canvas.getAttribute?.('data-decision-docket-unverified'), 'true');
+  view.setDecisionDocket(staleSelection.projection, { stale: true });
+  assert.equal(view.decisionDocketUnverified, false,
+    'an in-memory last-observed projection is distinct from an unverified reloaded local copy');
 
   view.setDecisionDocket(null);
   assert.equal(view.institutionRecordDecisionDocketAvailable, false);
@@ -545,5 +551,7 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
   assert.equal(view.institutionRecordObjects.some(item => item.decisionId === 'decision-map-1'), false,
     'clearing the actor-bound snapshot removes stale map objects');
   assert.equal(view.canvas.getAttribute?.('data-decision-docket-stale'), 'false');
+  assert.equal(view.decisionDocketUnverified, false);
+  assert.equal(view.canvas.getAttribute?.('data-decision-docket-unverified'), 'false');
   assert.deepEqual(world.events, [], 'map inspection must not append a canonical world event');
 });
