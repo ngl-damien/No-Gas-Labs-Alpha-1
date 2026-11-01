@@ -470,7 +470,9 @@ test('Adversary draft bridge rejects cross-world, stale, duplicate, and source-m
     'WORLD_SNAPSHOT_MISMATCH');
 
   const missingTarget = structuredClone(packets.world);
-  missingTarget.events = missingTarget.events.filter(event => event.id !== 'report-event-1');
+  missingTarget.events[1] = {
+    ...missingTarget.events[1], id: 'replacement-report-event', reportId: 'replacement-report'
+  };
   assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, missingTarget).reason,
     'TARGET_REPORT_NOT_UNIQUE');
 
