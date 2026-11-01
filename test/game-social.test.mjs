@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
-import { projectTownSquare, projectPlayerGuilds, PLAYER_GUILD_MEMBER_LIMIT } from '../game/social.mjs';
+import { COMMONS_MESSAGE_LIMIT, projectCommonsMessages, projectTownSquare, projectPlayerGuilds, PLAYER_GUILD_MEMBER_LIMIT } from '../game/social.mjs';
 
 const founder = { id: 'damien', name: 'Damien', role: 'founder' };
 const firstWitness = { id: 'witness-a', name: 'Witness A', role: 'witness' };
@@ -284,4 +284,60 @@ test('player guild history rejects malformed fields, unknown guilds and mismatch
   const mismatchedReceipt = structuredClone(world);
   mismatchedReceipt.events[1].actionResult.guildId = 'guild-forged';
   await assert.rejects(validateWorld(mismatchedReceipt), error => error.code === 'INVALID_WORLD');
+});
+
+test('Commons activity projection is actor-bound, unique, bounded and retains hidden submissions', async () => {
+  let world = createWorld({ now: at(0) });
+  world = await act(world, { type: 'post-message', text: 'A retained Commons statement.' }, firstWitness, 1);
+  const original = world.events.find(event => event.type === 'message-posted');
+  assert.ok(original);
+  assert.deepEqual(projectCommonsMessages(world, firstWitness).map(event => event.id), [original.id]);
+  assert.deepEqual(projectCommonsMessages(world, secondWitness), []);
+  assert.deepEqual(projectCommonsMessages(world, { id: firstWitness.id, role: 'founder' }), []);
+
+  world = await act(world, {
+    type: 'report-message', messageId: original.messageId, reason: 'privacy', details: 'Please review.'
+  }, secondWitness, 2);
+  world = await act(world, {
+    type: 'moderate-message', messageId: original.messageId, disposition: 'hide', reason: 'privacy'
+  }, founder, 3);
+  const retained = world.events.find(event => event.type === 'message-posted');
+  assert.deepEqual(projectCommonsMessages(world, firstWitness).map(event => event.id), [retained.id]);
+  const hiddenPublicPost = projectCommonsMessages(publicWorld(world, firstWitness), firstWitness)[0];
+  assert.equal(hiddenPublicPost.text, '[Message hidden by human moderation.]',
+    'the Witness receives the redacted event while the submission remains countable');
+  assert.equal(world.xp, 0);
+
+  const duplicateEventId = {
+    ...world,
+    events: [...world.events, { ...retained, messageId: 'message-distinct', text: 'Different payload.' }]
+  };
+  assert.deepEqual(projectCommonsMessages(duplicateEventId, firstWitness), [],
+    'duplicate event IDs cannot create a Commons activity object');
+  const duplicateMessageId = {
+    ...world,
+    events: [...world.events, { ...retained, id: 'event-distinct-message' }]
+  };
+  assert.deepEqual(projectCommonsMessages(duplicateMessageId, firstWitness), [],
+    'duplicate message IDs cannot create two activity objects');
+
+  const malformedText = {
+    ...world,
+    events: [{ ...retained, id: 'event-long-message', messageId: 'message-long-message', text: 'x'.repeat(COMMONS_MESSAGE_LIMIT + 1) }]
+  };
+  assert.deepEqual(projectCommonsMessages(malformedText, firstWitness), []);
+  const wrongChannel = {
+    ...world,
+    events: [{ ...retained, id: 'event-wrong-channel', messageId: 'message-wrong-channel', channel: 'town-square' }]
+  };
+  assert.deepEqual(projectCommonsMessages(wrongChannel, firstWitness), []);
+  const invalidTime = {
+    ...world,
+    events: [{ ...retained, id: 'event-invalid-time', messageId: 'message-invalid-time', at: '2026-10-31' }]
+  };
+  assert.deepEqual(projectCommonsMessages(invalidTime, firstWitness), []);
+
+  const beforeProjection = structuredClone(world);
+  projectCommonsMessages(world, firstWitness);
+  assert.deepEqual(world, beforeProjection, 'the projection is read-only');
 });

@@ -1,3 +1,5 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+
 export const COMMONS_CHANNEL = 'commons';
 export const COMMONS_MESSAGE_LIMIT = 280;
 export const COMMONS_POSTS_PER_MINUTE = 5;
@@ -40,6 +42,47 @@ function commonsActorKey(actor) {
     ['founder', 'witness'].includes(actor.role)
     ? JSON.stringify([actor.id, actor.role])
     : null;
+}
+
+const COMMONS_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const COMMONS_FORBIDDEN_IDS = new Set(['constructor', 'prototype', '__proto__']);
+
+function validCommonsProjectionId(value) {
+  return typeof value === 'string' && COMMONS_ID_PATTERN.test(value) &&
+    !COMMONS_FORBIDDEN_IDS.has(value);
+}
+
+/**
+ * Project one actor's durable Commons submissions from the event log.
+ * A hidden post remains a retained submission; it is still not evidence,
+ * truth, approval, authority, or XP.
+ */
+export function projectCommonsMessages(world, viewer) {
+  const viewerKey = commonsActorKey(viewer);
+  if (!viewerKey || !validCommonsProjectionId(viewer.id)) return Object.freeze([]);
+  const events = eventsOf(world);
+  const eventIdCounts = new Map();
+  const messageIdCounts = new Map();
+  for (const event of events) {
+    if (typeof event?.id === 'string') {
+      eventIdCounts.set(event.id, (eventIdCounts.get(event.id) || 0) + 1);
+    }
+    if (event?.type === 'message-posted' && typeof event.messageId === 'string') {
+      messageIdCounts.set(event.messageId, (messageIdCounts.get(event.messageId) || 0) + 1);
+    }
+  }
+  const messages = events.filter(event =>
+    event?.type === 'message-posted' &&
+    validCommonsProjectionId(event.id) && eventIdCounts.get(event.id) === 1 &&
+    validCommonsProjectionId(event.messageId) && messageIdCounts.get(event.messageId) === 1 &&
+    event.channel === COMMONS_CHANNEL &&
+    validCommonsProjectionId(event.actor?.id) &&
+    commonsActorKey(event.actor) === viewerKey &&
+    isStrictTimestamp(event.at) &&
+    typeof event.text === 'string' && event.text === event.text.trim() &&
+    event.text.length > 0 && Array.from(event.text).length <= COMMONS_MESSAGE_LIMIT
+  );
+  return Object.freeze(messages);
 }
 
 function normalizeMutedAuthors(value, viewer) {

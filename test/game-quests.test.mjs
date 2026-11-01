@@ -1380,3 +1380,76 @@ test('player-guild objective follows current actor membership and fails closed o
   assert.equal(blocked.action, null);
   assert.match(blocked.blockedReason, /ambiguous or invalid/i);
 });
+
+test('Commons quest is actor-bound, routes to the real location, and survives human moderation', () => {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const world = {
+    id: 'commons-quest-world', revision: 0, creations: [], events: [],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const objective = actor => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-commons-message');
+
+  const founderOpen = objective(founder);
+  assert.equal(founderOpen.complete, false);
+  assert.equal(founderOpen.progress, 0);
+  assert.deepEqual(founderOpen.action, { type: 'location', id: 'commons' });
+
+  const witnessPost = {
+    id: 'commons-post-witness', type: 'message-posted', actor: witnessActor,
+    at: '2026-10-28T19:00:00.000Z', messageId: 'commons-message-witness',
+    channel: 'commons', text: 'A Witness statement.'
+  };
+  world.events.push(witnessPost);
+  world.revision += 1;
+  assert.equal(objective(founder).complete, false, 'another actor cannot complete the Founder objective');
+  const witnessDone = objective(witness);
+  assert.equal(witnessDone.complete, true);
+  assert.equal(witnessDone.progress, 1);
+  assert.deepEqual(witnessDone.evidenceIds, [witnessPost.id]);
+  assert.match(witnessDone.interpretation, /not evidence, truth, approval, authority or XP/);
+  assert.match(witnessDone.interpretation, /hide public text without erasing/);
+
+  const founderPost = {
+    id: 'commons-post-founder', type: 'message-posted', actor: founderActor,
+    at: '2026-10-28T19:01:00.000Z', messageId: 'commons-message-founder',
+    channel: 'commons', text: 'A Founder statement.'
+  };
+  world.events.push(founderPost);
+  world.revision += 1;
+  const founderDone = objective(founder);
+  assert.equal(founderDone.complete, true);
+  assert.deepEqual(founderDone.evidenceIds, [founderPost.id]);
+
+  const hiddenHistory = {
+    ...world,
+    events: [...world.events, {
+      id: 'commons-hide-witness', type: 'message-moderated', actor: founderActor,
+      at: '2026-10-28T19:02:00.000Z', messageId: witnessPost.messageId,
+      disposition: 'hide', reason: 'privacy'
+    }]
+  };
+  const stillRecorded = getQuestTrail(hiddenHistory, witness)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(stillRecorded.complete, true);
+  assert.deepEqual(stillRecorded.evidenceIds, [witnessPost.id]);
+
+  const duplicateMessageId = {
+    ...world,
+    events: [...world.events, { ...witnessPost, id: 'commons-post-witness-duplicate' }]
+  };
+  const ambiguous = getQuestTrail(duplicateMessageId, witness)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(ambiguous.complete, false);
+  assert.deepEqual(ambiguous.action, { type: 'location', id: 'commons' });
+
+  const malformed = {
+    ...world,
+    events: [{ ...witnessPost, text: 'x'.repeat(281) }]
+  };
+  const rejected = getQuestTrail(malformed, witness)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(rejected.complete, false);
+  assert.deepEqual(rejected.action, { type: 'location', id: 'commons' });
+});

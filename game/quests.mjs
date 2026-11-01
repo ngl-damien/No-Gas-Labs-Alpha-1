@@ -2,7 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectResearchRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
-import { projectPlayerGuilds } from './social.mjs';
+import { projectCommonsMessages, projectPlayerGuilds } from './social.mjs';
 const questTrailContext = new WeakMap();
 function sealQuestTrail(world, viewer, entries) {
   const trail = Object.freeze(entries);
@@ -885,6 +885,8 @@ export function getQuestTrail(world, viewer, options = null) {
     ? suppliedResponseObjects
     : projectCollaboratorResponseWorldObjects(world);
   const events = trailRows(world?.events);
+  const commonsMessages = projectCommonsMessages(world, viewer);
+  const firstCommonsMessage = commonsMessages[0] || null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
@@ -1239,6 +1241,14 @@ export function getQuestTrail(world, viewer, options = null) {
         'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
       ),
       trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'commons' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+      ),
+      trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,
         observatoryPublications.map(event => event.id), observatoryPublications,
         !hasObservatory ? { type: 'workbench', recipe: 'observatory' } : null
@@ -1351,6 +1361,14 @@ export function getQuestTrail(world, viewer, options = null) {
       !guildMembership.available
         ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
       'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'commons' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
     trailMilestone(
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
