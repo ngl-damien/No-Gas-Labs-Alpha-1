@@ -43,6 +43,23 @@ for (const [name, bin, args, cwd] of [
   stages.push(record);
   console.log(JSON.stringify(record));
   if (exitCode) {
+    if (name === 'tests') {
+      const failedFiles = [...(stdout + '\n' + stderr).matchAll(/^not ok\s+\d+\s+-\s+(test\/[^\s]+\.mjs)/gm)]
+        .map(match => match[1]);
+      const diagnostics = [];
+      for (const file of [...new Set(failedFiles)]) {
+        try {
+          const isolated = await exec(bin, ['--test', '--test-reporter=tap', file], {
+            cwd, timeout: 60000, maxBuffer: 8 * 1024 * 1024
+          });
+          diagnostics.push('ISOLATED ' + file + ' (exit 0):\n' + isolated.stdout + '\n' + isolated.stderr);
+        } catch (error) {
+          diagnostics.push('ISOLATED ' + file + ' (exit ' + (typeof error.code === 'number' ? error.code : 1) + '):\n' +
+            (error.stdout || '') + '\n' + (error.stderr || error.message));
+        }
+      }
+      if (diagnostics.length) stdout += '\nISOLATED TEST FILE DIAGNOSTICS:\n' + diagnostics.join('\n');
+    }
     const lines = (stdout + '\n' + stderr).split(/\r?\n/);
     const failures = [];
     for (let index = 0; index < lines.length; index += 1) {
