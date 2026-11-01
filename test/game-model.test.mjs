@@ -234,6 +234,12 @@ test('each actor may challenge a retained report once while independent actors p
     challengeText: 'The report omits the settings needed to reproduce the attempt.',
     evidenceCreationId: null, evidenceVersion: null
   };
+  await assert.rejects(
+    applyAction(report.world, challenge, { ...witness, role: 'founder' }, {
+      now: '2026-10-17T12:00:02.000Z'
+    }),
+    error => error.code === 'SELF_CHALLENGE' && error.status === 409
+  );
   const first = await applyAction(report.world, challenge, founder, {
     now: '2026-10-17T12:00:02.000Z'
   });

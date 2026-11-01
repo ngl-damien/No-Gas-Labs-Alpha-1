@@ -195,6 +195,11 @@ export function projectAdversaryReviewDrafts(world) {
  });
 }
 
+export function hasDistinctChallengeActorId(reportActorId, viewerId) {
+ return typeof reportActorId === "string" && reportActorId.length > 0 &&
+  typeof viewerId === "string" && viewerId.length > 0 && reportActorId !== viewerId;
+}
+
 function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) {
  const projection = projectAdversaryReviewDrafts(world);
  if (!projection.available ||
@@ -216,7 +221,7 @@ function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) 
   card.dataset.recordType = "ADVERSARY_DRAFT";
   card.dataset.responseId = entry.responseId;
   card.append(el("h3", `Challenge draft · ${draft.challengeType.replaceAll("-", " ")}`));
-  card.append(el("p", "Human review only · not submitted to the Chronicle."));
+  card.append(el("p", "human review only · not submitted to the Chronicle."));
   card.append(el("p", `Moonshot ${draft.moonshotId} · report ${draft.reportId} · target event ${draft.targetEventId}`));
   card.append(el("p", `Source snapshot revision ${draft.sourceSnapshot.revision} · ${draft.sourceSnapshot.suppliedEventCount} supplied event records`));
   card.append(el("p", `Adversary distinctness assessment (unverified): ${draft.distinctnessAssessment}`));
@@ -264,7 +269,7 @@ function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) 
     event.reportId === draft.reportId &&
     event.moonshotId === draft.moonshotId
    );
-   if (matchingReports.length === 1 && !(matchingReports[0].actor?.id === viewer?.id && matchingReports[0].actor?.role === viewer?.role)) {
+   if (matchingReports.length === 1 && hasDistinctChallengeActorId(matchingReports[0].actor?.id, viewer?.id)) {
     const review = el("button", "Review challenge in Moonshot Field →");
     review.type = "button";
     review.className = "list-button";
@@ -279,7 +284,7 @@ function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) 
     card.append(review);
    }
   }
-  card.append(el("p", "Edit the draft, then open its exact retained report in the Moonshot Field. You must review and submit the challenge yourself. The game kernel requires a different actor from the report author. No event, XP, evidence, approval or authority is created until you submit the separate challenge action."));
+  card.append(el("p", "Edit the draft, then open its exact retained report in the Moonshot Field. You must review and submit the challenge yourself. The game kernel requires a different actor ID from the report author. No event, XP, evidence, approval or authority is created until you submit the separate challenge action."));
   container.append(card);
  }
 }

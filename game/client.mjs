@@ -4,7 +4,7 @@ import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyR
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot} from './institution-view.mjs';
+import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot,hasDistinctChallengeActorId} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
@@ -1203,8 +1203,8 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
         event.reportId===draft.reportId&&event.moonshotId===draft.moonshotId
       );
       if(reports.length!==1)throw new Error('The exact retained experiment report is no longer uniquely available. No challenge was opened.');
-      if(reports[0].actor?.id===viewer.id&&reports[0].actor?.role===viewer.role)
-        throw new Error('A different actor must submit a challenge to this report.');
+      if(!hasDistinctChallengeActorId(reports[0].actor?.id,viewer.id))
+        throw new Error('A different actor ID must submit a challenge to this report.');
       openExperimentChallenge(reports[0],draft.challengeText,draft.challengeType);
     })
   });

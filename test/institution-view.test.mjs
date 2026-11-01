@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
-import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts } from '../game/institution-view.mjs';
+import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts, hasDistinctChallengeActorId } from '../game/institution-view.mjs';
 import { projectDecisionDocket } from '../game/quests.mjs';
 
 function element(tag) {
@@ -524,12 +524,12 @@ test('Evidence Archive routes an edited Adversary draft to its exact retained ch
   assert.deepEqual(world, before, 'opening the review form cannot append or mutate world history');
 }));
 
-test('Evidence Archive withholds the challenge handoff from the report author', () => withDocument(() => {
+test('Evidence Archive withholds the challenge handoff from the same actor ID when the role label differs', () => withDocument(() => {
   const { world } = worldWithAdversaryResponse();
   const root = element('div');
   renderEvidenceArchive(root, {
     world,
-    viewer: { id: 'witness-1', role: 'witness' },
+    viewer: { id: 'witness-1', role: 'founder' },
     onOpenChallenge: () => assert.fail('the report author must not receive a self-challenge handoff')
   });
   const card = walk(root).find(item => item.dataset?.recordType === 'ADVERSARY_DRAFT');
@@ -546,4 +546,12 @@ test('world snapshot envelope rejects accessor-backed fields without executing g
   });
   assert.equal(isInspectableWorldSnapshot(hostile), false);
   assert.equal(reads, 0);
+});
+
+
+test('challenge handoff identity uses actor IDs rather than role labels', () => {
+  assert.equal(hasDistinctChallengeActorId('witness-1', 'witness-1'), false);
+  assert.equal(hasDistinctChallengeActorId('witness-1', 'founder-1'), true);
+  assert.equal(hasDistinctChallengeActorId(null, 'founder-1'), false);
+  assert.equal(hasDistinctChallengeActorId('witness-1', ''), false);
 });

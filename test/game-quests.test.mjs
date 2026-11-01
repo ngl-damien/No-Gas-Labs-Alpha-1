@@ -1202,3 +1202,20 @@ test('Contradiction encounters repeat once per distinct report and reopen when n
   assert.deepEqual([encounter.target, encounter.progress, encounter.complete], [2, 2, true]);
   assert.equal(encounter.action, null);
 });
+
+
+test('Contradiction encounters reject a role-label change that reuses the report author actor ID', () => {
+  const sameIdDifferentRole = { id: founder.id, role: 'witness' };
+  const world = experimentQuestWorld({ reportActor: founder });
+  world.events.push({
+    id: 'challenge-event-same-id', type: 'experiment-challenged', challengeId: 'challenge-same-id',
+    reportId: 'report-1', moonshotId: 'moon-1', actor: sameIdDifferentRole,
+    at: '2026-10-28T17:04:00.000Z', challengeType: 'methodology',
+    challengeText: 'A role label change does not create a different actor ID.'
+  });
+  const milestone = getQuestTrail(world, sameIdDifferentRole)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(milestone.progress, 0);
+  assert.equal(milestone.complete, false);
+  assert.match(milestone.blockedReason, /Another actor must retain a valid experiment report/);
+});
