@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectChronicle } from './chronicle.mjs';
-import { projectDecisionDocket } from './quests.mjs';
+import { isDecisionDocketProjection, projectDecisionDocket } from './quests.mjs';
 
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_PROJECTED_EVENTS = 5000;
@@ -181,18 +181,9 @@ export function projectInstitutionRecordWorldObjects({
   const kernelComplete = hasCompleteInstitutionKernelSnapshot(institutionSummary);
   const kernel = kernelComplete ? ownDataValue(institutionSummary, 'kernel') : null;
   const chronicle = projectChronicle({ world, kernel, collaboratorResponseObjects });
-  const decisionDocket = decisionDocketProjection?.available === true
-    ? projectDecisionDocket({
-      schema: 'ngl.decisions.snapshot.v1',
-      revision: decisionDocketProjection.revision,
-      head: decisionDocketProjection.head,
-      policy: decisionDocketProjection.policy,
-      decisions: decisionDocketProjection.decisions,
-      counts: decisionDocketProjection.counts,
-    })
-    : decisionDocketProjection?.available === false
-      ? decisionDocketProjection
-      : projectDecisionDocket(null);
+  const decisionDocket = isDecisionDocketProjection(decisionDocketProjection)
+    ? decisionDocketProjection
+    : projectDecisionDocket(null);
   const decisionEntries = decisionDocket.available ? decisionDocket.decisions.map(decision => {
     const disposition = decision.disposition ? Object.freeze({
       action: decision.disposition.action,

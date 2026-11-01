@@ -989,3 +989,62 @@ test('an unavailable or inconsistent Decision Docket never becomes an empty map 
   assert.equal(absent.decisionDocketReason, 'missing-or-unsafe-snapshot');
   assert.equal(absent.objects.length, 0);
 });
+
+
+test('Decision Docket map projection preserves the bounded 20-record window and omitted count', () => {
+  const base = decisionDocketSnapshot();
+  const pending = base.decisions.find(decision => decision.status === 'PENDING');
+  const decisions = Array.from({ length: 21 }, (_, index) => ({
+    ...pending,
+    id: `decision-window-${String(index).padStart(2, '0')}`,
+    title: `Decision window proposal ${index}`,
+    createdAt: `2026-10-31T12:${String(index).padStart(2, '0')}:00.000Z`
+  }));
+  const snapshot = {
+    ...base,
+    revision: 22,
+    decisions,
+    counts: { PENDING: 21, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+  const decisionDocketProjection = projectDecisionDocket(snapshot);
+  const projection = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection,
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+
+  assert.equal(decisionDocketProjection.available, true);
+  assert.equal(decisionDocketProjection.decisionCount, 21);
+  assert.equal(decisionDocketProjection.decisions.length, 20);
+  assert.equal(decisionDocketProjection.omittedDecisionCount, 1);
+  assert.equal(projection.decisionDocketAvailable, true);
+  assert.equal(projection.decisionDocketCount, 21);
+  assert.equal(projection.decisionDocketOmittedCount, 1);
+  assert.equal(projection.objects.filter(record => record.source === 'decision-docket').length, 20);
+  assert.ok(projection.objects.every(record => record.locationId === 'decision_chamber' && record.mapVisible));
+});
+
+test('a forged accessor-backed Decision Docket projection is ignored without executing its getter', () => {
+  let getterCalls = 0;
+  const forged = {};
+  Object.defineProperty(forged, 'available', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return true;
+    }
+  });
+  const projection = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection: forged,
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.equal(projection.decisionDocketAvailable, false);
+  assert.equal(projection.objects.length, 0);
+});
