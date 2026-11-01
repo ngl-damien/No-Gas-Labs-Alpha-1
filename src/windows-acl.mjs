@@ -153,7 +153,11 @@ function secureWindowsPathSecurity(path, label, kind) {
     maxBuffer: 64 * 1024,
     env: { ...process.env, NGL_ACL_TARGET: path, NGL_ACL_KIND: kind }
   });
-  if (result.error || result.status !== 0) fail(label, 'OWNER_VERIFICATION_FAILED');
+  if (result.error || result.status !== 0) {
+    const detail = String(result.error?.message || result.stderr || result.stdout || 'PowerShell ACL setup failed')
+      .replaceAll(path, '[path]').trim().slice(0, 800);
+    fail(label, 'OWNER_VERIFICATION_FAILED: ' + detail);
+  }
   return verifyWindowsPathSecurity(path, label, kind);
 }
 
