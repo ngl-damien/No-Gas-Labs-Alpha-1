@@ -611,6 +611,217 @@ export function getExpeditionDocket(world, options = null) {
     unlinkedResearchRecordCount,
     expeditions: Object.freeze(expeditions)
   });
+
+}
+
+const DECISION_DOCKET_SCHEMA = 'ngl.decisions.snapshot.v1';
+const DECISION_DOCKET_LIMIT = 20;
+const DECISION_DOCKET_STATUSES = Object.freeze([
+  'PENDING', 'APPROVED', 'REJECTED', 'DEFERRED', 'EXPIRED'
+]);
+const DECISION_DOCKET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function decisionDocketRecord(value) {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some(key => typeof key !== 'string')) return null;
+    const result = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function decisionDocketArray(value, limit) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > limit) return null;
+    for (const key of keys) {
+      if (key === 'length') continue;
+      if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length) return null;
+    }
+    const result = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function decisionDocketIdentifier(value) {
+  return typeof value === 'string' && DECISION_DOCKET_ID.test(value) &&
+    !['__proto__', 'constructor', 'prototype'].includes(value);
+}
+
+function unavailableDecisionDocket(reason) {
+  return Object.freeze({
+    available: false,
+    reason,
+    revision: null,
+    head: null,
+    policy: null,
+    counts: null,
+    decisionCount: null,
+    omittedDecisionCount: 0,
+    decisions: Object.freeze([])
+  });
+}
+
+/**
+ * Project the host-authenticated decision-service snapshot into bounded,
+ * read-only Guild Hall objects. Private evaluation bytes, risks, rollback
+ * details, audit rows and policy basis never enter this projection.
+ *
+ * A malformed or inconsistent snapshot is unavailable, never an empty docket.
+ * This projection creates no world event, XP, disposition or authority.
+ */
+export function projectDecisionDocket(snapshot) {
+  const source = decisionDocketRecord(snapshot);
+  if (!source) return unavailableDecisionDocket('missing-or-unsafe-snapshot');
+  if (source.schema !== DECISION_DOCKET_SCHEMA) return unavailableDecisionDocket('unsupported-schema');
+  if (!Number.isSafeInteger(source.revision) || source.revision < 0) {
+    return unavailableDecisionDocket('invalid-revision');
+  }
+  if (typeof source.head !== 'string' || !/^[a-f0-9]{64}$/.test(source.head)) {
+    return unavailableDecisionDocket('invalid-head');
+  }
+
+  let policy = null;
+  if (source.policy !== null) {
+    const candidate = decisionDocketRecord(source.policy);
+    if (!candidate || !decisionDocketIdentifier(candidate.id) ||
+        !Number.isSafeInteger(candidate.reviewWindowMs) || candidate.reviewWindowMs < 1 ||
+        candidate.reviewWindowMs > 30 * 86400000 ||
+        !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
+        !isStrictTimestamp(candidate.setAt)) {
+      return unavailableDecisionDocket('invalid-policy');
+    }
+    policy = Object.freeze({
+      id: candidate.id,
+      reviewWindowMs: candidate.reviewWindowMs,
+      revision: candidate.revision,
+      setAt: candidate.setAt
+    });
+  }
+
+  const rawDecisions = decisionDocketArray(source.decisions, 10000);
+  if (!rawDecisions) return unavailableDecisionDocket('invalid-decision-list');
+  if (rawDecisions.length && !policy) return unavailableDecisionDocket('decision-without-policy');
+
+  const countsSource = decisionDocketRecord(source.counts);
+  if (!countsSource || Reflect.ownKeys(countsSource).length !== DECISION_DOCKET_STATUSES.length ||
+      DECISION_DOCKET_STATUSES.some(status => !Object.hasOwn(countsSource, status) ||
+        !Number.isSafeInteger(countsSource[status]) || countsSource[status] < 0)) {
+    return unavailableDecisionDocket('invalid-counts');
+  }
+
+  const observedCounts = Object.fromEntries(DECISION_DOCKET_STATUSES.map(status => [status, 0]));
+  const seenIds = new Set();
+  const decisions = [];
+  for (const raw of rawDecisions) {
+    const candidate = decisionDocketRecord(raw);
+    if (!candidate || !decisionDocketIdentifier(candidate.id) ||
+        seenIds.has(candidate.id) ||
+        typeof candidate.title !== 'string' || !candidate.title.trim() ||
+        Array.from(candidate.title).length > 1000 ||
+        !DECISION_DOCKET_STATUSES.includes(candidate.status) ||
+        !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
+        !decisionDocketIdentifier(candidate.createdBy) ||
+        !isStrictTimestamp(candidate.createdAt) ||
+        !isStrictTimestamp(candidate.expiresAt) ||
+        !(candidate.expiredAt === null || isStrictTimestamp(candidate.expiredAt))) {
+      return unavailableDecisionDocket('invalid-decision');
+    }
+
+    const decisionPolicy = decisionDocketRecord(candidate.policy);
+    if (!decisionPolicy || !decisionDocketIdentifier(decisionPolicy.id) ||
+        !Number.isSafeInteger(decisionPolicy.revision) || decisionPolicy.revision < 1) {
+      return unavailableDecisionDocket('invalid-decision-policy');
+    }
+
+    let disposition = null;
+    if (candidate.disposition !== null) {
+      const record = decisionDocketRecord(candidate.disposition);
+      if (!record || !['APPROVE', 'REJECT', 'DEFER'].includes(record.action) ||
+          !decisionDocketIdentifier(record.actorId) ||
+          !decisionDocketIdentifier(record.requestId) ||
+          !isStrictTimestamp(record.decidedAt)) {
+        return unavailableDecisionDocket('invalid-disposition');
+      }
+      disposition = Object.freeze({
+        action: record.action,
+        actorId: record.actorId,
+        requestId: record.requestId,
+        decidedAt: record.decidedAt
+      });
+    }
+
+    const createdAtMs = Date.parse(candidate.createdAt);
+    const expiresAtMs = Date.parse(candidate.expiresAt);
+    const expiredAtMs = candidate.expiredAt === null ? null : Date.parse(candidate.expiredAt);
+    if (!(createdAtMs < expiresAtMs) ||
+        (candidate.status === 'PENDING' && (disposition !== null || candidate.expiredAt !== null)) ||
+        (candidate.status === 'EXPIRED' &&
+          (disposition !== null || expiredAtMs === null || expiredAtMs < expiresAtMs)) ||
+        (['APPROVED', 'REJECTED', 'DEFERRED'].includes(candidate.status) &&
+          (disposition === null || candidate.expiredAt !== null ||
+            Date.parse(disposition.decidedAt) < createdAtMs ||
+            Date.parse(disposition.decidedAt) > expiresAtMs))) {
+      return unavailableDecisionDocket('inconsistent-decision-state');
+    }
+
+    seenIds.add(candidate.id);
+    observedCounts[candidate.status] += 1;
+    decisions.push(Object.freeze({
+      id: candidate.id,
+      title: candidate.title,
+      status: candidate.status,
+      revision: candidate.revision,
+      createdAt: candidate.createdAt,
+      createdBy: candidate.createdBy,
+      expiresAt: candidate.expiresAt,
+      expiredAt: candidate.expiredAt,
+      policy: Object.freeze({ id: decisionPolicy.id, revision: decisionPolicy.revision }),
+      disposition
+    }));
+  }
+
+  if (DECISION_DOCKET_STATUSES.some(status => observedCounts[status] !== countsSource[status])) {
+    return unavailableDecisionDocket('count-mismatch');
+  }
+
+  decisions.sort((left, right) =>
+    Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
+  const counts = Object.freeze({ ...observedCounts });
+  return Object.freeze({
+    available: true,
+    reason: null,
+    revision: source.revision,
+    head: source.head,
+    policy,
+    counts,
+    decisionCount: decisions.length,
+    omittedDecisionCount: Math.max(0, decisions.length - DECISION_DOCKET_LIMIT),
+    decisions: Object.freeze(decisions.slice(0, DECISION_DOCKET_LIMIT))
+  });
 }
 
 export function getQuestTrail(world, viewer, options = null) {
