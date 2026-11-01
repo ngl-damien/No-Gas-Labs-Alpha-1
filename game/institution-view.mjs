@@ -1,5 +1,9 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { isStrictTimestamp } from "./timestamps.mjs";
+import { projectCollaboratorPackets } from "./collaborator-contracts.mjs";
+import { createAdversaryChallengeDraft } from "./collaborator-response.mjs";
+import { projectCollaboratorResponseWorldObjects } from "./collaborator-world-objects.mjs";
+import { assertNoDuplicateJsonObjectKeys } from "./strict-json.mjs";
 
 // Validate the envelope required to inspect a world snapshot. This is a
 // display-safety check, not a claim that the snapshot is canonical or true.
@@ -56,6 +60,206 @@ export function selectWorldSnapshot(candidate, fallback) {
 }
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
+
+const MAX_ADVERSARY_REVIEW_DRAFTS = 12;
+
+function ownDataValue(value, key) {
+ try {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  return descriptor && descriptor.enumerable === true && Object.hasOwn(descriptor, "value")
+   ? descriptor.value : undefined;
+ } catch { return undefined; }
+}
+
+function ownDataRecord(value) {
+ try {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some(key => typeof key !== "string" ||
+      key === "__proto__" || key === "prototype" || key === "constructor")) return null;
+  const record = Object.create(null);
+  for (const key of keys) {
+   const descriptor = descriptors[key];
+   if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) return null;
+   record[key] = descriptor.value;
+  }
+  return record;
+ } catch { return null; }
+}
+
+function denseSnapshotValues(value, maximum) {
+ try {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = descriptors.length;
+  const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, "value")
+   ? lengthDescriptor.value : null;
+  if (!Number.isSafeInteger(length) || length < 0 || length > maximum ||
+      Reflect.ownKeys(descriptors).length !== length + 1) return null;
+  const values = [];
+  for (let index = 0; index < length; index += 1) {
+   const descriptor = descriptors[String(index)];
+   if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value")) return null;
+   values.push(descriptor.value);
+  }
+  return values;
+ } catch { return null; }
+}
+
+/**
+ * Rebuild editable Adversary drafts only from a retained, source-bound folio.
+ * This is a display projection: it never appends an event or awards progress.
+ */
+export function projectAdversaryReviewDrafts(world) {
+ const unavailable = () => Object.freeze({
+  available: false, drafts: Object.freeze([]), omittedCount: 0, unavailableCount: 0
+ });
+ if (!isInspectableWorldSnapshot(world)) return unavailable();
+ const id = ownDataValue(world, "id");
+ const revision = ownDataValue(world, "revision");
+ const events = denseSnapshotValues(ownDataValue(world, "events"), 100_000);
+ const creations = denseSnapshotValues(ownDataValue(world, "creations"), 20_000);
+ if (!events || !creations) return unavailable();
+
+ const snapshotWorld = { id, revision, events, creations };
+ const eligible = projectCollaboratorResponseWorldObjects(snapshotWorld)
+  .filter(response => response.roleId === "adversary" &&
+   response.validationStatus === "valid-for-human-review");
+ const selected = eligible.slice(-MAX_ADVERSARY_REVIEW_DRAFTS);
+ const omittedCount = Math.max(0, eligible.length - selected.length);
+ const drafts = [];
+ let unavailableCount = 0;
+
+ for (const response of selected.reverse()) {
+  const eventIndex = events.findIndex(event => ownDataValue(event, "id") === response.eventId);
+  if (eventIndex < 0) { unavailableCount += 1; continue; }
+  const responseEvent = events[eventIndex];
+  const packetJson = ownDataValue(responseEvent, "packetJson");
+  const responseText = ownDataValue(responseEvent, "responseText");
+  if (typeof packetJson !== "string" || typeof responseText !== "string") {
+   unavailableCount += 1;
+   continue;
+  }
+
+  let payload;
+  try {
+   assertNoDuplicateJsonObjectKeys(packetJson, { label: "ADVERSARY_PACKET", maxDepth: 8 });
+   payload = JSON.parse(packetJson);
+  } catch {
+   unavailableCount += 1;
+   continue;
+  }
+  const sourceSnapshot = ownDataValue(payload, "sourceSnapshot");
+  const sourceRevision = ownDataValue(sourceSnapshot, "revision");
+  const suppliedEventCount = ownDataValue(sourceSnapshot, "suppliedEventCount");
+  if (ownDataValue(sourceSnapshot, "status") !== "identified" ||
+      ownDataValue(sourceSnapshot, "worldId") !== id ||
+      !Number.isSafeInteger(sourceRevision) || sourceRevision < 0 ||
+      sourceRevision >= revision || suppliedEventCount !== eventIndex) {
+   unavailableCount += 1;
+   continue;
+  }
+
+  const priorEvents = events.slice(0, eventIndex);
+  const packetEvents = response.actorRole === "founder"
+   ? priorEvents
+   : priorEvents.filter(source => {
+     const record = ownDataRecord(source);
+     return record && !["draft", "repair"].includes(record.type);
+    });
+  const packet = projectCollaboratorPackets({
+   id, revision: sourceRevision, events: packetEvents, creations
+  }).find(candidate => candidate.id === "adversary" &&
+   candidate.available === true && candidate.moonshotId === response.moonshotId);
+  if (!packet || packet.packetJson !== packetJson) {
+   unavailableCount += 1;
+   continue;
+  }
+
+  const draft = createAdversaryChallengeDraft(packet, responseText, snapshotWorld);
+  if (!draft.valid) {
+   unavailableCount += 1;
+   continue;
+  }
+  drafts.push(Object.freeze({ responseId: response.responseId, eventId: response.eventId, draft }));
+ }
+
+ return Object.freeze({
+  available: true,
+  drafts: Object.freeze(drafts),
+  omittedCount,
+  unavailableCount
+ });
+}
+
+function renderAdversaryReviewDrafts(container, world) {
+ const projection = projectAdversaryReviewDrafts(world);
+ if (!projection.available ||
+     (!projection.drafts.length && projection.omittedCount === 0 && projection.unavailableCount === 0)) return;
+
+ container.append(el("h3", "ADVERSARY · HUMAN REVIEW DRAFTS"));
+ container.append(el("p", "The Adversary NPC can propose falsifiable dissent from a retained report. These drafts are editable, source-bound prompts for a human; they are not challenges, evidence, verdicts, approvals or rewards."));
+ if (projection.unavailableCount > 0) {
+  warning(container, `${projection.unavailableCount} retained Adversary response(s) no longer bind to the current report and challenge history. No draft was generated; the original response remains in the Chronicle.`);
+ }
+ if (projection.omittedCount > 0) {
+  container.append(el("p", `${projection.omittedCount} older valid Adversary draft(s) are omitted from this bounded view; their retained folios remain in the archive.`));
+ }
+
+ for (const entry of projection.drafts) {
+  const draft = entry.draft;
+  const card = el("article");
+  card.className = "field-card adversary-review-card";
+  card.dataset.recordType = "ADVERSARY_DRAFT";
+  card.dataset.responseId = entry.responseId;
+  card.append(el("h3", `Challenge draft · ${draft.challengeType.replaceAll("-", " ")}`));
+  card.append(el("p", `Moonshot ${draft.moonshotId} · report ${draft.reportId} · target event ${draft.targetEventId}`));
+  card.append(el("p", `Source snapshot revision ${draft.sourceSnapshot.revision} · ${draft.sourceSnapshot.suppliedEventCount} supplied event records`));
+  card.append(el("p", `Adversary distinctness assessment (unverified): ${draft.distinctnessAssessment}`));
+  if (draft.duplicateOfEventIds.length) {
+   card.append(el("p", `Prior challenge references: ${draft.duplicateOfEventIds.join(" · ")}`));
+  }
+  if (draft.counterexample) card.append(el("p", `Possible counterexample (unverified): ${draft.counterexample}`));
+  if (draft.evidenceNeeded.length) {
+   card.append(el("p", "Evidence still needed (not attached):"));
+   const list = el("ul");
+   for (const item of draft.evidenceNeeded) list.append(el("li", item));
+   card.append(list);
+  }
+  if (draft.unknowns.length) {
+   card.append(el("p", "Unknowns retained by the draft:"));
+   const list = el("ul");
+   for (const item of draft.unknowns) list.append(el("li", item));
+   card.append(list);
+  }
+  if (draft.omittedCount > 0) {
+   warning(card, `The source packet omitted ${draft.omittedCount} eligible event(s); ${draft.omittedEventIds.length} omitted IDs are listed${draft.omittedEventIdListTruncated ? " and that list is truncated" : ""}.`);
+  }
+  if (draft.truncatedFields.length) {
+   warning(card, `Source text was clipped in: ${draft.truncatedFields.join(", ")}. Full source is required before exhaustive review.`);
+  }
+
+  const editor = el("textarea");
+  editor.className = "adversary-draft-editor";
+  editor.value = draft.challengeText;
+  editor.rows = 5;
+  editor.maxLength = 1000;
+  editor.setAttribute("aria-label", `Editable challenge draft for report ${draft.reportId}`);
+  editor.dataset.adversaryDraftText = entry.responseId;
+  card.append(editor);
+  const select = el("button", "Select draft text");
+  select.type = "button";
+  select.className = "secondary-button";
+  select.dataset.adversaryDraftSelect = entry.responseId;
+  select.onclick = () => { editor.focus(); editor.select(); };
+  card.append(select);
+  card.append(el("p", "Edit and copy this text, then open the Moonshot Field and use its separate Challenge this report action. The game kernel requires a different actor from the report author. This draft is not saved; only that later action can append a challenge event. No event, XP, evidence, approval or authority has been created here."));
+  container.append(card);
+ }
+}
 
 function renderKernelHistory(container,kernel){
  const events=Array.isArray(kernel?.events)?kernel.events:[];
@@ -148,6 +352,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    ?'No retained institutional or world events are recorded in this snapshot.'
    :'No retained world events are recorded in this local snapshot.'
  });
+ renderAdversaryReviewDrafts(container, world);
 }
 
 function validProjectSnapshot(projects) {
