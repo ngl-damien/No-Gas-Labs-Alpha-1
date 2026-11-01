@@ -117,6 +117,21 @@ function locationFor(entry) {
   return null;
 }
 
+// This is a navigation cue for review-worthy records, never a truth or authority verdict.
+function markerToneFor(entry) {
+  const type = entry?.eventType || '';
+  const labels = (entry?.category || '') + ' ' + (entry?.title || '');
+  const summary = (entry?.summary || '') + ' ' + (entry?.detail || '');
+  if (/report|challenge|revoke|revocation/i.test(type) ||
+      /DISSENT|FAILURE|CHALLENGE|REJECTED/i.test(labels) ||
+      (type === 'observe' && /Local byte check:\s*failed/i.test(summary)) ||
+      (type === 'adjudicate' && /Decision:\s*(?:reject|rejected|deny|denied)\b/i.test(summary)) ||
+      (type === 'decision' && /\b(?:reject|rejected|deny|denied)\b/i.test(summary))) {
+    return 'review';
+  }
+  return 'neutral';
+}
+
 function validChronicleEntry(entry, identityCounts) {
   if (!entry || typeof entry !== 'object' ||
       !['world', 'kernel'].includes(entry.source) ||
@@ -220,6 +235,7 @@ export function projectInstitutionRecordWorldObjects({
       summary: entry.summary,
       detail: entry.detail,
       warning: entry.warning,
+      markerTone: markerToneFor(entry),
       creationId: entry.creationId,
       version: entry.version,
       targetTitle: entry.targetTitle,
