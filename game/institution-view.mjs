@@ -210,6 +210,7 @@ export function renderInstitution(container,projects,gate,{
    return;
   }
   if(!projection.policy)container.append(el('p','No operational review policy is activated. No review window is running.'));
+  if(projection.decisionCount===0)container.append(el('p','No retained decision proposals are recorded.','empty-note'));
   if(presentation==='summary'){
    container.append(el('p',founder
     ?'Status-only decision register. Disposition controls are available only in the Decision Chamber.'
