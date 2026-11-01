@@ -4,6 +4,7 @@ import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate, link } from 'node:fs/promises';
+import fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
@@ -377,6 +378,44 @@ test('preflight rejects an in-repository symlink used as a scoped target file', 
       item.reason.includes('scoped target path must not traverse a symlink')
     ));
     assert.ok(!result.files.some(file => file.path === 'scripts/alias.mjs'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects a final-component symlink introduced after the initial lstat', async t => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const target = join(root, 'scripts/worker.mjs');
+    await writeFile(target, 'export const trusted = true;\\n');
+    await writeFile(join(root, 'scripts/replacement.mjs'), 'export const untrusted = true;\\n');
+
+    let swapped = false;
+    const originalLstat = fsPromises.lstat;
+    t.mock.method(fsPromises, 'lstat', async (...args) => {
+      const metadata = await originalLstat(...args);
+      if (args[0] === target && !swapped) {
+        await rm(target);
+        await symlink('replacement.mjs', target, 'file');
+        swapped = true;
+      }
+      return metadata;
+    });
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(swapped, true, 'the fixture must replace the final component after its first lstat');
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/worker.mjs' && /symlink|ELOOP/i.test(item.reason)
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/worker.mjs'),
+      'the replacement bytes must never be admitted to the preflight receipt');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
