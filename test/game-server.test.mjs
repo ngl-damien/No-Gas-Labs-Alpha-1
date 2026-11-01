@@ -268,7 +268,14 @@ test('published world and accepted kernel history survive restart; generated key
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
   secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-'));
-  generated = await createGameServer({ dataDir: secretDir, requireExplicitFounderKey: false });
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    generated = await createGameServer({ dataDir: secretDir, requireExplicitFounderKey: false });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
   const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
   await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
   const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
@@ -406,6 +413,25 @@ test('an exclusive store lease rejects a second writer and is released by closeG
   await new Promise(resolve => next.listen(0, '127.0.0.1', resolve));
   const state = await (await fetch(`http://127.0.0.1:${next.address().port}/api/state`)).json();
   assert.equal(state.world.creations.length, 1); assert.equal(state.institution.kernel.accepted.length, 1);
+});
+
+
+test('production mode cannot be bypassed with requireExplicitFounderKey false', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null, requireExplicitFounderKey: false }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
 });
 
 
