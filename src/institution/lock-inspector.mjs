@@ -147,6 +147,12 @@ async function inspectDecisionGuardDirectory(path, before) {
   if (!sameSnapshot(after, final)) {
     return report('changed', path, { reason: 'guard-directory-changed-during-owner-inspection', file: fileSummary(final) });
   }
+  if (process.platform === 'win32') {
+    try { verifyWindowsDirectorySecurity(path, 'WRITER_LOCK_GUARD'); }
+    catch (error) {
+      return report('unsafe', path, { reason: aclFailureReason(error), file: fileSummary(final) });
+    }
+  }
   if (owner.status !== 'present' || owner.format !== 'owner-metadata' ||
       owner.owner?.schema !== 'ngl.decisions-lock-guard.v1') {
     const status = owner.status === 'unsafe' || owner.status === 'changed' ? owner.status : 'malformed';
