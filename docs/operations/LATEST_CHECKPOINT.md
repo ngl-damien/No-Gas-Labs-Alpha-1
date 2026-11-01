@@ -551,3 +551,52 @@ Worker B's latest completed result is still the prior MMORPG handoff; its newer 
 4. Leave ngl-mesh read-only until its canonical shared protocol is present at the target commit and the closed PRs' integration authority is resolved. Keep Command Center writes paused under the existing no-write boundary.
 
 No merge, release, deployment, external publication, spending, key generation/enrollment/rotation, credential change, or Founder acceptance occurred. No uninterrupted between-run execution is claimed. The PR #255 checkpoint-only commit will trigger fresh exact-head CI; those results must be inspected before treating the updated PR head as verified.
+
+
+---
+
+## Run 19 — 2026-11-01 UTC — Windows decision-store durability and ambiguous-rename fencing
+
+### Bootstrap and fresh state
+
+- Read root `AGENTS.md`, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, then this checkpoint through Run 18. Rechecked main, the stacked #248 → #255 → #256 branch chain, open PRs/issues, exact-head workflow runs, and Worker B's latest result.
+- Main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. PR #256 remains draft/open/unmerged at `d5104bef288c638f35e8785b5f7aff4fb8a84bfa`, based on PR #255 head `76743dccebd409b3a519ab3399281e8b079f3ef0`. No mainline change occurred.
+- Nested instruction tree check found no additional `AGENTS.md` under the touched `src/`, `test/`, `.github/`, or `docs/operations/` paths. The only other discovered nested file was the unrelated TaskAgile recovery instruction.
+- Local preflight was not run in this execution environment. The pre-edit hosted preflight at the then-current PR #256 head `4ed5b9c8aca949c2c2f3f27614f3844899950d34` reported `ready`, zero warnings, and zero failures. The exact-head post-change preflight at `d5104bef288c638f35e8785b5f7aff4fb8a84bfa` also reported `ready`, zero warnings, and zero failures.
+
+### Stutter-step cycle A — Windows PowerShell command construction
+
+- The earlier Windows run [41275846654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41275846654) failed because the ACL setup script was joined with a literal backslash-n rather than actual line-feed separators. My intermediate commit `b617a035239635fb7d45dbcd3e6b029fcfa15dfa` corrected the secure-script join; the later branch commit `4ed5b9c8aca949c2c2f3f27614f3844899950d34` made both snapshot and secure scripts use explicit LF separators via `String.fromCharCode(10)`.
+- The next exact-head run [41276072327](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276072327) then exposed a separate Windows limitation: Node directory-handle `fsync` returned `EPERM` after a successful replacement. The previous failure is preserved; it is not reclassified as passing.
+
+### Stutter-step cycle B — Windows write-through replacement
+
+- Commit `83113b5c4b6f27a4c1a44e4eae201e5498b07a92` added a same-directory Windows `MoveFileExW` replacement using `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH` (flags 9), with no cross-volume copy fallback. The temporary envelope is flushed before replacement; POSIX continues to use directory-handle fsync.
+- Commit `23c4e881e76d86c7eefb73592a27dcd114fcfdd7` corrected the `openDecisions` function delimiter caught by immediate source reinspection.
+- Exact-head Windows run [41276274884](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276274884) passed the targeted Windows suite: **32 tests, 26 passed, 0 failed, 6 skipped**. Its hosted preflight was ready with no warnings/failures. This established the tested Windows runner path; it is not a physical power-loss test or a claim about every filesystem/hardware combination.
+
+### Stutter-step cycle C — ambiguous rename completion
+
+- Commit `2331245d8e4afdae0be99c9b2ef6def71e456230` now treats a PowerShell spawn error, signal termination, or null exit status as `COMMIT_DURABILITY_UNCERTAIN`, rather than assuming a failed process means the rename did not occur.
+- Commit `d5104bef288c638f35e8785b5f7aff4fb8a84bfa` adds a regression that performs the replacement, then simulates loss of the completion result. It requires the writer to remain fenced and permits the retained policy only after a fresh validated reopen.
+- Exact-head Verify [41276403084](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403084) passed: hosted preflight `ready` with no warnings/failures; Node test suite exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0; report `passed: true`.
+- Exact-head Windows ACL [41276403044](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403044) passed: **32 tests, 26 passed, 0 failed, 6 skipped**; Windows decision-store reopen, broad-directory ACL rejection, broad-envelope ACL rejection, guard-directory ACL rejection, guard-receipt ACL rejection, and read-only lock inspection all passed.
+- Exact-head Genesis Evidence Invariant [41276403040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403040) passed.
+- Exact-head Browser Acceptance [41276403091](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403091) was still in progress at checkpoint time. No browser result or artifact is claimed for this head yet.
+
+### Independent worker / integration recheck
+
+- PR #249 remains open on `1686806143b11e7c70366b719621b50037e8ab94`; Android run [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) passed **2/2 instrumentation tests**. PR #250 remains open on `d3d60f5068d7bfc895f62a725b4d912ddb3a7300` with Verify, Genesis, and Browser Acceptance all successful.
+- PR #253 is now based on the current PR #250 head `d3d60f5068d7bfc895f62a725b4d912ddb3a7300` and advanced to `346dfd8d340bdb8497b13db7773897d396588cb6`. Its previous head `2b6c531eee02b339e2976f319734d4632b487e96` failed Browser Acceptance at `scripts/verify-browser.py:541` because the new journey used a route not exposed in the current view; the earlier 15 journeys passed. Worker B recorded the failure and committed a route correction as `346dfd8`. Exact-head Verify and Browser Acceptance for `346dfd8` were in progress; Genesis passed. Worker A made no edits to Worker B's files.
+- Issue #17 remains open. PR #16 remains closed unmerged; PR #18 remains the merged replacement. Do not reimplement the superseded self-signing fix. The separate #244 → #245 → #251 authority/service-store stack remains draft and unmerged. PR #243 also changes `game/server.mjs`, so the live server mutation-boundary integration remains a shared-file coordination blocker; helper-level verification is not live authorization.
+- `ngl-mesh` and `No-Gas-Labs-Official/recursive-artifact-engine` still cannot be advanced: their root `AGENTS.md` fetches returned 404, so no repository writes were attempted there.
+
+### Next ranked steps
+
+1. Inspect the final Browser Acceptance result and artifact for exact PR #256 head `d5104bef`; preserve any failure rather than inferring success from Verify/Windows checks.
+2. Inspect exact-head Verify/Browser results for Worker B PR #253 head `346dfd8`; leave its active UI/browser files to Worker B.
+3. Reconcile PR #255/#248 with the current canonical checkpoint/base without merging, then re-run exact-head checks.
+4. Reconcile #244 → #245 → #251 against current main and the active #243 `game/server.mjs` work before attempting live signed-authorization integration.
+5. Keep stale-lock recovery manual/fail-closed; no automatic lock deletion, Founder-key enrollment/rotation, or human-identity claim.
+
+No merge, release, deployment, external publication, spending, credential change, key generation/enrollment/rotation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
