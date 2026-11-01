@@ -1,6 +1,7 @@
 package labs.nogas.commonground;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 
+import org.json.JSONObject;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -69,7 +71,7 @@ public final class MainActivityTest {
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitJavaScript(recreated,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         assertEquals("the stable appassets origin retains DOM storage across activity recreation",
                 "\"persisted\"",
                 evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
@@ -82,9 +84,20 @@ public final class MainActivityTest {
         assertTrue("Android WebView must support the origin-scoped file bridge",
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(activity,
+                "localStorage.getItem('ngl.common-ground.player-position.v1') === null");
+        evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
+        awaitJavaScript(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
+        evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
+        awaitStablePlayerPosition(activity, 1800);
 
         createAndPublishComic(activity);
         File exportFile = new File(
@@ -95,10 +108,19 @@ public final class MainActivityTest {
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
+        double expectedX = Double.NaN;
+        double expectedY = Double.NaN;
         try {
+            awaitJavaScript(activity, "typeof document.getElementById('journal-button')?.onclick === 'function'");
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
             awaitJavaScript(activity,
-                    "!!document.getElementById('export-world') && !!document.getElementById('import-world')");
+                    "!document.getElementById('sheet').hidden && !!document.getElementById('export-world') && !!document.getElementById('import-world')");
+            awaitStablePlayerPosition(activity, 500);
+            expectedX = Double.parseDouble(evaluate(activity,
+                    "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x"));
+            expectedY = Double.parseDouble(evaluate(activity,
+                    "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y"));
+            assertTrue("the round-trip must preserve a fresh movement from the spawn point", expectedX > 180.0);
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
             awaitMonitor(createMonitor);
             awaitNonEmptyFile(exportFile);
@@ -107,30 +129,50 @@ public final class MainActivityTest {
         }
 
         String exported = new String(Files.readAllBytes(exportFile.toPath()), StandardCharsets.UTF_8);
-        assertTrue("export must retain the versioned world schema", exported.contains("ngl.world.v2"));
+        JSONObject envelope = new JSONObject(exported);
+        assertEquals("ngl.private-save.v1", envelope.getString("schema"));
+        JSONObject exportedWorld = envelope.getJSONObject("world");
+        assertEquals("ngl.world.v2", exportedWorld.getString("schema"));
         assertTrue("export must retain the published creation", exported.contains("Android round-trip artifact"));
+        JSONObject exportedPosition = envelope.getJSONObject("playerPosition");
+        assertEquals("portable positions contain coordinates only", 2, exportedPosition.length());
+        assertTrue(exportedPosition.has("x"));
+        assertTrue(exportedPosition.has("y"));
+        assertFalse("private runtime identity must not leave the device", exportedPosition.has("id"));
+        assertEquals("export must carry the moved character's x coordinate",
+                expectedX, exportedPosition.getDouble("x"), 0.01);
+        assertEquals("export must carry the moved character's y coordinate",
+                expectedY, exportedPosition.getDouble("y"), 0.01);
 
         evaluate(activity,
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); " +
                 "location.reload(); 'cleared'");
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(activity, "document.getElementById('start-private').click(); 'new private world'");
         awaitJavaScript(activity,
+                "document.getElementById('play-ui').hidden === false && " +
+                "document.getElementById('mode-label').textContent.includes('Private') && " +
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
 
         Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
                 Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(exportFile));
         try {
+            awaitJavaScript(activity, "typeof document.getElementById('journal-button')?.onclick === 'function'");
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
-            awaitJavaScript(activity, "!!document.getElementById('import-world')");
+            awaitJavaScript(activity, "!document.getElementById('sheet').hidden && !!document.getElementById('import-world')");
             evaluate(activity, "document.getElementById('import-world').click(); 'import'");
             awaitMonitor(openMonitor);
             awaitJavaScript(activity,
+                    "document.getElementById('play-ui').hidden === false && " +
+                    "document.getElementById('mode-label').textContent.includes('Private') && " +
                     "document.getElementById('creation-count').textContent === '1' && " +
-                    "document.getElementById('xp-count').textContent === '100'");
+                    "document.getElementById('xp-count').textContent === '100' && " +
+                    "Math.abs(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x - " + expectedX + ") < 0.01 && " +
+                    "Math.abs(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y - " + expectedY + ") < 0.01");
             assertEquals("the imported objective is projected from the retained publication",
                     "true",
                     evaluate(activity,
@@ -144,11 +186,15 @@ public final class MainActivityTest {
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitJavaScript(recreated,
-                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(recreated, "document.getElementById('start-private').click(); 'resume'");
         awaitJavaScript(recreated,
+                "document.getElementById('play-ui').hidden === false && " +
+                "document.getElementById('mode-label').textContent.includes('Private') && " +
                 "document.getElementById('creation-count').textContent === '1' && " +
-                "document.getElementById('xp-count').textContent === '100'");
+                "document.getElementById('xp-count').textContent === '100' && " +
+                "Math.abs(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x - " + expectedX + ") < 0.01 && " +
+                "Math.abs(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y - " + expectedY + ") < 0.01");
         assertTrue("test export should be removable", exportFile.delete());
     }
 
@@ -214,6 +260,27 @@ public final class MainActivityTest {
             Thread.sleep(50);
         }
         throw new AssertionError("Android world export was not written");
+    }
+
+    private void awaitStablePlayerPosition(MainActivity activity, long stableMillis) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+        long stableSince = 0;
+        String previous = null;
+        while (System.nanoTime() < deadline) {
+            String current = evaluate(activity,
+                    "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
+            if (current == null || "null".equals(current)) {
+                previous = null;
+                stableSince = 0;
+            } else if (current.equals(previous)) {
+                if (System.nanoTime() - stableSince >= TimeUnit.MILLISECONDS.toNanos(stableMillis)) return;
+            } else {
+                previous = current;
+                stableSince = System.nanoTime();
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Private player position did not remain stable for " + stableMillis + "ms");
     }
 
     private MainActivity activity() {
