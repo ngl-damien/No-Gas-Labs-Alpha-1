@@ -3,6 +3,10 @@ import { isValidMoonshotProposal } from './research-records.mjs';
 import { getLocationAction, getQuestTrail, matchActivityRecords, isQuestTrailProjection } from './quests.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 
+const NON_XP_QUEST_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   (viewer.role === 'founder' || viewer.role === 'witness')
@@ -365,7 +369,8 @@ export function projectCharacter(world, viewer, options = null) {
   ));
   const questActivityIds = new Set();
   for (const event of allEvents) {
-    if (event?.type === 'publish' || !questEvidenceIds.has(event?.id) ||
+    if (event?.type === 'publish' || NON_XP_QUEST_EVENT_TYPES.has(event?.type) ||
+        !questEvidenceIds.has(event?.id) ||
         event.actor?.id !== viewer?.id || event.actor?.role !== viewer?.role ||
         typeof event.id !== 'string' || !event.id) continue;
     questActivityIds.add(event.id);
