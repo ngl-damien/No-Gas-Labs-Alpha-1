@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { projectChronicle } from "../game/chronicle.mjs";
 import { projectInstitutionRecordWorldObjects, hasCompleteInstitutionKernelSnapshot } from "../game/institution-record-objects.mjs";
+import { projectDecisionDocket } from "../game/quests.mjs";
 import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
 import { createHash } from "node:crypto";
 
@@ -930,7 +931,7 @@ test('Decision Docket proposals become sanitized, deterministic Decision Chamber
   const before = structuredClone(decisionSnapshot);
   const options = {
     world: { creations: [], events: [], reports: [], contributions: [], discoveries: [] },
-    decisionSnapshot,
+    decisionDocketProjection: projectDecisionDocket(decisionSnapshot),
     places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
     reservedPoints: [],
     isWalkable: () => true,
@@ -939,7 +940,7 @@ test('Decision Docket proposals become sanitized, deterministic Decision Chamber
   const projection = projectInstitutionRecordWorldObjects(options);
   const repeated = projectInstitutionRecordWorldObjects({
     ...options,
-    decisionSnapshot: structuredClone(decisionSnapshot)
+    decisionDocketProjection: projectDecisionDocket(structuredClone(decisionSnapshot))
   });
   const pending = projection.objects.find(record => record.decisionId === 'decision-pending');
   const rejected = projection.objects.find(record => record.decisionId === 'decision-rejected');
@@ -967,14 +968,14 @@ test('an unavailable or inconsistent Decision Docket never becomes an empty map 
   invalid.counts.PENDING = 0;
   const projection = projectInstitutionRecordWorldObjects({
     world: { creations: [], events: [] },
-    decisionSnapshot: invalid,
+    decisionDocketProjection: projectDecisionDocket(invalid),
     places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
     isWalkable: () => true,
     buildings: []
   });
   const absent = projectInstitutionRecordWorldObjects({
     world: { creations: [], events: [] },
-    decisionSnapshot: null,
+    decisionDocketProjection: projectDecisionDocket(null),
     places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
     isWalkable: () => true,
     buildings: []

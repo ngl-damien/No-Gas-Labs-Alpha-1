@@ -171,7 +171,7 @@ export function projectInstitutionRecordWorldObjects({
   world = {},
   institutionSummary = null,
   collaboratorResponseObjects = null,
-  decisionSnapshot = null,
+  decisionDocketProjection = null,
   places = [],
   reservedPoints = [],
   isWalkable = () => false,
@@ -181,7 +181,18 @@ export function projectInstitutionRecordWorldObjects({
   const kernelComplete = hasCompleteInstitutionKernelSnapshot(institutionSummary);
   const kernel = kernelComplete ? ownDataValue(institutionSummary, 'kernel') : null;
   const chronicle = projectChronicle({ world, kernel, collaboratorResponseObjects });
-  const decisionDocket = projectDecisionDocket(decisionSnapshot);
+  const decisionDocket = decisionDocketProjection?.available === true
+    ? projectDecisionDocket({
+      schema: 'ngl.decisions.snapshot.v1',
+      revision: decisionDocketProjection.revision,
+      head: decisionDocketProjection.head,
+      policy: decisionDocketProjection.policy,
+      decisions: decisionDocketProjection.decisions,
+      counts: decisionDocketProjection.counts,
+    })
+    : decisionDocketProjection?.available === false
+      ? decisionDocketProjection
+      : projectDecisionDocket(null);
   const decisionEntries = decisionDocket.available ? decisionDocket.decisions.map(decision => {
     const disposition = decision.disposition ? Object.freeze({
       action: decision.disposition.action,

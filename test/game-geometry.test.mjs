@@ -4,7 +4,7 @@ import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionA
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 import {createWorld} from '../game/model.mjs';
-import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
+import {getActiveQuest,getQuestTrail,projectDecisionDocket} from '../game/quests.mjs';
 
 const viewFixtures = new WeakMap();
 
@@ -501,7 +501,7 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
   const before = structuredClone(decisionSnapshot);
 
   view.setWorld(world);
-  view.setDecisionDocket(decisionSnapshot);
+  view.setDecisionDocket(projectDecisionDocket(decisionSnapshot));
   const record = view.institutionRecordObjects.find(item => item.decisionId === 'decision-map-1');
   assert.ok(record, 'the durable Decision Chamber proposal must become a map object');
   assert.equal(record.locationId, 'decision_chamber');
