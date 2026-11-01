@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { defineQuest } from "../src/quest/engine.js";
 import { proposeGuildAction } from "../src/world/guild-hall.js";
@@ -82,6 +83,23 @@ function createVerifier(overrides = {}) {
 
 test("context-bound verifier accepts a signed decision matching canonical proposal and quest", () => {
   assert.equal(createVerifier()(signedEventFor(payload)), true);
+});
+
+test("context-bound verifier rechecks expiry after canonical state resolution", () => {
+  const expiresAt = new Date(Date.now() + 250).toISOString();
+  const expiringPayload = { ...payload, expires_at: expiresAt };
+  const event = signedEventFor(expiringPayload);
+  const remaining = Date.parse(expiresAt) - Date.now() + 20;
+  const deadline = performance.now() + remaining;
+  const verify = createVerifier({
+    resolveProposal: id => {
+      while (performance.now() < deadline) { /* hold the synchronous resolver past expiry */ }
+      return id === proposal.event_id ? proposal : null;
+    }
+  });
+
+  assert.equal(verify(event), false,
+    "a decision must not remain authorized when it expires during canonical-state lookup");
 });
 
 test("a valid signature cannot authorize a capability outside the canonical proposal and quest", () => {
