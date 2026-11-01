@@ -127,6 +127,23 @@ test('last keyboard release synchronously persists the final stopped player posi
   });
 });
 
+test('last keyboard release persists even when it precedes the first movement frame',()=>{
+  withWorldViewEnvironment(canvas=>{
+    const positions=[];
+    const view=new WorldView(canvas,{onPosition:position=>positions.push(position)});
+    try{
+      const startingPosition=view.getPlayer();
+      view.onKeyDown({key:'d',target:null,repeat:false,preventDefault(){}});
+      view.onKeyUp({key:'d'});
+      assert.equal(positions.length,1,'the final release writes even before the animation loop marks movement');
+      assert.deepEqual(positions[0],startingPosition);
+      view.update(0.045,100);
+      assert.deepEqual(view.getPlayer(),startingPosition,'a released key cannot move the character on a later frame');
+      assert.equal(positions.length,1,'the idle frame does not duplicate the release receipt');
+    }finally{view.destroy()}
+  });
+});
+
 test('keyboard release waits for other movement sources before persisting',()=>{
   withWorldViewEnvironment(canvas=>{
     const positions=[];
@@ -146,8 +163,32 @@ test('keyboard release waits for other movement sources before persisting',()=>{
       view.onKeyUp({key:'d'});
       assert.equal(positions.length,1,'active pointer movement is not mistaken for a stop');
       view.setInput({x:0,y:0});
+      assert.equal(positions.length,2,'pointer release persists immediately after the final movement source stops');
       view.update(0.045,200);
-      assert.equal(positions.length,2,'pointer release is persisted by the next movement frame');
+      assert.equal(positions.length,2,'the next idle frame does not duplicate the pointer-stop receipt');
+    }finally{view.destroy()}
+  });
+});
+
+
+test('window blur cancels active movement and persists the final position once',()=>{
+  withWorldViewEnvironment(canvas=>{
+    const positions=[];
+    const view=new WorldView(canvas,{onPosition:position=>positions.push(position)});
+    try{
+      view.onKeyDown({key:'d',target:null,repeat:false,preventDefault(){}});
+      view.update(0.045,100);
+      const finalPosition=view.getPlayer();
+      assert.ok(finalPosition.x>180);
+      view.route=[{x:finalPosition.x+40,y:finalPosition.y}];
+      view.onBlur();
+      assert.deepEqual(positions,[finalPosition]);
+      assert.equal(view.keys.size,0);
+      assert.equal(view.route.length,0,'a backgrounded window does not keep following an old route');
+      assert.equal(view.moving,false);
+      view.update(0.045,200);
+      assert.deepEqual(view.getPlayer(),finalPosition);
+      assert.equal(positions.length,1,'the next idle frame does not duplicate the blur receipt');
     }finally{view.destroy()}
   });
 });
