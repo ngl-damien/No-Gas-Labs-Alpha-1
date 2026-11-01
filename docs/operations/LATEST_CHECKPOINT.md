@@ -797,3 +797,43 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 - Repair commit `2e4dde53f22fbf14c5cb78616c362979e61fcda7` updates the shared-restart expectation to three reports and explicitly asserts the reconnect report text is retained exactly once after service restart. This preserves the failed run and its cause rather than rewriting the history.
 - Current branch head after the repair is `2e4dde53f22fbf14c5cb78616c362979e61fcda7`. Exact-head hosted verification has not yet been observed. Do not claim Browser Acceptance success until its rerun completes.
 
+
+
+---
+
+## Run 22 — 2026-11-01 UTC — carry non-blocking target inspection into the 71-target Relay stack
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Parent proposal:** PR #263, exact head `88d45c80448f94a0aaf94f22c77614e61b449958`, stacked on PR #262 head `7a915a95cc42b7db66cb7d38a61a0f2d626b8370`.  
+**New branch:** `ops/relay-stack-preflight-fifo-guard-20261101`, created from PR #263's exact head.
+
+### Rehydrate and challenge
+
+- Re-read root `AGENTS.md` and the full shared protocol sequentially. Their blob SHAs on PR #263 match current main. Read the branch's latest durable checkpoint before editing.
+- Rechecked PR #263's exact head and exact-head hosted checks: Verify [41293477058](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293477058), Genesis [41293477073](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293477073), and Browser [41293477049](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293477049) all completed successfully. These results are for the parent head only.
+- Re-read `scripts/validate-agent-governance.mjs` on PR #263. Its target inspection used `readFile(actualPath)` without `O_NONBLOCK` or descriptor/path snapshot comparison. A requested FIFO target can therefore block preflight waiting for a writer. Re-read `test/agent-governance.test.mjs`: it had no directory-target or FIFO non-blocking regression.
+- Compared against PR #259's verified implementation. The donor test file contains the same 22 existing test cases plus three additional cases: same-length target replacement detection, directory rejection, and FIFO rejection under a five-second child-process timeout. No PR #263-only test was lost.
+- Confirmed PR #263 already has a 71-unique-target CI manifest, canonical checkpoint path, and a 71-target checkpoint contract test. These were preserved unchanged. `scripts/verify.mjs` was also preserved from PR #263 because its TAP/isolated-failure diagnostics are more useful than the donor's formatter.
+
+### Changes
+
+- `8bf2448aa6c7f0723411597bb888d8fa6fcdc0a1` — transplanted the PR #259 target reader into the Relay stack. Requested targets are opened non-blocking/no-follow, must be regular files, and are checked against descriptor and resolved-path snapshots before and after reading. Changed bytes across semantic inspections fail closed.
+- `2e1d1607d5ff39bd22f8c2a623a8a0175229eb9b` — added the three missing regressions for changed target snapshots, directory targets, and FIFO targets. The FIFO case resolves `mkfifo` from inherited PATH and skips with an explicit reason only where that POSIX utility is unavailable.
+- No game, server, decision, Founder key, credential, or permission code changed.
+- The existing 71-target `package.json` manifest and `test/latest-checkpoint-contract.test.mjs` were re-read and preserved. The preflight command still names 71 unique paths and `docs/operations/LATEST_CHECKPOINT.md` as its checkpoint.
+
+### Verification status
+
+- Parent PR #263 exact-head Verify/Genesis/Browser were successful as listed above.
+- Donor PR #259 head `868b8fe1552499c9e311716a010c37f6f3ddbe20` had Verify [41293530609](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293530609), Genesis [41293530573](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293530573), and Browser [41293530572](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41293530572) successful. These validate the donor head, not this combined branch.
+- No local tests were run. This environment has no repository checkout and its available Node is below the repository's Node >=24 requirement.
+- Exact-head hosted verification for this new branch is pending. Do not claim the 71-target combined stack has passed until its own Verify, Genesis, and Browser workflows complete.
+
+### Next actions
+
+1. Open a draft child PR against PR #263 and inspect exact-head Verify, Genesis, and Browser. Verify must show all 71 targets read/fingerprinted, no warnings/failures, and the Node/Python/build/institutional-exercise stages successful.
+2. If Verify fails, inspect the exact failure and repair only attributable defects; preserve the failed run.
+3. Hand Worker B the exact child PR and test-only preflight transplant so the Relay/PWA stack can depend on the same non-blocking governance reader without modifying Worker B's game files.
+4. Keep the Founder authorization helper/server integration, trust-root and key-custody work separate; no Founder authority was changed.
+
+No merge, release, deployment, spending, external publication, credential/permission change, key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
