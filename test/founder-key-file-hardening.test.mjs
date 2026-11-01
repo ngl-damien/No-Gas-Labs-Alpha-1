@@ -64,10 +64,14 @@ async function createLocalServer({ dataDir }) {
     async closeGame() {
       if (closed) return;
       closed = true;
-      if (child.exitCode !== null || child.signalCode !== null) return;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        if (child.signalCode !== null || child.exitCode !== 0) throw new Error('Loopback development CLI exited before clean shutdown: ' + output);
+        return;
+      }
       const exited = once(child, 'exit');
       child.kill('SIGTERM');
-      await exited;
+      const [code, signal] = await exited;
+      if (signal !== null || code !== 0) throw new Error('Loopback development CLI did not stop cleanly: ' + output);
     }
   };
 }
