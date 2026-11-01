@@ -58,6 +58,17 @@ test('successful network asset remains available when Cache Storage cannot open'
   assert.equal(response.body,'fresh-style');
 });
 
+test('successful network assets survive a cache lookup failure',async()=>{
+  let fetchCalls=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{fetchCalls+=1;return serviceResponse('fresh-module');},
+    openCache:async()=>({match:async()=>{throw new Error('cache read denied');}})
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(fetchCalls,1);
+  assert.equal(response.body,'fresh-module');
+});
+
 test('offline navigation still falls back to the cached application shell',async()=>{
   const cache={
     match:async request=>typeof request==='string'&&request==='https://ngl.test/index.html'?serviceResponse('cached-shell'):null
