@@ -4,7 +4,7 @@ import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionA
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 import {createWorld} from '../game/model.mjs';
-import {getActiveQuest,getQuestTrail,projectDecisionDocket} from '../game/quests.mjs';
+import {getActiveQuest,getQuestTrail,projectDecisionDocket,selectDecisionDocketProjection} from '../game/quests.mjs';
 
 const viewFixtures = new WeakMap();
 
@@ -529,9 +529,21 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
   assert.equal(view.questMarker?.targetType, 'institution-record');
   assert.deepEqual(decisionSnapshot, before, 'navigation and inspection must not mutate the docket');
 
+  const staleSelection = selectDecisionDocketProjection(projectDecisionDocket(null), view.decisionDocketProjection);
+  assert.equal(staleSelection.stale, true);
+  view.setDecisionDocket(staleSelection.projection, { stale: staleSelection.stale });
+  assert.equal(view.decisionDocketStale, true);
+  assert.equal(view.institutionRecordDecisionDocketStale, true);
+  assert.equal(view.institutionRecordObjects.some(item => item.decisionId === 'decision-map-1'), true,
+    'an unavailable refresh must preserve the last valid map object as stale');
+  assert.equal(view.canvas.getAttribute?.('data-decision-docket-stale'), 'true');
+
   view.setDecisionDocket(null);
   assert.equal(view.institutionRecordDecisionDocketAvailable, false);
+  assert.equal(view.decisionDocketStale, false);
+  assert.equal(view.institutionRecordDecisionDocketStale, false);
   assert.equal(view.institutionRecordObjects.some(item => item.decisionId === 'decision-map-1'), false,
     'clearing the actor-bound snapshot removes stale map objects');
+  assert.equal(view.canvas.getAttribute?.('data-decision-docket-stale'), 'false');
   assert.deepEqual(world.events, [], 'map inspection must not append a canonical world event');
 });
