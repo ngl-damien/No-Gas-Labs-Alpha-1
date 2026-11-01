@@ -42,13 +42,14 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
-      if (kind === 'durable-checkpoint') {
+      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
+        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
           const component = segments.slice(0, index).join('/');
           const metadata = await lstat(resolve(rootPath, component));
           if (metadata.isSymbolicLink()) {
-            failures.push({ path: component, reason: 'durable checkpoint path must not traverse a symlink' });
+            failures.push({ path: component, reason: label + ' path must not traverse a symlink' });
             return null;
           }
           const expectedType = index === segments.length ? metadata.isFile() : metadata.isDirectory();
@@ -56,8 +57,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
             failures.push({
               path: component,
               reason: index === segments.length
-                ? 'durable checkpoint must be a regular file'
-                : 'durable checkpoint parent must be a directory'
+                ? label + ' must be a regular file'
+                : 'trusted governance parent must be a directory'
             });
             return null;
           }
