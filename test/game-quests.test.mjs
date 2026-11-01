@@ -1111,6 +1111,11 @@ test('decision docket accepts a retained disposition only when its revision and 
     decisions: [{ ...snapshot.decisions[0], revision: 2 }]
   };
   assert.equal(projectDecisionDocket(impossibleRevision).available, false);
+  const mismatchedDisposition = {
+    ...snapshot,
+    decisions: [{ ...snapshot.decisions[0], disposition: { ...snapshot.decisions[0].disposition, action: 'REJECT' } }]
+  };
+  assert.equal(projectDecisionDocket(mismatchedDisposition).available, false);
 });
 
 test('decision docket rejects accessor-backed snapshots without executing getters', () => {
