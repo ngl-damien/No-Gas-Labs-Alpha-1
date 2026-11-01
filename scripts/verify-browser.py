@@ -655,6 +655,9 @@ def adversary_challenge_handoff(browser,url,out):
         expect(challenge_card).to_be_visible()
         expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
         page.screenshot(path=str(out/'adversary-challenge-handoff.png'))
+        character_button_label=page.locator('#character-button').get_attribute('aria-label')
+        assert character_button_label and '25 character XP' in character_button_label, character_button_label
+        close_sheet(page)
         character_xp=character_xp_components(page)
         assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
         assert not errors,errors
