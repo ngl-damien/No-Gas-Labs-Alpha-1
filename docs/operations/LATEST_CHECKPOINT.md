@@ -844,3 +844,36 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 - After exact-head results are observed, record them in the PR handoff and update the MMORPG ledger without claiming integration or device acceptance.
 
 No merge, release, deployment, spending, external publication, credential/permission change, key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+
+## 2026-11-01 — Worker B — institutional Chronicle records become playable map objects
+
+**Baseline and branch relationship**
+
+- Current `main` observed at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; no main integration occurred in this run.
+- Parent PR #265 exact head `a58eee3e5fe192a668982c8ff14e4b12fe227635` is still open/unmerged. Child draft PR #267 targets `game/player-guild-membership-quest-20261101`; its code head is `269c2fea4e4ad4393b0fcde0f0fd4b8404ff3760`.
+- Preserve the PR #265 base branch until #267 is rebased/retargeted or its dependency is resolved; this handoff is posted on #265.
+
+**Runtime changes on the dependent branch**
+
+- `game/institution-record-objects.mjs` projects retained world events and a complete shared institutional-kernel Chronicle snapshot into deterministic, read-only objects at their actual institution locations. It rejects duplicate/malformed IDs and invalid timestamps, refuses partial/accessor-backed kernel snapshots, avoids reserved/unwalkable positions, caps pins at 24 per location, and keeps older/unplaceable records directly inspectable.
+- `game/world-view.mjs` makes the objects routeable/interactable and quest-pennant targets. Legacy partial view fixtures are guarded when the new optional object array is absent.
+- `game/client.mjs` exposes exact retained event detail and states that a red marker means review, not a truth verdict.
+- `game/server.mjs` serves the new module; `game/sw.js` precaches it and bumps the shell cache version so the module survives offline shell updates.
+- Failed local byte observations and rejected adjudications now receive the review marker while their original source, event type and recorded summary remain intact. No canonical state, evidence, approval, authority, XP or quest completion is created by the projection or marker.
+
+**Tests and exact-head verification**
+
+- Added Chronicle projector tests for deterministic/frozen output, no source mutation, institution routing, review markers, duplicate/malformed identity rejection, invalid timestamps, incomplete and accessor-backed kernel snapshots, 24-pin cap, reserved positions and retained overflow.
+- Added a WorldView test proving a retained publication is reachable, returns its exact event identity, can be quest-marked, and remains read-only.
+- Exact code head `269c2fea4e4ad4393b0fcde0f0fd4b8404ff3760`: Verify `41349718488` **success**; Genesis Evidence Invariant `41349718481` **success**; Browser Acceptance `41349718493` **success**. Verify ran the Node 24 test/build/institutional exercise stages and reported zero portable-preflight warnings.
+- Failure history was preserved in PR #267: first Verify head had six attributable failures (double-escaped dense-array digit regex; missing optional-array guards in legacy WorldView fixtures; new module absent from service-worker precache); second head had one remaining server-static 404. All were repaired before the passing exact code head.
+- No local test/preflight result is claimed: the container had no GitHub network access and only Node v22.16.0, below the repository's Node >=24 requirement.
+
+**Protocol, donor review and remaining boundaries**
+
+- Read root `AGENTS.md`, the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, the branch's latest durable checkpoint and relevant active worker PR/results before editing. Recursive branch tree showed only root `AGENTS.md` plus the unrelated TaskAgile nested instruction file; no nested instruction applied to touched paths.
+- Inspected the NGL Mesh RAE bridge and evidence-authorized transition, plus Command Center state graph/evidence-source registry. Their useful constraint is preserved: source identity and external assertions do not become admissible evidence or authority by display. This branch uses read-only projections; no donor runtime code was copied.
+- Cross-worker handoff on PR #264 requests adding `game/institution-record-objects.mjs` to the canonical preflight target list. The current manifest does not fingerprint that module despite zero preflight warnings; do not claim otherwise.
+- The Decision Chamber's durable docket is a separate `/api/decisions` source projected by `projectDecisionDocket`; it is not yet part of this Chronicle projector. Next high-leverage step is a safe, read-only Decision Docket-to-Decision-Chamber world-object projection, without exposing private audit/policy data or changing human authority.
+- No physical Android device acceptance, native Android build, merge, release, deployment, spending, key/permission change or Founder acceptance is claimed. PR #267 remains draft/open/unmerged.
