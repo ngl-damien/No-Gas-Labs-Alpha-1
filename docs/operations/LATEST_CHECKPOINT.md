@@ -348,3 +348,61 @@ PR #248 remains draft/open/unmerged. The canonical checkpoint and target-list ch
 5. Keep Command Center writes paused pending Damien's authorization; no revert or repair was attempted.
 
 No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 14 — 2026-11-01 02:55 UTC — RAE evidence-input hardening and Android failure re-observed
+
+### Linked-repository capability work — ngl-mesh PR #3
+
+**Rehydration:** Read ngl-mesh root `AGENTS.md`, the complete Alpha-1 canonical shared protocol, repository README, `integration/relay/README.md`, and the PR #3 durable description. Checked `integration/AGENTS.md`, `integration/relay/AGENTS.md`, `.github/AGENTS.md`, and `.github/workflows/AGENTS.md`; all returned 404. No `package.json` or `docs/operations/LATEST_CHECKPOINT.md` exists on the ngl-mesh branch, so portable preflight was unavailable. The manual entry sequence was completed and the limitation recorded; no claim of a portable preflight is made.
+
+**Branch ownership challenge:** PR #1 `security/pin-relay-operator-key-20261026` owns `integration/relay/verify_bridge.py`. PR #3 `fix/relay-strict-report-utf8-20261030` owns the bridge input contract. PR #1 does not change `RaeEvidenceBridge.java`; PR #3 is the existing focused branch for the input hardening. I continued PR #3 rather than create a competing implementation and did not edit PR #1's harness file.
+
+**Changes on ngl-mesh PR #3, exact head `e419127c7ee8b375e746bca930c405ac8f275b40`:**
+
+- `RaeEvidenceBridge.java` now uses `SafeEvidenceFileReader.read` for both APK and report inputs, replacing `File.isFile()/length()/FileInputStream`.
+- New `SafeEvidenceFileReader.java` checks every resolved path component for symbolic links, opens the final file with `LinkOption.NOFOLLOW_LINKS`, enforces the byte limit while streaming, and rechecks file identity, size, and modification time after reading.
+- The strict UTF-8 decoder remains in the report path before JSON parsing.
+- New standalone tests cover bounded regular reads, oversize rejection, directory rejection, final-component file and directory symlinks, parent-directory symlinks, and an empty file. The bridge source-contract test pins use of the reader for both inputs.
+- The relay README now documents the no-follow input contract and its evidence boundary.
+
+**Exact-head verification:**
+
+- Relay bridge input contract [41266756529](https://github.com/ngl-damien/ngl-mesh/actions/runs/41266756529): **success** — 10 strict UTF-8 checks, 9 safe-file-reader checks, and 7 bridge source-contract checks.
+- Agent governance [41266756543](https://github.com/ngl-damien/ngl-mesh/actions/runs/41266756543): **success**.
+
+Comments were posted to PR #3 ([6552541130](https://github.com/ngl-damien/ngl-mesh/pull/3#issuecomment-6552541130)) and PR #1 ([6552542274](https://github.com/ngl-damien/ngl-mesh/pull/1#issuecomment-6552542274)). PR #1's `verify_bridge.py` compile list must include `StrictUtf8.java` and `SafeEvidenceFileReader.java` when the full harness is reconciled. The recovered RAE source archive, reference APK, and extraction report remain operator-supplied prerequisites; the full `verify_bridge.py` integration was not run. The standalone workflow proves the input primitives and source wiring, not an end-to-end import.
+
+The portable path-component checks plus final-component no-follow open are not a kernel-atomic `openat` transaction against a privileged concurrent parent-directory rename. No trust root, APK authenticity, report truth, Android packaging, or deployment is established. PR #3 remains open/draft/unmerged.
+
+### MMORPG / Android re-observation — PR #249 and Worker B
+
+The latest completed Worker B result `7ef03e4d-aa60-832c-a77f-c2224074930b` was created at 02:03:47Z and is stale relative to the current Android outcome. The current Worker B automation run `2e56bae6-1b6c-832e-80e1-f6340fbe586d` was recorded `in_progress` at 02:44:17Z; no completion result is available yet.
+
+PR #249 remains at head `b588757aba9a84cb4c57fbc1f82206a0aa7c3d1c`. Android Alpha-1 run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) is now **completed: failure**, correcting the prior “still running” observation:
+
+- Debug APK assembly: success.
+- Offline-world emulator instrumentation: failure.
+- `nativeWorldExportAndImportRoundTripsEarnedProgress`: `export must carry the moved character's x coordinate expected:<227.25> but was:<259.375>`.
+- One of two instrumentation tests failed. Repeated ADB exit-code-1 and emulator ColorBuffer messages were also logged, but the JUnit coordinate assertion is the decisive functional failure.
+
+A concrete handoff with same-run live/export/re-import coordinate acceptance criteria was posted to PR #249 ([6552555433](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/249#issuecomment-6552555433)); the stale Android status was also handed to the PR #239 completion ledger ([6552561157](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/239#issuecomment-6552561157)). No Android/game source or Worker B ledger file was edited.
+
+Other current proposal evidence:
+- PR #249 Verify, Genesis, and Browser Acceptance passed; Browser Acceptance is 12/12. The Android run above is still a failure, so device acceptance is not proven.
+- PR #250 head `d3d60f5068d7bfc895f62a725b4d912ddb3a7300`: Verify and Genesis passed; Browser Acceptance [41262779476](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262779476) passed 14/14.
+- PR #239 completion-ledger head `c0927037ddc0ba676018d8340ea76435ea9f42cf`: Verify, Genesis, and Browser checks passed, but its Android row requires the failure update above.
+- PR #248 canonical checkpoint head `c9968694469745b76d01434fc8c7c3ac23a4bde2`: Verify [41266022284](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41266022284), Genesis [41266022292](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41266022292), and Browser [41266022337](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41266022337) all passed; Browser Acceptance 12/12. Artifact [13066939740](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41266022337/artifacts/13066939740), ZIP SHA-256 `ee09ce5bbf72fb97b401bad17f940367175041432d8f505ead1c290ab603f8ed`.
+- PR #251 Founder-key factory boundary head `3017ee1ead746fd90b7eebe1ff66842561e47799`: Verify [41265153067](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153067), Genesis [41265153140](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153140), and Browser [41265153098](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41265153098) all passed; Browser Acceptance 12/12. PR #251 remains draft/open/unmerged.
+
+### Next ranked steps
+
+1. **Worker B / PR #249:** resolve the Android export-coordinate mismatch by tracing the authoritative live position, exported file, and re-imported state within the same emulator run. Do not call APK assembly or browser acceptance a device pass.
+2. Reconcile PR #248's canonical checkpoint and `game/world-view.mjs` target with PR #249's `game/player-position.mjs` and `test/game-player-position.test.mjs` targets in one preflight list.
+3. **Worker A / ngl-mesh:** when PR #1 next changes `verify_bridge.py`, include `StrictUtf8.java` and `SafeEvidenceFileReader.java` in the compile list; run the full harness only after the recovered archive, reference APK, and report are actually supplied.
+4. Continue issue #17 only after Damien supplies/authorizes the Founder trust root and key custody. No key generation, enrollment, rotation, or signing is authorized by this run.
+5. Keep Command Center writes paused pending Damien's explicit authorization.
+
+No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
