@@ -102,7 +102,7 @@ test('preflight rejects FIFO targets without blocking on a writer', { skip: proc
       `import { runPreflight } from ${JSON.stringify(moduleUrl)};`,
       `const result = await runPreflight({ root: ${JSON.stringify(root)}, paths: ['scripts/worker.pipe'], checkpoint: 'CHECKPOINT.md' });`,
       'process.stdout.write(JSON.stringify(result));'
-    ].join('\\n');
+    ].join('\n');
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
       encoding: 'utf8',
       timeout: 5000
