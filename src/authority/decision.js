@@ -412,9 +412,11 @@ export function authorizationEvent(input) {
   }
 
   const digest = decisionDigest(candidate);
-  if (digest !== seal.payloadDigest || receipt.payload_sha256 !== seal.payloadDigest ||
+  const finalizedAt = trustedNow();
+  if (!Number.isFinite(finalizedAt) || digest !== seal.payloadDigest ||
+      receipt.payload_sha256 !== seal.payloadDigest ||
       receipt.signature !== seal.signature || receipt.key_fingerprint !== seal.keyFingerprint ||
-      trustedNow() >= Date.parse(seal.payload.expires_at)) {
+      finalizedAt >= Date.parse(seal.payload.expires_at)) {
     throw new Error("verified Founder decision required");
   }
 
