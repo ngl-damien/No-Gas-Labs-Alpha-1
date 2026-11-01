@@ -85,18 +85,19 @@ public final class MainActivityTest {
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(activity,
+                "localStorage.getItem('ngl.common-ground.player-position.v1') === null");
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
         awaitJavaScript(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
-        awaitJavaScript(activity,
-                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
-        double expectedX = Double.parseDouble(evaluate(activity,
-                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x"));
-        double expectedY = Double.parseDouble(evaluate(activity,
-                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y"));
+        awaitStablePlayerPosition(activity, 1800);
 
         createAndPublishComic(activity);
         File exportFile = new File(
@@ -112,6 +113,12 @@ public final class MainActivityTest {
             evaluate(activity, "document.getElementById('journal-button').click(); 'journal'");
             awaitJavaScript(activity,
                     "!document.getElementById('sheet').hidden && !!document.getElementById('export-world') && !!document.getElementById('import-world')");
+            awaitStablePlayerPosition(activity, 500);
+            double expectedX = Double.parseDouble(evaluate(activity,
+                    "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).x"));
+            double expectedY = Double.parseDouble(evaluate(activity,
+                    "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')).y"));
+            assertTrue("the round-trip must preserve a fresh movement from the spawn point", expectedX > 180.0);
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
             awaitMonitor(createMonitor);
             awaitNonEmptyFile(exportFile);
@@ -251,6 +258,27 @@ public final class MainActivityTest {
             Thread.sleep(50);
         }
         throw new AssertionError("Android world export was not written");
+    }
+
+    private void awaitStablePlayerPosition(MainActivity activity, long stableMillis) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+        long stableSince = 0;
+        String previous = null;
+        while (System.nanoTime() < deadline) {
+            String current = evaluate(activity,
+                    "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
+            if (current == null || "null".equals(current)) {
+                previous = null;
+                stableSince = 0;
+            } else if (current.equals(previous)) {
+                if (System.nanoTime() - stableSince >= TimeUnit.MILLISECONDS.toNanos(stableMillis)) return;
+            } else {
+                previous = current;
+                stableSince = System.nanoTime();
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Private player position did not remain stable for " + stableMillis + "ms");
     }
 
     private MainActivity activity() {
