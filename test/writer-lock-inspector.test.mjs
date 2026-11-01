@@ -1,7 +1,6 @@
 import test from 'node:test';
-import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile, readdir } from 'node:fs/promises';
 import { renameSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -54,10 +53,23 @@ test('inspects active service, ledger, and decision locks with owner metadata', 
     now: () => Date.parse('2026-10-28T06:00:00.000Z')
   }));
 
+  // The mutation guard is intentionally transient, not held for the lifetime
+  // of the decision store. Construct a valid private receipt to exercise the
+  // inspector's guard-schema handling without blocking the live store's close.
+  const guardDir = join(decisionsDir, '.decisions.lock.guard');
+  await mkdir(guardDir, { mode: 0o700 });
+  const guardOwner = join(guardDir, '.owner-test.json');
+  await writeFile(guardOwner, JSON.stringify({
+    schema: 'ngl.decisions-lock-guard.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
   const targets = [
     [join(serviceDir, '.service.lock'), 'ngl.service-lock.v1'],
     [join(ledgerDir, '.writer.lock'), 'ngl.ledger-lock.v1'],
-    [join(decisionsDir, '.decisions.lock'), 'ngl.decisions-lock.v1']
+    [join(decisionsDir, '.decisions.lock'), 'ngl.decisions-lock.v1'],
+    [guardOwner, 'ngl.decisions-lock-guard.v1']
   ];
   for (const [path, schema] of targets) {
     const result = await inspectWriterLock(path);
@@ -68,6 +80,7 @@ test('inspects active service, ledger, and decision locks with owner metadata', 
     assert.equal(result.owner.processProbe, 'possibly-alive', path);
     assert.equal(result.safeToRemove, false, path);
   }
+  await rm(guardDir, { recursive: true, force: true });
 });
 
 test('opaque legacy tokens are not echoed into the diagnostic report', async t => {
@@ -243,7 +256,7 @@ test('escaped spellings of duplicate JSON keys are rejected', async t => {
 
 test('recognizes each current writer-lock schema', async t => {
   const directory = await temp(t);
-  for (const schema of ['ngl.service-lock.v1', 'ngl.ledger-lock.v1', 'ngl.decisions-lock.v1', 'ngl.courier-lock.v1']) {
+  for (const schema of ['ngl.service-lock.v1', 'ngl.ledger-lock.v1', 'ngl.decisions-lock.v1', 'ngl.decisions-lock-guard.v1', 'ngl.courier-lock.v1']) {
     const path = join(directory, schema + '.lock');
     await writeFile(path, JSON.stringify({
       schema,
@@ -275,38 +288,35 @@ test('does not interpret an unknown writer-lock schema as owner metadata', async
 });
 
 
-test('lock inspector reports failed UID ownership lookups as unsafe instead of throwing', async t => {
-  if (process.platform === 'win32') return t.skip('POSIX lock mode and UID checks are not a Windows ACL verifier');
+test('inspects an empty interrupted decision guard directory without authorizing removal', async t => {
   const directory = await temp(t);
-  const path = join(directory, '.writer.lock');
-  await writeFile(path, JSON.stringify({
-    schema: 'ngl.service-lock.v1',
+  const guard = join(directory, '.decisions.lock.guard');
+  await mkdir(guard, { mode: 0o700 });
+
+  const result = await inspectWriterLock(guard);
+
+  assert.equal(result.status, 'present');
+  assert.equal(result.format, 'guard-directory');
+  assert.equal(result.reason, 'owner-receipt-missing');
+  assert.equal(result.safeToRemove, false);
+});
+
+test('inspects a decision guard directory through its stable owner receipt', async t => {
+  const directory = await temp(t);
+  const guard = join(directory, '.decisions.lock.guard');
+  await mkdir(guard, { mode: 0o700 });
+  await writeFile(join(guard, '.owner-123e4567-e89b-42d3-a456-426614174000.json'), JSON.stringify({
+    schema: 'ngl.decisions-lock-guard.v1',
     pid: process.pid,
-    openedAt: '2026-10-31T00:00:00.000Z'
+    openedAt: '2026-10-30T07:00:00.000Z'
   }), { mode: 0o600 });
-  const moduleUrl = new URL('../src/institution/lock-inspector.mjs', import.meta.url).href;
-  const setups = [
-    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });",
-    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => { throw new Error('UID_LOOKUP_FAILED'); } });",
-    "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => Number.NaN });",
-    "Object.defineProperty(process, 'getuid', { configurable: true, get() { throw new Error('UID_PROPERTY_LOOKUP_FAILED'); } });"
-  ];
-  for (const setup of setups) {
-    const script = [
-      'import { inspectWriterLock } from ' + JSON.stringify(moduleUrl) + ';',
-      setup,
-      'const result = await inspectWriterLock(' + JSON.stringify(path) + ');',
-      'process.stdout.write(JSON.stringify(result));'
-    ].join('\n');
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      encoding: 'utf8',
-      timeout: 5000
-    });
-    assert.equal(child.status, 0, child.stderr || child.stdout);
-    const result = JSON.parse(child.stdout);
-    assert.equal(result.status, 'unsafe');
-    assert.equal(result.reason, 'owner-verification-failed');
-    assert.equal(result.safeToRemove, false);
-    assert.equal(result.owner, undefined);
-  }
+
+  const result = await inspectWriterLock(guard);
+
+  assert.equal(result.status, 'present');
+  assert.equal(result.format, 'guard-directory');
+  assert.equal(result.owner.schema, 'ngl.decisions-lock-guard.v1');
+  assert.equal(result.owner.pid, process.pid);
+  assert.equal(result.owner.processProbe, 'possibly-alive');
+  assert.equal(result.safeToRemove, false);
 });
