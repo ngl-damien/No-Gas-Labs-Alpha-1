@@ -204,7 +204,7 @@ export function renderInstitution(container,projects,gate,{
   ? decisionPresentation : 'full';
  if(presentation!=='hidden'){
   const projection=projectDecisionDocket(gate);
-  container.append(el('h3',presentation==='full'?'FOUNDER GATE':'DECISION STATUS'));
+  container.append(el('h3',presentation==='full'?'FOUNDER GATE':'DECISION SERVICE · STATUS'));
   if(decisionsUnavailable||!projection.available){
    warning(container,'Decision ledger unavailable or malformed. No policy, decision count, disposition or approval is inferred; reconnect before taking a consequential action.');
    return;
