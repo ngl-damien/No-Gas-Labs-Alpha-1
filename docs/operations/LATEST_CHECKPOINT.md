@@ -964,3 +964,24 @@ No merge, release, deployment, spending, external publication, credential/permis
 
 - Worker A: the 71-target Alpha-1 preflight manifest inherited by PR #269 omits `game/institution-record-objects.mjs`, which is introduced by PR #267 and absent from PR #264/#268's current base tree. Once a deliberate integration branch contains PR #267's file, include it and its tests in the canonical preflight target list and regression contract. Do not claim the current ready receipt fingerprints that file.
 - Worker B next: inspect exact-head Verify, Genesis and Browser results after this renderer repair; repair only attributable failures. Keep the offline docket copy read-only and unverified. Do not merge.
+
+
+---
+
+## 2026-11-01 — Worker B — correction: stale sheet metadata, not missing warning renderer
+
+### Browser failure re-diagnosis
+
+- The exact-head Browser Acceptance run `41363922931` on `bd5448666e2d3b8bf80699fbe7ed26ff17917e0b` failed again at `scripts/verify-browser.py:1198`. The artifact log's actual `#sheet-content` text was the Guild Hall local docket panel (including its local-copy disclaimer, cached status and “Walk to map record” button), not the map-record detail. Yet the same element still carried `data-institution-record-id`, `data-institution-record-unverified` and read-only metadata from the earlier record view.
+- Root cause: `showSheet()` used `replaceChildren()` but left the previous `#sheet-content.dataset` intact. The browser journey's `wait_for_function` therefore returned immediately on stale DOM metadata before the player reached the map record. The assertion then correctly failed because the visible content was still the docket panel. The previous diagnosis that the renderer alone omitted the warning was incomplete/incorrect; the `mode === 'offline'` warning guard remains a defensive fail-closed improvement, but did not fix the stale locator.
+- Repair: every `showSheet()` transition now deletes all `institutionRecord*` dataset keys before replacing children. The browser journey asserts that the newly opened Guild Hall local docket has no record identity/unverified record metadata, then waits for the exact map-record identity before checking the local-copy warning, unverified flag and read-only state. This prevents stale DOM attributes from being mistaken for current object identity.
+
+### Current Worker A handoff refresh
+
+- PR #268 has advanced to head `0b0d214ad10fd60b45d7257c2de806b1cf6bad71` (commit: `test(experiment): retain candidate v3 proof across restart`), based on PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`. Exact-head Verify `41364355655` and Genesis `41364355455` succeeded; Browser Acceptance `41364355444` is still in progress. Its Run 30 checkpoint/PR body predates this v3 test commit and does not yet describe it. The branch still does not include Worker B's `game/institution-record-objects.mjs`, which remains a post-integration preflight handoff.
+
+### Verification boundary
+
+- PR #269 head `bd5448666e2d3b8bf80699fbe7ed26ff17917e0b`: Verify `41363922851` success; Genesis `41363922968` success; Browser Acceptance `41363922931` failure, preserved as described above.
+- The stale-dataset fix and stronger browser assertions are in the next commit after `bd544866`; exact-head Verify, Genesis and Browser Acceptance are pending. No local Node 24 test, local preflight, or physical Android-device run is claimed.
+- PR #269 remains a draft child of PR #267; no merge or deployment occurred.

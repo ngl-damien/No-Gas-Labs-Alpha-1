@@ -1180,6 +1180,9 @@ def shared(browser,url,data,out):
             a.locator('#places-button').click()
             a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
             a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall · local docket'",timeout=30000)
+            # A new docket sheet must not inherit the prior record's DOM identity.
+            expect(a.locator('#sheet-content')).not_to_have_attribute('data-institution-record-id')
+            expect(a.locator('#sheet-content')).not_to_have_attribute('data-institution-record-unverified')
             expect(a.locator('#sheet')).to_contain_text('LOCAL COPY · UNVERIFIED')
             offline_card=a.locator('[data-offline-decision-id="browser-docket-pending"]')
             expect(offline_card).to_be_visible()
