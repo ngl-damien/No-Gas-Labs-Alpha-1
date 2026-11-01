@@ -4,7 +4,7 @@ import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyR
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot} from './institution-view.mjs';
+import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot,hasDistinctChallengeActorId} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
@@ -1195,8 +1195,18 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const principalRole=viewer.role;
   const stillCurrent=()=>generation===evidenceArchiveGeneration&&mode==='shared'&&viewer.id===principalId&&viewer.role===principalRole&&!$('sheet').hidden&&content===$('sheet-content')&&$('sheet-kicker').textContent===kicker;
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
-    world,kernel,kernelUnavailable,shared:mode==='shared',
-    onOpenArtifact:(id,version)=>openCreation(id,version)
+    world,kernel,kernelUnavailable,shared:mode==='shared',viewer,
+    onOpenArtifact:(id,version)=>openCreation(id,version),
+    onOpenChallenge:guarded(draft=>{
+      const reports=(Array.isArray(world.events)?world.events:[]).filter(event=>
+        event?.type==='experiment-reported'&&event.id===draft.targetEventId&&
+        event.reportId===draft.reportId&&event.moonshotId===draft.moonshotId
+      );
+      if(reports.length!==1)throw new Error('The exact retained experiment report is no longer uniquely available. No challenge was opened.');
+      if(!hasDistinctChallengeActorId(reports[0].actor?.id,viewer.id))
+        throw new Error('A different actor ID must submit a challenge to this report.');
+      openExperimentChallenge(reports[0],draft.challengeText,draft.challengeType);
+    })
   });
   if(mode!=='shared'){
     renderHistory(null,false);
@@ -1392,7 +1402,7 @@ function openExperimentReport(proposal){
     }finally{submit.disabled=false;}
   });
 }
-function openExperimentChallenge(report){
+function openExperimentChallenge(report, initialChallengeText='', initialChallengeType=''){
   const content=showSheet('Challenge experiment report','RETAINED DISSENT · NOT ADJUDICATION');
   content.append(paragraph('Challenge the report’s evidence, method, scope or reproducibility. This appends an attributed counterargument without deleting or rewriting the report. It does not establish truth, independently verify the challenge, authorize work, or award XP.'));
   const form=node('form',{class:'field-card'},[]);
@@ -1405,7 +1415,9 @@ function openExperimentChallenge(report){
     node('option',{value:'scope',text:'Scope or applicability concern'}),
     node('option',{value:'other',text:'Other challenge'})
   ]);
-  const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.'});
+  if(['missing-evidence','methodology','contradiction','reproducibility','scope','other'].includes(initialChallengeType))
+    challengeType.value=initialChallengeType;
+  const challengeText=node('textarea',{id:'experiment-challenge-text',maxlength:'1000',rows:'4',placeholder:'State the specific gap, counterexample, or reason this report should not be accepted as verified.',value:typeof initialChallengeText==='string'?initialChallengeText.slice(0,1000):''});
   const evidenceSource=node('select',{id:'experiment-challenge-evidence-source'},[]);
   evidenceSource.append(node('option',{value:'',text:'No retained artifact linked'}));
   for(const creation of (Array.isArray(world.creations)?world.creations:[])){

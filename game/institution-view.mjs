@@ -195,7 +195,12 @@ export function projectAdversaryReviewDrafts(world) {
  });
 }
 
-function renderAdversaryReviewDrafts(container, world) {
+export function hasDistinctChallengeActorId(reportActorId, viewerId) {
+ return typeof reportActorId === "string" && reportActorId.length > 0 &&
+  typeof viewerId === "string" && viewerId.length > 0 && reportActorId !== viewerId;
+}
+
+function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) {
  const projection = projectAdversaryReviewDrafts(world);
  if (!projection.available ||
      (!projection.drafts.length && projection.omittedCount === 0 && projection.unavailableCount === 0)) return;
@@ -257,7 +262,29 @@ function renderAdversaryReviewDrafts(container, world) {
   select.dataset.adversaryDraftSelect = entry.responseId;
   select.onclick = () => { editor.focus(); editor.select(); };
   card.append(select);
-  card.append(el("p", "Edit and copy this text, then open the Moonshot Field and use its separate Challenge this report action. The game kernel requires a different actor from the report author. This draft is not saved; only that later action can append a challenge event. No event, XP, evidence, approval or authority has been created here."));
+  if (typeof onOpenChallenge === "function") {
+   const matchingReports = (Array.isArray(world.events) ? world.events : []).filter(event =>
+    event?.type === "experiment-reported" &&
+    event.id === draft.targetEventId &&
+    event.reportId === draft.reportId &&
+    event.moonshotId === draft.moonshotId
+   );
+   if (matchingReports.length === 1 && hasDistinctChallengeActorId(matchingReports[0].actor?.id, viewer?.id)) {
+    const review = el("button", "Review challenge in Moonshot Field →");
+    review.type = "button";
+    review.className = "list-button";
+    review.dataset.adversaryDraftReview = entry.responseId;
+    review.onclick = () => onOpenChallenge({
+     reportId: draft.reportId,
+     targetEventId: draft.targetEventId,
+     moonshotId: draft.moonshotId,
+     challengeType: draft.challengeType,
+     challengeText: editor.value
+    });
+    card.append(review);
+   }
+  }
+  card.append(el("p", "Edit the draft, then open its exact retained report in the Moonshot Field. You must review and submit the challenge yourself. The game kernel requires a different actor ID from the report author. No event, XP, evidence, approval or authority is created until you submit the separate challenge action."));
   container.append(card);
  }
 }
@@ -330,7 +357,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
 }
 
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge,viewer}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -353,7 +380,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    ?'No retained institutional or world events are recorded in this snapshot.'
    :'No retained world events are recorded in this local snapshot.'
  });
- renderAdversaryReviewDrafts(container, world);
+ renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer);
 }
 
 function validProjectSnapshot(projects) {

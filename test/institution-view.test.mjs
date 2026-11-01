@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
-import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts } from '../game/institution-view.mjs';
+import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts, hasDistinctChallengeActorId } from '../game/institution-view.mjs';
 import { projectDecisionDocket } from '../game/quests.mjs';
 
 function element(tag) {
@@ -488,15 +488,21 @@ test('Rejected or accessor-backed Adversary responses never become editable draf
   assert.equal(reads, 0);
 });
 
-test('Evidence Archive renders an editable human-review draft and an explicit select-to-copy action', () => withDocument(() => {
+test('Evidence Archive routes an edited Adversary draft to its exact retained challenge encounter', () => withDocument(() => {
   const { world } = worldWithAdversaryResponse();
+  const before = structuredClone(world);
   const root = element('div');
-  renderEvidenceArchive(root, { world });
+  let opened = null;
+  renderEvidenceArchive(root, {
+    world,
+    viewer: { id: 'founder-1', role: 'founder' },
+    onOpenChallenge: draft => { opened = draft; }
+  });
   const cards = walk(root).filter(item => item.dataset?.recordType === 'ADVERSARY_DRAFT');
   assert.equal(cards.length, 1);
-  assert.match(textOf(cards[0]), /human review/);
-  assert.match(textOf(cards[0]), /separate Challenge this report action/);
-  assert.match(textOf(cards[0]), /No event, XP, evidence, approval or authority has been created/);
+  assert.match(textOf(cards[0]), /human review/i);
+  assert.match(textOf(cards[0]), /must review and submit the challenge yourself/);
+  assert.match(textOf(cards[0]), /No event, XP, evidence, approval or authority is created until you submit/);
   const editor = walk(cards[0]).find(item => item.tagName === 'textarea');
   assert.equal(editor.value, 'The procedure does not specify a control condition.');
   const select = walk(cards[0]).find(item => item.dataset?.adversaryDraftSelect === 'response-1');
@@ -504,8 +510,31 @@ test('Evidence Archive renders an editable human-review draft and an explicit se
   select.onclick();
   assert.equal(editor.focused, true);
   assert.equal(editor.selected, true);
-  assert.equal(world.revision, 4);
-  assert.equal(world.events.length, 4);
+  editor.value = 'Founder-edited counterargument; verify the missing control condition.';
+  const review = walk(cards[0]).find(item => item.dataset?.adversaryDraftReview === 'response-1');
+  assert.ok(review);
+  review.onclick();
+  assert.deepEqual(opened, {
+    reportId: 'report-1',
+    targetEventId: 'report-event-1',
+    moonshotId: 'moonshot-1',
+    challengeType: 'methodology',
+    challengeText: 'Founder-edited counterargument; verify the missing control condition.'
+  });
+  assert.deepEqual(world, before, 'opening the review form cannot append or mutate world history');
+}));
+
+test('Evidence Archive withholds the challenge handoff from the same actor ID when the role label differs', () => withDocument(() => {
+  const { world } = worldWithAdversaryResponse();
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world,
+    viewer: { id: 'witness-1', role: 'founder' },
+    onOpenChallenge: () => assert.fail('the report author must not receive a self-challenge handoff')
+  });
+  const card = walk(root).find(item => item.dataset?.recordType === 'ADVERSARY_DRAFT');
+  assert.ok(card);
+  assert.equal(walk(card).some(item => item.dataset?.adversaryDraftReview === 'response-1'), false);
 }));
 
 test('world snapshot envelope rejects accessor-backed fields without executing getters', () => {
@@ -517,4 +546,12 @@ test('world snapshot envelope rejects accessor-backed fields without executing g
   });
   assert.equal(isInspectableWorldSnapshot(hostile), false);
   assert.equal(reads, 0);
+});
+
+
+test('challenge handoff identity uses actor IDs rather than role labels', () => {
+  assert.equal(hasDistinctChallengeActorId('witness-1', 'witness-1'), false);
+  assert.equal(hasDistinctChallengeActorId('witness-1', 'founder-1'), true);
+  assert.equal(hasDistinctChallengeActorId(null, 'founder-1'), false);
+  assert.equal(hasDistinctChallengeActorId('witness-1', ''), false);
 });

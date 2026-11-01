@@ -514,6 +514,158 @@ def institutional_locations(browser,url,out):
         context.close()
 
 
+def adversary_challenge_handoff(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+
+        moonshot=page.locator('[data-objective-id="founder-moonshot-proposal"]')
+        expect(moonshot).to_contain_text('OPEN')
+        moonshot.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'")
+        page.locator('#moonshot-title').fill('Can an Adversary challenge a retained report?')
+        page.locator('#moonshot-hypothesis').fill('A report records one bounded observation.')
+        page.locator('#moonshot-falsifier').fill('A missing control condition prevents reproduction.')
+        page.locator('#moonshot-evidence').fill('A retained report and a falsifiable challenge.')
+        page.locator('#propose-moonshot').click()
+        expect(page.locator('#sheet')).to_contain_text('PROPOSED · NOT EXECUTED')
+        close_sheet(page)
+
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to moonshot proposal: Can an Adversary challenge a retained report?',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can an Adversary challenge a retained report?')")
+        report_action=page.get_by_role('button',name='Record an experiment attempt →',exact=True)
+        expect(report_action).to_be_visible()
+        report_action.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Record an attempt.'")
+        page.locator('#experiment-procedure').fill('Repeat the bounded procedure and record its control condition.')
+        page.locator('#experiment-observation').fill('The retained observation lacks a control condition.')
+        page.locator('#experiment-outcome').select_option('inconclusive')
+        page.locator('#report-experiment').click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && Array.from(document.querySelectorAll('[data-research-activity-id]')).some(card=>card.textContent.includes('The retained observation lacks a control condition.'))")
+        author_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        report_events=[event for event in author_world['events'] if event.get('type')=='experiment-reported']
+        assert len(report_events)==1, 'The encounter must start from one retained report'
+        report=report_events[0]
+        author_id=report['actor']['id']
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2.actor')")==author_id
+        assert page.locator('#xp-count').text_content()=='0', 'A proposal and self-reported attempt must not award challenge XP'
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Adversary',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        packet=page.locator('[data-collaborator-role="adversary"]')
+        packet.locator('details.collaborator-packet summary').click()
+        prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
+        assert target_event==report['id'], 'The Adversary packet must identify the exact retained report'
+        response={
+            'targetEventId':target_event,
+            'challengeType':'methodology',
+            'challengeDraft':'The procedure does not specify a control condition.',
+            'distinctnessAssessment':'This is an unverified draft for human review against the supplied report.',
+            'duplicateOfEventIds':[],
+            'counterexample':'A controlled comparison could produce a different result.',
+            'evidenceNeeded':['A retained controlled replication.'],
+            'unknowns':['No independent measurement is supplied.']
+        }
+        valid_response_text=json.dumps(response)
+        response_details=packet.locator('details.collaborator-response')
+        response_details.locator('summary').click()
+        response_field=response_details.locator('textarea[aria-label="Adversary response JSON"]')
+        expect(response_field).to_be_visible()
+        response_field.fill(valid_response_text)
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+        packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY')
+        archived_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        archived_events=archived_world['events']
+        assert archived_events[-1]['type']=='collaborator-response-recorded'
+        assert archived_events[-1]['validationStatus']=='valid-for-human-review'
+        assert archived_events[-1]['actor']['id']==author_id
+        assert archived_world['xp']==0
+        assert not [event for event in archived_events if event.get('type')=='experiment-challenged'], 'Archiving an NPC response must not submit a challenge'
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Adversary',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        author_draft=page.locator('[data-record-type="ADVERSARY_DRAFT"]')
+        expect(author_draft).to_be_visible()
+        expect(author_draft.get_by_role('button',name='Review challenge in Moonshot Field →',exact=True)).to_have_count(0)
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2.actor')")==author_id, 'The report author identity must remain unchanged for this negative check'
+
+        # Switch only the disposable browser fixture's local actor ID. This is
+        # not identity proof; it tests the game's actor-ID boundary.
+        reviewer_id='browser-adversary-reviewer'
+        page.evaluate("(id)=>localStorage.setItem('ngl.common-ground.v2.actor',id)",reviewer_id)
+        page.reload(wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2.actor')")==reviewer_id
+        reviewer_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        retained_report=next(event for event in reviewer_world['events'] if event.get('type')=='experiment-reported')
+        assert retained_report['actor']['id']==author_id and author_id!=reviewer_id
+
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Adversary',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        draft_card=page.locator('[data-record-type="ADVERSARY_DRAFT"]')
+        expect(draft_card).to_be_visible()
+        draft_editor=draft_card.locator('textarea.adversary-draft-editor')
+        edited_text='The retained observation omits the control condition needed for reproduction.'
+        draft_editor.fill(edited_text)
+        review_button=draft_card.get_by_role('button',name='Review challenge in Moonshot Field →',exact=True)
+        expect(review_button).to_be_visible()
+        before_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,publicationXp:document.querySelector('#xp-count')?.textContent}}")
+        review_button.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Challenge experiment report'")
+        expect(page.locator('#experiment-challenge-type')).to_have_value('methodology')
+        expect(page.locator('#experiment-challenge-text')).to_have_value(edited_text)
+        after_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,publicationXp:document.querySelector('#xp-count')?.textContent}}")
+        assert after_review==before_review, 'Opening the human review form must not append an event or award progress'
+        assert not [event for event in reviewer_world['events'] if event.get('type')=='experiment-challenged']
+
+        final_text='The report omits the control condition required to reproduce its observation.'
+        page.locator('#experiment-challenge-text').fill(final_text)
+        page.locator('#challenge-experiment-report').click()
+        page.wait_for_function("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return world.events.some(event=>event.type==='experiment-challenged')}")
+        challenged_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        challenges=[event for event in challenged_world['events'] if event.get('type')=='experiment-challenged']
+        assert len(challenges)==1, 'Only the explicit Preserve challenge action may append one challenge'
+        challenge=challenges[0]
+        assert challenge['actor']['id']==reviewer_id and challenge['actor']['role']=='founder'
+        assert challenge['reportId']==report['reportId'] and challenge['moonshotId']==report['moonshotId']
+        assert challenge['challengeType']=='methodology' and challenge['challengeText']==final_text
+        assert not any(key in challenge for key in ('outcome','status','adjudication','verdict')), 'A challenge must remain dissent, not a verdict'
+        assert challenged_world['revision']==before_review['revision']+1
+        assert len(challenged_world['events'])==len(before_review['eventIds'])+1
+        assert [event['id'] for event in challenged_world['events'] if event['id'] not in before_review['eventIds']]==[challenge['id']]
+        assert challenged_world['xp']==before_review['worldXp']==0, 'A challenge must not mint institution-wide publication XP'
+        expect(page.locator('#xp-count')).to_have_text('0')
+        challenge_card=page.locator('[data-research-activity-id]').filter(has_text=final_text).last
+        expect(challenge_card).to_be_visible()
+        expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
+        page.screenshot(path=str(out/'adversary-challenge-handoff.png'))
+        character_button_label=page.locator('#character-button').get_attribute('aria-label')
+        assert character_button_label and '25 character XP' in character_button_label, character_button_label
+        close_sheet(page)
+        character_xp=character_xp_components(page)
+        assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        assert not errors,errors
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
+    finally:
+        context.close()
+
+
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
@@ -1255,6 +1407,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    record(adversary_challenge_handoff(browser,url,out))
                     record(shared(browser,url,data,out))
                     record(town_square_social(browser,url,out))
                     record(player_guild_membership(browser,url,out))
