@@ -541,7 +541,11 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, requireExplicitFounderKey = process.env.NODE_ENV === 'production' } = {}) {
+  // A production host must not mint its own Founder bearer credential.
+  if (requireExplicitFounderKey && (typeof founderKey !== 'string' || founderKey.length < 16 || Buffer.byteLength(founderKey) > 1024)) {
+    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY of 16–1024 bytes is required for production or network-bound startup; automatic Founder-key generation is disabled.'), { code: 'FOUNDER_KEY_REQUIRED' });
+  }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
   await assertNoSymlinkPathComponents(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -905,7 +909,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport = process.env.NGL_INSTITUTION_REPORT ? await readInstitutionReport(resolve(process.env.NGL_INSTITUTION_REPORT)) : null;
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
+    const requireExplicitFounderKey = process.env.NODE_ENV === 'production' || process.env.PORT !== undefined || !['127.0.0.1', 'localhost', '::1'].includes(host);
+    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, requireExplicitFounderKey });
     await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
     const address = server.address();
     console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
@@ -914,7 +919,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
-    console.error(error.code === 'SERVICE_LOCKED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
+    console.error(error.code === 'SERVICE_LOCKED' || error.code === 'FOUNDER_KEY_REQUIRED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
     process.exitCode = 1;
   }
 }
