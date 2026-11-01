@@ -477,7 +477,7 @@ test('Evidence Archive Chronicle rechecks response bytes instead of displaying a
   response.responseText = JSON.stringify({ externalText: 'This response is outside the Adversary contract.' });
   response.responseReceipt = sha256Receipt(response.responseText);
   const root = element('div');
-  renderEvidenceArchive(root, { world, shared: false, viewer: founder });
+  renderEvidenceArchive(root, { world, shared: false, viewer: { id: 'founder-1', role: 'founder' } });
   const rendered = textOf(root);
   assert.match(rendered, /REJECTED · PRESERVED/);
   assert.match(rendered, /Recorded status: valid-for-human-review; recomputed: rejected/);
