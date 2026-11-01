@@ -519,6 +519,17 @@ test('Adversary draft bridge revalidates prior challenge identity, content, and 
   assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, changedChallenge).reason,
     'DUPLICATE_REFERENCE_SOURCE_MISMATCH');
 
+
+  const hiddenEvidenceReference = structuredClone(packets.world);
+  Object.defineProperty(hiddenEvidenceReference.events[2], 'evidenceCreationId', {
+    value: 'hidden-evidence-reference',
+    enumerable: false
+  });
+  hiddenEvidenceReference.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, hiddenEvidenceReference).reason,
+    'DUPLICATE_REFERENCE_SOURCE_MISMATCH',
+    'a hidden evidence reference cannot be normalized to null');
+
   const duplicateChallengeId = structuredClone(packets.world);
   duplicateChallengeId.events.push({
     ...structuredClone(duplicateChallengeId.events[2]),
