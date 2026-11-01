@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
@@ -70,6 +71,32 @@ test('preflight blocks a missing scoped target instead of returning a ready rece
       item.path === 'scripts/missing.mjs' && item.reason.includes('cannot read')
     ));
     assert.ok(!result.files.some(file => file.path === 'scripts/missing.mjs'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects FIFO targets without blocking on a writer', { skip: process.platform === 'win32' }, async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const fifoPath = join(root, 'scripts/worker.pipe');
+    execFileSync('mkfifo', [fifoPath]);
+    const moduleUrl = new URL('../scripts/validate-agent-governance.mjs', import.meta.url).href;
+    const program = [
+      `import { runPreflight } from ${JSON.stringify(moduleUrl)};`,
+      `const result = await runPreflight({ root: ${JSON.stringify(root)}, paths: ['scripts/worker.pipe'], checkpoint: 'CHECKPOINT.md' });`,
+      'process.stdout.write(JSON.stringify(result));'
+    ].join('\\n');
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
+      encoding: 'utf8',
+      timeout: 5000
+    });
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 0, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/worker.pipe' && item.reason.includes('regular file')
+    ));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
