@@ -12,7 +12,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
   await mkdir(join(root, 'docs/operations'), { recursive: true });
   await mkdir(join(root, '.github'), { recursive: true });
-  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nPreflight command: npm run agent:preflight -- --path scripts/worker.mjs --checkpoint CHECKPOINT.md\nLeave a durable, factual record.\n');
   await writeFile(join(root, protocolPath), protocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
