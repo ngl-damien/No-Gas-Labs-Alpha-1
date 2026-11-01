@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { projectInstitutionRecordWorldObjects, hasCompleteInstitutionKernelSnapshot } from "../game/institution-record-objects.mjs";
+import { projectDecisionDocket } from "../game/quests.mjs";
 import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
 import { createHash } from "node:crypto";
 
@@ -726,4 +728,323 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /stored validation label is not trusted/i);
+});
+
+
+test("institution records become deterministic read-only objects at their real institutions, with failures marked for review", () => {
+  const { world, kernel } = fixture();
+  kernel.events.push({
+    id: "observe-passed-1", type: "observe", workId: "work-2",
+    actor: "local-byte-verifier", at: "2026-10-26T10:08:00.000Z", passed: true,
+  });
+  const before = structuredClone({ world, kernel });
+  const institutionSummary = {
+    schema: "ngl.shared-institution-summary.v1",
+    kernel: {
+      schema: "ngl.institution.v1",
+      revision: kernel.events.length,
+      eventCount: kernel.events.length,
+      events: kernel.events,
+    },
+  };
+  assert.equal(hasCompleteInstitutionKernelSnapshot(institutionSummary), true);
+  const places = [
+    { id: "publication_house", name: "Publication House", x: 250, y: 870 },
+    { id: "evidence_archive", name: "Evidence Archive", x: 990, y: 170 },
+    { id: "decision_chamber", name: "Decision Chamber", x: 780, y: 180 },
+  ];
+  const options = { world, institutionSummary, places, isWalkable: () => true, buildings: [] };
+  const projection = projectInstitutionRecordWorldObjects(options);
+  const repeated = projectInstitutionRecordWorldObjects({
+    ...options,
+    world: structuredClone(world),
+    institutionSummary: structuredClone(institutionSummary),
+  });
+  const records = new Map(projection.objects.map(record => [record.entryId, record]));
+
+  assert.equal(records.get("world:publish-v1")?.locationId, "publication_house");
+  assert.equal(records.get("world:report-v1")?.locationId, "evidence_archive");
+  assert.equal(records.get("kernel:observe-1")?.locationId, "evidence_archive");
+  assert.equal(records.get("kernel:adjudicate-1")?.locationId, "decision_chamber");
+  assert.equal(records.get("kernel:observe-1")?.markerTone, "review",
+    "a failed local byte check is visually flagged for review, not promoted to a truth verdict");
+  assert.equal(records.get("kernel:adjudicate-1")?.markerTone, "review",
+    "a recorded rejection remains visible as a review-worthy decision");
+  assert.equal(records.get("kernel:observe-passed-1")?.markerTone, "neutral");
+  assert.equal(records.get("world:publish-v1")?.markerTone, "neutral");
+  assert.ok(Object.isFrozen(projection));
+  assert.ok(Object.isFrozen(projection.objects));
+  assert.ok(projection.objects.every(Object.isFrozen));
+  assert.deepEqual(projection, repeated, "map placement and labels are deterministic for the same retained snapshot");
+  assert.deepEqual({ world, kernel }, before, "projection must not append events or mutate source records");
+});
+
+test("institution map objects reject ambiguous identities and refuse to project a partial kernel snapshot", () => {
+  const actor = { id: "player-1", name: "Player" };
+  const at = "2026-11-01T12:00:00.000Z";
+  const world = {
+    creations: [],
+    events: [
+      { id: "duplicate", type: "message-posted", actor, at },
+      { id: "duplicate", type: "message-posted", actor, at },
+      { id: "bad id", type: "message-posted", actor, at },
+      { id: "bad-time", type: "message-posted", actor, at: "not-a-time" },
+      { id: "good", type: "message-posted", actor, at },
+    ],
+    reports: [],
+    contributions: [],
+  };
+  const partialEvents = [{
+    id: "partial-claim", type: "claim", workId: "work-1",
+    actor: "Founder", at, action: "preserve-artifact-bytes",
+    subject: { id: "creation-1", version: 1 },
+  }];
+  const partialSummary = {
+    schema: "ngl.shared-institution-summary.v1",
+    kernel: { schema: "ngl.institution.v1", revision: 2, eventCount: 2, events: partialEvents },
+  };
+  assert.equal(hasCompleteInstitutionKernelSnapshot(partialSummary), false);
+  const projection = projectInstitutionRecordWorldObjects({
+    world,
+    institutionSummary: partialSummary,
+    places: [{ id: "commons", name: "The Commons", x: 600, y: 500 }],
+    isWalkable: () => true,
+    buildings: [],
+  });
+
+  assert.equal(projection.kernelPresent, true);
+  assert.equal(projection.kernelComplete, false);
+  assert.equal(projection.objects.some(record => record.source === "kernel"), false,
+    "an incomplete kernel response must not be presented as a complete institutional history");
+  assert.equal(projection.rejected, 4);
+  assert.deepEqual(projection.objects.map(record => record.eventId), ["good"]);
+  assert.equal(projection.objects[0].locationId, "commons");
+
+  const accessorEvents = new Array(1);
+  Object.defineProperty(accessorEvents, "0", {
+    enumerable: true,
+    configurable: true,
+    get() { throw new Error("kernel event getter must not execute"); },
+  });
+  const accessorSummary = {
+    schema: "ngl.shared-institution-summary.v1",
+    kernel: { schema: "ngl.institution.v1", revision: 1, eventCount: 1, events: accessorEvents },
+  };
+  assert.equal(hasCompleteInstitutionKernelSnapshot(accessorSummary), false,
+    "accessor-backed kernel slots must fail closed without executing getters");
+});
+
+test("institution records retain overflow for direct inspection and avoid reserved map positions", () => {
+  const world = {
+    creations: [],
+    events: Array.from({ length: 30 }, (_, index) => ({
+      id: "commons-" + (index + 1),
+      type: "message-posted",
+      actor: { id: "player-1", name: "Player" },
+      at: new Date(Date.UTC(2026, 10, 1, 0, index)).toISOString(),
+    })),
+    reports: [],
+    contributions: [],
+  };
+  const options = {
+    world,
+    places: [{ id: "commons", name: "The Commons", x: 600, y: 500 }],
+    reservedPoints: [],
+    isWalkable: () => true,
+    buildings: [],
+  };
+  const projection = projectInstitutionRecordWorldObjects(options);
+  const repeated = projectInstitutionRecordWorldObjects({ ...options, world: structuredClone(world) });
+  const visible = projection.objects.filter(record => record.mapVisible);
+
+  assert.equal(projection.objects.length, 30);
+  assert.equal(visible.length, 24, "only the newest 24 records per institution receive pins");
+  assert.equal(projection.overflow, 6, "older records remain in the inspectable list");
+  assert.equal(new Set(visible.map(record => record.x + "," + record.y)).size, 24,
+    "visible record objects must not overlap one another");
+  assert.ok(projection.objects.filter(record => !record.mapVisible).every(record => record.entryId.startsWith("world:")));
+  assert.deepEqual(projection, repeated);
+
+  const reserved = { x: visible[0].x, y: visible[0].y };
+  const rerouted = projectInstitutionRecordWorldObjects({ ...options, reservedPoints: [reserved] });
+  assert.ok(rerouted.objects[0].mapVisible);
+  assert.notDeepEqual([rerouted.objects[0].x, rerouted.objects[0].y], [reserved.x, reserved.y],
+    "a map record must not take a reserved collaborator or research-object position");
+
+  const noWalkableSlots = projectInstitutionRecordWorldObjects({ ...options, isWalkable: () => false });
+  assert.equal(noWalkableSlots.objects.length, 30);
+  assert.equal(noWalkableSlots.objects.filter(record => record.mapVisible).length, 0);
+  assert.equal(noWalkableSlots.overflow, 30);
+});
+
+
+function decisionDocketSnapshot() {
+  const pending = {
+    id: 'decision-pending',
+    title: 'A bounded proposal awaiting review',
+    status: 'PENDING',
+    revision: 1,
+    createdAt: '2026-10-31T12:00:00.000Z',
+    createdBy: 'damien',
+    expiresAt: '2026-10-31T13:00:00.000Z',
+    expiredAt: null,
+    policy: { id: 'policy-1', revision: 1 },
+    disposition: null,
+    evaluation: { bytes: 'PRIVATE EVALUATION BYTES' },
+    risks: ['PRIVATE RISK'],
+    rollback: 'PRIVATE ROLLBACK',
+    proposedEffect: 'PRIVATE EFFECT'
+  };
+  const rejected = {
+    ...pending,
+    id: 'decision-rejected',
+    title: 'A rejected proposal remains inspectable',
+    status: 'REJECTED',
+    revision: 2,
+    createdAt: '2026-10-31T11:00:00.000Z',
+    disposition: {
+      action: 'REJECT',
+      actorId: 'damien',
+      requestId: 'request-reject-1',
+      decidedAt: '2026-10-31T11:30:00.000Z'
+    }
+  };
+  return {
+    schema: 'ngl.decisions.snapshot.v1',
+    revision: 4,
+    head: 'a'.repeat(64),
+    policy: {
+      id: 'policy-1',
+      reviewWindowMs: 3600000,
+      revision: 1,
+      setAt: '2026-10-31T10:00:00.000Z',
+      basis: 'PRIVATE POLICY BASIS'
+    },
+    decisions: [rejected, pending],
+    counts: { PENDING: 1, APPROVED: 0, REJECTED: 1, DEFERRED: 0, EXPIRED: 0 },
+    audit: [{ detail: 'PRIVATE AUDIT ENTRY' }]
+  };
+}
+
+test('Decision Docket proposals become sanitized, deterministic Decision Chamber map objects', () => {
+  const decisionSnapshot = decisionDocketSnapshot();
+  const before = structuredClone(decisionSnapshot);
+  const options = {
+    world: { creations: [], events: [], reports: [], contributions: [], discoveries: [] },
+    decisionDocketProjection: projectDecisionDocket(decisionSnapshot),
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    reservedPoints: [],
+    isWalkable: () => true,
+    buildings: []
+  };
+  const projection = projectInstitutionRecordWorldObjects(options);
+  const repeated = projectInstitutionRecordWorldObjects({
+    ...options,
+    decisionDocketProjection: projectDecisionDocket(structuredClone(decisionSnapshot))
+  });
+  const pending = projection.objects.find(record => record.decisionId === 'decision-pending');
+  const rejected = projection.objects.find(record => record.decisionId === 'decision-rejected');
+
+  assert.equal(projection.decisionDocketAvailable, true);
+  assert.equal(projection.decisionDocketRevision, 4);
+  assert.equal(projection.decisionDocketCount, 2);
+  assert.equal(projection.decisionDocketOmittedCount, 0);
+  assert.ok(pending && rejected, 'both pending and rejected proposals remain inspectable');
+  assert.equal(pending.source, 'decision-docket');
+  assert.equal(pending.eventId, null, 'a docket record must not be misrepresented as a world event');
+  assert.equal(pending.locationId, 'decision_chamber');
+  assert.equal(pending.mapVisible, true);
+  assert.equal(pending.markerTone, 'neutral');
+  assert.equal(rejected.markerTone, 'review', 'rejection is review-worthy, not a truth verdict');
+  assert.match(rejected.warning, /not a truth verdict/);
+  assert.match(pending.detail, /not a world event/);
+  assert.doesNotMatch(JSON.stringify(projection), /PRIVATE EVALUATION|PRIVATE RISK|PRIVATE ROLLBACK|PRIVATE EFFECT|PRIVATE POLICY BASIS|PRIVATE AUDIT ENTRY/);
+  assert.deepEqual(decisionSnapshot, before, 'projection must not mutate the durable service snapshot');
+  assert.deepEqual(projection, repeated, 'the same docket snapshot must place objects deterministically');
+});
+
+test('an unavailable or inconsistent Decision Docket never becomes an empty map history', () => {
+  const invalid = decisionDocketSnapshot();
+  invalid.counts.PENDING = 0;
+  const projection = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection: projectDecisionDocket(invalid),
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+  const absent = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection: projectDecisionDocket(null),
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+
+  assert.equal(projection.decisionDocketAvailable, false);
+  assert.equal(projection.decisionDocketReason, 'count-mismatch');
+  assert.equal(projection.objects.length, 0);
+  assert.equal(projection.decisionDocketCount, null);
+  assert.equal(absent.decisionDocketAvailable, false);
+  assert.equal(absent.decisionDocketReason, 'missing-or-unsafe-snapshot');
+  assert.equal(absent.objects.length, 0);
+});
+
+
+test('Decision Docket map projection preserves the bounded 20-record window and omitted count', () => {
+  const base = decisionDocketSnapshot();
+  const pending = base.decisions.find(decision => decision.status === 'PENDING');
+  const decisions = Array.from({ length: 21 }, (_, index) => ({
+    ...pending,
+    id: `decision-window-${String(index).padStart(2, '0')}`,
+    title: `Decision window proposal ${index}`,
+    createdAt: `2026-10-31T12:${String(index).padStart(2, '0')}:00.000Z`
+  }));
+  const snapshot = {
+    ...base,
+    revision: 22,
+    decisions,
+    counts: { PENDING: 21, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+  const decisionDocketProjection = projectDecisionDocket(snapshot);
+  const projection = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection,
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+
+  assert.equal(decisionDocketProjection.available, true);
+  assert.equal(decisionDocketProjection.decisionCount, 21);
+  assert.equal(decisionDocketProjection.decisions.length, 20);
+  assert.equal(decisionDocketProjection.omittedDecisionCount, 1);
+  assert.equal(projection.decisionDocketAvailable, true);
+  assert.equal(projection.decisionDocketCount, 21);
+  assert.equal(projection.decisionDocketOmittedCount, 1);
+  assert.equal(projection.objects.filter(record => record.source === 'decision-docket').length, 20);
+  assert.ok(projection.objects.every(record => record.locationId === 'decision_chamber' && record.mapVisible));
+});
+
+test('a forged accessor-backed Decision Docket projection is ignored without executing its getter', () => {
+  let getterCalls = 0;
+  const forged = {};
+  Object.defineProperty(forged, 'available', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return true;
+    }
+  });
+  const projection = projectInstitutionRecordWorldObjects({
+    world: { creations: [], events: [] },
+    decisionDocketProjection: forged,
+    places: [{ id: 'decision_chamber', name: 'Decision Chamber', x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: []
+  });
+
+  assert.equal(getterCalls, 0);
+  assert.equal(projection.decisionDocketAvailable, false);
+  assert.equal(projection.objects.length, 0);
 });

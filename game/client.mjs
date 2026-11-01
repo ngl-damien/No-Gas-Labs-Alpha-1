@@ -12,7 +12,7 @@ import {projectCollaboratorResponseWorldObjects} from './collaborator-world-obje
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,projectPlayerGuilds,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,decisionDocketRequestGeneration=0,pendingSharedActionInFlight=null;
 let currentCharacterRecord=null,currentQuestTrail=null,currentCollaboratorResponseObjects=null;
 async function openInstitution(locationId = null, focusDecisionId = null) {
   const contexts = {
@@ -49,6 +49,8 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
   );
   const decisionProjection = gateResult.available
     ? projectDecisionDocket(gateResult.data) : projectDecisionDocket(null);
+  decisionDocketRequestGeneration++;
+  view.setDecisionDocket(decisionProjection);
   renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
     world: snapshot.world,
@@ -97,6 +99,35 @@ function openInstitutionLocation(id) {
   return openGuide(id);
 }
 
+function openInstitutionRecord(entryId) {
+  const record = Array.isArray(view.institutionRecordObjects)
+    ? view.institutionRecordObjects.find(item => item.entryId === entryId) : null;
+  if (!record) {
+    const unavailable = showSheet('Record unavailable', 'INSTITUTIONAL HISTORY');
+    unavailable.append(paragraph('This retained record is not present in the current safe map projection. The missing record is not being treated as an empty history.', 'evidence-warning'));
+    return;
+  }
+  const content = showSheet(record.title, `${record.category} · ${record.locationName}`);
+  content.dataset.institutionRecordId = record.entryId;
+  content.dataset.institutionRecordLocationId = record.locationId;
+  content.dataset.institutionRecordEventType = record.eventType;
+  content.dataset.institutionRecordReadOnly = 'true';
+  if (typeof record.decisionId === 'string') content.dataset.institutionRecordDecisionId = record.decisionId;
+  content.append(paragraph(record.summary));
+  if (record.detail) content.append(paragraph(record.detail));
+  content.append(paragraph(`${record.source.toUpperCase()} · ${record.eventType} · ${record.actor} · ${record.at}`, 'attribution'));
+  content.append(node('div', { class: 'receipt' }, [node('code', { text: record.entryId })]));
+  if (record.warning) content.append(paragraph(record.warning, 'evidence-warning'));
+  if (record.targetAvailable && record.creationId && Number.isInteger(record.version)) {
+    content.append(button(`Open retained ${record.targetTitle} · v${record.version} →`, () => openCreation(record.creationId, record.version), { class: 'list-button' }));
+  }
+  if (typeof record.decisionId === 'string') {
+    content.append(button('Open Decision Chamber record →', guarded(() => openInstitution('decision_chamber', record.decisionId)), { class: 'list-button' }));
+  }
+  content.append(paragraph('Inspecting or routing to a retained record is read-only. It does not append an event, award XP, adjudicate a claim, or grant authority.', 'form-help'));
+  content.append(button(`Walk to ${record.locationName}`, () => { closeSheet(); view.goTo(record.locationId); }, { class: 'primary-button' }));
+}
+
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
   const pageLocation=globalThis.location;
@@ -118,6 +149,7 @@ function handleError(error){console.error(error);toast(error.message||'That acti
 function guarded(fn){return async(...args)=>{try{return await fn(...args)}catch(error){handleError(error)}}}
 function download(name,content,type='text/html'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=node('a',{href:url,download:name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function request(path,body){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
+async function refreshDecisionDocket(){const generation=++decisionDocketRequestGeneration;const controller=typeof AbortController==='function'?new AbortController():null;const timeout=controller?setTimeout(()=>controller.abort(),2500):null;let snapshot=null;try{const response=await fetch('/api/decisions',{method:'GET',headers:{},credentials:'same-origin',...(controller?{signal:controller.signal}:{})});if(response.ok)snapshot=await response.json()}catch{}finally{if(timeout!==null)clearTimeout(timeout)}if(mode==='shared'&&generation===decisionDocketRequestGeneration)view.setDecisionDocket(projectDecisionDocket(snapshot))}
 function stableActionJSON(value){if(Array.isArray(value))return value.map(stableActionJSON);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(key=>value[key]!==undefined).sort().map(key=>[key,stableActionJSON(value[key])]));return value}
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
@@ -158,9 +190,9 @@ function setConnection(connected){$('connection-dot').classList.toggle('online',
 function persist(next){try{const existing=localStorage.getItem(STORAGE);if(existing)localStorage.setItem(BACKUP,existing);localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
-function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
+function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const principalChanged=viewer.id!==dto.viewer.id||viewer.role!==dto.viewer.role;const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';if(principalChanged){decisionDocketRequestGeneration++;view.setDecisionDocket(null);}world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
 async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
+const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='institution-record')openInstitutionRecord(interaction.recordId);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
   const roleId=interaction.roleId;
   if(roleId==='archivist'||roleId==='adversary')openEvidenceArchive(null,roleId);
   else if(roleId==='tutor')openAcademy(roleId);
@@ -250,8 +282,8 @@ if(proposalObject){
  }
 }entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
 function render(){view.setDiscoveryScope(JSON.stringify([world?.id??null,viewer?.id??null,viewer?.role??null]));currentCollaboratorResponseObjects=projectCollaboratorResponseWorldObjects(world);currentQuestTrail=getQuestTrail(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects});currentCharacterRecord=projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});view.setWorld(world,mode==='shared'?institution:null,currentCollaboratorResponseObjects);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=currentCharacterRecord;const armorBearer=character.skills.find(skill=>skill.id==='armor-bearer');const armorSteps=Number.isSafeInteger(armorBearer?.count)?armorBearer.count:0;const armorTotal=FIELD_EQUIPMENT_SLOTS.length;const characterButton=$('character-button');characterButton.querySelector('.character-level').textContent=String(character.level);characterButton.querySelector('.character-status').textContent=`Armor ${armorSteps}/${armorTotal}`;characterButton.dataset.armorBearerSteps=String(armorSteps);characterButton.dataset.armorBearerTotal=String(armorTotal);characterButton.title='Level '+character.level+' · '+character.xp+' character XP · Armor Bearer '+armorSteps+'/'+armorTotal+' evidence-derived field-kit steps';characterButton.setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP, Armor Bearer '+armorSteps+' of '+armorTotal+' evidence-derived field-kit steps');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=currentQuestTrail;const quest=getActiveQuest(world,viewer,questTrail);const mapAction=quest.action==='trail'?quest.nextAction:questTrail.find(item=>!item.complete)?.action||null;view.setQuestAction(mapAction,quest.title);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
-async function startPrivate(){stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
-async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto);$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
+async function startPrivate(){stream?.close();stream=null;mode='private';decisionDocketRequestGeneration++;view.setDecisionDocket(null);viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
+async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto);$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);void refreshDecisionDocket();toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
 function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
@@ -436,6 +468,31 @@ if(responseObjects.length){
   content.append(row);
  }
 }
+ const recordObjects=Array.isArray(view.institutionRecordObjects)?view.institutionRecordObjects:[];
+ if(mode==='shared'&&!view.institutionRecordKernelComplete){
+  content.append(paragraph('The shared institutional kernel snapshot is unavailable or incomplete. No partial kernel records are mapped as a complete history; reconnect and inspect the institutional register.','evidence-warning'));
+ }
+ if(view.institutionRecordMalformed>0){
+  content.append(paragraph(`${view.institutionRecordMalformed} malformed retained event slot(s) remain in the Chronicle and were not made into map objects.`,'evidence-warning'));
+ }
+ if(recordObjects.length){
+  content.append(paragraph('Retained events appear as read-only objects at the institution that handles them. Reports, failed observations, revocations and dissent keep their original labels. A red marker means review, not a truth verdict. The 24 newest eligible records per location receive map pins; older or unplaceable records open directly from this list.','form-help'));
+  content.append(node('h3',{class:'section-title',text:'INSTITUTIONAL RECORDS · WORLD OBJECTS'}));
+  const visibleRecords=recordObjects.slice(0,60);
+  for(const object of visibleRecords){
+   const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id,'institution-record');else openInstitutionRecord(object.entryId)},{class:'list-button','aria-label':`Inspect retained institutional record: ${object.title}`});
+   row.dataset.institutionRecordId=object.entryId;
+   row.dataset.institutionRecordEventType=object.eventType;
+   row.dataset.institutionRecordLocationId=object.locationId;
+   row.dataset.institutionRecordMapVisible=String(object.mapVisible);
+   row.dataset.institutionRecordSource=object.source;
+   row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${object.category} · ${object.locationName} · ${object.source.toUpperCase()} · ${object.at}`}),node('small',{text:object.mapVisible?'Walk to its map object':'Open this retained record directly'})]),node('span',{class:'arrow',text:'↗'}));
+   content.append(row);
+  }
+  if(recordObjects.length>visibleRecords.length){
+   content.append(paragraph(`${recordObjects.length-visibleRecords.length} older retained records are outside this compact route list; inspect the Evidence Archive or the relevant institution for the full chronicle.`,'form-help'));
+  }
+ }
 }
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[

@@ -719,8 +719,20 @@ function decisionDocketIdentifier(value) {
     !['__proto__', 'constructor', 'prototype'].includes(value);
 }
 
+const DECISION_DOCKET_PROJECTIONS = new WeakSet();
+
+function sealDecisionDocketProjection(projection) {
+  const sealed = Object.freeze(projection);
+  DECISION_DOCKET_PROJECTIONS.add(sealed);
+  return sealed;
+}
+
+export function isDecisionDocketProjection(value) {
+  return value !== null && typeof value === 'object' && DECISION_DOCKET_PROJECTIONS.has(value);
+}
+
 function unavailableDecisionDocket(reason) {
-  return Object.freeze({
+  return sealDecisionDocketProjection({
     available: false,
     reason,
     revision: null,
@@ -862,7 +874,7 @@ export function projectDecisionDocket(snapshot) {
     left.id.localeCompare(right.id)
   );
   const counts = Object.freeze({ ...observedCounts });
-  return Object.freeze({
+  return sealDecisionDocketProjection({
     available: true,
     reason: null,
     revision: source.revision,
