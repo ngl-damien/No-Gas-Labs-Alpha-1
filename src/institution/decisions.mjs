@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
 import { link, mkdir, open, rename, unlink, lstat, rmdir } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
@@ -183,12 +184,69 @@ function reduce(previous, event) {
   return { state, result };
 }
 
+async function renameDurably(source, target) {
+  if (process.platform !== 'win32') return rename(source, target);
+
+  // The temporary envelope is already fsync'd. Windows does not support Node's
+  // directory-handle fsync on the hosted runner (EPERM), so use a same-directory
+  // MoveFileExW replacement with MOVEFILE_WRITE_THROUGH. Do not enable COPY_ALLOWED:
+  // this boundary must remain a same-volume rename, never a copy/delete fallback.
+  if (resolve(parse(source).dir).toLowerCase() !== resolve(parse(target).dir).toLowerCase()) {
+    fail('INVALID_CONFIG', 'Windows decision replacement must remain in one directory');
+  }
+  const systemRoot = process.env.SystemRoot;
+  if (typeof systemRoot !== 'string' || !systemRoot) {
+    fail('WINDOWS_DURABILITY_UNAVAILABLE', 'Windows write-through replacement requires SystemRoot');
+  }
+  const executable = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -TypeDefinition @'",
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'public static class NglDecisionDurableRename {',
+    '  [DllImport("kernel32.dll", EntryPoint = "MoveFileExW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]',
+    '  public static extern bool MoveFileEx(string existingFileName, string newFileName, uint flags);',
+    '}',
+    "'@",
+    "if (-not [NglDecisionDurableRename]::MoveFileEx($env:NGL_DECISION_RENAME_SOURCE, $env:NGL_DECISION_RENAME_TARGET, [uint32]9)) {",
+    "  $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()",
+    "  throw ('NGL_MOVEFILEEX_FAILED:' + $code)",
+    "}"
+  ].join(String.fromCharCode(10));
+  const result = spawnSync(executable, [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
+  ], {
+    encoding: 'utf8',
+    timeout: 15_000,
+    windowsHide: true,
+    maxBuffer: 64 * 1024,
+    env: {
+      ...process.env,
+      NGL_DECISION_RENAME_SOURCE: source,
+      NGL_DECISION_RENAME_TARGET: target
+    }
+  });
+  if (result.error) {
+    throw Object.assign(new Error(
+      'Windows write-through replacement outcome is uncertain; inspect the retained decision envelope before recovery.'
+    ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503, cause: result.error });
+  }
+  if (result.status !== 0) {
+    const detail = String(result.stderr || result.stdout || 'MoveFileExW failed')
+      .replaceAll(source, '[source]').replaceAll(target, '[target]').trim().slice(0, 800);
+    fail('WINDOWS_DURABLE_RENAME_FAILED', detail);
+  }
+}
+
 async function syncDirectory(directory) {
+  if (process.platform === 'win32') return;
   const parent = await open(directory, 'r');
   try { await parent.sync(); } finally { await parent.close(); }
 }
 
-async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory, renameFileFn = rename) {
+async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirectory, renameFileFn = renameDurably) {
   const pending = join(directory, `.decisions-${randomUUID()}.tmp`);
   let handle;
   let renamed = false;
@@ -372,7 +430,7 @@ async function unlinkOwnedDecisionLock(path, identity) {
  * this API does not authenticate an object copied from a network payload.
  * APPROVE records a decision only and never invokes an effect or promotes code.
  */
-export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = rename } = {}) {
+export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = renameDurably } = {})
   if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function' || typeof renameFileFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, directory-sync function, and rename function are required');
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
