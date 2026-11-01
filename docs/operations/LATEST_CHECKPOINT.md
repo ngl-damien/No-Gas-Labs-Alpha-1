@@ -689,3 +689,13 @@ No uninterrupted between-run execution is claimed.
 - Linked-repository writes remain blocked until each target repository's root AGENTS.md and canonical protocol are readable in the mandatory sequence.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 20 verification repair — preserve the newly exposed fixture failure
+
+- Initial code/test/checkpoint head 4c7f56e0b64c7c79c49398ad131eebe6ecd8fd91 Verify run [41281999916](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999916) failed after the new preflight returned ready with zero warnings/failures and emitted SHA-256/byte counts for all 57 scoped targets. The Node suite reported 727 tests: 725 passed, 2 failed.
+- Both failures were test/latest-checkpoint-contract.test.mjs fixtures that passed src/example.mjs as a target but never created it. The exact failures were “preflight accepts the root-declared instruction, local protocol and checkpoint inputs” and “preflight warns when root AGENTS.md omits a canonical checkpoint path”. The new required-target read correctly blocked those fixtures; no production source failure was observed.
+- Commit f769732f2546f9c30231644431b87a409b72af2f updates the shared fixture to create src/example.mjs and asserts the receipt classifies it as a target. This fixes the fixture rather than weakening target inspection.
+- The same initial head's Genesis run [41281999921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999921) succeeded. Browser run [41281999959](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999959) was still in progress at last observation. Neither result is final-head evidence after the fixture correction.
+- PR #258 parent exact head 6ccfff1163d674800c0d90c6bd08821eb0b0324c has Verify [41281759839](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759839), Genesis [41281759876](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759876), and Browser [41281759785](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759785) all successful.
+- Recheck all three PR #259 workflows on the final checkpoint-updated head. Preserve the failed first attempt in the record; do not transfer any prior-head result to the new head.
