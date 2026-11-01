@@ -129,7 +129,7 @@ function powershellSecure() {
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inherit, $none, $allow))",
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($administrators, $rights, $inherit, $none, $allow))",
     "$entry.SetAccessControl($acl)"
-  ].join('\\n');
+  ].join('\n');
 }
 
 function secureWindowsPathSecurity(path, label, kind) {
