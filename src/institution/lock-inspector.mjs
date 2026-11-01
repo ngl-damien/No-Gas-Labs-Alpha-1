@@ -1,13 +1,15 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { lstat, open, readdir } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { assertNoDuplicateJsonObjectKeys } from '../strict-json.mjs';
+import { verifyWindowsDirectorySecurity, verifyWindowsFileSecurity } from '../windows-acl.mjs';
 
 const MAX_LOCK_BYTES = 4096;
 const KNOWN_LOCK_SCHEMAS = new Set([
   'ngl.service-lock.v1',
   'ngl.ledger-lock.v1',
   'ngl.decisions-lock.v1',
+  'ngl.decisions-lock-guard.v1',
   'ngl.courier-lock.v1'
 ]);
 const WARNING = 'Read-only diagnostic. A PID probe is advisory only: PID reuse, namespaces, permissions, and races can mislead. This report never authorizes lock deletion; stop the owner and use an explicitly offline recovery procedure.';
@@ -31,20 +33,30 @@ function sameSnapshot(a, b) {
     a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
 
-function unsafeReason(stat) {
+function aclFailureReason(error) {
+  const message = String(error?.message || '');
+  if (message.includes('PERMISSIONS_TOO_BROAD')) return 'permissions-too-broad';
+  if (message.includes('OWNER_MISMATCH')) return 'owner-mismatch';
+  return 'owner-verification-failed';
+}
+
+function unsafeReason(stat, path) {
   if (stat.isSymbolicLink()) return 'symlink';
   if (!stat.isFile()) return 'not-a-regular-file';
+  if (stat.size > MAX_LOCK_BYTES) return 'size-limit';
+  if (process.platform === 'win32') {
+    try { verifyWindowsFileSecurity(path, 'WRITER_LOCK'); }
+    catch (error) { return aclFailureReason(error); }
+    return null;
+  }
   if ((stat.mode & 0o077) !== 0) return 'permissions-too-broad';
-  let getuid;
-  try { getuid = process.getuid; }
-  catch { return 'owner-verification-failed'; }
+  const getuid = process.getuid;
   if (typeof getuid !== 'function') return 'owner-verification-failed';
   let currentUid;
   try { currentUid = getuid.call(process); }
   catch { return 'owner-verification-failed'; }
   if (!Number.isSafeInteger(currentUid) || currentUid < 0) return 'owner-verification-failed';
   if (stat.uid !== currentUid) return 'owner-mismatch';
-  if (stat.size > MAX_LOCK_BYTES) return 'size-limit';
   return null;
 }
 
@@ -57,6 +69,98 @@ function probePid(pid) {
     if (error.code === 'EPERM') return 'inaccessible';
     return 'unknown';
   }
+}
+
+async function inspectDecisionGuardDirectory(path, before) {
+  if (process.platform === 'win32') {
+    try { verifyWindowsDirectorySecurity(path, 'WRITER_LOCK_GUARD'); }
+    catch (error) {
+      return report('unsafe', path, { reason: aclFailureReason(error), file: fileSummary(before) });
+    }
+  } else {
+    if ((before.mode & 0o077) !== 0) {
+      return report('unsafe', path, { reason: 'permissions-too-broad', file: fileSummary(before) });
+    }
+    const getuid = process.getuid;
+    if (typeof getuid !== 'function)') {
+      return report('unsafe', path, { reason: 'owner-verification-failed', file: fileSummary(before) });
+    }
+    let currentUid;
+    try { currentUid = getuid.call(process); }
+    catch { return report('unsafe', path, { reason: 'owner-verification-failed', file: fileSummary(before) }); }
+    if (!Number.isSafeInteger(currentUid) || currentUid < 0 || before.uid !== currentUid) {
+      return report('unsafe', path, { reason: 'owner-mismatch', file: fileSummary(before) });
+    }
+  }
+
+  let entries;
+  try {
+    entries = await readdir(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-inspection' });
+    throw error;
+  }
+
+  let after;
+  try {
+    after = await lstat(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-inspection' });
+    throw error;
+  }
+  if (after.isSymbolicLink() || !after.isDirectory()) {
+    return report('unsafe', path, { reason: 'guard-directory-replaced', file: fileSummary(after) });
+  }
+  if (!sameSnapshot(before, after)) {
+    return report('changed', path, { reason: 'guard-directory-changed-during-inspection', file: fileSummary(after) });
+  }
+  if (process.platform === 'win32') {
+    try { verifyWindowsDirectorySecurity(path, 'WRITER_LOCK_GUARD'); }
+    catch (error) {
+      return report('unsafe', path, { reason: aclFailureReason(error), file: fileSummary(after) });
+    }
+  }
+
+  if (entries.length === 0) {
+    return report('present', path, {
+      format: 'guard-directory',
+      reason: 'owner-receipt-missing',
+      file: fileSummary(after)
+    });
+  }
+  if (entries.length !== 1 || !/^\.owner-[0-9a-f-]{36}\.json$/.test(entries[0])) {
+    return report('unsafe', path, {
+      format: 'guard-directory',
+      reason: 'unexpected-guard-contents',
+      file: fileSummary(after)
+    });
+  }
+
+  const owner = await inspectWriterLock(join(path, entries[0]));
+  let final;
+  try {
+    final = await lstat(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return report('changed', path, { reason: 'guard-disappeared-during-owner-inspection' });
+    throw error;
+  }
+  if (!sameSnapshot(after, final)) {
+    return report('changed', path, { reason: 'guard-directory-changed-during-owner-inspection', file: fileSummary(final) });
+  }
+  if (owner.status !== 'present' || owner.format !== 'owner-metadata' ||
+      owner.owner?.schema !== 'ngl.decisions-lock-guard.v1') {
+    const status = owner.status === 'unsafe' || owner.status === 'changed' ? owner.status : 'malformed';
+    return report(status, path, {
+      format: 'guard-directory',
+      reason: 'owner-receipt-' + (owner.reason || 'invalid'),
+      file: fileSummary(final)
+    });
+  }
+  return report('present', path, {
+    format: 'guard-directory',
+    owner: owner.owner,
+    file: fileSummary(final)
+  });
 }
 
 /**
@@ -76,7 +180,14 @@ export async function inspectWriterLock(filePath) {
     throw error;
   }
 
-  const initialUnsafe = unsafeReason(before);
+  if (before.isDirectory()) {
+    if (basename(path) !== '.decisions.lock.guard') {
+      return report('unsafe', path, { reason: 'not-a-regular-file', file: fileSummary(before) });
+    }
+    return inspectDecisionGuardDirectory(path, before);
+  }
+
+  const initialUnsafe = unsafeReason(before, path);
   if (initialUnsafe) return report('unsafe', path, { reason: initialUnsafe, file: fileSummary(before) });
 
   let handle;
@@ -91,7 +202,7 @@ export async function inspectWriterLock(filePath) {
     }
 
     const opened = await handle.stat();
-    const openedUnsafe = unsafeReason(opened);
+    const openedUnsafe = unsafeReason(opened, path);
     if (openedUnsafe) return report('unsafe', path, { reason: openedUnsafe, file: fileSummary(opened) });
     if (!sameSnapshot(before, opened)) {
       return report('changed', path, { reason: 'lock-changed-before-read', file: fileSummary(opened) });
@@ -120,7 +231,7 @@ export async function inspectWriterLock(filePath) {
       throw error;
     }
     const afterHandle = await handle.stat();
-    const afterUnsafe = unsafeReason(after);
+    const afterUnsafe = unsafeReason(after, path);
     if (afterUnsafe) return report('unsafe', path, { reason: afterUnsafe, file: fileSummary(after) });
     if (!sameSnapshot(opened, after) || !sameSnapshot(opened, afterHandle)) {
       return report('changed', path, { reason: 'lock-changed-during-read', file: fileSummary(after) });
@@ -170,7 +281,7 @@ export async function inspectWriterLock(filePath) {
           throw error;
         }
         const afterProbeHandle = await handle.stat();
-        const afterProbeUnsafe = unsafeReason(afterProbe);
+        const afterProbeUnsafe = unsafeReason(afterProbe, path);
         if (afterProbeUnsafe) {
           return report('unsafe', path, { reason: afterProbeUnsafe, file: fileSummary(afterProbe) });
         }
