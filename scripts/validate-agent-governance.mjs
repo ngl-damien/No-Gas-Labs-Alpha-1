@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, realpath, stat, lstat } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { writeFile, mkdir, realpath, stat, lstat, open } from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -11,6 +12,11 @@ function insideRoot(root, candidate) {
   const rel = relative(root, candidate);
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
 }
+function sameFileSnapshot(left, right) {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
+}
+
 function safeRelativePath(value) {
   if (typeof value !== 'string' || !value.trim() || value.includes('\\')) return false;
   const first = value.charCodeAt(0);
@@ -69,7 +75,43 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
         return null;
       }
-      const bytes = await readFile(actualPath);
+      // Open the resolved file non-blocking and pin the descriptor before reading.
+      // A FIFO/device must not hang a preflight, and a path replaced during the
+      // realpath/open/read window must not make the receipt describe different bytes.
+      const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
+      const handle = await open(actualPath, flags);
+      let bytes;
+      try {
+        const openedMetadata = await handle.stat({ bigint: true });
+        if (!openedMetadata.isFile()) {
+          failures.push({ path: relativePath, reason: 'target must be a regular file' });
+          return null;
+        }
+        const openedPath = await realpath(absolutePath);
+        if (!insideRoot(rootPath, openedPath)) {
+          failures.push({ path: relativePath, reason: 'resolved path escapes repository root during open' });
+          return null;
+        }
+        const openedPathMetadata = await stat(openedPath, { bigint: true });
+        if (!sameFileSnapshot(openedMetadata, openedPathMetadata)) {
+          failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
+          return null;
+        }
+        bytes = await handle.readFile();
+        const readMetadata = await handle.stat({ bigint: true });
+        const finalPath = await realpath(absolutePath);
+        if (!insideRoot(rootPath, finalPath)) {
+          failures.push({ path: relativePath, reason: 'resolved path escapes repository root during read' });
+          return null;
+        }
+        const finalPathMetadata = await stat(finalPath, { bigint: true });
+        if (!sameFileSnapshot(openedMetadata, readMetadata) || !sameFileSnapshot(readMetadata, finalPathMetadata)) {
+          failures.push({ path: relativePath, reason: 'file changed during preflight inspection' });
+          return null;
+        }
+      } finally {
+        await handle.close();
+      }
       let content;
       try {
         content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
