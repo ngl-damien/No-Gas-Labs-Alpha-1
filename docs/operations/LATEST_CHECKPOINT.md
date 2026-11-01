@@ -926,3 +926,41 @@ No merge, release, deployment, spending, external publication, credential/permis
 - Cross-worker correction: the latest Worker A durable checkpoint is not the older PR #266 branch initially read above. PR #264's newer branch `ops/relay-stack-preflight-fifo-guard-20261101` was also inspected, including its `LATEST_CHECKPOINT.md`, root instructions, protocol and 73-target manifest. Its current head is `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`; Verify `41336881739`, Genesis `41336881760`, and Browser `41336881704` all passed. That branch has no overlap with this child feature. Its manifest still does not include `game/institution-record-objects.mjs`, so the preflight handoff remains open. PR #266 was also rechecked as an older, separate Worker A branch: head `587bb8bbac20d41660b43561c3ebb67b6edb5e58`; its own Verify `41341727832`, Browser Acceptance `41341727839`, and Genesis Evidence Invariant `41341727873` all passed.
 - The current PR #269 branch now has a documentation-only ledger update after code head `f5f0584`; this checkpoint update is also documentation-only. Hosted checks will run again on the resulting branch head. No code changed after `f5f0584`.
 - No local Node 24 execution or physical Android-device run is claimed. The hosted workflow is the independent verification source for the code head. No merge, release, deployment, spending, key operation, authority change, or Founder acceptance occurred.
+
+
+---
+
+## 2026-11-01 — Worker B — offline Decision Docket echo and browser failure repair
+
+### Rehydration and current ownership
+
+- Read root `AGENTS.md` alone, then the complete canonical shared protocol alone. On the current PR #269 branch, root instructions and protocol retain the expected blobs `a4beeee1c0ec46faab28502957c0e53850b2855d` and `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Current `main`: `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. PR #269 branch `game/decision-docket-stale-map-recovery-20261101`, exact pre-repair head `e04afc3b8f2a50765e7257d6484d705f8f364782`, based on PR #267 head `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`. PR #267 remains draft/open/unmerged.
+- Latest Worker A result is PR #268, branch `experiment/candidate-program-acquisition-relay-stack-20261101`, head `b0bb6f8fe33072f18c94d2b2509a33c601e6b61b`, based on PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`. Its exact-head Verify `41358705740`, Genesis `41358705761`, and Browser Acceptance `41358705744` all succeeded. Its bounded candidate-program-v2 work is separate from game/client paths.
+- The current PR #269 exact-head runs on `e04afc3`: Verify `41362732950` success, Genesis Evidence Invariant `41362732988` success, Browser Acceptance `41362732964` failure. The browser artifact is `13105958447`, ZIP SHA-256 `0e3a9a548857576defe435cc72ab741f674621f849b29b52fe593a846feaa4f1`.
+- The connected Remote Desktop Commander returned no online device, and a container `git clone` could not resolve the configured network proxy. No local checkout, local Node 24 test, or local portable preflight was available. The hosted Verify run executed `agent:preflight:ci` on `e04afc3` and reported `warnings: []`, `failures: []`. Its declared target list includes the current game/client/browser/test/checkpoint/ledger paths but omits parent-branch file `game/institution-record-objects.mjs`; the green preflight does not fingerprint that file.
+- The latest Worker A checkpoint reference was corrected by re-reading PR #268's current body. The older `docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md` path is not present on PR #268's branch; the current Worker A run-30 result is recorded in PR #268 itself. No game files overlap that PR.
+
+### Source and donor re-audit
+
+- Re-read `docs/DONOR_REPOSITORY_AUDIT_2026-10-28.md`: the strongest relevant donor candidates remain Damien-Featherstone's persistent-world/district/NPC/counterexample concepts, ngl-mesh's evidence/authority bridge contracts, and TaskAgile's offline/mobile interaction patterns only after server-side validation. The audit explicitly rejects copying whole donor applications or trusting client-local progress. This run adapts Alpha-1's own sealed Decision Docket projection and service-worker shell; no donor source was copied.
+- Partial G2 source audit: main `game/service-store.mjs` `186ce6b028bc1875b6520adbb21ad06434085dc4` persists a canonical digest-checked envelope with bounded reads, private permissions, exclusive writer ownership, atomic replacement and revision guards. Main `game/server.mjs` `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` uses it for the world and institutional records. `test/game-server.test.mjs` `9766f64ccb7b2784eaca2543957b21af682d7bd2` includes restart persistence, exact idempotent retry across service restart, and Witness recovery without Founder-authority restoration. Private client state uses a validated local backup; the position module stores only bounded coordinates. G2 is therefore IN PROGRESS, not complete.
+- The donor/recovery principle is preserved: a local byte copy is not truth, a session label is not identity, and an offline cache is never a canonical event or authority receipt.
+
+### Selected defect and repair
+
+- PR #269's later commits `bacdfeebbd46396b62969d8cab2e28a341cdfc36` through `e04afc3` extended stale in-session continuity into a bounded same-tab `sessionStorage` local echo that survives a reload while the service worker serves the shell. The cache codec revalidates a 64-KiB-bounded, public-only projection; it records the cached actor and save time, discloses truncation, excludes Founder-only evaluation/risk/rollback/effect/policy data, and remains explicitly unverified. Offline mode has no character/XP/quest progression or gate actions.
+- The exact-head Browser Acceptance failure was attributable to the UI renderer: `openInstitutionRecord` displayed the local-copy warning only when `view.decisionDocketUnverified` was true, even though `mode === 'offline'` is itself an unverified boundary. The failing browser assertion was at `scripts/verify-browser.py:1192`; the DOM showed the record's read-only dataset and public status claim but no `LOCAL COPY · UNVERIFIED` warning. The test's expected warning was correct; the detail renderer was too dependent on canvas state.
+- Repair: decision-record details now treat `mode === 'offline'` OR the view's unverified flag as sufficient to label the record `LOCAL COPY · UNVERIFIED`; the DOM exposes `data-institution-record-unverified`. The browser journey asserts the unverified/read-only attributes and warning after walking to the offline map record. This does not change canonical world state, the cache contents, authority, XP or gate behavior.
+
+### Current iteration verification boundary
+
+- The pre-fix failure is preserved: Verify `41362732950` and Genesis `41362732988` succeeded; Browser Acceptance `41362732964` failed. Do not rewrite this as a pass.
+- The repair commit created after this checkpoint refresh has pending exact-head hosted Verify, Genesis and Browser Acceptance. No local test or physical Android-device run is claimed.
+- The same-tab cache does not survive a new tab or browser-session termination; it is not an offline shared-world or character save. Re-entry into the authenticated shared world still requires the service.
+- PR #269 remains a draft child of PR #267, not integrated into `main`. No merge, release, deployment, spending, key/permission change, external publication or Founder acceptance occurred.
+
+### Cross-worker handoff
+
+- Worker A: the 71-target Alpha-1 preflight manifest inherited by PR #269 omits `game/institution-record-objects.mjs`, which is introduced by PR #267 and absent from PR #264/#268's current base tree. Once a deliberate integration branch contains PR #267's file, include it and its tests in the canonical preflight target list and regression contract. Do not claim the current ready receipt fingerprints that file.
+- Worker B next: inspect exact-head Verify, Genesis and Browser results after this renderer repair; repair only attributable failures. Keep the offline docket copy read-only and unverified. Do not merge.

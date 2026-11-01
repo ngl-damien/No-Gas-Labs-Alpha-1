@@ -119,11 +119,17 @@ function openInstitutionRecord(entryId) {
   content.dataset.institutionRecordLocationId = record.locationId;
   content.dataset.institutionRecordEventType = record.eventType;
   content.dataset.institutionRecordReadOnly = 'true';
-  if (typeof record.decisionId === 'string') content.dataset.institutionRecordDecisionId = record.decisionId;
-  if (typeof record.decisionId === 'string' && view.decisionDocketUnverified) {
-    content.append(paragraph('LOCAL COPY · UNVERIFIED. This record was reconstructed from a device-local cache after reload. Its source, completeness and current status cannot be authenticated here. It is read-only and grants no authority; reconnect before relying on it.', 'evidence-warning'));
-  } else if (typeof record.decisionId === 'string' && view.decisionDocketStale) {
-    content.append(paragraph('STALE · LAST OBSERVED. This map object is retained for in-session inspection only. Reconnect and refresh before relying on its status; the live Decision Chamber will not expose disposition controls without a fresh service response.', 'evidence-warning'));
+  if (typeof record.decisionId === 'string') {
+    content.dataset.institutionRecordDecisionId = record.decisionId;
+    // Offline mode is itself an unverified local-copy boundary. Do not depend
+    // only on a canvas freshness flag when deciding what the record detail says.
+    const localCopyUnverified = mode === 'offline' || view.decisionDocketUnverified;
+    content.dataset.institutionRecordUnverified = String(localCopyUnverified);
+    if (localCopyUnverified) {
+      content.append(paragraph('LOCAL COPY · UNVERIFIED. This record was reconstructed from a device-local cache after reload. Its source, completeness and current status cannot be authenticated here. It is read-only and grants no authority; reconnect before relying on it.', 'evidence-warning'));
+    } else if (view.decisionDocketStale) {
+      content.append(paragraph('STALE · LAST OBSERVED. This map object is retained for in-session inspection only. Reconnect and refresh before relying on its status; the live Decision Chamber will not expose disposition controls without a fresh service response.', 'evidence-warning'));
+    }
   }
   content.append(paragraph(record.summary));
   if (record.detail) content.append(paragraph(record.detail));
