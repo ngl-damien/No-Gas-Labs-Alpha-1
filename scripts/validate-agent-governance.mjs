@@ -13,7 +13,7 @@ function insideRoot(root, candidate) {
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
 }
 function sameFileSnapshot(left, right) {
-  return left.dev === right.dev && left.ino === right.ino &&
+  return left.dev === right.dev && left.ino === right.ino && left.nlink === right.nlink &&
     left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
 export const MAX_PREFLIGHT_FILE_BYTES = 16 * 1024 * 1024;
@@ -121,6 +121,13 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       const initialMetadata = await stat(actualPath, { bigint: true });
       if (!initialMetadata.isFile()) {
         failures.push({ path: relativePath, reason: 'target must be a regular file' });
+        return null;
+      }
+      // A hard link can make an in-repository path refer to an inode that also
+      // names a file outside the checkout. Refuse shared inodes so the receipt
+      // cannot silently fingerprint out-of-tree bytes as repository content.
+      if (initialMetadata.nlink !== 1n) {
+        failures.push({ path: relativePath, reason: 'file has multiple hard links; preflight only accepts singly-linked repository files' });
         return null;
       }
       if (initialMetadata.size > BigInt(MAX_PREFLIGHT_FILE_BYTES)) {
