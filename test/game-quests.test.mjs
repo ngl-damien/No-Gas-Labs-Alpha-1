@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket, selectDecisionDocketProjection } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -1230,6 +1230,43 @@ test('decision docket preserves deterministic expiry as a terminal state without
   assert.equal(projection.available, true);
   assert.equal(projection.decisions[0].status, 'EXPIRED');
   assert.equal(projection.decisions[0].disposition, null);
+});
+
+
+test('Decision Docket refresh preserves the last valid projection as stale and read-only', () => {
+  const initial = projectDecisionDocket(decisionDocketFixture());
+  assert.equal(initial.available, true);
+
+  const unavailable = selectDecisionDocketProjection(projectDecisionDocket(null), initial);
+  assert.equal(unavailable.projection, initial);
+  assert.equal(unavailable.stale, true);
+  assert.equal(unavailable.projection.decisions[0].status, 'PENDING');
+
+  const changedSnapshot = decisionDocketFixture({
+    revision: 3,
+    head: 'c'.repeat(64),
+    decisions: [{
+      ...decisionDocketFixture().decisions[0],
+      title: 'A freshly observed institutional proposal'
+    }]
+  });
+  const fresh = projectDecisionDocket(changedSnapshot);
+  const refreshed = selectDecisionDocketProjection(fresh, initial);
+  assert.equal(refreshed.projection, fresh);
+  assert.equal(refreshed.stale, false);
+  assert.equal(refreshed.projection.decisions[0].title, 'A freshly observed institutional proposal');
+
+  const noPrior = selectDecisionDocketProjection(projectDecisionDocket(null), null);
+  assert.equal(noPrior.projection.available, false);
+  assert.equal(noPrior.stale, false);
+
+  const forgedFallback = selectDecisionDocketProjection(projectDecisionDocket(null), {
+    available: true,
+    decisions: [{ id: 'forged', status: 'APPROVED' }]
+  });
+  assert.equal(forgedFallback.projection.available, false,
+    'only a projection sealed by the local projector may be retained');
+  assert.equal(forgedFallback.stale, false);
 });
 
 test('Contradiction encounters repeat once per distinct report and reopen when new reports arrive', () => {
