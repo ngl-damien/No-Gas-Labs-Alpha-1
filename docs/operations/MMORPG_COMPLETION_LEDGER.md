@@ -276,3 +276,34 @@ Adapt `src/world/guild-hall.js` and `src/quest/engine.js` as a read-only, eviden
 
 ### Next action
 Inspect Android Alpha-1 run [41252413717](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41252413717) and its exact-head log. If it passes, record the instrumentation result and APK artifact; if it fails, classify the failure from the new log rather than rerunning unchanged code. Then continue physical-device acceptance and reconcile the #247 → #249 stack with current main and Worker A's #248 preflight changes without merging or claiming integration.
+
+## 2026-10-31 follow-up — Decision Docket and Android verifier acceptance
+
+### PR #246 — Guild Hall Decision Docket (proposed, not integrated)
+
+- Branch game/guild-hall-expedition-docket-20261031, exact head 366ac785ee62049b6bfc1a19fd8b580f473ae5f9, stacked on PR #243 head 1b4ea596d19ecde266823d3fbe72b61fb2348af0.
+- Added projectDecisionDocket for the existing ngl.decisions.snapshot.v1 service. It validates schema, digest shape, revisions, policy, timestamps, status/disposition consistency, duplicate IDs, and status-count reconciliation; malformed or unavailable snapshots remain unavailable, never an inferred empty docket. Its bounded immutable output contains public identifiers/status only and strips Founder evaluation bytes, risks, rollback, proposed effect, and policy basis.
+- Guild Hall now renders stable read-only decision objects with exact-ID navigation into the Decision Chamber. TownSquare is status-only; the Guild Hall hides disposition controls; only the full Decision Chamber presentation can expose Founder controls. Witness views remain redacted. After a disposition, the Chamber refreshes and focuses the same decision ID. Inspection/navigation add no world XP or world event.
+- Added projection regressions for Founder/Witness parity, private-field stripping, malformed/accessor-backed/duplicate/count-inconsistent snapshots, revision and status/action mismatches, and expiry. Added a two-session browser journey that seeds one disposable pending service decision and checks exact navigation, Founder-only controls, Witness redaction, TownSquare read-only status, and unchanged world revision/event count/XP and decision disposition.
+- Added isolated failed-test-file diagnostics to scripts/verify.mjs. The prior exact-head Verify [41256982165](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41256982165) failed because game/institution-view.mjs ended without the renderer's closing brace (SyntaxError: Unexpected end of input, line 246). The diagnostic printed the isolated module error; commit 366ac785 adds the missing brace.
+- Exact-head Verify [41257212135](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257212135): **passed**. Hosted preflight reported ready with zero warnings/failures; Node tests, Python inspector, package build, and institutional exercise exited 0.
+- Genesis Evidence Invariant [41257212242](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257212242): **passed**.
+- Browser Acceptance [41257212391](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257212391): **in progress** at this ledger update. No browser acceptance result is claimed yet.
+- PR #246 remains draft/open/unmerged. Its game/client.mjs and scripts/verify-browser.py changes overlap PR #249; do not merge either independently. Reconcile both files on one integration branch after Android acceptance.
+
+### PR #249 — narrower Android emulator verifier guard (proposed, not integrated)
+
+- Branch android/private-save-transfer-20261031, exact head a5f1126cc4c56e84d13b024c0f9b8920dcc13084, stacked on PR #247 head 811e61dafbac064e37547e41baf5f9d513117a5e.
+- The previous Android run [41252413717](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41252413717) failed in the pre-instrumentation package_verifier_enable readback guard. Its log does not print the captured value; the exact value remains **unknown**. Gradle instrumentation did not run.
+- AOSP Android 15 Settings.Global.PACKAGE_VERIFIER_INCLUDE_ADB defines verifier_verify_adb_installs: 1 verifies ADB/ADT/USB installs (default), 0 bypasses verification for ADB installs only. PR #249 now sets and reads back this narrower key, prints the exact value, prints relevant global verifier keys on mismatch, and exits before APK installation unless the value is exactly 0. It does not disable the general package verifier.
+- Exact-head Verify [41257180745](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257180745): **passed**. Browser Acceptance [41257180805](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257180805) and Android Alpha-1 [41257180743](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257180743) were still in progress at this ledger update; the Android job had completed SDK setup and was assembling the APK. No setting readback, instrumentation, or Android acceptance result is claimed yet.
+- PR #247's earlier Android run [41248202670](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41248202670) failed waiting for #import-world after a private-world clear/reload. PR #249 includes the save-transfer UI and a dedicated export/import instrumentation journey; the new Android run is the first observation after the ADB-specific guard change and remains pending.
+- PR #249 remains draft/open/unmerged. No physical device or production setting was changed.
+
+### Shared evidence and limitations
+
+- PR #248 canonical-checkpoint branch is at eead1436ef3a76630997a4f5fdb50b271c69901; its exact-head Verify [41254387952](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254387952), Genesis [41254387955](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254387955), and Browser Acceptance [41254387965](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41254387965) all passed. docs/operations/LATEST_CHECKPOINT.md remains on that separate unmerged branch.
+- PR #246 and PR #249 hosted preflight still hash the historical NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md, not the canonical LATEST_CHECKPOINT.md; no exact-head preflight against the canonical checkpoint is claimed for either branch.
+- Re-inspected the existing Alpha-1 Decision Service (src/institution/decisions.mjs), Relay response folio projection (game/collaborator-world-objects.mjs), and retained research/Moonshot projection (game/research-records.mjs). The Docket reuses the existing authenticated decision service and its public snapshot; no whole donor system, new decision schema, or new authority source was copied.
+- No merge, release, deployment, physical-device setting change, spending, credential change, or Founder acceptance occurred.
+
