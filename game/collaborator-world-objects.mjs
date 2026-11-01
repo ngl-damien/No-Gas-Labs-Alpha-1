@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COLLABORATOR_ROLES, isBoundedIdentifier, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { validateCollaboratorResponse } from './collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_WORLD_EVENT_SCAN = 100_000;
@@ -16,26 +17,35 @@ const roleStyles = Object.freeze({
 });
 
 const responseProjectionWorld = new WeakMap();
+function safeArrayLength(value) {
+  try { return Array.isArray(value) ? value.length : -1; } catch { return -1; }
+}
 function sealResponseProjection(world, objects) {
   const projection = Object.freeze(objects);
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
   responseProjectionWorld.set(projection, {
     world,
-    revision: world?.revision,
-    events: world?.events,
-    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
-    creations: world?.creations,
-    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0
+    id: ownDataValue(world, 'id'),
+    revision: ownDataValue(world, 'revision'),
+    events,
+    eventCount: safeArrayLength(events),
+    creations,
+    creationCount: safeArrayLength(creations)
   });
   return projection;
 }
 
 export function isCollaboratorResponseProjection(value, world) {
   const context = responseProjectionWorld.get(value);
-  return Boolean(context && context.world === world &&
-    context.revision === world?.revision && context.events === world?.events &&
-    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
-    context.creations === world?.creations &&
-    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0));
+  if (!context || context.world !== world) return false;
+  const id = ownDataValue(world, 'id');
+  const revision = ownDataValue(world, 'revision');
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
+  return context.id === id && context.revision === revision &&
+    context.events === events && context.eventCount === safeArrayLength(events) &&
+    context.creations === creations && context.creationCount === safeArrayLength(creations);
 }
 
 function ownDataValue(value, key) {
@@ -263,6 +273,17 @@ export function projectCollaboratorResponseWorldObjects(world) {
       candidate.available === true && candidate.moonshotId === moonshotId);
     if (!expectedPacket || expectedPacket.packetJson !== packetJson) continue;
 
+    // validationStatus is retained as an attributed claim, not trusted as the
+    // result. Re-run the bounded validator over the exact archived bytes and
+    // the module-issued packet reconstructed from prior world history.
+    const checked = validateCollaboratorResponse(expectedPacket, responseText);
+    const validationMatches = checked.status === event.validationStatus &&
+      checked.reason === event.validationReason;
+    const validationStatus = validationMatches ? checked.status : 'rejected';
+    const validationReason = validationMatches
+      ? checked.reason
+      : checked.reason || 'ARCHIVED_VALIDATION_STATUS_MISMATCH';
+
     valid.push({
       id: 'collaborator-response-object:' + responseId,
       type: 'collaborator-response-object',
@@ -277,8 +298,13 @@ export function projectCollaboratorResponseWorldObjects(world) {
       actorId: actor.id,
       actorRole: actor.role,
       at: event.at,
-      validationStatus: event.validationStatus,
-      validationReason: event.validationReason,
+      validationStatus,
+      validationReason,
+      recordedValidationStatus: event.validationStatus,
+      recordedValidationReason: event.validationReason,
+      recomputedValidationStatus: checked.status,
+      recomputedValidationReason: checked.reason,
+      validationMismatch: !validationMatches,
       sourceEventIds: Object.freeze([...sourceIds])
     });
   }

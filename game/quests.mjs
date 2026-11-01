@@ -459,6 +459,12 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
         validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
+        recordedValidationStatus: typeof event.recordedValidationStatus === 'string' ? event.recordedValidationStatus : null,
+        recordedValidationReason: typeof event.recordedValidationReason === 'string' ? event.recordedValidationReason : null,
+        recomputedValidationStatus: typeof event.recomputedValidationStatus === 'string' ? event.recomputedValidationStatus : null,
+        recomputedValidationReason: typeof event.recomputedValidationReason === 'string' ? event.recomputedValidationReason : null,
+        validationMismatch: event.validationMismatch === true,
         sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
       } : {})
     }));
@@ -591,6 +597,11 @@ export function getExpeditionDocket(world, options = null) {
           at: record.at,
           validationStatus: record.validationStatus,
           validationReason: record.validationReason,
+          recordedValidationStatus: record.recordedValidationStatus,
+          recordedValidationReason: record.recordedValidationReason,
+          recomputedValidationStatus: record.recomputedValidationStatus,
+          recomputedValidationReason: record.recomputedValidationReason,
+          validationMismatch: record.validationMismatch,
           sourceEventIds: Object.freeze([...record.sourceEventIds])
         })
       )),
@@ -985,7 +996,22 @@ export function getQuestTrail(world, viewer, options = null) {
   const collaboratorResponseObjects = responseObjects
     .filter(object => object.actorId === actorId && object.actorRole === actorRole);
   const collaboratorResponses = collaboratorResponseObjects
-    .map(object => uniqueEventById.get(object.eventId))
+    .map(object => {
+      const event = uniqueEventById.get(object.eventId);
+      if (!event) return null;
+      // The folio projection revalidates the exact response bytes. Copy that
+      // derived result into quest evidence without mutating append-only history.
+      return {
+        ...event,
+        validationStatus: object.validationStatus,
+        validationReason: object.validationReason,
+        recordedValidationStatus: object.recordedValidationStatus,
+        recordedValidationReason: object.recordedValidationReason,
+        recomputedValidationStatus: object.recomputedValidationStatus,
+        recomputedValidationReason: object.recomputedValidationReason,
+        validationMismatch: object.validationMismatch
+      };
+    })
     .filter(Boolean);
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const collaboratorResponsesByRole = new Map();

@@ -1,3 +1,5 @@
+import { isCollaboratorResponseProjection, projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
+
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
   relay: "The Relay",
@@ -221,7 +223,7 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, creations, notes) {
+function worldEntry(event, index, creations, notes, collaboratorResponse = null) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -349,9 +351,9 @@ function worldEntry(event, index, creations, notes) {
       tutor: "Polymath Tutor",
     };
     const role = roleNames[event?.role] || text(event?.role) || "Unknown collaborator";
-    const status = event?.validationStatus === "valid-for-human-review"
+    const status = collaboratorResponse?.validationStatus === "valid-for-human-review"
       ? "STRUCTURE VALID · HUMAN REVIEW ONLY"
-      : "REJECTED · PRESERVED";
+      : collaboratorResponse ? "REJECTED · PRESERVED" : "UNVERIFIED · NOT PROJECTED";
     entry.title = `Collaborator response preserved · ${role} · ${status}`;
     entry.category = "GUILD HALL";
     entry.summary = "An actor-attributed pasted collaborator response and its exact source packet were preserved. Structural/scope validation does not establish truth, evidence, execution, approval, mastery or authority.";
@@ -360,9 +362,18 @@ function worldEntry(event, index, creations, notes) {
       `Source events: ${Array.isArray(event?.sourceEventIds) ? event.sourceEventIds.join(", ") : "not identified"}`,
       `Packet SHA-256: ${text(event?.packetReceipt?.digest) || "unavailable"} (${Number.isSafeInteger(event?.packetReceipt?.size) ? event.packetReceipt.size + " bytes" : "size unavailable"})`,
       `Response SHA-256: ${text(event?.responseReceipt?.digest) || "unavailable"} (${Number.isSafeInteger(event?.responseReceipt?.size) ? event.responseReceipt.size + " bytes" : "size unavailable"})`,
-      event?.validationReason ? `Structural result: ${text(event.validationReason)}` : "Structural result: valid for human review only",
-    ].join(" · ");
-    entry.warning = "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
+      collaboratorResponse?.validationReason ? `Structural result: ${text(collaboratorResponse.validationReason)}`
+        : collaboratorResponse ? "Structural result: valid for human review only"
+        : "Structural result: no source-bound folio was projected; stored status is untrusted",
+      collaboratorResponse?.validationMismatch
+        ? `Recorded status: ${text(collaboratorResponse.recordedValidationStatus)}; recomputed: ${text(collaboratorResponse.recomputedValidationStatus)}`
+        : null,
+    ].filter(Boolean).join(" · ");
+    entry.warning = collaboratorResponse?.validationMismatch
+      ? "The stored validation label disagreed with deterministic response revalidation; this folio is displayed as rejected. The packet and response remain untrusted text."
+      : !collaboratorResponse
+        ? "No source-bound folio was projected; the stored validation label is not trusted. The raw event remains visible."
+        : "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
   } else if (type === "guild-created") {
     entry.title = "Player guild founded · " + (text(event?.name) || "unnamed guild");
     entry.category = "GUILD HALL";
@@ -508,7 +519,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
  * Build a read-only chronological view of retained world and institutional events.
  * It never awards progress, changes source records, or treats local byte checks as truth.
  */
-export function projectChronicle({ world = {}, kernel = null } = {}) {
+export function projectChronicle({ world = {}, kernel = null, collaboratorResponseObjects = null } = {}) {
   const entries = [];
   let malformed = 0;
   const worldCollection = retainedEventCollection(world, "events");
@@ -544,6 +555,14 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
+  const responseProjection = worldCollection.valid && creationsCollection.valid
+    ? (isCollaboratorResponseProjection(collaboratorResponseObjects, world)
+      ? collaboratorResponseObjects
+      : projectCollaboratorResponseWorldObjects(world))
+    : [];
+  const collaboratorResponseByEventId = new Map(
+    responseProjection.map(object => [object.eventId, object])
+  );
 
   for (let index = 0; index < worldEvents.length; index += 1) {
     const event = safeEventSnapshot(worldEvents[index]);
@@ -552,7 +571,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, creations, notes));
+    entries.push(worldEntry(event, index, creations, notes, collaboratorResponseByEventId.get(event.id) || null));
   }
 
   const kernelSnapshots = [];
