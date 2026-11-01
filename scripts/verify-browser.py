@@ -648,7 +648,7 @@ def adversary_challenge_handoff(browser,url,out):
         assert [event['id'] for event in challenged_world['events'] if event['id'] not in before_review['eventIds']]==[challenge['id']]
         assert challenged_world['xp']==before_review['worldXp']==0, 'A challenge must not mint institution-wide publication XP'
         expect(page.locator('#xp-count')).to_have_text('25')
-        challenge_card=page.locator('[data-research-activity-id]').filter(has_text=final_text)
+        challenge_card=page.locator('[data-research-activity-id]').filter(has_text=final_text).last
         expect(challenge_card).to_be_visible()
         expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
         assert not errors,errors
@@ -1399,7 +1399,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
-                     record(adversary_challenge_handoff(browser,url,out))
+                    record(adversary_challenge_handoff(browser,url,out))
                     record(shared(browser,url,data,out))
                     record(town_square_social(browser,url,out))
                     record(player_guild_membership(browser,url,out))
