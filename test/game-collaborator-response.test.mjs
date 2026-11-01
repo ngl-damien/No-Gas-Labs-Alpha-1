@@ -508,3 +508,38 @@ test('Adversary draft bridge rejects non-Adversary and accessor-backed world his
     packets.adversary, JSON.stringify(validResponses.adversary), unsafeWorld
   ).reason, 'WORLD_EVENT_HISTORY_UNAVAILABLE');
 });
+
+test('Adversary draft bridge revalidates prior challenge identity, content, and chronology', () => {
+  const packets = packetsForTest();
+  const responseText = JSON.stringify(validResponses.adversary);
+
+  const changedChallenge = structuredClone(packets.world);
+  changedChallenge.events[2].challengeText = 'A substituted challenge record.';
+  changedChallenge.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, changedChallenge).reason,
+    'DUPLICATE_REFERENCE_SOURCE_MISMATCH');
+
+  const duplicateChallengeId = structuredClone(packets.world);
+  duplicateChallengeId.events.push({
+    ...structuredClone(duplicateChallengeId.events[2]),
+    id: 'challenge-event-duplicate'
+  });
+  duplicateChallengeId.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, duplicateChallengeId).reason,
+    'DUPLICATE_REFERENCE_NOT_UNIQUE');
+
+  const reorderedChallenge = structuredClone(packets.world);
+  const [proposal, report, challenge] = reorderedChallenge.events;
+  reorderedChallenge.events = [proposal, challenge, report];
+  reorderedChallenge.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, reorderedChallenge).reason,
+    'DUPLICATE_REFERENCE_ORDER_MISMATCH');
+
+  const appendedWorld = structuredClone(packets.world);
+  appendedWorld.events.push({ id: 'later-unrelated-event', type: 'unrelated-note' });
+  appendedWorld.revision += 1;
+  const before = structuredClone(appendedWorld);
+  const draft = createAdversaryChallengeDraft(packets.adversary, responseText, appendedWorld);
+  assert.equal(draft.valid, true, 'an unchanged source challenge remains valid after an unrelated append');
+  assert.deepEqual(appendedWorld, before, 'revalidation remains read-only');
+});
