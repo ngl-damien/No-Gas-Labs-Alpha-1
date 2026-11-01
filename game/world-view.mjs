@@ -260,17 +260,10 @@ function indexResearchPublications(eventList, eventIdCounts) {
   return { byReference, unsafeReferenceSeen };
 }
 
-function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, eventIndex, atMs) {
-  const creationId = ownDataValue(event, 'evidenceCreationId');
-  const version = ownDataValue(event, 'evidenceVersion');
-  const hasId = typeof creationId === 'string' && creationId.length > 0;
-  const hasVersion = Number.isSafeInteger(version) && version > 0;
-  if (!hasId && !hasVersion) {
-    return (creationId === null || creationId === undefined) &&
-      (version === null || version === undefined);
-  }
-  if (!hasId || !hasVersion || !WORLD_OBJECT_ID.test(creationId) ||
-      publicationIndex.unsafeReferenceSeen) return false;
+
+function validRetainedPublication(evidenceIndex, publicationIndex, creationId, version, eventIndex, atMs) {
+  if (typeof creationId !== 'string' || !WORLD_OBJECT_ID.test(creationId) ||
+      !Number.isSafeInteger(version) || version < 1 || publicationIndex.unsafeReferenceSeen) return false;
   const key = creationId + '\0' + version;
   const retained = evidenceIndex.get(key);
   if (!retained || retained.count !== 1 ||
@@ -282,6 +275,193 @@ function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, e
     typeof publication.actorId === 'string' && publication.actorId.trim().length > 0 &&
     publication.actorRole === 'founder' && Number.isFinite(publication.atMs) &&
     publication.atMs === retained.publishedAtMs && publication.atMs <= atMs;
+}
+
+function retainedCreationTitles(world) {
+  const titles = new Map();
+  const creations = ownDataValue(world, 'creations');
+  if (!isArraySafely(creations)) return titles;
+  const count = ownDataValue(creations, 'length');
+  if (!Number.isSafeInteger(count) || count < 0 || count > MAX_WORLD_EVENT_SCAN) return new Map();
+  for (let index = 0; index < count; index += 1) {
+    if (unsafeOwnAccessor(creations, String(index))) return new Map();
+    const creation = ownDataValue(creations, String(index));
+    if (!creation || typeof creation !== 'object') continue;
+    if (unsafeOwnAccessor(creation, 'id') || unsafeOwnAccessor(creation, 'title')) return new Map();
+    const id = ownDataValue(creation, 'id');
+    if (typeof id !== 'string' || !id) continue;
+    const previous = titles.get(id);
+    titles.set(id, {
+      count: (previous?.count || 0) + 1,
+      title: previous ? previous.title : ownDataValue(creation, 'title'),
+    });
+  }
+  return titles;
+}
+
+/**
+ * Turn source-bound Academy practice into deterministic, read-only map objects.
+ * A note/review is retained practice, not correctness, mastery, evidence of
+ * external learning, or authority. Invalid and ambiguous records stay in the
+ * event history but cannot become navigable Academy objects.
+ */
+export function projectAcademyWorldObjects(world) {
+  const events = ownDataValue(world, 'events');
+  if (!isArraySafely(events)) return Object.freeze([]);
+  const eventCount = ownDataValue(events, 'length');
+  if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_WORLD_EVENT_SCAN) return Object.freeze([]);
+  const eventList = [];
+  for (let index = 0; index < eventCount; index += 1) eventList.push(ownDataValue(events, String(index)));
+
+  const eventIdCounts = new Map();
+  const studyIdCounts = new Map();
+  const reviewIdCounts = new Map();
+  const reviewedStudyCounts = new Map();
+  for (const event of eventList) {
+    if (!event || typeof event !== 'object') continue;
+    const eventId = ownDataValue(event, 'id');
+    const type = ownDataValue(event, 'type');
+    if (typeof eventId === 'string' && eventId.length) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) || 0) + 1);
+    if (type === 'study') {
+      const studyId = ownDataValue(event, 'studyId');
+      if (typeof studyId === 'string') studyIdCounts.set(studyId, (studyIdCounts.get(studyId) || 0) + 1);
+    } else if (type === 'study-reviewed') {
+      const reviewId = ownDataValue(event, 'reviewId');
+      const studyId = ownDataValue(event, 'studyId');
+      if (typeof reviewId === 'string') reviewIdCounts.set(reviewId, (reviewIdCounts.get(reviewId) || 0) + 1);
+      if (typeof studyId === 'string') reviewedStudyCounts.set(studyId, (reviewedStudyCounts.get(studyId) || 0) + 1);
+    }
+  }
+
+  const evidenceIndex = indexRetainedResearchVersions(world);
+  const publicationIndex = indexResearchPublications(eventList, eventIdCounts);
+  const sourceTitles = retainedCreationTitles(world);
+  const titleFor = creationId => {
+    const source = sourceTitles.get(creationId);
+    return source?.count === 1 && boundedWorldText(source.title, 80)
+      ? source.title : 'Untitled retained work';
+  };
+  const studies = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'study') continue;
+    const required = ['id', 'studyId', 'creationId', 'version', 'actor', 'at', 'question', 'attempt', 'nextCheck'];
+    if (required.some(key => unsafeOwnAccessor(event, key))) continue;
+    const eventId = ownDataValue(event, 'id');
+    const studyId = ownDataValue(event, 'studyId');
+    const creationId = ownDataValue(event, 'creationId');
+    const version = ownDataValue(event, 'version');
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
+    const question = ownDataValue(event, 'question');
+    const attempt = ownDataValue(event, 'attempt');
+    const nextCheck = ownDataValue(event, 'nextCheck');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof studyId !== 'string' || studyId.length > 112 || !WORLD_OBJECT_ID.test(studyId) || studyIdCounts.get(studyId) !== 1 ||
+        typeof actorId !== 'string' || !WORLD_OBJECT_ID.test(actorId) || !RESEARCH_ROLES.has(actorRole) ||
+        !Number.isFinite(atMs) || !boundedWorldText(question, 500) ||
+        !boundedWorldText(attempt, 1000) || !boundedWorldText(nextCheck, 500) ||
+        !validRetainedPublication(evidenceIndex, publicationIndex, creationId, version, index, atMs)) continue;
+    studies.push({
+      index, eventId, studyId, creationId, version, actorId, actorRole, at, sourceTitle: titleFor(creationId),
+    });
+  }
+
+  const studyById = new Map(studies.map(study => [study.studyId, study]));
+  const reviews = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'study-reviewed') continue;
+    const required = ['id', 'reviewId', 'studyId', 'creationId', 'version', 'actor', 'at', 'response', 'reflection'];
+    if (required.some(key => unsafeOwnAccessor(event, key))) continue;
+    const eventId = ownDataValue(event, 'id');
+    const reviewId = ownDataValue(event, 'reviewId');
+    const studyId = ownDataValue(event, 'studyId');
+    const creationId = ownDataValue(event, 'creationId');
+    const version = ownDataValue(event, 'version');
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
+    const response = ownDataValue(event, 'response');
+    const reflection = ownDataValue(event, 'reflection');
+    const source = studyById.get(studyId);
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof reviewId !== 'string' || reviewId.length > 112 || !WORLD_OBJECT_ID.test(reviewId) || reviewIdCounts.get(reviewId) !== 1 ||
+        typeof studyId !== 'string' || reviewedStudyCounts.get(studyId) !== 1 || !source ||
+        actorId !== source.actorId || actorRole !== source.actorRole ||
+        creationId !== source.creationId || version !== source.version ||
+        !Number.isFinite(atMs) || atMs <= Date.parse(source.at) ||
+        !boundedWorldText(response, 1000) || !boundedWorldText(reflection, 1000) ||
+        !validRetainedPublication(evidenceIndex, publicationIndex, creationId, version, index, atMs)) continue;
+    reviews.push({
+      index, eventId, reviewId, studyId, creationId, version, actorId, actorRole, at,
+      sourceTitle: source.sourceTitle,
+    });
+  }
+
+  const reviewByStudy = new Map(reviews.map(review => [review.studyId, review]));
+  const records = [
+    ...studies.map(study => ({
+      ...study, recordType: 'study', id: 'academy-study:' + study.studyId,
+      title: 'Study · ' + Array.from(study.sourceTitle).slice(0, 70).join(''),
+      reviewStatus: reviewByStudy.has(study.studyId) ? 'reviewed' :
+        reviewedStudyCounts.get(study.studyId) ? 'review-ambiguous' : 'awaiting-review',
+    })),
+    ...reviews.map(review => ({
+      ...review, recordType: 'study-reviewed', id: 'academy-review:' + review.reviewId,
+      title: 'Retrieval · ' + Array.from(review.sourceTitle).slice(0, 66).join(''),
+      reviewStatus: 'reviewed',
+    })),
+  ].sort((left, right) => left.index - right.index);
+
+  const GRID_COLUMNS = 12, GRID_ROWS = 12, GRID_CAPACITY = GRID_COLUMNS * GRID_ROWS;
+  const occupiedSlots = new Set();
+  const activityHash = value => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+  return Object.freeze(records.map(record => {
+    let slot = activityHash(record.id) % GRID_CAPACITY;
+    let probes = 0;
+    while (occupiedSlots.has(slot) && probes < GRID_CAPACITY) {
+      slot = (slot + 1) % GRID_CAPACITY;
+      probes += 1;
+    }
+    const mapVisible = !occupiedSlots.has(slot);
+    if (mapVisible) occupiedSlots.add(slot);
+    return Object.freeze({
+      id: record.id, type: record.recordType === 'study' ? 'academy-study' : 'academy-review',
+      eventId: record.eventId, studyId: record.studyId, reviewId: record.reviewId || null,
+      creationId: record.creationId, version: record.version, title: record.title,
+      actorId: record.actorId, actorRole: record.actorRole, at: record.at,
+      reviewStatus: record.reviewStatus,
+      x: mapVisible ? 48 + (slot % GRID_COLUMNS) * 20 : null,
+      y: mapVisible ? 510 + Math.floor(slot / GRID_COLUMNS) * 20 : null,
+      mapVisible,
+    });
+  }));
+}
+
+function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, eventIndex, atMs) {
+  const creationId = ownDataValue(event, 'evidenceCreationId');
+  const version = ownDataValue(event, 'evidenceVersion');
+  const hasId = typeof creationId === 'string' && creationId.length > 0;
+  const hasVersion = Number.isSafeInteger(version) && version > 0;
+  if (!hasId && !hasVersion) {
+    return (creationId === null || creationId === undefined) &&
+      (version === null || version === undefined);
+  }
+  return hasId && hasVersion &&
+    validRetainedPublication(evidenceIndex, publicationIndex, creationId, version, eventIndex, atMs);
 }
 
 /**
@@ -558,14 +738,14 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=projectCollaboratorResponseWorldObjects(this.world);this.questMarker=null;this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.discoveryScope=null;this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.academyObjects=projectAcademyWorldObjects(this.world);this.collaboratorResponseObjects=projectCollaboratorResponseWorldObjects(this.world);this.questMarker=null;this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.discoveryScope=null;this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());this.onBlur=()=>{this.keys.clear();this.input={x:0,y:0}};
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};const marker=this.questMarker;if(marker&&Math.hypot(target.x-marker.x,target.y-marker.y)<=26){this.goTo(marker.targetId,marker.targetType);canvas.focus({preventScroll:true});return;}this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
   }
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world,institutionSummary=this.institutionSummary,collaboratorResponseObjects=null){const next=world||{creations:[]};this.world=next;const safePlayer=nearestWalkablePoint(this.player,Array.isArray(next.creations)?next.creations:[]);if(safePlayer)this.player={...this.player,...safePlayer};this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=isCollaboratorResponseProjection(collaboratorResponseObjects,next)?collaboratorResponseObjects:projectCollaboratorResponseWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),collaboratorResponseObjects:this.collaboratorResponseObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
+  setWorld(world,institutionSummary=this.institutionSummary,collaboratorResponseObjects=null){const next=world||{creations:[]};this.world=next;const safePlayer=nearestWalkablePoint(this.player,Array.isArray(next.creations)?next.creations:[]);if(safePlayer)this.player={...this.player,...safePlayer};this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.academyObjects=projectAcademyWorldObjects(next);this.collaboratorResponseObjects=isCollaboratorResponseProjection(collaboratorResponseObjects,next)?collaboratorResponseObjects:projectCollaboratorResponseWorldObjects(next);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),collaboratorResponseObjects:this.collaboratorResponseObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y]),academyObjects:this.academyObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   setQuestAction(action,title='Current objective'){
     const read=key=>ownDataValue(action,key);
@@ -598,6 +778,13 @@ export class WorldView {
         (id===undefined||item.id===id)&&(moonshotId===undefined||item.moonshotId===moonshotId)&&
         (activityId===undefined||item.activityId===activityId)));
       if(object)assign(object,object.id,'research-activity',object.x,object.y,object.title);
+    }else if(type==='academy-study'||type==='academy-review'){
+      const id=read('id'),studyId=read('studyId'),reviewId=read('reviewId');
+      const object=unique(this.academyObjects.filter(item=>item.type===type&&
+        (id===undefined||item.id===id)&&(studyId===undefined||item.studyId===studyId)&&
+        (reviewId===undefined||item.reviewId===reviewId)));
+      if(object?.mapVisible)assign(object,object.id,type,object.x,object.y,object.title);
+      else if(object)assign(place('academy'));
     }else if(type==='collaborator-response'){
       const id=read('id');
       const object=unique((this.collaboratorResponseObjects||[]).filter(item=>item.mapVisible===true&&
@@ -642,8 +829,12 @@ export class WorldView {
       const researchObject=this.researchObjects.find(object=>object.id===id);
       const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);
       const collaboratorResponseObject=(this.collaboratorResponseObjects||[]).find(object=>object.id===id);
+      const academyObject=this.academyObjects.find(object=>object.id===id);
       const collaborator=GUILD_NPCS.find(npc=>npc.id===id);
-      if(targetType==='collaborator-response'){
+      if(targetType==='academy-study'||targetType==='academy-review'){
+        if(!academyObject||academyObject.type!==targetType||!academyObject.mapVisible){this.cancelRoute();return}
+        target={x:academyObject.x,y:academyObject.y+18};
+      }else if(targetType==='collaborator-response'){
         if(!collaboratorResponseObject?.mapVisible){this.cancelRoute();return}
         target={x:collaboratorResponseObject.x,y:collaboratorResponseObject.y+18};
       }else if(targetType==='research-object'){
@@ -659,6 +850,7 @@ export class WorldView {
       else if(researchObject)target={x:researchObject.x,y:researchObject.y+28};
       else if(researchActivityObject?.mapVisible)target={x:researchActivityObject.x,y:researchActivityObject.y+18};
       else if(collaboratorResponseObject?.mapVisible)target={x:collaboratorResponseObject.x,y:collaboratorResponseObject.y+18};
+      else if(academyObject?.mapVisible)target={x:academyObject.x,y:academyObject.y+18};
       else if(collaborator)target={x:collaborator.x,y:collaborator.y+12};
       else {this.cancelRoute();return}
     }
@@ -667,7 +859,7 @@ export class WorldView {
     this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;
   }
   nearest(targetId,targetType){
-    const options=[...PLACES,...GUILD_NPCS.map(npc=>({id:npc.id,roleId:npc.roleId,x:npc.x,y:npc.y+10,type:'collaborator',name:npc.name})),...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({id:object.id,responseId:object.responseId,roleId:object.roleId,moonshotId:object.moonshotId,validationStatus:object.validationStatus,x:object.x,y:object.y+10,type:'collaborator-response',name:object.name}))];
+    const options=[...PLACES,...GUILD_NPCS.map(npc=>({id:npc.id,roleId:npc.roleId,x:npc.x,y:npc.y+10,type:'collaborator',name:npc.name})),...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({id:object.id,responseId:object.responseId,roleId:object.roleId,moonshotId:object.moonshotId,validationStatus:object.validationStatus,x:object.x,y:object.y+10,type:'collaborator-response',name:object.name})),...this.academyObjects.filter(object=>object.mapVisible).map(object=>({...object,x:object.x,y:object.y+10,name:object.title}))];
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
@@ -676,13 +868,13 @@ export class WorldView {
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
-      const interaction=nearest.type==='collaborator'?{type:'collaborator',id:nearest.id,roleId:nearest.roleId}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:nearest.type==='collaborator-response'?{type:'collaborator-response',responseId:nearest.responseId,roleId:nearest.roleId,moonshotId:nearest.moonshotId,validationStatus:nearest.validationStatus}:{type:nearest.type,id:nearest.id};
+      const interaction=nearest.type==='academy-study'?{type:'academy-study',eventId:nearest.eventId,studyId:nearest.studyId,creationId:nearest.creationId,version:nearest.version}:nearest.type==='academy-review'?{type:'academy-review',eventId:nearest.eventId,reviewId:nearest.reviewId,studyId:nearest.studyId,creationId:nearest.creationId,version:nearest.version}:nearest.type==='collaborator'?{type:'collaborator',id:nearest.id,roleId:nearest.roleId}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:nearest.type==='collaborator-response'?{type:'collaborator-response',responseId:nearest.responseId,roleId:nearest.roleId,moonshotId:nearest.moonshotId,validationStatus:nearest.validationStatus}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
   update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
     const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(175*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
-    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const collaboratorResponseObject=(this.collaboratorResponseObjects||[]).find(object=>object.id===id);const collaborator=GUILD_NPCS.find(npc=>npc.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='collaborator-response'){if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus});else if(collaborator)this.callbacks.onInteract({type:'collaborator',id:collaborator.id,roleId:collaborator.roleId});else if(p?.type==='discovery'){if(!this.discovered.has(id)){this.discovered.add(id);this.callbacks.onDiscover(id)}this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
+    if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const collaboratorResponseObject=(this.collaboratorResponseObjects||[]).find(object=>object.id===id);const academyObject=this.academyObjects.find(object=>object.id===id);const collaborator=GUILD_NPCS.find(npc=>npc.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='academy-study'&&academyObject?.type==='academy-study'&&academyObject.mapVisible){this.callbacks.onInteract({type:'academy-study',eventId:academyObject.eventId,studyId:academyObject.studyId,creationId:academyObject.creationId,version:academyObject.version})}else if(targetType==='academy-review'&&academyObject?.type==='academy-review'&&academyObject.mapVisible){this.callbacks.onInteract({type:'academy-review',eventId:academyObject.eventId,reviewId:academyObject.reviewId,studyId:academyObject.studyId,creationId:academyObject.creationId,version:academyObject.version})}else if(academyObject?.mapVisible&&targetType===null){this.callbacks.onInteract({type:academyObject.type,eventId:academyObject.eventId,studyId:academyObject.studyId,reviewId:academyObject.reviewId,creationId:academyObject.creationId,version:academyObject.version})}else if(targetType==='collaborator-response'){if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus})}else if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(collaboratorResponseObject?.mapVisible)this.callbacks.onInteract({type:'collaborator-response',responseId:collaboratorResponseObject.responseId,roleId:collaboratorResponseObject.roleId,moonshotId:collaboratorResponseObject.moonshotId,validationStatus:collaboratorResponseObject.validationStatus});else if(collaborator)this.callbacks.onInteract({type:'collaborator',id:collaborator.id,roleId:collaborator.roleId});else if(p?.type==='discovery'){if(!this.discovered.has(id)){this.discovered.add(id);this.callbacks.onDiscover(id)}this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;const desired={x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
@@ -704,6 +896,7 @@ export class WorldView {
   }
   drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
   drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(dissent?'D':'A',0,4,9,dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
+  drawAcademyObject(object){const c=this.ctx;const review=object.type==='academy-review';c.save();c.translate(object.x,object.y);this.ellipse(0,9,11,4,'#395a3b22');c.fillStyle=review?'#e5ead6':'#fff7e0';c.strokeStyle=review?'#356e62':'#b88b4e';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-11,16,19,2);c.fill();c.stroke();this.line([[-3,-7],[-3,5]],review?'#356e62':'#b88b4e',1);this.text(review?'R':'S',2,4,8,review?'#29443d':'#9a6a37','system-ui');this.text(review?'REVIEW':'STUDY',0,19,6,'#687756','system-ui');const title=Array.from(object.title||'');this.text(title.length>13?title.slice(0,12).join('')+'…':title.join(''),0,29,7,'#687756','system-ui');c.restore();}
   drawCollaboratorResponseObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const rejected=object.validationStatus==='rejected';this.ellipse(0,10,12,4,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle=object.accent;c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-12,16,21,2);c.fill();c.stroke();this.line([[-4,-6],[4,-6]],object.accent,1);this.line([[-4,-2],[4,-2]],'#9a9876',1);this.text(object.sigil,0,10,8,object.accent,'system-ui');this.text(rejected?'REJECTED':'REVIEW',0,21,6,rejected?'#af5138':'#687756','system-ui');c.restore();}
   drawQuestMarker(marker){
     const c=this.ctx;c.save();
@@ -719,9 +912,9 @@ export class WorldView {
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
   drawPlayer(player,other=false){const c=this.ctx;c.save();c.translate(player.x,player.y);this.ellipse(0,9,13,5,'#354a3a33');const bob=!this.reduced&&this.moving&&!other?Math.sin(this.time*16)*1.5:0;c.translate(0,bob);this.line([[-4,0],[-5,8]],'#3c4b43',4);this.line([[5,0],[7,8]],'#3c4b43',4);c.fillStyle=other?'#6e8c76':'#385e58';c.beginPath();c.roundRect(-9,-20,18,23,5);c.fill();this.ellipse(0,-26,9,10,'#e2b68b','#675d42');this.ellipse(0,-33,11,8,other?'#819a75':palette.orange,'#7d6541');c.fillStyle=other?'#819a75':'#e38942';c.fillRect(-11,-33,22,5);this.ellipse(0,-42,4,4,other?'#819a75':palette.orange);this.line([[-9,-17],[-14,-8]],'#c7a17b',4);this.line([[9,-17],[13,-8]],'#c7a17b',4);if(!other){this.ellipse(0,-52,3,3,'#fff4ce');this.text('YOU',0,27,9,'#35574d','system-ui')}else if(player.name)this.text(String(player.name).slice(0,24),0,27,10,'#546c53');c.restore()}
   render(){const c=this.ctx;c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.save();c.translate(this.width/2-this.camera.x*this.zoom,this.height/2-this.camera.y*this.zoom);c.scale(this.zoom,this.zoom);this.drawLandscape();if(this.route.length){this.line([[this.player.x,this.player.y],...this.route.map(p=>[p.x,p.y])],'#b56a3e99',2,[4,7]);const p=this.route.at(-1);this.ellipse(p.x,p.y,8,4,undefined,'#b56a3e')}
-    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawCollaboratorResponseObject(object)})),...GUILD_NPCS.map(npc=>({y:npc.y,draw:()=>this.drawGuildNpc(npc)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
+    this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawCollaboratorResponseObject(object)})),...this.academyObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawAcademyObject(object)})),...GUILD_NPCS.map(npc=>({y:npc.y,draw:()=>this.drawGuildNpc(npc)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
     if(this.questMarker)this.drawQuestMarker(this.questMarker);
-    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='collaborator'?`E · Speak to ${near.name}`:near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='collaborator-response'?'E · Inspect archived '+near.name+' response':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
+    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='collaborator'?`E · Speak to ${near.name}`:near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='academy-study'?'E · Inspect study note':near.type==='academy-review'?'E · Inspect retrieval review':near.type==='collaborator-response'?'E · Inspect archived '+near.name+' response':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.width*.2,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#786f3600');vignette.addColorStop(1,'#786f3618');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
   }
   destroy(){this.destroyed=true;cancelAnimationFrame(this.animation);this.resizeObserver.disconnect();removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);this.canvas.removeEventListener('pointerdown',this.onPointer);}
