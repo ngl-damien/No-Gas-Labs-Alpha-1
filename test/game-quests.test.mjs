@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -987,6 +987,126 @@ test('Guild Hall expedition docket discards a stale Relay projection and replays
   assert.equal(docket.expeditions[0].responseCount, 1);
   assert.equal(docket.expeditions[0].responses[0].responseId, 'response-docket-tutor-response');
   assert.equal(docket.expeditions[0].responses[0].roleId, 'tutor');
+});
+
+function decisionDocketFixture(overrides = {}) {
+  const decision = {
+    id: 'decision-1',
+    title: 'A bounded institutional proposal',
+    status: 'PENDING',
+    revision: 1,
+    createdAt: '2026-10-31T12:00:00.000Z',
+    createdBy: 'damien',
+    expiresAt: '2026-10-31T13:00:00.000Z',
+    expiredAt: null,
+    policy: { id: 'policy-1', revision: 1 },
+    disposition: null,
+    evaluation: { bytes: 'PRIVATE EVALUATION BYTES' },
+    risks: ['PRIVATE RISK'],
+    rollback: 'PRIVATE ROLLBACK',
+    proposedEffect: 'PRIVATE EFFECT'
+  };
+  return {
+    schema: 'ngl.decisions.snapshot.v1',
+    revision: 2,
+    head: 'a'.repeat(64),
+    policy: {
+      id: 'policy-1',
+      reviewWindowMs: 3600000,
+      revision: 1,
+      setAt: '2026-10-31T12:00:00.000Z',
+      basis: 'PRIVATE POLICY BASIS'
+    },
+    decisions: [decision],
+    counts: { PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 },
+    ...overrides
+  };
+}
+
+test('decision docket projects Founder and Witness snapshots into the same bounded public objects', () => {
+  const founderSnapshot = decisionDocketFixture();
+  const before = structuredClone(founderSnapshot);
+  const founderDocket = projectDecisionDocket(founderSnapshot);
+  assert.equal(founderDocket.available, true);
+  assert.equal(founderDocket.revision, 2);
+  assert.equal(founderDocket.decisionCount, 1);
+  assert.deepEqual(founderDocket.counts, {
+    PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0
+  });
+  assert.deepEqual(founderDocket.decisions[0], {
+    id: 'decision-1',
+    title: 'A bounded institutional proposal',
+    status: 'PENDING',
+    revision: 1,
+    createdAt: '2026-10-31T12:00:00.000Z',
+    createdBy: 'damien',
+    expiresAt: '2026-10-31T13:00:00.000Z',
+    expiredAt: null,
+    policy: { id: 'policy-1', revision: 1 },
+    disposition: null
+  });
+  assert.doesNotMatch(JSON.stringify(founderDocket), /PRIVATE EVALUATION|PRIVATE RISK|PRIVATE ROLLBACK|PRIVATE EFFECT|PRIVATE POLICY BASIS/);
+  assert.deepEqual(founderSnapshot, before, 'projection must not mutate the service snapshot');
+
+  const witnessDecision = structuredClone(founderSnapshot.decisions[0]);
+  delete witnessDecision.evaluation;
+  delete witnessDecision.risks;
+  delete witnessDecision.rollback;
+  delete witnessDecision.proposedEffect;
+  const witnessSnapshot = decisionDocketFixture({
+    policy: { id: 'policy-1', reviewWindowMs: 3600000, revision: 1, setAt: '2026-10-31T12:00:00.000Z' },
+    decisions: [witnessDecision]
+  });
+  const witnessDocket = projectDecisionDocket(witnessSnapshot);
+  assert.equal(witnessDocket.available, true);
+  assert.deepEqual(witnessDocket.decisions, founderDocket.decisions,
+    'the public docket must not depend on Founder-only evaluation fields');
+  assert.ok(Object.isFrozen(witnessDocket) && Object.isFrozen(witnessDocket.decisions[0]));
+});
+
+test('decision docket refuses malformed, duplicate and count-inconsistent snapshots without inventing an empty register', () => {
+  const valid = decisionDocketFixture();
+  assert.equal(projectDecisionDocket(null).available, false);
+  assert.equal(projectDecisionDocket({ ...valid, schema: 'ngl.decisions.snapshot.v0' }).available, false);
+  assert.equal(projectDecisionDocket({ ...valid, head: 'not-a-digest' }).available, false);
+  assert.equal(projectDecisionDocket({
+    ...valid,
+    counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  }).reason, 'count-mismatch');
+
+  const duplicate = structuredClone(valid.decisions[0]);
+  assert.equal(projectDecisionDocket({
+    ...valid,
+    decisions: [valid.decisions[0], duplicate],
+    counts: { PENDING: 2, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  }).reason, 'invalid-decision');
+});
+
+test('decision docket rejects accessor-backed snapshots without executing getters', () => {
+  const snapshot = decisionDocketFixture();
+  let getterCalls = 0;
+  Object.defineProperty(snapshot.decisions[0], 'title', {
+    enumerable: true,
+    get() { getterCalls += 1; return 'forged title'; }
+  });
+  const projection = projectDecisionDocket(snapshot);
+  assert.equal(projection.available, false);
+  assert.equal(getterCalls, 0);
+});
+
+test('decision docket preserves deterministic expiry as a terminal state without inventing a disposition', () => {
+  const snapshot = decisionDocketFixture({
+    decisions: [{
+      ...decisionDocketFixture().decisions[0],
+      status: 'EXPIRED',
+      expiredAt: '2026-10-31T13:00:01.000Z'
+    }],
+    counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 1 }
+  });
+  const projection = projectDecisionDocket(snapshot);
+  assert.equal(projection.available, true);
+  assert.equal(projection.decisions[0].status, 'EXPIRED');
+  assert.equal(projection.decisions[0].disposition, null);
 });
 
 test('Contradiction encounters repeat once per distinct report and reopen when new reports arrive', () => {
