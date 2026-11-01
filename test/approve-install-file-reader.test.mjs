@@ -40,6 +40,7 @@ function setWindowsKeyAcl(path, includeEveryone = false) {
   const script = [
     "$ErrorActionPreference = 'Stop'",
     "$path = $env:NGL_ACL_TEST_TARGET",
+    "$file = [System.IO.FileInfo]::new($path)",
     "$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
     "$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
     "$administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')",
@@ -50,7 +51,7 @@ function setWindowsKeyAcl(path, includeEveryone = false) {
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow))",
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($administrators, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow))",
     "if ($env:NGL_ACL_TEST_EVERYONE -eq '1') { $everyone = [System.Security.Principal.SecurityIdentifier]::new('S-1-1-0'); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($everyone, [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Allow)) }",
-    "Set-Acl -LiteralPath $path -AclObject $acl"
+    "$file.SetAccessControl($acl)"
   ].join('\n');
   const executable = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const result = spawnSync(executable, [
@@ -58,7 +59,7 @@ function setWindowsKeyAcl(path, includeEveryone = false) {
     '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
   ], {
     encoding: 'utf8',
-    timeout: 5000,
+    timeout: 15_000,
     windowsHide: true,
     env: {
       ...process.env,
