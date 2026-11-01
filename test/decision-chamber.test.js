@@ -201,6 +201,58 @@ test("verification requires a host-pinned audience and rejects mismatches", () =
   });
 });
 
+test("a wall-clock rollback cannot revive a decision after this process observes expiry", async t => {
+  let currentTime = Date.parse("2099-01-01T00:00:00.000Z");
+  t.mock.method(Date, "now", () => currentTime);
+  const isolatedAuthority = await import("../src/authority/decision.js?clock-rollback-regression");
+  const expiringPayload = makePayload({
+    expires_at: new Date(currentTime + 2000).toISOString()
+  });
+  const expiringSigned = signedReceipt(expiringPayload);
+  const trust = {
+    public_key_jwk: jwk,
+    expected_fingerprint: fingerprint,
+    expected_audience: audience
+  };
+  const verification = isolatedAuthority.verifyFounderDecision({
+    signed: expiringSigned,
+    payload: expiringPayload,
+    ...trust
+  });
+  assert.equal(verification.valid, true);
+  const event = isolatedAuthority.authorizationEvent({
+    signed: expiringSigned,
+    payload: expiringPayload,
+    verification
+  });
+  const hostVerifier = isolatedAuthority.createFounderAuthorizationVerifier(trust);
+
+  currentTime += 3000;
+  assert.throws(
+    () => isolatedAuthority.authorizationEvent({
+      signed: expiringSigned,
+      payload: expiringPayload,
+      verification
+    }),
+    /verified Founder decision required/
+  );
+  assert.equal(isolatedAuthority.verifyAuthorizationEvent(event, trust), false);
+  assert.equal(hostVerifier(event), false);
+
+  // Simulate the operating-system wall clock being moved backwards after expiry.
+  currentTime -= 2500;
+  assert.throws(
+    () => isolatedAuthority.authorizationEvent({
+      signed: expiringSigned,
+      payload: expiringPayload,
+      verification
+    }),
+    /verified Founder decision required/
+  );
+  assert.equal(isolatedAuthority.verifyAuthorizationEvent(event, trust), false);
+  assert.equal(hostVerifier(event), false);
+});
+
 test("mutating global Date.now cannot revive an expired decision", () => {
   const expiredPayload = makePayload({ expires_at: "1970-01-01T00:00:00.001Z" });
   const expiredSigned = signedReceipt(expiredPayload);
