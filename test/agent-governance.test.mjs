@@ -1,13 +1,26 @@
 import test from 'node:test';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { runPreflight } from '../scripts/validate-agent-governance.mjs';
+import { delimiter, join } from 'node:path';
+import { runPreflight, reconcileInspectedFileRecord } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
+
+function executableOnPath(name) {
+  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+    if (!directory) continue;
+    const candidate = join(directory, name);
+    try { accessSync(candidate, fsConstants.X_OK); return candidate; }
+    catch { /* Continue through the inherited executable search path. */ }
+  }
+  return null;
+}
+const mkfifoExecutable = process.platform === 'win32' ? null : executableOnPath('mkfifo');
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
@@ -21,6 +34,30 @@ async function fixture() {
   await writeFile(join(root, 'CHECKPOINT.md'), '# Latest checkpoint\n');
   return root;
 }
+
+test('preflight rejects a path whose fingerprint changes between semantic inspections', () => {
+  const originalBytes = Buffer.from('trusted instructions v1');
+  const original = reconcileInspectedFileRecord(null, 'AGENTS.md', 'root-instructions', originalBytes);
+  assert.equal(original.changed, false);
+  assert.equal(original.record.sha256, createHash('sha256').update(originalBytes).digest('hex'));
+
+  const sameBytes = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'target', Buffer.from(originalBytes)
+  );
+  assert.equal(sameBytes.changed, false);
+  assert.equal(sameBytes.record.kind, 'root-instructions',
+    'target enumeration must not downgrade trusted instruction classification');
+
+  const changedBytes = Buffer.from('trusted instructions v2');
+  assert.equal(changedBytes.byteLength, originalBytes.byteLength,
+    'the regression must exercise same-length replacement, not only a size change');
+  const changed = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'durable-checkpoint', changedBytes
+  );
+  assert.equal(changed.changed, true);
+  assert.equal(changed.record.sha256, createHash('sha256').update(originalBytes).digest('hex'),
+    'the first receipt remains intact but the caller must block rather than report it as current');
+});
 
 test('preflight hashes root contract, protocol, scoped nested instructions and checkpoint', async () => {
   const root = await fixture();
@@ -73,6 +110,47 @@ test('preflight blocks a missing scoped target instead of returning a ready rece
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects directories as scoped targets instead of reading them', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts', 'directory-target'), { recursive: true });
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/directory-target'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/directory-target' && item.reason.includes('regular file')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/directory-target'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects FIFO targets without blocking on a writer', {
+  skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
+}, async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const fifoPath = join(root, 'scripts/worker.pipe');
+    execFileSync(mkfifoExecutable, [fifoPath]);
+    const scriptPath = new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname;
+    const child = spawnSync(process.execPath, [
+      scriptPath,
+      '--root', root,
+      '--path', 'scripts/worker.pipe',
+      '--checkpoint', 'CHECKPOINT.md'
+    ], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/worker.pipe' && item.reason.includes('regular file')
+    ));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 test('preflight rejects invalid UTF-8 in a scoped target', async () => {
   const root = await fixture();
   try {
