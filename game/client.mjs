@@ -164,6 +164,7 @@ function openOfflineDecisionDocket(locationId = 'decision_chamber', focusDecisio
     `Saved on this device at ${cached?.savedAt || 'an unknown time'} · ${visibleCount} cached record(s). The device save time and all cached statuses are unverified.`,
     'form-help'
   ));
+  if (visibleCount === 0) content.append(paragraph('No records were present in the last saved projection; this is not a live emptiness check.', 'evidence-warning'));
   if (cached?.truncated) {
     content.append(paragraph(
       `The source projection reported ${cached.sourceDecisionCount} record(s) when saved; ${cached.sourceOmittedDecisionCount} source record(s) were not included in this bounded local copy.`,
