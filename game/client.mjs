@@ -469,7 +469,7 @@ if(responseObjects.length){
   content.append(paragraph(`${view.institutionRecordMalformed} malformed retained event slot(s) remain in the Chronicle and were not made into map objects.`,'evidence-warning'));
  }
  if(recordObjects.length){
-  content.append(paragraph('Retained events appear as read-only objects at the institution that handles them. Reports, failed observations, revocations and dissent keep their original labels. The 24 newest eligible records per location receive map pins; older or unplaceable records open directly from this list.','form-help'));
+  content.append(paragraph('Retained events appear as read-only objects at the institution that handles them. Reports, failed observations, revocations and dissent keep their original labels. A red marker means review, not a truth verdict. The 24 newest eligible records per location receive map pins; older or unplaceable records open directly from this list.','form-help'));
   content.append(node('h3',{class:'section-title',text:'INSTITUTIONAL RECORDS · WORLD OBJECTS'}));
   const visibleRecords=recordObjects.slice(0,60);
   for(const object of visibleRecords){
