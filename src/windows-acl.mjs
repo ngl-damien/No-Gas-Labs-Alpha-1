@@ -101,3 +101,67 @@ export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
 export function verifyWindowsDirectorySecurity(path, label = 'PRIVATE_DIRECTORY') {
   return verifyWindowsPathSecurity(path, label, 'directory');
 }
+
+function powershellSecure() {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$path = $env:NGL_ACL_TARGET",
+    "$kind = $env:NGL_ACL_KIND",
+    "if ([string]::IsNullOrWhiteSpace($path)) { throw 'NGL_ACL_TARGET_REQUIRED' }",
+    "$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
+    "$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
+    "$administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')",
+    "$inherit = [System.Security.AccessControl.InheritanceFlags]::None",
+    "if ($kind -eq 'directory') {",
+    "  $entry = [System.IO.DirectoryInfo]::new($path)",
+    "  $acl = [System.Security.AccessControl.DirectorySecurity]::new()",
+    "  $inherit = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit",
+    "} else {",
+    "  $entry = [System.IO.FileInfo]::new($path)",
+    "  $acl = [System.Security.AccessControl.FileSecurity]::new()",
+    "}",
+    "$acl.SetAccessRuleProtection($true, $false)",
+    "$acl.SetOwner($current)",
+    "$rights = [System.Security.AccessControl.FileSystemRights]::FullControl",
+    "$none = [System.Security.AccessControl.PropagationFlags]::None",
+    "$allow = [System.Security.AccessControl.AccessControlType]::Allow",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($current, $rights, $inherit, $none, $allow))",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inherit, $none, $allow))",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($administrators, $rights, $inherit, $none, $allow))",
+    "$entry.SetAccessControl($acl)"
+  ].join('\\n');
+}
+
+function secureWindowsPathSecurity(path, label, kind) {
+  if (process.platform !== 'win32' || typeof path !== 'string' || !path ||
+      !['file', 'directory'].includes(kind)) {
+    fail(label, 'OWNER_VERIFICATION_UNAVAILABLE');
+  }
+  const systemRoot = process.env.SystemRoot;
+  if (typeof systemRoot !== 'string' || !systemRoot) {
+    fail(label, 'OWNER_VERIFICATION_UNAVAILABLE');
+  }
+  const executable = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const encoded = Buffer.from(powershellSecure(), 'utf16le').toString('base64');
+  const result = spawnSync(executable, [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand', encoded
+  ], {
+    encoding: 'utf8',
+    timeout: 15_000,
+    windowsHide: true,
+    maxBuffer: 64 * 1024,
+    env: { ...process.env, NGL_ACL_TARGET: path, NGL_ACL_KIND: kind }
+  });
+  if (result.error || result.status !== 0) fail(label, 'OWNER_VERIFICATION_FAILED');
+  return verifyWindowsPathSecurity(path, label, kind);
+}
+
+/** Apply the current user's private DACL only to a path created by this process. */
+export function secureWindowsFileSecurity(path, label = 'PRIVATE_FILE') {
+  return secureWindowsPathSecurity(path, label, 'file');
+}
+
+export function secureWindowsDirectorySecurity(path, label = 'PRIVATE_DIRECTORY') {
+  return secureWindowsPathSecurity(path, label, 'directory');
+}
