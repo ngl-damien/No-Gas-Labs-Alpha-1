@@ -35,6 +35,70 @@ test('root instructions and hosted preflight use the same current durable checkp
   assert.equal(args[checkpointIndex + 1], checkpointPath, 'hosted preflight must hash the canonical checkpoint');
 
   const targets = args.flatMap((arg, index) => arg === '--path' && args[index + 1] ? [args[index + 1]] : []);
+
+  const requiredTargets = [
+  "AGENTS.md",
+  "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+  "docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md",
+  "docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md",
+  "docs/operations/LATEST_CHECKPOINT.md",
+  "docs/operations/MMORPG_COMPLETION_CONTRACT.md",
+  "docs/operations/MMORPG_COMPLETION_LEDGER.md",
+  "package.json",
+  "scripts/validate-agent-governance.mjs",
+  "test/agent-governance.test.mjs",
+  "test/latest-checkpoint-contract.test.mjs",
+  "test/checkpoint-symlink-safety.test.mjs",
+  ".github/workflows/branch-cleanup.yml",
+  "test/branch-cleanup-safety.test.mjs",
+  "game/world-view.mjs",
+  "authority/index.html",
+  "src/authority/decision.js",
+  "test/decision-chamber.test.js",
+  "scripts/verify.mjs",
+  "game/server.mjs",
+  "test/game-server.test.mjs",
+  "game/service-store.mjs",
+  "test/service-store-durability.test.mjs",
+  "test/lock-ownership-regression.test.mjs",
+  "test/founder-key-file-hardening.test.mjs",
+  ".github/workflows/verify.yml",
+  "docs/meteor/RECOVERY.md",
+  "docs/meteor/world.md",
+  "game/index.html",
+  "game/client.mjs",
+  "game/player-position.mjs",
+  "test/game-player-position.test.mjs",
+  "scripts/verify-browser.py",
+  "src/bounded-file-reader.mjs",
+  "test/approve-install-file-reader.test.mjs",
+  "experiment-001/FOUNDER-APPROVAL.md",
+  "src/institution/lock-inspector.mjs",
+  "test/writer-lock-inspector.test.mjs",
+  "src/institution/decisions.mjs",
+  "test/institution-decisions.test.mjs",
+  "game/character-sheet.mjs",
+  "game/chronicle.mjs",
+  "game/institution-view.mjs",
+  "game/model.mjs",
+  "game/quests.mjs",
+  "game/styles.css",
+  "scripts/build-game.mjs",
+  "src/world/guild-hall.js",
+  "test/chronicle.test.mjs",
+  "test/game-academy.test.mjs",
+  "test/game-character-sheet.test.mjs",
+  "test/game-geometry.test.mjs",
+  "test/game-model.test.mjs",
+  "test/game-package.test.mjs",
+  "test/game-quests.test.mjs",
+  "test/guild-hall.test.js",
+  "test/institution-view.test.mjs"
+];
+  assert.equal(new Set(targets).size, targets.length, 'hosted preflight targets must be unique');
+  for (const path of requiredTargets) {
+    assert.ok(targets.includes(path), `hosted preflight must include current canonical target ${path}`);
+  }
   assert.ok(targets.includes(checkpointPath), 'canonical checkpoint must also be included in the scoped target list');
   assert.ok(targets.includes(bootstrapCheckpointPath), 'historical bootstrap checkpoint must remain a separately hashed input');
   assert.ok(targets.includes('test/latest-checkpoint-contract.test.mjs'), 'the checkpoint contract regression must be preflighted');
