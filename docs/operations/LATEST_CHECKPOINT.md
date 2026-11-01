@@ -797,3 +797,50 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 - Repair commit `2e4dde53f22fbf14c5cb78616c362979e61fcda7` updates the shared-restart expectation to three reports and explicitly asserts the reconnect report text is retained exactly once after service restart. This preserves the failed run and its cause rather than rewriting the history.
 - Current branch head after the repair is `2e4dde53f22fbf14c5cb78616c362979e61fcda7`. Exact-head hosted verification has not yet been observed. Do not claim Browser Acceptance success until its rerun completes.
 
+
+
+---
+
+## Run 23 — 2026-11-01 10:14 UTC — connect player guilds to reversible quest progression
+
+**Worker:** Worker B — MMORPG runtime and mobile continuity.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Parent proposal:** PR #262, exact head `109e3b7d73f43fe547f09539f261267f1ab41579`.  
+**New branch:** `game/player-guild-membership-quest-20261101`.  
+**Draft child PR:** [#265](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/265), targeting PR #262's branch; current code head before this checkpoint refresh was `9127823eca7a1c22dd1ae622fef06e9028750458`.
+
+### Bootstrap, ownership, and current-state reinspection
+
+- Read root `AGENTS.md` first and then the complete shared `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` sequentially. Their blob SHAs match current main and the PR #262 branch: AGENTS `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the MMORPG completion contract and current ledger. The ledger's G0–G9 rows were still NOT ASSESSED; this run performed a bounded source audit of G5 and G6 only.
+- Inspected the full recursive tree at PR #262 head. The only nested `AGENTS.md` is under `recovery/public-repos/TaskAgile/`; none applies to the game, test, script, or operations paths changed here.
+- Re-read PR #262's current head and latest Worker B implementation. Its exact-head Verify [41294966097](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41294966097), Genesis [41294966087](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41294966087), and Browser Acceptance [41294966077](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41294966077) all completed successfully.
+- Re-read the latest Worker A result rather than assuming its branch was inherited. PR #263 head `4b8f32c8b033e90e2ae9008cc8da61c876a83fa0` and PR #264 head `23ff48b68b51966e717a0c5fb8a67fab6f9749ef` each have successful exact-head Verify, Genesis, and Browser runs. PR #264's FIFO-safe, no-follow target reader and unique receipt runner are a separate Worker A stack; this game branch does not contain those commits or touch their governance paths.
+- Current main still returns 404 for `docs/operations/LATEST_CHECKPOINT.md`; the canonical checkpoint is present on the active proposal stack. The 71-target preflight manifest on the parent branch already includes every path changed in this run: `game/quests.mjs`, `game/character-sheet.mjs`, `test/game-quests.test.mjs`, `test/game-character-sheet.test.mjs`, `scripts/verify-browser.py`, the MMORPG ledger, and this checkpoint.
+- The execution container has no repository checkout and Node v22.16.0, while `package.json` requires Node >=24. No local preflight, Node test suite, browser test, or build is claimed.
+
+### Source-backed gate audit
+
+- Current main `ea025a5...` has a Common Ground map and quest trail: `game/world-view.mjs` blob `baf96b1...` defines four guide discoveries plus TownSquare, Guild Hall, Forge, Evidence Archive, Decision Chamber, Academy, Moonshot Field, and Publication House. Main `game/social.mjs` and `test/game-social.test.mjs` are absent; main `game/model.mjs` blob `0864bef...` and `game/client.mjs` blob `702028b...` do not implement player guild/Commons flows.
+- PR #262's proposed stack adds The Commons, bounded messages/reporting/moderation, append-only player-guild events, actor-scoped guild membership, role-bound Guild Hall NPCs, and two-session browser journeys. This is proposed evidence, not mainline integration.
+- Updated `docs/operations/MMORPG_COMPLETION_LEDGER.md`: G5 and G6 are now IN PROGRESS with current-main/proposed evidence kept separate. G0–G4 and G7–G9 remain NOT ASSESSED in this partial audit. No percentage-complete claim was added.
+
+### Implementation
+
+- `bea8fcda3b075c834f77750001cdf5b3f8c6d759` — `game/quests.mjs`: add a Founder and Witness objective, **Join a player guild or found one**. It derives current membership through the existing `projectPlayerGuilds` event replay and binds completion to one unique, strict-timestamp `guild-created` or `guild-joined` event owned by the current actor. An ungrouped player is routed to Guild Hall. Leave/disband returns the objective to OPEN.
+- The projection fails closed on duplicate/malformed guild event IDs, invalid actor/timestamp data, or an invalid guild history; it never treats a model/NPC/UI assertion as membership.
+- `10f7be60ca7e12051848aef4312d993b765b9aee` — `game/character-sheet.mjs`: exclude guild create/join/leave/disband events from quest-activity XP. The Questkeeper objective count may reflect active membership, but guild membership remains XP-neutral.
+- `af16ff1edbfe340190df59f96b42169af403cbd4` — `test/game-quests.test.mjs`: cover Founder/Witness membership, join, leave, disband, Guild Hall routing, and ambiguous-history rejection.
+- `4f4ef210627e92ce27e8119b49aaf970d6cf5e1a` — `test/game-character-sheet.test.mjs`: prove the reversible Questkeeper status does not award XP or mutate world summaries.
+- `b6206872af431cb9e67ec2ef696099a6efc6b77f` — `scripts/verify-browser.py`: extend the two-mobile-session player-guild journey to assert OPEN → RECORDED → OPEN for both guild founder and joining member while retaining the existing world-XP-neutral assertion.
+- `9127823eca7a1c22dd1ae622fef06e9028750458` — clarify that private-mode guilds are device-local and Shared World is required to meet other players.
+- PR #265 is draft/open/unmerged. No server authority, trade, item-transfer, leadership-transfer, Founder key, or consequential decision path was changed.
+
+### Verification boundary and next actions
+
+- Parent PR #262 exact-head Verify/Genesis/Browser are green as listed above; they do not verify PR #265.
+- Exact-head hosted Verify, Genesis Evidence Invariant, and Browser Acceptance for PR #265 are pending at this checkpoint refresh. Require the 71-target preflight to be ready with zero warnings/failures, the Node/Python/build/institutional-exercise stages to pass, and the browser player-guild journey to pass before claiming this objective verified.
+- If a hosted check fails, preserve the failure and repair only an attributable defect. Re-read the new exact head and rerun all three workflows.
+- After exact-head results are observed, record them in the PR handoff and update the MMORPG ledger without claiming integration or device acceptance.
+
+No merge, release, deployment, spending, external publication, credential/permission change, key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
