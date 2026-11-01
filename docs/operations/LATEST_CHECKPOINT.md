@@ -500,3 +500,62 @@ No merge, release, deployment, workflow dispatch, branch deletion, spending, ext
 4. Keep the ngl-mesh full integration blocked until PR #1's `verify_bridge.py` compile list includes PR #3's helpers and the operator-supplied RAE archive/APK/report are available.
 
 No merge, release, deployment, spending, external publication, key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 18 — 2026-11-01 06:18 UTC — reconcile canonical preflight targets across active stacks
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior durable checkpoint:** this file through Run 17 on PR #248's canonical-checkpoint branch.  
+**Canonical parent:** PR #248, branch `ops/canonical-checkpoint-preflight-20261031-run10`, exact head `66d0e9caa1b7591910357aa3a1c7898df0c83676`, draft/open/unmerged.  
+**Run branch:** `ops/canonical-preflight-target-union-20261101`, child PR #258.
+
+### Bootstrap and evidence limits
+
+- An initial bundled/parallel repository read was attempted before the required standalone bootstrap. I then re-read root `AGENTS.md` alone and the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone in separate operations, discarded the earlier observations, and restarted the baseline. The initial ordering error is recorded as a procedural violation; the later sequential reread does not erase it.
+- Read the current durable checkpoint in full (503 lines), current MMORPG completion contract and ledger, current main/base metadata, open PRs and relevant branches, and current Worker B proposal/check evidence.
+- Applicable nested instruction probes for `game/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` returned 404 on the canonical parent tree. No nested instruction file was present for the paths changed in this run.
+- This connector-only session has no local repository checkout or terminal. No local `npm run agent:preflight`, Node test, or local receipt is claimed. Manual instruction sequence and GitHub source inspection were used; hosted exact-head CI is the required verification.
+
+### Fresh baseline and Worker B rehydration
+
+- Alpha-1 `main` remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; PR #248 is a proposal, not mainline integration. `docs/operations/LATEST_CHECKPOINT.md` is absent from main and present on PR #248's branch.
+- PR #16 remains closed/unmerged and is superseded by merged PR #18. Issue #17 remains open for real Founder identity/key custody, canonical live-server authorization integration, concurrency, and crash/stale-lock recovery. No Founder key or credential was generated, read, enrolled, rotated, or changed.
+- Worker B's latest observed proposal is PR #257, head `7a107e7636a7962511dbb3ad894097f6b69bc346`, stacked on PR #253. Exact-head Verify [41279427384](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427384), Genesis Evidence Invariant [41279427378](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427378), and Browser Acceptance [41279427446](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427446) completed successfully. This is proposed branch capability, not mainline integration.
+- PR #253 head `7c246375c56bad9e0fab3c08055d640353358419` has Verify [41277244700](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41277244700), Genesis [41277244738](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41277244738), and Browser [41277244647](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41277244647) successful.
+- PR #249 head `1686806143b11e7c70366b719621b50037e8ab94` has Verify [41267898554](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898554), Genesis [41267898505](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898505), and Browser [41267898568](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898568) successful. Android Alpha-1 [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) completed successfully: APK assembly succeeded; the API 35 emulator instrumentation started 2 tests and reported 2/2 completed, 0 skipped, 0 failed; the emulator journey and artifact preservation steps succeeded. This supersedes the earlier Android failure on older PR #249 heads, but does not establish physical-device acceptance.
+- PR #255 head `76743dccebd409b3a519ab3399281e8b079f3ef0` and PR #256 head `ccfb90a664f74151ee92e9fefb213ede6e8014a4` have successful exact-head Verify, Genesis, Windows ACL, and Browser workflows as observed in runs 41273121453/41273121370/41273121380/41273121388 and 41276790413/41276790429/41276790416/41276790543. Both remain draft proposals.
+- PR #244/#245/#251 remain open proposals for decision sealing/context, service-store ownership, and explicit Founder-key startup. Their source and preflight targets were included in the current stack comparison; no merge or key operation was performed.
+
+### Cycle 1 — close canonical preflight target-coverage gap
+
+**Observed defect:** PR #248's canonical `agent:preflight:ci` manifest covered only 15 paths and included `game/world-view.mjs`, but omitted most existing source/test/operator paths present in the active Worker A and Worker B target manifests. In particular it omitted the active game client/institution view, quest/model tests, browser verifier, player-position source/test, character-sheet paths, Founder authorization/service-store paths, and Windows/POSIX storage regressions that already exist in the canonical parent tree. A green preflight receipt on the old 15-path list did not prove those omitted paths were inspected.
+
+**Challenge/reinspection:** Re-read the exact current PR #248 branch package manifest, the current target manifests on PRs #244, #245, #249, #251, #255, #256, and #257, and the complete recursive tree of PR #248's exact base. The union contained 92 distinct paths. Exactly 57 of those paths exist in the canonical parent tree; 35 are absent and cannot safely be named in this branch's preflight without making it fail on missing files.
+
+**Implementation — child PR #258:**
+
+- Branch: `ops/canonical-preflight-target-union-20261101`.
+- Parent: PR #248 exact head `66d0e9caa1b7591910357aa3a1c7898df0c83676`.
+- `1e8a2c389b9f13058646b369b503decd7e7c41cf` — update `package.json` so hosted preflight covers 57 unique paths, adding 42 paths to the previous 15. The canonical checkpoint remains `docs/operations/LATEST_CHECKPOINT.md`; the historical bootstrap checkpoint remains a separately hashed target.
+- `d9042c43d067f94c04e34e3eedfb53457c086d8b` — extend `test/latest-checkpoint-contract.test.mjs` to pin all 57 canonical-base targets and reject duplicate target entries.
+- Changed paths are limited to `package.json` and `test/latest-checkpoint-contract.test.mjs` so far. No game/runtime, Android, credential, key, or permission code was changed.
+- PR [#258](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/258) was created as draft/open against PR #248's branch. It is a child proposal, not a merge or mainline capability.
+
+**Deliberately excluded 35 paths:** 2 decision-context tests introduced only by PR #244; 14 Android-specific files introduced by PR #247/#249; 5 Windows ACL files introduced by PR #255/#256; and 14 game collaborator/social modules and tests introduced by PR #250/#253/#257. These are not present in PR #248's base tree. Add them only when the corresponding stacks are reconciled into the same tree, then rerun the canonical preflight and exact-head checks.
+
+### Verification status at checkpoint creation
+
+- PR #258 code head `d9042c43d067f94c04e34e3eedfb53457c086d8b`: Genesis Evidence Invariant [41280288525](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41280288525) succeeded; Verify [41280288539](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41280288539) and Browser Acceptance [41280288528](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41280288528) were in progress at last observation. These are not final verification for the later checkpoint append commit; recheck the new exact head.
+- No local tests or local preflight receipt are claimed.
+
+### Next ranked actions
+
+1. Recheck PR #258's final exact-head Verify, Genesis, and Browser workflows after the checkpoint append. Verify must show preflight `ready`, zero warnings/failures, all 57 paths hashed, and the target-contract regression passing. Inspect and repair attributable failures.
+2. Reconcile the 35 currently absent targets when PR #244/#245/#251/#255/#256 and PR #247/#249/#250/#253/#257 are deliberately brought into one reviewable tree. Preserve the canonical checkpoint and do not overwrite any worker's branch.
+3. Hand Worker B the observed PR #249 Android 2/2 pass and ensure the MMORPG completion ledger records the exact run while keeping physical-device evidence separate.
+4. Continue issue #17's independent Founder custody and live authorization boundaries only with Damien's explicit trust-root decision; do not generate or enroll keys.
+5. Recheck ngl-mesh PR #1/#3 and Command Center PR #6/incident state before any linked-repository write; retain their existing artifact and authority blockers.
+
+No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
