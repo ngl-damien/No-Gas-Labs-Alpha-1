@@ -17,6 +17,24 @@ function sameFileSnapshot(left, right) {
     left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
 
+export function reconcileInspectedFileRecord(existing, relativePath, kind, bytes) {
+  const candidate = {
+    path: relativePath,
+    kind,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    bytes: bytes.byteLength
+  };
+  if (!existing) return { record: candidate, changed: false };
+  if (existing.sha256 !== candidate.sha256 || existing.bytes !== candidate.bytes) {
+    return { record: existing, changed: true };
+  }
+  // A file can be both a scoped target and a trusted governance input.
+  // Preserve its stronger semantic classification (for example, the
+  // canonical checkpoint) rather than letting target enumeration mask it.
+  if (kind !== 'target') existing.kind = kind;
+  return { record: existing, changed: false };
+}
+
 function safeRelativePath(value) {
   if (typeof value !== 'string' || !value.trim() || value.includes('\\')) return false;
   const first = value.charCodeAt(0);
@@ -133,15 +151,14 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         return null;
       }
       const existing = seen.get(relativePath);
+      const reconciled = reconcileInspectedFileRecord(existing, relativePath, kind, bytes);
+      if (reconciled.changed) {
+        failures.push({ path: relativePath, reason: 'file changed between preflight inspections' });
+        return null;
+      }
       if (!existing) {
-        const record = { path: relativePath, kind, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
-        files.push(record);
-        seen.set(relativePath, record);
-      } else if (kind !== 'target') {
-        // A file can be both a scoped target and a trusted governance input.
-        // Preserve its stronger semantic classification (for example, the
-        // canonical checkpoint) rather than letting target enumeration mask it.
-        existing.kind = kind;
+        files.push(reconciled.record);
+        seen.set(relativePath, reconciled.record);
       }
       return content;
     } catch (error) {
