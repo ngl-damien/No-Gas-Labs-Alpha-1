@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectChronicle } from './chronicle.mjs';
+import { projectDecisionDocket } from './quests.mjs';
 
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_PROJECTED_EVENTS = 5000;
@@ -112,6 +113,7 @@ function stableHash(value) {
 }
 
 function locationFor(entry) {
+  if (entry?.source === 'decision-docket') return 'decision_chamber';
   if (entry?.source === 'world') return WORLD_EVENT_LOCATIONS[entry.eventType] || null;
   if (entry?.source === 'kernel') return KERNEL_EVENT_LOCATIONS[entry.eventType] || null;
   return null;
@@ -119,6 +121,7 @@ function locationFor(entry) {
 
 // This is a navigation cue for review-worthy records, never a truth or authority verdict.
 function markerToneFor(entry) {
+  if (entry?.source === 'decision-docket' && ['REJECTED', 'DEFERRED', 'EXPIRED'].includes(entry.status)) return 'review';
   const type = entry?.eventType || '';
   const labels = (entry?.category || '') + ' ' + (entry?.title || '');
   const summary = (entry?.summary || '') + ' ' + (entry?.detail || '');
@@ -134,17 +137,28 @@ function markerToneFor(entry) {
 
 function validChronicleEntry(entry, identityCounts) {
   if (!entry || typeof entry !== 'object' ||
-      !['world', 'kernel'].includes(entry.source) ||
+      !['world', 'kernel', 'decision-docket'].includes(entry.source) ||
       typeof entry.id !== 'string' || identityCounts.get(entry.id) !== 1 ||
       !entry.id.startsWith(entry.source + ':')) return false;
   const eventId = entry.id.slice(entry.source.length + 1);
-  return WORLD_OBJECT_ID.test(eventId) && !eventId.startsWith('unidentified-') &&
+  const common = WORLD_OBJECT_ID.test(eventId) && !eventId.startsWith('unidentified-') &&
     typeof entry.eventType === 'string' && entry.eventType !== 'unknown' &&
     isStrictTimestamp(entry.at) &&
     typeof entry.actor === 'string' && Boolean(entry.actor.trim()) && entry.actor !== 'unknown actor' &&
     typeof entry.title === 'string' && Boolean(entry.title.trim()) &&
     typeof entry.category === 'string' && Boolean(entry.category.trim()) &&
     typeof entry.summary === 'string';
+  if (!common) return false;
+  if (entry.source === 'decision-docket') {
+    return entry.eventType === 'decision-docket-record' && entry.decisionId === eventId &&
+      ['PENDING', 'APPROVED', 'REJECTED', 'DEFERRED', 'EXPIRED'].includes(entry.status) &&
+      Number.isSafeInteger(entry.revision) && entry.revision >= 1 &&
+      Number.isSafeInteger(entry.docketRevision) && entry.docketRevision >= entry.revision &&
+      typeof entry.docketHead === 'string' && /^[a-f0-9]{64}$/.test(entry.docketHead) &&
+      isStrictTimestamp(entry.expiresAt) &&
+      (entry.expiredAt === null || isStrictTimestamp(entry.expiredAt));
+  }
+  return true;
 }
 
 /**
@@ -157,6 +171,7 @@ export function projectInstitutionRecordWorldObjects({
   world = {},
   institutionSummary = null,
   collaboratorResponseObjects = null,
+  decisionSnapshot = null,
   places = [],
   reservedPoints = [],
   isWalkable = () => false,
@@ -166,8 +181,49 @@ export function projectInstitutionRecordWorldObjects({
   const kernelComplete = hasCompleteInstitutionKernelSnapshot(institutionSummary);
   const kernel = kernelComplete ? ownDataValue(institutionSummary, 'kernel') : null;
   const chronicle = projectChronicle({ world, kernel, collaboratorResponseObjects });
+  const decisionDocket = projectDecisionDocket(decisionSnapshot);
+  const decisionEntries = decisionDocket.available ? decisionDocket.decisions.map(decision => {
+    const disposition = decision.disposition ? Object.freeze({
+      action: decision.disposition.action,
+      actorId: decision.disposition.actorId,
+      decidedAt: decision.disposition.decidedAt,
+    }) : null;
+    const dispositionText = disposition
+      ? `Recorded disposition: ${disposition.action} by ${disposition.actorId} at ${disposition.decidedAt}.`
+      : 'No disposition is recorded.';
+    const warning = decision.status === 'APPROVED'
+      ? 'APPROVED records a Founder disposition only; it does not prove the proposed effect was executed.'
+      : decision.status === 'REJECTED'
+        ? 'REJECTED is a retained disposition, not a truth verdict; the proposal remains inspectable.'
+        : decision.status === 'DEFERRED'
+          ? 'DEFERRED is terminal in this decision service; it does not extend the review window.'
+          : decision.status === 'EXPIRED'
+            ? 'EXPIRED records a deadline outcome; it does not grant or renew authority.'
+            : 'PENDING awaits a human-gated disposition; no execution or approval is implied.';
+    return {
+      id: `decision-docket:${decision.id}`,
+      source: 'decision-docket',
+      eventType: 'decision-docket-record',
+      at: decision.createdAt,
+      actor: decision.createdBy,
+      title: decision.title,
+      category: 'DECISION CHAMBER · HUMAN GATE',
+      summary: `${decision.status} · proposal revision ${decision.revision} · docket revision ${decisionDocket.revision} · review deadline ${decision.expiresAt}`,
+      detail: `Separate durable Decision Chamber docket record; not a world event. ${dispositionText} A recorded disposition or expiry is not proof of downstream execution or truth.`,
+      warning,
+      decisionId: decision.id,
+      status: decision.status,
+      revision: decision.revision,
+      docketRevision: decisionDocket.revision,
+      docketHead: decisionDocket.head,
+      expiresAt: decision.expiresAt,
+      expiredAt: decision.expiredAt,
+      disposition,
+    };
+  }) : [];
+  const entries = [...decisionEntries, ...chronicle.entries];
   const identityCounts = new Map();
-  for (const entry of chronicle.entries) {
+  for (const entry of entries) {
     if (typeof entry?.id === 'string') identityCounts.set(entry.id, (identityCounts.get(entry.id) || 0) + 1);
   }
 
@@ -184,7 +240,7 @@ export function projectInstitutionRecordWorldObjects({
   let unmapped = 0;
   let overflow = 0;
 
-  for (const entry of chronicle.entries.slice(0, MAX_PROJECTED_EVENTS)) {
+  for (const entry of entries.slice(0, MAX_PROJECTED_EVENTS)) {
     const locationId = locationFor(entry);
     if (!locationId) {
       unmapped += 1;
@@ -221,11 +277,19 @@ export function projectInstitutionRecordWorldObjects({
     }
     if (!position.mapVisible) overflow += 1;
 
-    const eventId = entry.id.slice(entry.source.length + 1);
+    const eventId = entry.source === 'decision-docket' ? null : entry.id.slice(entry.source.length + 1);
     objects.push(Object.freeze({
       id: 'institution-record:' + entry.id,
       entryId: entry.id,
       eventId,
+      decisionId: entry.decisionId,
+      decisionStatus: entry.status,
+      decisionRevision: entry.revision,
+      docketRevision: entry.docketRevision,
+      docketHead: entry.docketHead,
+      expiresAt: entry.expiresAt,
+      expiredAt: entry.expiredAt,
+      disposition: entry.disposition,
       source: entry.source,
       eventType: entry.eventType,
       at: entry.at,
@@ -249,11 +313,17 @@ export function projectInstitutionRecordWorldObjects({
   return Object.freeze({
     objects: Object.freeze(objects),
     malformed: chronicle.malformed,
+    decisionDocketAvailable: decisionDocket.available,
+    decisionDocketReason: decisionDocket.reason,
+    decisionDocketRevision: decisionDocket.available ? decisionDocket.revision : null,
+    decisionDocketHead: decisionDocket.available ? decisionDocket.head : null,
+    decisionDocketCount: decisionDocket.available ? decisionDocket.decisionCount : null,
+    decisionDocketOmittedCount: decisionDocket.available ? decisionDocket.omittedDecisionCount : 0,
     kernelPresent,
     kernelComplete,
     rejected,
     unmapped,
     overflow,
-    truncated: Math.max(0, chronicle.entries.length - MAX_PROJECTED_EVENTS),
+    truncated: Math.max(0, entries.length - MAX_PROJECTED_EVENTS),
   });
 }

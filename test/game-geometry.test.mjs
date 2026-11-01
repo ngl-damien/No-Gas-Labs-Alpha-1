@@ -465,3 +465,65 @@ test('retained institutional records are reachable map objects and interaction s
   assert.equal(view.questMarker?.targetType, 'institution-record');
   assert.deepEqual(world, before, 'walking to or inspecting a record must not append progress or alter history');
 });
+
+
+function decisionDocketSnapshot() {
+  return {
+    schema: 'ngl.decisions.snapshot.v1',
+    revision: 2,
+    head: 'b'.repeat(64),
+    policy: {
+      id: 'policy-1',
+      reviewWindowMs: 3600000,
+      revision: 1,
+      setAt: '2026-10-31T10:00:00.000Z'
+    },
+    decisions: [{
+      id: 'decision-map-1',
+      title: 'Inspect the retained institutional proposal',
+      status: 'PENDING',
+      revision: 1,
+      createdAt: '2026-10-31T12:00:00.000Z',
+      createdBy: 'damien',
+      expiresAt: '2026-10-31T13:00:00.000Z',
+      expiredAt: null,
+      policy: { id: 'policy-1', revision: 1 },
+      disposition: null
+    }],
+    counts: { PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+}
+
+test('Decision Docket map objects are reachable, quest-routeable and cleared on principal changes', t => {
+  const { view, interactions } = makeView(t);
+  const world = createWorld({ id: 'decision-docket-world', now: '2026-10-31T12:00:00.000Z' });
+  const decisionSnapshot = decisionDocketSnapshot();
+  const before = structuredClone(decisionSnapshot);
+
+  view.setWorld(world);
+  view.setDecisionDocket(decisionSnapshot);
+  const record = view.institutionRecordObjects.find(item => item.decisionId === 'decision-map-1');
+  assert.ok(record, 'the durable Decision Chamber proposal must become a map object');
+  assert.equal(record.locationId, 'decision_chamber');
+  assert.equal(record.source, 'decision-docket');
+  assert.equal(record.eventId, null);
+  assert.equal(record.mapVisible, true);
+
+  view.setPlayer({ x: record.x, y: record.y + 18 });
+  view.interact(record.id, 'institution-record');
+  assert.deepEqual(interactions, [{
+    type: 'institution-record',
+    recordId: 'decision-docket:decision-map-1',
+    locationId: 'decision_chamber'
+  }]);
+  view.setQuestAction({ type: 'institution-record', id: record.id }, 'Inspect the Decision Chamber proposal');
+  assert.equal(view.questMarker?.targetId, record.id);
+  assert.equal(view.questMarker?.targetType, 'institution-record');
+  assert.deepEqual(decisionSnapshot, before, 'navigation and inspection must not mutate the docket');
+
+  view.setDecisionDocket(null);
+  assert.equal(view.institutionRecordDecisionDocketAvailable, false);
+  assert.equal(view.institutionRecordObjects.some(item => item.decisionId === 'decision-map-1'), false,
+    'clearing the actor-bound snapshot removes stale map objects');
+  assert.deepEqual(world.events, [], 'map inspection must not append a canonical world event');
+});
