@@ -55,16 +55,12 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            set -e
             # Bypass verification only for ADB/ADT/USB test installs; keep the
             # emulator's general package-verifier setting untouched.
+            # The emulator runner executes script lines independently, so keep
+            # assignment, readback, diagnostics and the guard in one shell line.
             adb shell settings put global verifier_verify_adb_installs 0
-            verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"
-            printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"
-            if [ "$verifier_adb" != "0" ]; then
-              adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true
-              exit 1
-            fi
+            verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"; printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"; if [ "$verifier_adb" != "0" ]; then adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true; exit 1; fi
             gradle -p android :app:connectedDebugAndroidTest
       - name: Preserve debug APK
         if: always()
