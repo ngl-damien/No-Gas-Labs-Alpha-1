@@ -1582,7 +1582,7 @@ def commons_message_quest(browser,url,out):
         assert speaker_after['skills']['speaker']==1
         assert speaker_after['skills']['questkeeper']==speaker_before['skills']['questkeeper']+1
         assert speaker_after['xp']==speaker_before['xp'],'Conversation must not grant character XP'
-        commons_card=speaker_page.locator('#sheet .field-card').filter(has_text='Commons message')
+        commons_card=speaker_page.locator('#sheet .field-card').filter(has_text=message_text)
         expect(commons_card).to_have_count(1)
         expect(commons_card).to_contain_text('retained conversation · not evidence or authority')
         expect(commons_card).to_contain_text('location commons')
