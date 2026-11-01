@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight, reconcileInspectedFileRecord, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
@@ -164,6 +164,23 @@ test('preflight accepts a regular file exactly at the configured size limit', as
     assert.equal(record.bytes, MAX_PREFLIGHT_FILE_BYTES);
     assert.match(record.sha256, /^[a-f0-9]{64}$/);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('bounded descriptor reader stops at max plus one byte when a file grows during reading', async () => {
+  const source = Buffer.from('twelve-bytes');
+  const requests = [];
+  const handle = {
+    async read(buffer, offset, length, position) {
+      requests.push({ length, position });
+      const chunk = source.subarray(position, position + length);
+      chunk.copy(buffer, offset);
+      return { bytesRead: chunk.length };
+    }
+  };
+  const result = await readBoundedHandle(handle, 10);
+  assert.deepEqual(result, { tooLarge: true, total: 11 });
+  assert.equal(requests.reduce((sum, request) => sum + request.length, 0), 11);
+  assert.deepEqual(requests.map(request => request.position), [0]);
 });
 
 
