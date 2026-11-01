@@ -78,11 +78,20 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       // Open the resolved file non-blocking and pin the descriptor before reading.
       // A FIFO/device must not hang a preflight, and a path replaced during the
       // realpath/open/read window must not make the receipt describe different bytes.
+      const initialMetadata = await stat(actualPath, { bigint: true });
+      if (!initialMetadata.isFile()) {
+        failures.push({ path: relativePath, reason: 'target must be a regular file' });
+        return null;
+      }
       const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
       const handle = await open(actualPath, flags);
       let bytes;
       try {
         const openedMetadata = await handle.stat({ bigint: true });
+        if (!sameFileSnapshot(initialMetadata, openedMetadata)) {
+          failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
+          return null;
+        }
         if (!openedMetadata.isFile()) {
           failures.push({ path: relativePath, reason: 'target must be a regular file' });
           return null;
