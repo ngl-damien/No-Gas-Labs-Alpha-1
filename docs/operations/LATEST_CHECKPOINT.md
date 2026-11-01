@@ -877,3 +877,39 @@ No merge, release, deployment, spending, external publication, credential/permis
 - Cross-worker handoff on PR #264 requests adding `game/institution-record-objects.mjs` to the canonical preflight target list. The current manifest does not fingerprint that module despite zero preflight warnings; do not claim otherwise.
 - The Decision Chamber's durable docket is a separate `/api/decisions` source projected by `projectDecisionDocket`; it is not yet part of this Chronicle projector. Next high-leverage step is a safe, read-only Decision Docket-to-Decision-Chamber world-object projection, without exposing private audit/policy data or changing human authority.
 - No physical Android device acceptance, native Android build, merge, release, deployment, spending, key/permission change or Founder acceptance is claimed. PR #267 remains draft/open/unmerged.
+
+
+---
+
+## 2026-11-01 — Worker B — Decision Docket stale continuity and walkable world records
+
+### Rehydration and ownership
+
+- Re-read root `AGENTS.md` and the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` sequentially on the active PR #267 branch. Their blob SHAs match the current branch: AGENTS `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the latest Worker A durable checkpoint `docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md` on PR #266's branch. Worker A's current scoped limiter work and PR #266 are separate; no overlapping files were changed here.
+- Rechecked main at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`, parent PR #267 at `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`, and its exact-head hosted checks: Verify `41353157683`, Genesis Evidence Invariant `41353157748`, Browser Acceptance `41353157692` all succeeded.
+- The recursive tree at PR #267 contains only root `AGENTS.md` plus the unrelated `recovery/public-repos/TaskAgile/AGENTS.md`; no nested instruction applies to the touched game/test/script paths.
+- Portable local preflight and local Node tests were unavailable: no connected Remote Desktop Commander device/repository checkout was returned, and the available local runtime was Node v22 while this repository requires Node >=24. The child branch retains the existing hosted preflight target list; every changed source/test/browser/checkpoint/ledger path is already listed. The known PR #264 manifest omission for `game/institution-record-objects.mjs` remains separate and is not claimed fixed here.
+
+### Challenge and selected gap
+
+- The previous checkpoint and G6 ledger row said the separate Decision Chamber docket was not yet projected into map objects. Reinspection of current PR #267 source disproved that statement: `game/institution-record-objects.mjs` already accepts a sealed `projectDecisionDocket` projection, maps `source === 'decision-docket'` to `decision_chamber`, and builds read-only map objects. `test/game-geometry.test.mjs` already verifies reachability, exact identity, quest routing and clearing; `scripts/verify-browser.py` already verifies the Guild Hall docket and live Chamber route. The old note is retained as historical evidence and corrected in the ledger.
+- The actual unclosed gap was transient continuity: `refreshDecisionDocket` and `openInstitution` replaced the last valid map projection with an unavailable projection after a failed/malformed refresh, removing useful map objects. The existing `selectWorldSnapshot(candidate, fallback)` pattern in `game/institution-view.mjs` demonstrates the intended stale/read-only behavior for the world snapshot.
+- Selected a bounded extension of PR #267 rather than a competing implementation: keep the last module-sealed valid docket projection in memory as explicitly stale/read-only, route from Guild Hall to its exact world object, and ensure the live Decision Chamber still requires a fresh service response.
+
+### Implementation
+
+- `game/quests.mjs`: add `selectDecisionDocketProjection`. It accepts a fresh module-sealed projection, or retains a previously sealed valid projection with `stale: true` when the candidate is unavailable/malformed. A plain forged fallback object is rejected.
+- `game/world-view.mjs`: track stale state separately from the projection, expose it to the canvas for tests/accessibility, and draw a visible `STALE` marker on Decision Docket map objects. Clearing the projection clears the stale flag.
+- `game/client.mjs`: both background refresh and institution refresh use the selector. Principal changes/private mode still clear the projection. Guild Hall can walk to the exact Decision Chamber map object (or inspect retained overflow directly); stale records are labeled. The live Chamber still renders only the current fetch result and exposes no disposition controls on outage/malformed data.
+- `test/game-quests.test.mjs`: cover fresh replacement, stale fallback, no-fallback unavailable state, and rejection of an unsealed fallback.
+- `test/game-geometry.test.mjs`: cover stale pin retention, stale-state exposure, and clearing.
+- `scripts/verify-browser.py`: extend the two-client decision journey to walk to the actual map object, inspect it read-only, simulate a Decision Service outage, verify stale record inspection and zero gate controls, then reconnect and verify fresh state replaces stale state.
+- Draft child PR #269: [game: preserve stale Decision Docket map objects during outages](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/269), branch `game/decision-docket-stale-map-recovery-20261101`, based on PR #267. Code/test/browser commits through `4b1ce2a19d744cd7836109700b456588599008bd`; the ledger update is committed as `c68105c2536665d29fdcbd55926252b98ea3b7e7`. The checkpoint update is the next commit.
+
+### Verification boundary and handoff
+
+- Child PR #269 exact-head hosted Verify, Genesis Evidence Invariant, and Browser Acceptance are pending. No local test/build or physical Android-device run is claimed.
+- This is in-session stale continuity only, not a durable offline shared-world cache across reloads. Re-entering Shared World still requires the shared service. The stale projection is display-only; it cannot authorize, approve, reject, defer, award XP, or append canonical events.
+- G6 remains IN PROGRESS and proposed. PR #269 is a draft child of draft PR #267; neither is integrated into `main`. No merge, release, deployment, spending, key/permission change, production service call, external publication, or Founder acceptance occurred.
+- Next: inspect exact-head hosted checks for PR #269, repair attributable failures only, record final run IDs/results, then hand off the remaining preflight-manifest omission for `game/institution-record-objects.mjs` to Worker A/PR #264. Do not merge or claim physical Android acceptance.
