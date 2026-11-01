@@ -250,12 +250,60 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
   );
 });
 
-test('published world and accepted kernel history survive restart; generated key stays private in explicit local mode', async t => {
+test('published world and accepted kernel history survive restart; generated key stays private and is reused by the loopback development CLI', async t => {
   const f = await fixture(t, undefined, {}, { cleanupDataDir: false });
-  let restarted, generated, secretDir;
+  let restarted, secretDir;
+  const children = [];
+  const stopChild = async child => {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, 'exit');
+    child.kill('SIGTERM');
+    await exited;
+  };
+  const startLocalCli = async () => {
+    const env = { ...process.env, NODE_ENV: 'development', HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: secretDir };
+    delete env.NGL_FOUNDER_KEY;
+    delete env.NGL_INSTITUTION_REPORT;
+    const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.push(child);
+    let output = '';
+    const port = await new Promise((resolvePort, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Local development CLI did not become ready: ' + output));
+      }, 5000);
+      child.on('error', error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on('exit', (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error('Local development CLI exited before readiness (' + code + ', ' + signal + '): ' + output));
+      });
+      child.stdout.on('data', chunk => {
+        output += chunk;
+        const match = /listening on 127\\.0\\.0\\.1:(\\d+)/.exec(output);
+        if (match && !settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolvePort(Number(match[1]));
+        }
+      });
+      child.stderr.on('data', chunk => { output += chunk; });
+    });
+    return { child, port };
+  };
   t.after(async () => {
-    try { await restarted?.closeGame(); await generated?.closeGame(); }
-    finally {
+    try {
+      await restarted?.closeGame();
+      for (const child of children) await stopChild(child);
+    } finally {
       await rm(f.dataDir, { recursive: true, force: true });
       if (secretDir) await rm(secretDir, { recursive: true, force: true });
     }
@@ -264,22 +312,24 @@ test('published world and accepted kernel history survive restart; generated key
   await f.closeGame();
   restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
   await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
-  const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
+  const response = await fetch('http://127.0.0.1:' + restarted.address().port + '/api/state'); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
+
   secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-'));
-  const previousNodeEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'development';
-  try {
-    generated = await createGameServer({ dataDir: secretDir, requireExplicitFounderKey: false });
-  } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
-  }
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
-  await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
+  const first = await startLocalCli();
+  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim();
+  assert.ok(secret.length >= 32);
+  const keyStat = await lstat(join(secretDir, 'founder.key'));
+  assert.equal(keyStat.mode & 0o077, 0, 'generated local Founder key must exclude group and other access');
+  const exported = await fetch('http://127.0.0.1:' + first.port + '/api/export');
   assert.equal((await exported.text()).includes(secret), false);
+  await stopChild(first.child);
+
+  const second = await startLocalCli();
+  const reused = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim();
+  assert.equal(reused, secret, 'loopback development restart must reuse the same private key');
+  await stopChild(second.child);
 });
 
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
@@ -435,14 +485,33 @@ test('direct server factory requires an explicit Founder key by default before c
 });
 
 
-test('production mode cannot be bypassed with requireExplicitFounderKey false', async t => {
+test('programmatic factory cannot opt into generated Founder keys in development mode', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-programmatic-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null, requireExplicitFounderKey: false, allowGeneratedFounderKey: true }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+
+test('production mode cannot be bypassed with legacy or internal Founder-key opt-out fields', async t => {
   const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
   const dataDir = join(parentDir, 'runtime');
   const previousNodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';
   try {
     await assert.rejects(
-      createGameServer({ dataDir, founderKey: null, requireExplicitFounderKey: false }),
+      createGameServer({ dataDir, founderKey: null, requireExplicitFounderKey: false, allowGeneratedFounderKey: true }),
       error => error.code === 'FOUNDER_KEY_REQUIRED'
     );
     await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
