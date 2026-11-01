@@ -205,7 +205,7 @@ export function validateInstallationProposal(decision, now = Date.now(), { allow
   if (decision.implementationHash === proof.implementationHash && canonical(decision.proof) === canonical(proof) && proof.passed === proof.total) {
     return { valid: true, reason: null };
   }
-  if (allowLegacy && decision.strategy !== 'candidate-program-v1') {
+  if (allowLegacy && !CANDIDATE_PROGRAM_STRATEGIES.has(decision.strategy)) {
     const legacyProof = legacyChallenge(decision.strategy);
     if (decision.implementationHash === legacyProof.implementationHash && canonical(decision.proof) === canonical(legacyProof) && legacyProof.passed === legacyProof.total) {
       return { valid: true, reason: null };
@@ -258,7 +258,7 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
       installationNonce: decision.nonce,
       executorPublicKeyPem: decision.executorPublicKeyPem
     };
-    if (decision.strategy === 'candidate-program-v1') capability.program = validateCandidateProgram(decision.program);
+    if (CANDIDATE_PROGRAM_STRATEGIES.has(decision.strategy)) capability.program = validateCandidateProgram(decision.program);
     state.capabilities[decision.id] = capability;
     state.installationNonces.push(decision.nonce);
   } else if (decision.kind === 'REUSE') {

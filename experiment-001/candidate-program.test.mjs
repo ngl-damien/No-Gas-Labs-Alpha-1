@@ -87,6 +87,18 @@ test('candidate-program-v2 rejects an arithmetic interpolant that passes every v
   assert.ok(v2.failed.includes(1_000_000), 'the wider suite must challenge the declared input boundary');
   assert.equal(squareV2.passed, squareV2.total);
   assert.notEqual(v1.implementationHash, v2.implementationHash, 'proof versions must have distinct implementation identities');
+
+  const executor = pair();
+  const invalidProposal = lib.makeInstallationProposal({
+    id: 'candidate-overfit-v2',
+    strategy: 'candidate-program-v2',
+    program,
+    executorPublicKeyPem: pem(executor)
+  });
+  assert.deepEqual(lib.validateInstallationProposal(invalidProposal, Date.now(), { allowLegacy: true }), {
+    valid: false,
+    reason: 'INSTALL_PROOF_INVALID'
+  }, 'candidate v2 must not fall through to the built-in legacy proof path');
 });
 
 test('candidate AST rejects accessors, hidden properties, symbols, and custom prototypes', () => {
