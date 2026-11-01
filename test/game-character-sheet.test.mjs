@@ -1363,3 +1363,47 @@ test('duplicate denormalized activity rows cannot manufacture character skills',
   assert.equal(record.skills.find(skill => skill.id === 'observer').count, 0);
   assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 0);
 });
+
+
+test('active player-guild membership completes Questkeeper status without awarding XP', () => {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const created = event('guild-created-xp', 'guild-created', founderActor, t1, {
+    guildId: 'guild-xp-1',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.'
+  });
+  const joined = event('guild-joined-xp', 'guild-joined', witnessActor, t2, {
+    guildId: 'guild-xp-1'
+  });
+  const left = event('guild-left-xp', 'guild-left', witnessActor, t3, {
+    guildId: 'guild-xp-1'
+  });
+  const disbanded = event('guild-disbanded-xp', 'guild-disbanded', founderActor, t4, {
+    guildId: 'guild-xp-1'
+  });
+  const world = {
+    id: 'guild-xp-world', revision: 1, xp: 9999, creations: [],
+    events: [created], discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const questkeeper = record => record.skills.find(skill => skill.id === 'questkeeper').count;
+
+  const founderMember = projectCharacter(world, founder);
+  assert.deepEqual([founderMember.xp, founderMember.questXp, questkeeper(founderMember)], [0, 0, 1]);
+
+  world.events.push(joined);
+  world.revision += 1;
+  const witnessMember = projectCharacter(world, witness);
+  assert.deepEqual([witnessMember.xp, witnessMember.questXp, questkeeper(witnessMember)], [0, 0, 1]);
+
+  world.events.push(left);
+  world.revision += 1;
+  const witnessLeft = projectCharacter(world, witness);
+  assert.deepEqual([witnessLeft.xp, witnessLeft.questXp, questkeeper(witnessLeft)], [0, 0, 0]);
+
+  world.events.push(disbanded);
+  world.revision += 1;
+  const founderDisbanded = projectCharacter(world, founder);
+  assert.deepEqual([founderDisbanded.xp, founderDisbanded.questXp, questkeeper(founderDisbanded)], [0, 0, 0]);
+  assert.equal(world.xp, 9999, 'the read model ignores untrusted world XP summaries and never mutates the world');
+});
