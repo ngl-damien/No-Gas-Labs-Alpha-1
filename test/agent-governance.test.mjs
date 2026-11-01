@@ -42,6 +42,21 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight preserves durable-checkpoint classification when checkpoint is also a target', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({
+      root,
+      paths: ['CHECKPOINT.md'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'ready');
+    const checkpoint = result.files.find(file => file.path === 'CHECKPOINT.md');
+    assert.equal(checkpoint.kind, 'durable-checkpoint');
+    assert.equal(result.checkpoint, 'CHECKPOINT.md');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight blocks a missing scoped target instead of returning a ready receipt', async () => {
   const root = await fixture();
   try {
