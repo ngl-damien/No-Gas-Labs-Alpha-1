@@ -1082,6 +1082,37 @@ test('decision docket refuses malformed, duplicate and count-inconsistent snapsh
   }).reason, 'invalid-decision');
 });
 
+test('decision docket accepts a retained disposition only when its revision and actor record reconcile', () => {
+  const base = decisionDocketFixture();
+  const snapshot = {
+    ...base,
+    revision: 3,
+    decisions: [{
+      ...base.decisions[0],
+      status: 'APPROVED',
+      revision: 2,
+      disposition: {
+        action: 'APPROVE',
+        actorId: 'damien',
+        requestId: 'request-1',
+        decidedAt: '2026-10-31T12:30:00.000Z'
+      }
+    }],
+    counts: { PENDING: 0, APPROVED: 1, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+  const projection = projectDecisionDocket(snapshot);
+  assert.equal(projection.available, true);
+  assert.equal(projection.decisions[0].status, 'APPROVED');
+  assert.equal(projection.decisions[0].disposition.action, 'APPROVE');
+
+  const impossibleRevision = {
+    ...snapshot,
+    revision: 1,
+    decisions: [{ ...snapshot.decisions[0], revision: 2 }]
+  };
+  assert.equal(projectDecisionDocket(impossibleRevision).available, false);
+});
+
 test('decision docket rejects accessor-backed snapshots without executing getters', () => {
   const snapshot = decisionDocketFixture();
   let getterCalls = 0;
