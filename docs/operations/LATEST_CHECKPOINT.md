@@ -641,3 +641,51 @@ The earlier Run 18 sentence naming PR #16/#18 must **not** be interpreted as the
 5. Rehydrate linked repositories only after each repository's root `AGENTS.md` and canonical protocol are available.
 
 No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 20 — 2026-11-01 06:43 UTC — fingerprint every declared preflight target
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior checkpoint:** PR #258 canonical checkpoint branch, Run 19 appended at head 6ccfff1163d674800c0d90c6bd08821eb0b0324c.  
+**Current main baseline:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f.  
+**New proposal:** PR #259, draft/open/unmerged, child of PR #258.
+
+### Bootstrap, checkpoint, and coordination
+
+- Read root AGENTS.md alone, then the complete canonical shared protocol alone, on the PR #258 branch. Their blob SHAs match the previously read main copies: root a4beeee1c0ec46faab28502957c0e53850b2855d; protocol 9a26ee4c17d2462dd66e99e90d258eaa9bcab79f.
+- Read the canonical checkpoint on the PR #258 branch through Run 19. The checkpoint remains absent on main; do not claim it is integrated.
+- scripts/AGENTS.md, test/AGENTS.md, docs/AGENTS.md, and docs/operations/AGENTS.md returned 404 on the PR #258 branch. No nested instructions were found for the paths changed here.
+- No local repository checkout is available; git rev-parse --show-toplevel previously returned “not a git repository”. Available Node is v22.16.0, while package.json requires Node >=24. No local preflight receipt, test execution, or build is claimed. Exact-head hosted CI is the verification route.
+- Re-observed PR #257 (Worker B): branch game/armor-bearer-field-kit-projection-20261101, head 7a107e7636a7962511dbb3ad894097f6b69bc346, draft/open/unmerged. Its described local focused tests are 34/34 and 45/45, while its full Windows suite was 607 passed / 245 failed / 6 skipped. This is proposed game capability, not mainline integration; Worker A did not edit its files.
+- Re-observed PR #244: head 90d9a04bf28bcd641dc4e2c6fa287b9f534774d9, draft/open/unmerged. It already contains the target-fingerprinting patch and regression tests as part of its larger Founder-decision change. I reused only that independent governance change in the canonical preflight stack; the authority implementation remains in PR #244.
+- Reconfirmed PR #16 is not the Founder self-signing defect: Alpha-1 PR #16 is the Experiment 001 proposal, closed/unmerged; PR #18 is its merged transplant. The forgeable verification.valid helper defect is the PR #164/#180/#203 line, with PR #244 the active correction. Issue #17 remains open for real Founder identity/key custody, live-server authorization integration, concurrency, and crash/stale-lock recovery. No Founder key was generated, read, enrolled, rotated, or changed.
+
+### Cycle 1 — identify and challenge the preflight target gap
+
+- PR #258 exact parent head before this work: 6ccfff1163d674800c0d90c6bd08821eb0b0324c, branch ops/canonical-preflight-target-union-20261101, draft/open.
+- Re-read scripts/validate-agent-governance.mjs on that exact head. Its --path loop validated repository-relative paths, checked existing prefixes against escaping symlinks, and searched parent directories for nested AGENTS.md; it did not call inspect(target, 'target').
+- The existing inspect() routine already reads raw bytes, rejects invalid UTF-8, computes SHA-256 and byte length, and records failures for required unreadable files. Without invoking it for targets, a missing or invalid-UTF-8 scoped source file could be omitted while the receipt still reported ready.
+- Challenged the finding against PR #244's exact patch and test/agent-governance.test.mjs. PR #244 independently contains the same four-line target-inspection repair plus regressions for exact target byte/hash, missing target, and invalid UTF-8. This is a real, already-proposed governance repair, not a new invention; PR #259 carries that governance slice into PR #258's 57-path canonical stack so the declared files are actually fingerprinted.
+
+### Implementation — PR #259
+
+- Branch: ops/preflight-target-byte-fingerprints-20261101.
+- Parent: PR #258 branch at exact commit 6ccfff1163d674800c0d90c6bd08821eb0b0324c.
+- 5046eb9aa3c1354875048cb2deb0d4fd1fcf86c0 — scripts/validate-agent-governance.mjs: call inspect(target, 'target') for each safe requested path before returning a ready receipt. Missing, unreadable, and invalid-UTF-8 targets now contribute failures.
+- 096851dd4b54857a66b0407d9827ac646fc326c2 — test/agent-governance.test.mjs: write a real fixture target, assert exact byte count and SHA-256, and add negative tests for missing and invalid-UTF-8 scoped targets.
+- PR #259 created as draft/open against PR #258. It changes only the preflight implementation and its test; it does not copy PR #244's Founder signer, authority helper, or decision-context files.
+- No package manifest change was needed: PR #258 already scopes scripts/validate-agent-governance.mjs and test/agent-governance.test.mjs in its 57-path list.
+
+### Verification boundary and next actions
+
+- At the time this checkpoint was written, exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance for PR #259 had not yet been re-observed. Do not claim them passed until fetched against the final head.
+- PR #258 parent head 6ccfff...: Verify 41281759839 and Genesis 41281759876 succeeded; Browser Acceptance 41281759785 was still in progress at last observation. This parent result is not a result for PR #259.
+- Recheck PR #259's exact-head Verify log for status ready, zero warnings/failures, and target entries with SHA-256/byte counts. Inspect Genesis and Browser on the same final head. If the newly strict preflight reveals a missing/invalid target in the 57-path set, determine whether the target manifest or the file is wrong; do not weaken target inspection.
+- Keep PR #259 draft/open/unmerged and PR #258/PR #248 draft/open/unmerged. Do not merge any branch.
+- Next highest-risk security work remains reconciliation of PR #244 with current main and the shared PR #243/#251 server boundary. Do not patch game/server.mjs in parallel with Worker B; require a trusted, Founder-approved trust root before live authorization integration.
+- Next game handoff: Worker B owns PR #249 Android save transfer and PR #257 Armor Bearer projection; update the MMORPG completion ledger only from current exact-head evidence. No physical-device acceptance or mainline integration is inferred from draft PRs.
+- Linked-repository writes remain blocked until each target repository's root AGENTS.md and canonical protocol are readable in the mandatory sequence.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
