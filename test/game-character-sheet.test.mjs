@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {projectCharacter} from '../game/character-sheet.mjs';
+import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from '../game/character-sheet.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
@@ -201,10 +201,74 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
     ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['restorer', 0]
+    ['questkeeper', 3], ['restorer', 0], ['armor-bearer', 3]
   ]);
   assert.deepEqual([record.xp, record.publicationXp, record.questXp], [150, 100, 50]);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
+});
+
+test('Armor Bearer steps follow only the character’s current record-backed field kit', () => {
+  const world = {
+    id: 'armor-bearer-world',
+    revision: 0,
+    xp: 777,
+    creations: [],
+    events: [],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const armor = record => record.skills.find(skill => skill.id === 'armor-bearer');
+  const assertSteps = record => {
+    const expected = record.equipment.filter(slot => slot.status === 'record-backed').length;
+    assert.equal(armor(record).count, expected);
+    assert.ok(expected >= 0 && expected <= FIELD_EQUIPMENT_SLOTS.length);
+  };
+
+  const empty = projectCharacter(world, founder);
+  assertSteps(empty);
+  assert.equal(armor(empty).count, 0);
+  assert.equal(armor(empty).record, `of ${FIELD_EQUIPMENT_SLOTS.length} evidence-derived field-kit steps`);
+  assert.ok(Object.isFrozen(armor(empty)));
+  assert.ok(Object.isFrozen(empty.skills));
+
+  const discovery = event('armor-bearer-discovery-event', 'discover', founder, t2, { locationId: 'river' });
+  const discoveryRecord = { id: 'armor-bearer-discovery-record', actor: founder, locationId: 'river', at: t2 };
+  const discoveredWorld = {
+    ...world,
+    revision: 1,
+    events: [discovery],
+    discoveries: [discoveryRecord]
+  };
+  const discovered = projectCharacter(discoveredWorld, founder);
+  assert.equal(discovered.equipment.find(slot => slot.id === 'scouting').status, 'record-backed');
+  assertSteps(discovered);
+  assert.equal(armor(discovered).count, 1);
+  assert.equal(armor(projectCharacter(discoveredWorld, witness)).count, 0);
+
+  const unequip = event('armor-bearer-unequip-event', 'field-item-unequipped', founder, t3, { slotId: 'scouting' });
+  const unequippedWorld = { ...discoveredWorld, revision: 2, events: [discovery, unequip] };
+  const unequipped = projectCharacter(unequippedWorld, founder);
+  assert.equal(unequipped.equipment.find(slot => slot.id === 'scouting').status, 'empty');
+  assertSteps(unequipped);
+  assert.equal(armor(unequipped).count, 0);
+
+  const restore = event('armor-bearer-auto-restore-event', 'field-item-equipped', founder, t4, {
+    slotId: 'scouting',
+    sourceEventId: null
+  });
+  const restoredWorld = { ...unequippedWorld, revision: 3, events: [discovery, unequip, restore] };
+  const restored = projectCharacter(restoredWorld, founder);
+  assert.equal(restored.equipment.find(slot => slot.id === 'scouting').status, 'record-backed');
+  assertSteps(restored);
+  assert.equal(armor(restored).count, 1);
+  assert.deepEqual(
+    [restored.xp, restored.publicationXp, restored.questXp, restored.worldXp],
+    [discovered.xp, discovered.publicationXp, discovered.questXp, discovered.worldXp],
+    'changing the loadout adds no XP or publication reward'
+  );
+  assert.equal(world.events.length, 0, 'projection does not mutate the source snapshot');
 });
 
 test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => {

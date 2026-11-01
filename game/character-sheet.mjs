@@ -716,6 +716,17 @@ export function projectCharacter(world, viewer, options = null) {
     });
   }));
 
+  // Armor Bearer is a reversible status projection of the current field kit.
+  // Each step must already be backed by this actor's own retained activity;
+  // equipping never grants XP, combat power, authority, or approval.
+  skills.push(Object.freeze({
+    id: 'armor-bearer',
+    label: 'Armor Bearer',
+    count: equipment.filter(slot => slot.status === 'record-backed').length,
+    record: `of ${FIELD_EQUIPMENT_SLOTS.length} evidence-derived field-kit steps`,
+    basis: 'Each step is one distinct slot currently backed by this character’s own earlier retained activity. This reversible loadout projection is not combat power, competence, authority, approval, truth, or XP.'
+  }));
+
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string' &&
