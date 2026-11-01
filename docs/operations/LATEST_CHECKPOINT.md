@@ -641,3 +641,180 @@ The earlier Run 18 sentence naming PR #16/#18 must **not** be interpreted as the
 5. Rehydrate linked repositories only after each repository's root `AGENTS.md` and canonical protocol are available.
 
 No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 20 — 2026-11-01 06:43 UTC — fingerprint every declared preflight target
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior checkpoint:** PR #258 canonical checkpoint branch, Run 19 appended at head 6ccfff1163d674800c0d90c6bd08821eb0b0324c.  
+**Current main baseline:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f.  
+**New proposal:** PR #259, draft/open/unmerged, child of PR #258.
+
+### Bootstrap, checkpoint, and coordination
+
+- Read root AGENTS.md alone, then the complete canonical shared protocol alone, on the PR #258 branch. Their blob SHAs match the previously read main copies: root a4beeee1c0ec46faab28502957c0e53850b2855d; protocol 9a26ee4c17d2462dd66e99e90d258eaa9bcab79f.
+- Read the canonical checkpoint on the PR #258 branch through Run 19. The checkpoint remains absent on main; do not claim it is integrated.
+- scripts/AGENTS.md, test/AGENTS.md, docs/AGENTS.md, and docs/operations/AGENTS.md returned 404 on the PR #258 branch. No nested instructions were found for the paths changed here.
+- No local repository checkout is available; git rev-parse --show-toplevel previously returned “not a git repository”. Available Node is v22.16.0, while package.json requires Node >=24. No local preflight receipt, test execution, or build is claimed. Exact-head hosted CI is the verification route.
+- Re-observed PR #257 (Worker B): branch game/armor-bearer-field-kit-projection-20261101, head 7a107e7636a7962511dbb3ad894097f6b69bc346, draft/open/unmerged. Its described local focused tests are 34/34 and 45/45, while its full Windows suite was 607 passed / 245 failed / 6 skipped. This is proposed game capability, not mainline integration; Worker A did not edit its files.
+- Re-observed PR #244: head 90d9a04bf28bcd641dc4e2c6fa287b9f534774d9, draft/open/unmerged. It already contains the target-fingerprinting patch and regression tests as part of its larger Founder-decision change. I reused only that independent governance change in the canonical preflight stack; the authority implementation remains in PR #244.
+- Reconfirmed PR #16 is not the Founder self-signing defect: Alpha-1 PR #16 is the Experiment 001 proposal, closed/unmerged; PR #18 is its merged transplant. The forgeable verification.valid helper defect is the PR #164/#180/#203 line, with PR #244 the active correction. Issue #17 remains open for real Founder identity/key custody, live-server authorization integration, concurrency, and crash/stale-lock recovery. No Founder key was generated, read, enrolled, rotated, or changed.
+
+### Cycle 1 — identify and challenge the preflight target gap
+
+- PR #258 exact parent head before this work: 6ccfff1163d674800c0d90c6bd08821eb0b0324c, branch ops/canonical-preflight-target-union-20261101, draft/open.
+- Re-read scripts/validate-agent-governance.mjs on that exact head. Its --path loop validated repository-relative paths, checked existing prefixes against escaping symlinks, and searched parent directories for nested AGENTS.md; it did not call inspect(target, 'target').
+- The existing inspect() routine already reads raw bytes, rejects invalid UTF-8, computes SHA-256 and byte length, and records failures for required unreadable files. Without invoking it for targets, a missing or invalid-UTF-8 scoped source file could be omitted while the receipt still reported ready.
+- Challenged the finding against PR #244's exact patch and test/agent-governance.test.mjs. PR #244 independently contains the same four-line target-inspection repair plus regressions for exact target byte/hash, missing target, and invalid UTF-8. This is a real, already-proposed governance repair, not a new invention; PR #259 carries that governance slice into PR #258's 57-path canonical stack so the declared files are actually fingerprinted.
+
+### Implementation — PR #259
+
+- Branch: ops/preflight-target-byte-fingerprints-20261101.
+- Parent: PR #258 branch at exact commit 6ccfff1163d674800c0d90c6bd08821eb0b0324c.
+- 5046eb9aa3c1354875048cb2deb0d4fd1fcf86c0 — scripts/validate-agent-governance.mjs: call inspect(target, 'target') for each safe requested path before returning a ready receipt. Missing, unreadable, and invalid-UTF-8 targets now contribute failures.
+- 096851dd4b54857a66b0407d9827ac646fc326c2 — test/agent-governance.test.mjs: write a real fixture target, assert exact byte count and SHA-256, and add negative tests for missing and invalid-UTF-8 scoped targets.
+- PR #259 created as draft/open against PR #258. It changes only the preflight implementation and its test; it does not copy PR #244's Founder signer, authority helper, or decision-context files.
+- No package manifest change was needed: PR #258 already scopes scripts/validate-agent-governance.mjs and test/agent-governance.test.mjs in its 57-path list.
+
+### Verification boundary and next actions
+
+- At the time this checkpoint was written, exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance for PR #259 had not yet been re-observed. Do not claim them passed until fetched against the final head.
+- PR #258 parent head 6ccfff...: Verify 41281759839 and Genesis 41281759876 succeeded; Browser Acceptance 41281759785 was still in progress at last observation. This parent result is not a result for PR #259.
+- Recheck PR #259's exact-head Verify log for status ready, zero warnings/failures, and target entries with SHA-256/byte counts. Inspect Genesis and Browser on the same final head. If the newly strict preflight reveals a missing/invalid target in the 57-path set, determine whether the target manifest or the file is wrong; do not weaken target inspection.
+- Keep PR #259 draft/open/unmerged and PR #258/PR #248 draft/open/unmerged. Do not merge any branch.
+- Next highest-risk security work remains reconciliation of PR #244 with current main and the shared PR #243/#251 server boundary. Do not patch game/server.mjs in parallel with Worker B; require a trusted, Founder-approved trust root before live authorization integration.
+- Next game handoff: Worker B owns PR #249 Android save transfer and PR #257 Armor Bearer projection; update the MMORPG completion ledger only from current exact-head evidence. No physical-device acceptance or mainline integration is inferred from draft PRs.
+- Linked-repository writes remain blocked until each target repository's root AGENTS.md and canonical protocol are readable in the mandatory sequence.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 20 verification repair — preserve the newly exposed fixture failure
+
+- Initial code/test/checkpoint head 4c7f56e0b64c7c79c49398ad131eebe6ecd8fd91 Verify run [41281999916](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999916) failed after the new preflight returned ready with zero warnings/failures and emitted SHA-256/byte counts for all 57 scoped targets. The Node suite reported 727 tests: 725 passed, 2 failed.
+- Both failures were test/latest-checkpoint-contract.test.mjs fixtures that passed src/example.mjs as a target but never created it. The exact failures were “preflight accepts the root-declared instruction, local protocol and checkpoint inputs” and “preflight warns when root AGENTS.md omits a canonical checkpoint path”. The new required-target read correctly blocked those fixtures; no production source failure was observed.
+- Commit f769732f2546f9c30231644431b87a409b72af2f updates the shared fixture to create src/example.mjs and asserts the receipt classifies it as a target. This fixes the fixture rather than weakening target inspection.
+- The same initial head's Genesis run [41281999921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999921) succeeded. Browser run [41281999959](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281999959) was still in progress at last observation. Neither result is final-head evidence after the fixture correction.
+- PR #258 parent exact head 6ccfff1163d674800c0d90c6bd08821eb0b0324c has Verify [41281759839](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759839), Genesis [41281759876](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759876), and Browser [41281759785](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41281759785) all successful.
+- Recheck all three PR #259 workflows on the final checkpoint-updated head. Preserve the failed first attempt in the record; do not transfer any prior-head result to the new head.
+
+
+### Run 20 cycle 2 — exact-head verification and second review
+
+- Exact code/test/checkpoint head aad4e30775a67eadceba638d5893738dfaf8d8df completed all three hosted workflows:
+  - Verify [41282114725](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282114725): success. The Node 24 preflight reported status ready, 57 unique --path arguments, warnings empty, and failures empty. The log includes SHA-256 and byte counts for the requested target files. Node test command, Python inspector, package build, and bounded institutional exercise all exited 0; exercise reported passed true. No local test or local receipt is claimed.
+  - Genesis Evidence Invariant [41282114718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282114718): success.
+  - Browser Acceptance [41282114660](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282114660): success, 12/12 journeys. The run exercised desktop, phone, five institutional locations, two-session shared state, 320/360/412px phone toolbars, one-button layouts, standalone file, exact-byte preservation, and shared restart. Artifact [13074340296](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282114660/artifacts/13074340296), ZIP SHA-256 668fcc6ce206550e3ba9eb70cc097ee783c7c312ef15e9c3e02ad83538ec429b.
+- Re-reading the exact Verify receipt exposed a second classification defect: because LATEST_CHECKPOINT.md is also in the 57 target list, it was correctly hashed but recorded with kind target instead of durable-checkpoint. This did not make the receipt ready incorrectly, but it obscured the trusted-input role in the evidence record.
+- Main's root AGENTS.md and shared protocol still match the branch copies. The latest checkpoint is still a proposal-only file, absent from main.
+
+### Run 20 cycle 3 — preserve trusted-input classification
+
+- Reinspected PR #259 at head aad4e30775a67eadceba638d5893738dfaf8d8df and the exact Verify log before editing.
+- 25a70d69d49fd4aea36c59649549190a4001ee7c — change the preflight de-duplication registry from a Set to a Map of file records. When a path is first encountered as a generic target and later as a stronger semantic input, the existing record is upgraded to that input kind. Root instructions/shared protocol retain their earlier kinds; the canonical checkpoint now remains durable-checkpoint even when included in --path.
+- 164f7fd26b7b9fb40d5561faa621866c7b94bab1 — add a regression that passes CHECKPOINT.md as both a target and the canonical checkpoint and requires its receipt kind to remain durable-checkpoint.
+- Re-read the updated source and test on branch ops/preflight-target-byte-fingerprints-20261101. The source contains the Map-based classification upgrade; the regression is present. No game, server, key, permission, or Founder-identity path was changed.
+- Exact-head Verify, Genesis, and Browser checks for the later checkpoint-updated head are pending; do not transfer the preceding head's green results to the new code.
+
+### Cross-worker and linked-repository reinspection
+
+- PR #249 remains at 1686806143b11e7c70366b719621b50037e8ab94; exact-head Verify [41267898554](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898554), Genesis [41267898505](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898505), Browser [41267898568](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898568), and Android [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) are all successful; Android reports 2/2 API 35 emulator instrumentation tests. This is not physical-device acceptance.
+- PR #257 remains at 7a107e7636a7962511dbb3ad894097f6b69bc346; Verify [41279427384](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427384), Genesis [41279427378](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427378), and Browser [41279427446](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41279427446) are successful. The current MMORPG completion ledger at PR #239 head 49195a014f71bda6744bb6934a5d544c32109512 records PR #249 but does not mention PR #257/Armor Bearer. A handoff was posted to PR #239 comment [6554598960](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/239#issuecomment-6554598960); Worker A did not edit the Worker B ledger.
+- PR #255 head 76743dccebd409b3a519ab3399281e8b079f3ef0 retains successful Verify, Genesis, Windows ACL (20 passed, 0 failed, 6 skipped), and Browser checks. PR #256 head ccfb90a664f74151ee92e9fefb213ede6e8014a4 retains successful Verify, Genesis, Windows ACL, and Browser checks. Both remain proposals.
+- Main's src/authority/decision.js was freshly read and still trusts caller-supplied verification?.valid in authorizationEvent. PR #244's helper uses module-private verification seals and context binding, but remains based on an older main commit. Current main's game/server.mjs, PR #243's server head 1b4ea596d19ecde266823d3fbe72b61fb2348af0, and PR #251's server head 3017ee1ead746fd90b7eebe1ff66842561e47799 do not import or call createContextBoundFounderAuthorizationVerifier. The live server mutation boundary remains unintegrated. No safe parallel server edit was made because Worker B owns the overlapping server paths and the trust-root/identity decision remains unresolved.
+- PR #16 was freshly fetched: its actual title is Experiment 001, closed/unmerged, not the self-signing Founder authorization defect. PR #18 is the merged Experiment 001 transplant. The caller-supplied verification defect is the PR #164/#180/#203 line, with PR #244 the current helper proposal. Issue #17 remains open for real Founder identity/key custody, live-server integration, concurrency, and crash/stale-lock recovery. No Founder key was generated, read, enrolled, rotated, or changed.
+- Fresh standalone root-AGENTS probes returned 404 in ngl-mesh, no-gas-labs-command-center, No_Gas_Labs, no-gas-labs, ngl001-def4us28, and recursive-artifact-engine. Per each repository's entry rule, no further inspection or writes were attempted there.
+
+### Next actions
+
+1. Recheck all three workflows on the final checkpoint-updated PR #259 head; Verify must prove the checkpoint record kind is durable-checkpoint, all 57 targets are unique/read/fingerprinted, and warnings/failures are empty.
+2. Preserve the initial Verify failure and fixture correction in the run record; do not erase the failed attempt.
+3. Reconcile PR #244's helper with current main and the shared PR #243/#251 server paths only on an explicitly coordinated branch. Require a real forged-verification route regression and a Founder-approved trust root before claiming live authorization.
+4. Worker B: update PR #239's completion ledger with PR #257's exact head, checks, read-model boundary, full-suite limitation, and next action.
+5. Keep linked repositories read-only until their root AGENTS.md and canonical protocol are available.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 20 final exact-head verification and historical correction
+
+- The complete code/test head before this checkpoint append was 62127cd6df420a2c6b7c4f2a19f738edec44844f. All three exact-head hosted workflows completed successfully:
+  - Verify [41282421910](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421910): success. Node 24.22.1 preflight reported ready for 57 unique targets, zero warnings and zero failures. The receipt classified docs/operations/LATEST_CHECKPOINT.md as durable-checkpoint and included its SHA-256 and byte count. Node tests, Python inspector, package build, and bounded institutional exercise all exited 0; exercise reported passed true.
+  - Genesis Evidence Invariant [41282421902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421902): success.
+  - Browser Acceptance [41282421876](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876): success, 12/12 journeys. Artifact [13073671936](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876/artifacts/13073671936), ZIP SHA-256 a655efe8aba4541e8c9424f8bdc9ea6a7c23a644612ee3e26188b83a5a5848c6.
+- The 12 Browser journeys covered desktop, phone, institutional location actions, two-session shared state, 320/360/412px phone toolbars, one-button layouts at 320/412px, standalone file, exact-byte preservation, and shared restart. No physical Android device test or deployment is implied.
+- This evidence is for exact head 62127cd6... before the present checkpoint-only append. The checkpoint update changes the branch head and will trigger a fresh exact-head workflow set; recheck those runs before treating the final branch head as fully green.
+
+#### Historical correction — PR #16
+
+- Correction to the earlier Run 20 sentence that said PR #16 was not the self-signing Founder authorization defect. That statement was wrong.
+- Issue #17 explicitly records that PR #16's older self-signing demonstrate() flow was the original finding and was superseded by the replacement transplanted and merged as PR #18.
+- PR #16 is closed/unmerged. PR #18 is the merged Experiment 001 replacement, which requires a detached Ed25519 INSTALL signature and pins the configured Founder public-key fingerprint.
+- The configured fingerprint is a trust anchor, not proof of Damien's real-world identity or private-key custody. Issue #17 remains open for separately controlled key custody, concurrency, stale-lock/crash recovery, and independent reuse.
+- A distinct current-main defect remains in src/authority/decision.js: authorizationEvent() trusts caller-supplied verification?.valid. This is the PR #164/#180/#203 line, with PR #244 the current helper-level correction. Fresh reads confirmed main game/server.mjs, PR #243 head 1b4ea596d19ecde266823d3fbe72b61fb2348af0, and PR #251 head 3017ee1ead746fd90b7eebe1ff66842561e47799 do not import/call createContextBoundFounderAuthorizationVerifier. Live server authorization remains unintegrated.
+- This correction was posted on PR #244 comment [6554663563](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244#issuecomment-6554663563). The PR #244 preflight overlap note remains at comment [6554594408](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244#issuecomment-6554594408).
+
+#### Portfolio and worker handoff
+
+- Fresh Alpha-1 open-PR search returned 68 open PRs. The first two branch-search pages returned 200 branch names and a continuation cursor; this is a large backlog, not evidence that all branches or PRs were individually audited. No branch or PR was closed or deleted.
+- PR #258 remains open/draft at parent head 6ccfff1163d674800c0d90c6bd08821eb0b0324c; its Verify, Genesis, and Browser runs 41281759839, 41281759876, and 41281759785 succeeded.
+- PR #259 remains open/draft/mergeable as a child of #258. Current pre-checkpoint code/test head 62127cd6... has all three workflows successful as listed above. The checkpoint-only append will require a fresh final-head recheck.
+- PR #239's current ledger head 49195a014f71bda6744bb6934a5d544c32109512 records PR #249 but omits PR #257/Armor Bearer. Handoff to Worker B was posted as comment [6554598960](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/239#issuecomment-6554598960); Worker A did not edit that ledger.
+- Linked repository root AGENTS.md probes returned 404 in ngl-mesh, no-gas-labs-command-center, No_Gas_Labs, no-gas-labs, ngl001-def4us28, and recursive-artifact-engine. No linked-repository writes or further inspection were attempted.
+- PR #255/#256 storage/Windows checks remain successful on their observed exact heads; PR #249 Android emulator is 2/2; PR #257 hosted Verify/Genesis/Browser checks are successful. These are proposed branches, not mainline integrations.
+
+**Next run:** recheck PR #259's checkpoint-updated exact head; then coordinate PR #244's helper with the PR #243/#251 shared server boundary and a Damien-approved trust root. Do not create/enroll/rotate a Founder key. Have Worker B update the MMORPG completion ledger with PR #257 evidence. Continue linked-repository work only when mandatory root instructions and canonical protocol are readable.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 21 — 2026-11-01 UTC — repair restricted-PATH FIFO regression in preflight verification
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior durable checkpoint:** this file on PR #259 branch, blob `66219382777e504ed9b07fb4c1d5dd8e2f213b77`.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Other worker:** Build NGL MMORPG's latest automation run was recorded failed and did not publish a new result. I re-observed its active game proposal PR #262 directly; do not infer Worker B liveness from the PR.
+
+### Cycle 1 — diagnose and repair the exact-head Verify failure
+
+- Rehydrated from the current PR #259 branch and exact-head workflows. Before this run's change, PR #259 head `27ffe05bcdc8496365369867bac321d810af46d3` had Verify [41291257773](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41291257773) fail, Genesis [41291257753](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41291257753) pass, and Browser [41291257990](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41291257990) pass.
+- The failing Verify job's first full Node test stage passed, Python inspector passed, and package build passed. The nested institutional exercise failed during Forge's copied-repository verification: 626 tests, 625 passed, 1 failed, specifically `preflight rejects FIFO targets without blocking on a writer`.
+- Source reinspection identified the environment mismatch: Forge's `executePhase()` intentionally sets child `PATH` to `dirname(process.execPath)`, excluding ordinary system utilities. The FIFO regression unconditionally invoked `mkfifo` by name. The workflow's outer test process has a normal executable path; the nested Forge test process does not. The nested failure output did not preserve the exact spawn exception text, so the PATH mismatch is source-backed diagnosis rather than a directly captured `ENOENT` line.
+- Commit `9ea9c0dcc70a656a9b42279efdb28403e3591a72` changes only `test/agent-governance.test.mjs`: resolve `mkfifo` from the inherited PATH, invoke the resolved executable, and skip this POSIX-only case with an explicit reason when `mkfifo` is unavailable. This keeps the FIFO regression enabled in normal POSIX CI while respecting Forge's deliberately restricted child PATH; the security preflight itself was not weakened.
+- Re-inspected the committed test and PR state. PR #259 remains draft/open/unmerged, based on PR #258; exact current branch head is the commit above.
+
+### Exact-head verification on code head `9ea9c0dcc70a656a9b42279efdb28403e3591a72`
+
+- Verify [41292257985](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41292257985): **success**. Hosted Node 24.22.1 preflight reported `ready`, 57 unique scoped targets, empty warnings and failures. The Node test stage, Python inspector, game package build, and nested institutional exercise all exited 0. This verifies the restricted-PATH repair at the exact code head; no local execution is claimed.
+- Genesis Evidence Invariant [41292257980](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41292257980): **success**.
+- Browser Acceptance [41292258048](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41292258048): **success, 12/12 journeys** — desktop, phone, institutional location actions, two-session shared world, 320/360/412px phone toolbars, one-button layouts at 320/412px, standalone file, standalone exact bytes, and shared restart. Artifact [13077509271](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41292258048/artifacts/13077509271), 5,292,026 bytes, ZIP SHA-256 `19010b673d31d1c8f953041f611b7ca31b21a204dd979a0171b0c820450efe0c`.
+- The earlier failed exact-head attempt remains part of the record; it is not erased or re-labelled as a pass.
+
+### Cycle 2 — challenge cross-worker target coverage and supersession
+
+- PR #262 is the current Worker B combined Relay proposal at `7a915a95cc42b7db66cb7d38a61a0f2d626b8370`, stacked on PR #260. It combines exact pending-action replay on reconnect with archived response revalidation. Its `package.json` preflight contains 71 scoped targets and includes both `game/collaborator-world-objects.mjs` and `test/game-collaborator-world-objects.test.mjs`, which were absent from PR #259's 57-path parent tree.
+- PR #262 exact-head Verify [41289597574](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41289597574), Genesis [41289597526](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41289597526), and Browser [41289597545](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41289597545) all succeeded. This is proposed branch evidence, not mainline integration.
+- PR #262's `test/agent-governance.test.mjs` does not yet contain the new PATH-aware FIFO test adjustment from PR #259 commit `9ea9c0d`. The combined game stack therefore still needs that small test-only transplant before the two preflight branches are considered reconciled. No Worker B branch was edited.
+- The MMORPG ledger PR #239 remains open/draft at `82c44ce49a0a209a932874f226f6eaba909726a2`. Its latest ledger records PR #260 but not the combined PR #262/response-revalidation status. A precise handoff was posted to PR #239 for Worker B to update the ledger and port the FIFO-test adjustment into the 71-target stack.
+- The latest Worker B automation run was recorded failed; its latest completed result is older than PR #262. PR #262 source and checks were independently re-observed; no new automation result is inferred.
+
+### Cycle 3 — recheck Founder authorization and linked repository entry boundaries
+
+- Historical PR #16 is Experiment 001, a bounded capability-install/reuse experiment. Its actual changed paths are only `experiment-001/*`; it added detached Ed25519 INSTALL approval and captured `NGL_FOUNDER_KEY_FINGERPRINT` at module import, with tests rejecting caller-selected self-pinning. It did **not** change `src/authority/decision.js` or introduce the current `authorizationEvent()` boolean-trust defect. PR #18 is the content-preserving rebase of that same experiment onto main, not a replacement for a separate self-signing Founder-auth implementation. Both experiment documents explicitly state that the configured fingerprint is only a trust anchor and does not prove Damien's real-world identity, consent, or private-key custody. The current caller-controlled verification defect belongs to the later PR #164/#180/#203 lineage, with PR #244 as the current proposed sealed-verification correction.
+- Current main `src/authority/decision.js` blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b` still allows `authorizationEvent()` to trust caller-supplied `verification?.valid`. PR #244 proposes sealed/context-bound verification but remains based on older main `93bc9157dca95f7d4f552a88e8570823b30c11aa`. Current main `game/server.mjs` blob `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` does not call `createContextBoundFounderAuthorizationVerifier`; PR #243 and PR #251 remain overlapping server proposals. Issue #17 remains open.
+- No safe server integration was made: the live server file is concurrently owned by the #243/#251 proposal lineage, and the host trust-root/Founder key custody decision remains unresolved. No Founder key was generated, read, enrolled, rotated, or changed.
+- Fresh root `AGENTS.md` probes returned 404 in both owner copies of `ngl-mesh`, both owner copies of `recursive-artifact-engine`, both `no-gas-labs-command-center` copies, `ngl-damien/No_Gas_Labs`, and both `no-gas-labs` copies. The mandatory entry contract prevents further inspection or writes in those repositories until their root instructions and full canonical protocol are available.
+- `docs/AGENTS.md`, `docs/operations/AGENTS.md`, `scripts/AGENTS.md`, and `test/AGENTS.md` were also probed on PR #259's branch and returned 404. Root AGENTS and the full shared protocol were read sequentially from main and confirmed byte-identical on the active branch. No other nested instruction path applied to the changed test/checkpoint files.
+
+### Next ranked actions
+
+1. Recheck the checkpoint-updated PR #259 head's own Verify, Genesis, and Browser workflows; do not transfer the code-head passes above to a later checkpoint-only commit.
+2. Worker B: port the PATH-aware FIFO regression adjustment from PR #259 commit `9ea9c0d` into the 71-target PR #260/#262 stack; update PR #239 with exact #262 response-revalidation/reconnect evidence, source paths, exact-head checks, and remaining G2/G3/G8 limits.
+3. Worker A: reconcile PR #244's sealed verifier with current main and the #243/#251 server overlap only on a coordinated branch; add a forged-`verification.valid` regression through the real server mutation route. Keep the trust-root and human key-custody decision with Damien.
+4. Keep linked repositories read-only until their root AGENTS.md and canonical protocol can be read in the required order.
+
+**Limits:** no local checkout was available; container Node is v22.16.0 while the repository requires Node 24, and GitHub DNS is unavailable from that container. Hosted Node 24 verification is the observed execution evidence. No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, branch deletion, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.

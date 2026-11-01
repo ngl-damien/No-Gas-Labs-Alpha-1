@@ -130,6 +130,8 @@ async function createPinnedInputFixture() {
   await writeFile(join(fixtureRoot, 'AGENTS.md'), instructions);
   await writeFile(join(fixtureRoot, fixtureProtocolPath), fixtureProtocolText);
   await writeFile(join(fixtureRoot, fixtureCheckpointPath), '# Latest Durable Checkpoint\n\nFixture handoff.\n');
+  await mkdir(join(fixtureRoot, 'src'), { recursive: true });
+  await writeFile(join(fixtureRoot, 'src/example.mjs'), 'export const fixture = true;\n');
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(fixtureRoot, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
   }
@@ -148,6 +150,7 @@ test('preflight accepts the root-declared instruction, local protocol and checkp
     assert.equal(result.entry, 'AGENTS.md');
     assert.equal(result.protocol, fixtureProtocolPath);
     assert.equal(result.checkpoint, fixtureCheckpointPath);
+    assert.ok(result.files.some(file => file.path === 'src/example.mjs' && file.kind === 'target'));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
   }
