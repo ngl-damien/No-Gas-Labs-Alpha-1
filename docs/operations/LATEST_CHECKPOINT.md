@@ -947,3 +947,44 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 4. The Commons browser journey is now present but still requires its exact-head hosted result. The player feature and security guard remain proposed until the relevant stack is integrated and user-observed.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, or consequential Founder decision occurred. No uninterrupted between-run execution is claimed.
+
+## Worker A Run 25 — 2026-11-01 13:54 UTC
+
+### Rehydration and competing work
+
+- Prior Worker A checkpoint: Run 24 on PR #264 branch `ops/relay-stack-preflight-fifo-guard-20261101`, commit `a119988de28c21458386d8525d367088d0c08405`.
+- Re-read root `AGENTS.md` and the complete canonical scheduler protocol before fresh inspection. No nested `AGENTS.md` exists under `scripts/`, `test/`, or `docs/operations/` on the target branch.
+- Worker B's latest Android proposal was independently rechecked: PR #249 head `1686806143b11e7c70366b719621b50037e8ab94`. Verify, Genesis, Browser Acceptance, and Android Alpha-1 all completed successfully. Android run `41267898565` reports 2/2 instrumentation tests passed, 0 skipped, 0 failed; debug APK artifact `13068163611` was uploaded. This supersedes PR #247's older Android failure for the stacked save-transfer branch, but remains proposed work, not mainline/native-device acceptance.
+- PR #265 head `a58eee3e5fe192a668982c8ff14e4b12fe227635` was rechecked with Verify, Genesis, and Browser Acceptance all successful. It remains draft and stacked; no integration is claimed.
+- PR #264 is still stacked on PR #263. Its recorded base SHA `88d45c80448f94a0aaf94f22c77614e61b449958` differs from PR #263's live head `4b8f32c8b033e90e2ae9008cc8da61c876a83fa0`. Reconcile that ancestry before merge; this run did not rewrite branch history or merge anything.
+- Relevant linked-repository instruction gates were rechecked. Root `AGENTS.md` is absent in `ngl-mesh`, `no-gas-labs-execution`, `no-gas-labs-command-center`, and `recursive-artifact-engine`; no work was performed there. `no-gas-labs-governance` has a root AGENTS file that requires running `./init_repo.sh`; that bootstrap cannot be executed through the available GitHub file interface, so inspection stopped there.
+
+### Selected defect and change
+
+The scoped preflight resolved paths and verified inode/device/size/time snapshots, but did not inspect link count. A hard link inside the checkout can name the same inode as a file outside the checkout; `realpath` still reports the in-repository name. The preflight could therefore fingerprint out-of-tree bytes as if they were repository content.
+
+On this existing Worker A branch:
+
+- Commit `5c523d2aff86e756d0369c690df4c5eb7daa2af1` (`fix(preflight): reject hard-linked scoped files`) rejects any inspected regular file whose link count is not exactly one, and includes `nlink` in the before/after file snapshot comparison so a link-count change during inspection invalidates the snapshot.
+- Commit `bafede404aa260952fede4a3b36ddeed77e57c74` (`test(preflight): reject out-of-tree hard links`) adds regressions for both a hard-linked root AGENTS file and a scoped target hard-linked to a file outside the checkout.
+- No new PR was created; existing PR #264 was updated. No merge, release, deployment, key operation, spending, or permission change occurred.
+
+### Exact-head verification
+
+Code/test head `bafede404aa260952fede4a3b36ddeed77e57c74`:
+
+- Verify run `41313003211`: success. Hosted preflight reported `ready`, 71 targets, zero warnings and zero failures. Node test command exit code 0; Python inspector exit code 0; package build exit code 0; bounded institutional exercise reported `passed: true`.
+- Genesis Evidence Invariant run `41313003157`: success.
+- Browser Acceptance run `41313003116`: success; 16/16 reported journeys passed, including offline private recovery, two-session shared world, Commons moderation, player-guild membership, mobile widths, standalone exact-byte preservation, and shared restart. Artifact `13085598320` preserved.
+- No local preflight or local test execution is claimed; this run used exact-head hosted verification.
+
+### Remaining limits and next actions
+
+1. Reconcile PR #264 with the live PR #263 base head without overwriting either worker's commits; rerun exact-head checks after ancestry reconciliation.
+2. Keep PR #264 draft until its stack is reviewable and the hard-link tests remain green on the reconciled head.
+3. Mainline `src/authority/decision.js` still contains the legacy caller-supplied `verification.valid` authorization path. PR #244's sealed verifier is proposed but not wired to the live game-server decision mutation boundary. Do not recreate closed/unmerged PR #16; PR #18 superseded it. A real enrolled public-key trust root and Founder key custody remain unprovided and require Damien's decision.
+4. Mainline `game/server.mjs` still uses the bearer-key/session decision Gate; the explicit-key startup guard is present on proposed game branches, not integrated mainline.
+5. Mainline still lacks `docs/operations/LATEST_CHECKPOINT.md`; main `package.json` preflight still points to the historical `NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md`. The canonical-checkpoint/manifest integration remains unresolved.
+6. Worker B should refresh the MMORPG ledger and PR #247/#249/#265 stack using the exact Android 2/2 and PR #265 browser evidence above. Android evidence is emulator-only; no physical-device, release, deployment, shared production service, GPS, or Founder acceptance is evidenced.
+7. Continue the next bounded Worker A cycle on stack integration and live-server trust-boundary design; do not invent a public key or alter Founder credentials.
+
