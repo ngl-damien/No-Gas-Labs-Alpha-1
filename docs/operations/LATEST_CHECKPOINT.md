@@ -600,3 +600,51 @@ No merge, release, deployment, external publication, spending, key generation/en
 5. Keep stale-lock recovery manual/fail-closed; no automatic lock deletion, Founder-key enrollment/rotation, or human-identity claim.
 
 No merge, release, deployment, external publication, spending, credential change, key generation/enrollment/rotation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+---
+
+## Run 19 — 2026-11-01 UTC — Decision-store crash recovery and Windows ACL integration
+
+### Fresh inspection and priority challenge
+
+- Re-read the current root `AGENTS.md`, the complete shared scheduler protocol, and this checkpoint through Run 18. Re-inspected current main (`ea025a587e0bb3113423ea67035ddfa83ea7dc9f`), issue #17, PRs #205/#215, #244/#245/#251, #255/#256, and MMORPG PRs #249/#250/#253. No applicable nested `AGENTS.md` was found for the touched Alpha-1 paths.
+- PR #16 remains closed unmerged; replacement PR #18 is merged at `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. Do not reimplement the original installer self-signing path.
+- A separate live-main authority gap remains: `src/authority/decision.js` still accepts caller-supplied `verification.valid`. Draft PR #244 seals verification results and binds canonical context, but `game/server.mjs` has no reference to its verifier/event helper. It is not live mutation-boundary protection yet.
+- PR #205/#215 were stale relative to main. Their decision-store, lock-inspector, and test paths were unchanged from their merge base to current main; the `game/server.mjs` shutdown patch was deliberately excluded to avoid active game-server work.
+
+### Stutter-step cycle A — decision writer lease and crash regression
+
+- Created draft PR #256 on `security/windows-decision-store-acl-20261101`, based on PR #255's exact head `76743dccebd409b3a519ab3399281e8b079f3ef0`.
+- Transplanted the mutation-guard/owner-receipt protocol and process-death-before-rename regression from PR #205/#215 onto the current checkpoint base. The writer remains fail-closed after an interrupted mutation; stale locks/guards are never automatically deleted and require explicit offline recovery.
+- The read-only lock inspector still never authorizes deletion (`safeToRemove: false`).
+
+### Stutter-step cycle B — Windows decision-store security
+
+- Added SID-based Windows ACL verification for decision directories, persisted envelopes, writer leases, mutation-guard directories, and owner receipts. New paths created by the store receive a protected DACL owned by the current Windows identity; existing broad or unverifiable ACLs are rejected rather than silently repaired.
+- Windows lock diagnostics now verify the file/directory ACL instead of assuming POSIX UID checks exist. Portable preflight includes the changed source, tests, and Windows workflow.
+- The first Windows run exposed that newly created files inherited an Administrators owner; the store now explicitly assigns the current user's owner/DACL to newly created paths.
+- The next Windows run exposed that Node cannot flush a directory handle on the runner (`EPERM`). The store uses same-directory `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH` on Windows and retains directory fsync on POSIX. A later test covers ambiguous write-through completion and fences the writer rather than assuming success.
+
+### Exact-head evidence
+
+Code head tested: `d5104bef288c638f35e8785b5f7aff4fb8a84bfa`.
+
+- Windows Founder ACL run [41276403044](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403044): **success** — 26 passed, 0 failed, 6 skipped. The new private-directory/envelope, broad-directory rejection, broad-envelope rejection, guard ACL, and lock-inspector ACL tests all passed.
+- Verify run [41276403084](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403084): **success**.
+- Genesis Evidence Invariant run [41276403040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403040): **success**.
+- Browser acceptance run [41276403091](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403091): still **in progress** at checkpoint time; do not attribute a result until the exact-head job completes.
+- PR #249 Android instrumentation run [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) remains current at head `1686806143b11e7c70366b719621b50037e8ab94`: **2/2 passed**, `BUILD SUCCESSFUL`, artifact [13069314480](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565/artifacts/13069314480). PR #250's earlier exact-head browser acceptance remains 14/14; PR #253 is newer and still requires parent/evidence reconciliation.
+
+### Linked-repository blockers
+
+- `ngl-mesh` root `AGENTS.md` is still absent (404); stopped before any further inspection or write.
+- `No-Gas-Labs-Official/recursive-artifact-engine` root `AGENTS.md` is absent (404); no write attempted.
+
+### Next ranked steps
+
+1. Inspect the exact-head result for browser acceptance run #3314 before treating PR #256 as fully green; then rerun/inspect all checks after this checkpoint-only commit.
+2. Integrate the sealed Founder verifier into the live `game/server.mjs` mutation boundary using a separately trusted startup fingerprint/audience and canonical proposal/quest/output resolvers. Reconcile PR #244 → #245 → #251 without merging; helper-only tests are insufficient.
+3. Reconcile PR #256 with #255/#248 and the MMORPG PR #249/#250/#253 stack. Preserve the Android 2/2 result as evidence for PR #249 only; do not infer PR #253 completion.
+4. Resume ngl-mesh/RAE work only after the target repository's root instructions and required shared protocol are present.
+
+PR #256 remains draft/open and unmerged, based on PR #255; PR #255 remains draft/open and unmerged, based on the canonical-checkpoint branch. No merge, release, deployment, spending, key enrollment/rotation, external service action, or Founder acceptance occurred. Each run is discrete; no uninterrupted between-run execution is claimed.
