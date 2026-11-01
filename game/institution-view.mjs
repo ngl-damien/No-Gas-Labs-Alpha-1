@@ -216,7 +216,7 @@ function renderAdversaryReviewDrafts(container, world) {
   card.dataset.recordType = "ADVERSARY_DRAFT";
   card.dataset.responseId = entry.responseId;
   card.append(el("h3", `Challenge draft · ${draft.challengeType.replaceAll("-", " ")}`));
-  card.append(el("p", "Human review only · not submitted to the Chronicle."));
+  card.append(el("p", "human review only · not submitted to the Chronicle."));
   card.append(el("p", `Moonshot ${draft.moonshotId} · report ${draft.reportId} · target event ${draft.targetEventId}`));
   card.append(el("p", `Source snapshot revision ${draft.sourceSnapshot.revision} · ${draft.sourceSnapshot.suppliedEventCount} supplied event records`));
   card.append(el("p", `Adversary distinctness assessment (unverified): ${draft.distinctnessAssessment}`));
