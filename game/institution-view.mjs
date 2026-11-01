@@ -195,7 +195,7 @@ export function projectAdversaryReviewDrafts(world) {
  });
 }
 
-function renderAdversaryReviewDrafts(container, world, onOpenChallenge) {
+function renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer) {
  const projection = projectAdversaryReviewDrafts(world);
  if (!projection.available ||
      (!projection.drafts.length && projection.omittedCount === 0 && projection.unavailableCount === 0)) return;
@@ -263,7 +263,7 @@ function renderAdversaryReviewDrafts(container, world, onOpenChallenge) {
     event.reportId === draft.reportId &&
     event.moonshotId === draft.moonshotId
    );
-   if (matchingReports.length === 1 && matchingReports[0].actor?.id !== onOpenChallenge.actorId) {
+   if (matchingReports.length === 1 && !(matchingReports[0].actor?.id === viewer?.id && matchingReports[0].actor?.role === viewer?.role)) {
     const review = el("button", "Review challenge in Moonshot Field →");
     review.type = "button";
     review.className = "list-button";
@@ -351,7 +351,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
 }
 
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge,viewer}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -374,7 +374,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    ?'No retained institutional or world events are recorded in this snapshot.'
    :'No retained world events are recorded in this local snapshot.'
  });
- renderAdversaryReviewDrafts(container, world, onOpenChallenge);
+ renderAdversaryReviewDrafts(container, world, onOpenChallenge, viewer);
 }
 
 function validProjectSnapshot(projects) {
