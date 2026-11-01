@@ -1,6 +1,6 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket,selectDecisionDocketProjection} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket,selectDecisionDocketProjection,encodeDecisionDocketCache,decodeDecisionDocketCache} from './quests.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -88,6 +88,13 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
   return { decisionSnapshot: gateResult.data, decisionUnavailable: !gateResult.available, decisionProjection };
 }
 function openInstitutionLocation(id) {
+  if (mode === 'offline') {
+    if (id === 'decision_chamber' || id === 'guild_hall') return openOfflineDecisionDocket(id);
+    const place = PLACES.find(candidate => candidate.id === id);
+    const content = showSheet(place?.name || 'Institutional location', 'LOCAL ARCHIVE · READ ONLY');
+    content.append(paragraph('This device-local map contains only a bounded Decision Docket copy. Other institutional registers require the live shared service; no empty history or local substitute is inferred.', 'evidence-warning'));
+    return;
+  }
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
@@ -118,17 +125,69 @@ function openInstitutionRecord(entryId) {
   content.append(paragraph(`${record.source.toUpperCase()} · ${record.eventType} · ${record.actor} · ${record.at}`, 'attribution'));
   content.append(node('div', { class: 'receipt' }, [node('code', { text: record.entryId })]));
   if (record.warning) content.append(paragraph(record.warning, 'evidence-warning'));
-  if (typeof record.decisionId === 'string' && view.decisionDocketStale) {
-    content.append(paragraph('STALE · LAST OBSERVED. This map object is retained for offline inspection only. Reconnect and refresh before relying on its status; the live Decision Chamber will not expose disposition controls without a fresh service response.', 'evidence-warning'));
+  if (typeof record.decisionId === 'string' && view.decisionDocketUnverified) {
+    content.append(paragraph('LOCAL COPY · UNVERIFIED. This record was reconstructed from a device-local cache after reload. Its source, completeness and current status cannot be authenticated here. It is read-only and grants no authority; reconnect before relying on it.', 'evidence-warning'));
+  } else if (typeof record.decisionId === 'string' && view.decisionDocketStale) {
+    content.append(paragraph('STALE · LAST OBSERVED. This map object is retained for in-session inspection only. Reconnect and refresh before relying on its status; the live Decision Chamber will not expose disposition controls without a fresh service response.', 'evidence-warning'));
   }
   if (record.targetAvailable && record.creationId && Number.isInteger(record.version)) {
     content.append(button(`Open retained ${record.targetTitle} · v${record.version} →`, () => openCreation(record.creationId, record.version), { class: 'list-button' }));
   }
   if (typeof record.decisionId === 'string') {
-    content.append(button('Open Decision Chamber record →', guarded(() => openInstitution('decision_chamber', record.decisionId)), { class: 'list-button' }));
+    content.append(button(mode === 'offline' ? 'Open local docket →' : 'Open Decision Chamber record →',
+      guarded(() => mode === 'offline'
+        ? openOfflineDecisionDocket('decision_chamber', record.decisionId)
+        : openInstitution('decision_chamber', record.decisionId)),
+      { class: 'list-button' }));
   }
   content.append(paragraph('Inspecting or routing to a retained record is read-only. It does not append an event, award XP, adjudicate a claim, or grant authority.', 'form-help'));
   content.append(button(`Walk to ${record.locationName}`, () => { closeSheet(); view.goTo(record.locationId); }, { class: 'primary-button' }));
+}
+
+function openOfflineDecisionDocket(locationId = 'decision_chamber', focusDecisionId = null) {
+  const title = locationId === 'guild_hall' ? 'Guild Hall · local docket'
+    : locationId === 'decision_chamber' ? 'Decision Chamber · local archive'
+      : 'Institutional archive · local copy';
+  const content = showSheet(title, 'LOCAL COPY · UNVERIFIED');
+  content.append(paragraph(
+    'This device-local copy was reconstructed from a previously received public Decision Docket projection. After reload it is not authenticated, may be stale or altered, and is not current authority. No disposition, event, XP, quest progress or approval can be created here.',
+    'evidence-warning'
+  ));
+  const projection = view.decisionDocketProjection;
+  if (!projection?.available) {
+    content.append(paragraph('No valid local docket projection is available. Reconnect to the shared service; no empty register is inferred.', 'evidence-warning'));
+    return;
+  }
+  const cached = offlineDecisionDocketCache;
+  const visibleCount = projection.decisions.length;
+  content.append(paragraph(
+    `Saved on this device at ${cached?.savedAt || 'an unknown time'} · ${visibleCount} cached record(s). The device save time and all cached statuses are unverified.`,
+    'form-help'
+  ));
+  if (cached?.truncated) {
+    content.append(paragraph(
+      `The source projection reported ${cached.sourceDecisionCount} record(s) when saved; ${cached.sourceOmittedDecisionCount} source record(s) were not included in this bounded local copy.`,
+      'evidence-warning'
+    ));
+  }
+  for (const decision of projection.decisions) {
+    const card = node('article', { class: 'field-card', 'data-offline-decision-id': decision.id });
+    card.append(node('h3', { text: decision.title }));
+    card.append(paragraph(`LOCAL STATUS CLAIM · ${decision.status}`));
+    card.append(paragraph(`Created ${decision.createdAt} · recorded actor ${decision.createdBy}`));
+    if (decision.disposition) {
+      card.append(paragraph(`LOCAL DISPOSITION CLAIM · ${decision.disposition.action} · ${decision.disposition.actorId} · ${decision.disposition.decidedAt}`));
+    }
+    const record = view.institutionRecordObjects.find(item => item.decisionId === decision.id);
+    if (record?.mapVisible) {
+      card.append(button('Walk to map record →', () => {
+        closeSheet();
+        view.goTo(record.id, 'institution-record');
+      }, { class: 'list-button' }));
+    }
+    content.append(card);
+  }
+  if (focusDecisionId) content.querySelector(`[data-offline-decision-id="${CSS.escape(focusDecisionId)}"]`)?.scrollIntoView({ block: 'nearest' });
 }
 
 function registerOfflineShell(){
@@ -140,10 +199,10 @@ function registerOfflineShell(){
 }
 registerOfflineShell();
 const $=id=>document.getElementById(id);
-const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1',COMMONS_MUTE_PREFIX='ngl.commons.mutes.v1';
+const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1',COMMONS_MUTE_PREFIX='ngl.commons.mutes.v1',DECISION_DOCKET_CACHE='ngl.decision-docket.local-echo.v1';
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
-let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,commonsDraftText='';
+let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,commonsDraftText='',offlineDecisionDocketCache=null;
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
 const paragraph=(text,className)=>node('p',{text,class:className||''});
 const button=(text,onClick,attrs={})=>node('button',{type:'button',text,onClick,...attrs});
@@ -151,7 +210,7 @@ function toast(message,error=false){clearTimeout(toastTimer);$('toast').textCont
 function handleError(error){console.error(error);toast(error.message||'That action could not be completed.',true)}
 function guarded(fn){return async(...args)=>{try{return await fn(...args)}catch(error){handleError(error)}}}
 function download(name,content,type='text/html'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=node('a',{href:url,download:name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-async function request(path,body){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
+async function request(path,body){if(mode==='offline'&&body!==undefined)throw new Error('This device-local Decision Docket archive is read-only. Reconnect before attempting a shared write.');let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
 async function refreshDecisionDocket(){const generation=++decisionDocketRequestGeneration;const controller=typeof AbortController==='function'?new AbortController():null;const timeout=controller?setTimeout(()=>controller.abort(),2500):null;let snapshot=null;try{const response=await fetch('/api/decisions',{method:'GET',headers:{},credentials:'same-origin',...(controller?{signal:controller.signal}:{})});if(response.ok)snapshot=await response.json()}catch{}finally{if(timeout!==null)clearTimeout(timeout)}if(mode==='shared'&&generation===decisionDocketRequestGeneration)updateDecisionDocketMap(projectDecisionDocket(snapshot))}
 function stableActionJSON(value){if(Array.isArray(value))return value.map(stableActionJSON);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(key=>value[key]!==undefined).sort().map(key=>[key,stableActionJSON(value[key])]));return value}
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
@@ -189,26 +248,32 @@ async function recoverPendingSharedAction(){
     return false;
   }
 }
-function setConnection(connected){$('connection-dot').classList.toggle('online',connected);$('connection-dot').classList.toggle('offline',!connected&&mode==='shared');if(mode==='shared'&&!connected)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;}
+function setConnection(connected){$('connection-dot').classList.toggle('online',connected);$('connection-dot').classList.toggle('offline',!connected&&(mode==='shared'||mode==='offline'));if(mode==='shared'&&!connected)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;else if(mode==='offline')$('mode-label').textContent='Offline archive · unverified local copy';}
 function persist(next){try{const existing=localStorage.getItem(STORAGE);if(existing)localStorage.setItem(BACKUP,existing);localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
-function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const principalChanged=viewer.id!==dto.viewer.id||viewer.role!==dto.viewer.role;const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';if(principalChanged){decisionDocketRequestGeneration++;view.setDecisionDocket(null);}world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
-async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='institution-record')openInstitutionRecord(interaction.recordId);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
+function clearDecisionDocketCache(){try{sessionStorage.removeItem(DECISION_DOCKET_CACHE)}catch{}offlineDecisionDocketCache=null;}
+function readDecisionDocketCache(){let raw;try{raw=sessionStorage.getItem(DECISION_DOCKET_CACHE)}catch{return null}if(!raw)return null;const cached=decodeDecisionDocketCache(raw);if(!cached){try{sessionStorage.removeItem(DECISION_DOCKET_CACHE)}catch{}return null}return cached;}
+function saveDecisionDocketCache(projection){if(mode!=='shared')return;const encoded=encodeDecisionDocketCache(projection,viewer,new Date().toISOString());if(!encoded)return;try{sessionStorage.setItem(DECISION_DOCKET_CACHE,encoded)}catch{}}
+function restoreOfflineDecisionDocket(){const cached=readDecisionDocketCache();if(!cached)return false;stream?.close();stream=null;closePortal();closeSheet();mode='offline';offlineDecisionDocketCache=cached;viewer=cached.actor;world=createWorld({founderName:viewer.name,now:cached.savedAt});presence=[];institution=null;selectedDraft=null;decisionDocketRequestGeneration++;view.setDecisionDocket(cached.projection,{stale:true,unverified:true});view.setPlayer({id:viewer.id,x:180,y:640});$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(false);render();view.canvas.focus({preventScroll:true});toast('Opened a device-local Decision Docket copy. UNVERIFIED · READ ONLY · reconnect before relying on any status.');return true;}
+function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const previousMode=mode;const principalChanged=viewer.id!==dto.viewer.id||viewer.role!==dto.viewer.role;const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';if(principalChanged){decisionDocketRequestGeneration++;view.setDecisionDocket(null);if(previousMode==='shared'||previousMode==='offline')clearDecisionDocketCache();}world=dto.world;viewer=dto.viewer;if(mode==='shared'&&!view.decisionDocketProjection){const cached=readDecisionDocketCache();if(cached&&cached.actor.id===viewer.id&&cached.actor.role===viewer.role){offlineDecisionDocketCache=cached;view.setDecisionDocket(cached.projection,{stale:true,unverified:true});}}view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
+async function act(action){if(mode==='offline')throw new Error('The local Decision Docket archive is read-only. Reconnect before recording activity or progress.');if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
+const view=new WorldView($('world'),{onInteract:interaction=>{if(!mode)return;if(mode==='offline'){if(interaction.type==='institution-record')openInstitutionRecord(interaction.recordId);else if(interaction.type==='institution')openOfflineDecisionDocket(interaction.id);else toast('This local archive contains only Decision Docket records. Reconnect before using other locations or recording activity.');return;}if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='institution-record')openInstitutionRecord(interaction.recordId);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
   const roleId=interaction.roleId;
   if(roleId==='archivist'||roleId==='adversary')openEvidenceArchive(null,roleId);
   else if(roleId==='tutor')openAcademy(roleId);
   else openGuildHall(roleId);
-})();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
+})();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='offline'){toast('The local archive is read-only; no discovery event or XP was recorded.');return;}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
 
 function updateDecisionDocketMap(candidate){
   const selected=selectDecisionDocketProjection(candidate,view.decisionDocketProjection);
-  view.setDecisionDocket(selected.projection,{stale:selected.stale});
-  return selected;
+  const unverified=Boolean(selected.stale&&view.decisionDocketUnverified);
+  view.setDecisionDocket(selected.projection,{stale:selected.stale,unverified});
+  if(!selected.stale&&selected.projection.available)saveDecisionDocketCache(selected.projection);
+  return {...selected,unverified};
 }
-function openCharacterSheet(){const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP ('+record.publicationXp+' publication XP + '+record.questXp+' quest-activity XP from unique objective-matched events) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide publication XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card','data-skill-id':skill.id},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
+function openCharacterSheet(){if(mode==='offline'){const content=showSheet('Character record unavailable','LOCAL ARCHIVE · READ ONLY');content.append(paragraph('No character level, XP, skills, equipment, quest progress or canonical world state is projected from this bounded local docket copy. Reconnect to inspect the authenticated character record.','evidence-warning'));return;}const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP ('+record.publicationXp+' publication XP + '+record.questXp+' quest-activity XP from unique objective-matched events) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide publication XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card','data-skill-id':skill.id},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
   const source=slot.source;
   const modeLabel=slot.mode==='pinned'?'PINNED':slot.mode==='unequipped'?'UNEQUIPPED':'AUTOMATIC';
   const statusLabel=slot.status==='record-backed'?source.status:'EMPTY SLOT';
@@ -290,9 +355,74 @@ if(proposalObject){
   },{class:'text-button quest-evidence-open quest-evidence-world-object'}));
  }
 }entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
-function render(){view.setDiscoveryScope(JSON.stringify([world?.id??null,viewer?.id??null,viewer?.role??null]));currentCollaboratorResponseObjects=projectCollaboratorResponseWorldObjects(world);currentQuestTrail=getQuestTrail(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects});currentCharacterRecord=projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});view.setWorld(world,mode==='shared'?institution:null,currentCollaboratorResponseObjects);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=currentCharacterRecord;const armorBearer=character.skills.find(skill=>skill.id==='armor-bearer');const armorSteps=Number.isSafeInteger(armorBearer?.count)?armorBearer.count:0;const armorTotal=FIELD_EQUIPMENT_SLOTS.length;const characterButton=$('character-button');characterButton.querySelector('.character-level').textContent=String(character.level);characterButton.querySelector('.character-status').textContent=`Armor ${armorSteps}/${armorTotal}`;characterButton.dataset.armorBearerSteps=String(armorSteps);characterButton.dataset.armorBearerTotal=String(armorTotal);characterButton.title='Level '+character.level+' · '+character.xp+' character XP · Armor Bearer '+armorSteps+'/'+armorTotal+' evidence-derived field-kit steps';characterButton.setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP, Armor Bearer '+armorSteps+' of '+armorTotal+' evidence-derived field-kit steps');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=currentQuestTrail;const quest=getActiveQuest(world,viewer,questTrail);const mapAction=quest.action==='trail'?quest.nextAction:questTrail.find(item=>!item.complete)?.action||null;view.setQuestAction(mapAction,quest.title);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
-async function startPrivate(){stream?.close();stream=null;mode='private';decisionDocketRequestGeneration++;view.setDecisionDocket(null);viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
-async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto);$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);void refreshDecisionDocket();toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
+function render(){
+  view.setDiscoveryScope(JSON.stringify([world?.id??null,viewer?.id??null,viewer?.role??null]));
+  currentCollaboratorResponseObjects=projectCollaboratorResponseWorldObjects(world);
+  currentQuestTrail=getQuestTrail(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects});
+  currentCharacterRecord=projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});
+  view.setWorld(world,mode==='shared'?institution:null,currentCollaboratorResponseObjects);
+  view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));
+  if(mode==='offline'){
+    $('creation-count').textContent='—';
+    $('xp-count').textContent='—';
+    const characterButton=$('character-button');
+    characterButton.disabled=true;
+    characterButton.querySelector('.character-level').textContent='—';
+    characterButton.querySelector('.character-status').textContent='LOCAL COPY';
+    delete characterButton.dataset.armorBearerSteps;
+    delete characterButton.dataset.armorBearerTotal;
+    characterButton.title='Character progression is unavailable in the unverified offline archive.';
+    characterButton.setAttribute('aria-label','Character progression unavailable in the offline archive');
+    $('mode-label').textContent='Offline archive · unverified local copy';
+    $('login-button').hidden=true;
+    $('logout-button').hidden=true;
+    $('make-button').disabled=true;
+    $('make-button').textContent='Read-only archive';
+    $('journal-button').disabled=true;
+    $('launch-shortcut').disabled=true;
+    $('quest-title').textContent='Decision Docket · local echo';
+    $('quest-copy').textContent='This map contains only a bounded device-local docket copy. It is unverified and read-only; no quest progress, XP or authority is available.';
+    $('quest-button').textContent='Reconnect to Shared World →';
+    $('quest-button').disabled=false;
+    $('quest-trail').replaceChildren();
+    view.setQuestAction(null,'Offline archive');
+    if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();
+    return;
+  }
+  $('creation-count').textContent=world.creations.length;
+  $('xp-count').textContent=world.xp;
+  const character=currentCharacterRecord;
+  const armorBearer=character.skills.find(skill=>skill.id==='armor-bearer');
+  const armorSteps=Number.isSafeInteger(armorBearer?.count)?armorBearer.count:0;
+  const armorTotal=FIELD_EQUIPMENT_SLOTS.length;
+  const characterButton=$('character-button');
+  characterButton.disabled=false;
+  characterButton.querySelector('.character-level').textContent=String(character.level);
+  characterButton.querySelector('.character-status').textContent=`Armor ${armorSteps}/${armorTotal}`;
+  characterButton.dataset.armorBearerSteps=String(armorSteps);
+  characterButton.dataset.armorBearerTotal=String(armorTotal);
+  characterButton.title='Level '+character.level+' · '+character.xp+' character XP · Armor Bearer '+armorSteps+'/'+armorTotal+' evidence-derived field-kit steps';
+  characterButton.setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP, Armor Bearer '+armorSteps+' of '+armorTotal+' evidence-derived field-kit steps');
+  $('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';
+  $('login-button').hidden=mode!=='shared'||viewer.role==='founder';
+  $('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';
+  $('make-button').disabled=false;
+  $('journal-button').disabled=false;
+  $('launch-shortcut').disabled=false;
+  $('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';
+  const questTrail=currentQuestTrail;
+  const quest=getActiveQuest(world,viewer,questTrail);
+  const mapAction=quest.action==='trail'?quest.nextAction:questTrail.find(item=>!item.complete)?.action||null;
+  view.setQuestAction(mapAction,quest.title);
+  $('quest-title').textContent=quest.title;
+  $('quest-copy').textContent=quest.copy;
+  $('quest-button').textContent=quest.button;
+  $('quest-button').disabled=false;
+  renderQuestTrail(questTrail);
+  if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();
+}
+async function startPrivate(){clearDecisionDocketCache();stream?.close();stream=null;mode='private';decisionDocketRequestGeneration++;view.setDecisionDocket(null);viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
+async function startShared(){let dto;try{dto=await request('/api/state')}catch(error){if((!error.status||error.status>=500)&&restoreOfflineDecisionDocket())return;throw error}stream?.close();mode='shared';acceptState(dto);$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);void refreshDecisionDocket();toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
 function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
@@ -828,7 +958,9 @@ function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=fa
   const stale=!liveProjection?.available&&Boolean(retainedProjection);
   section.dataset.decisionDocketStale=stale?'true':'false';
   if(stale)section.append(paragraph(
-    'STALE · LAST OBSERVED. These records remain inspectable while the shared service is unreachable or malformed. They are not current authority; reconnect and refresh before relying on any status. The live Decision Chamber withholds disposition controls until it receives a fresh valid snapshot.',
+    view.decisionDocketUnverified
+      ? 'LOCAL COPY · UNVERIFIED. These records were reconstructed from a device-local cache and cannot be authenticated after reload. They are not current authority; reconnect before relying on any status. The live Decision Chamber withholds disposition controls until it receives a fresh valid snapshot.'
+      : 'STALE · LAST OBSERVED. These records remain inspectable while the shared service is unreachable or malformed. They are not current authority; reconnect and refresh before relying on any status. The live Decision Chamber withholds disposition controls until it receives a fresh valid snapshot.',
     'evidence-warning'
   ));
   if(!projection.available){
@@ -930,6 +1062,8 @@ function attachPlayerGuildBoard(content){
 }
 
 async function openGuildHall(focusRoleId=null){
+  if(mode==='offline')return openOfflineDecisionDocket('guild_hall');
+  if(mode==='offline')return openOfflineDecisionDocket('guild_hall');
   if(mode==='shared'){
     const register=await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
@@ -1739,7 +1873,7 @@ function announcement(){return launchReport?.announcement||`I made a small playa
 function showLaunchReport(){const content=showSheet(launchReport.ready?'The stage is ready.':'A stage worth checking.','CAVEMAN LAUNCHPAD · REHEARSAL');content.append(paragraph(`${launchReport.artifactCount} real published creations. ${launchReport.checks.filter(c=>c.passed).length}/${launchReport.checks.length} checks passed. No external posting has occurred.`),node('ul',{class:'check-list'},launchReport.checks.map(check=>node('li',{class:check.passed?'':'failed'},[node('span',{class:'check-symbol',text:check.passed?'✓':'!'}),node('span',{},[node('span',{text:check.label}),node('small',{text:typeof check.detail==='string'?check.detail:JSON.stringify(check.detail??'')})])]))),node('div',{class:'button-row'},[button('Open the exhibition ↗',openStage,{id:'open-stage',class:'primary-button'}),button('↓ Download stage HTML',()=>download('no-gas-labs-exhibition.html',launchHTML),{id:'download-launch',class:'secondary-button'})]));const copy=node('textarea',{id:'launch-announcement',class:'announcement',readonly:'',rows:'6',value:announcement()});content.append(field('A fact-based announcement · copy and share by choice','launch-announcement',copy),node('div',{class:'button-row'},[button('Copy announcement',guarded(async()=>{try{await navigator.clipboard.writeText(copy.value);toast('Announcement copied. No message was posted.')}catch{copy.focus();copy.select();toast('Announcement selected. Use your device’s Copy action.')}}),{id:'copy-announcement',class:'secondary-button'})]));for(const limitation of launchReport.limitations||[])content.append(paragraph(limitation,'launch-claim'));}
 function openStage(){openPortal({title:'Your local exhibition.',html:launchHTML,stage:true,kicker:'CAVEMAN LAUNCHPAD · REHEARSAL STAGE',footer:[paragraph(`${launchReport.artifactCount} playable creations · checked local artifact · you choose when and where to share.`),button('↓ Download stage',()=>download('no-gas-labs-exhibition.html',launchHTML),{id:'download-stage',class:'primary-button'}),button('View actual checks',()=>{closePortal();showLaunchReport()},{class:'secondary-button'})]})}
 
-$('start-private').onclick=guarded(startPrivate);$('start-shared').onclick=guarded(startShared);$('caveman-launch').onclick=guarded(launch);$('launch-shortcut').onclick=guarded(launch);$('make-button').onclick=()=>openWorkshop();$('places-button').onclick=openPlaces;$('journal-button').onclick=openJournal;$('home-button').onclick=e=>{e.preventDefault();if(mode)openJournal()};$('quest-button').onclick=()=>{const quest=getActiveQuest(world,viewer,currentQuestTrail);if(quest.nextAction){followQuestAction(quest.nextAction);return}if(quest.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}if(quest.action==='workbench')view.goTo('workbench');else openPlaces()};$('character-button').onclick=openCharacterSheet;$('interact-button').onclick=()=>view.interact();$('sheet-close').onclick=closeSheet;$('sheet-backdrop').onclick=closeSheet;$('portal-close').onclick=closePortal;$('login-button').onclick=openLogin;$('logout-button').onclick=guarded(async()=>{const dto=await request('/api/logout',{});closePortal();closeSheet();selectedDraft=null;acceptState(dto);await startShared();toast('Logged out. The shared world is now shown as Witness.');});
+$('start-private').onclick=guarded(startPrivate);$('start-shared').onclick=guarded(startShared);$('caveman-launch').onclick=guarded(launch);$('launch-shortcut').onclick=guarded(launch);$('make-button').onclick=()=>openWorkshop();$('places-button').onclick=openPlaces;$('journal-button').onclick=openJournal;$('home-button').onclick=e=>{e.preventDefault();if(mode==='offline')openOfflineDecisionDocket('decision_chamber');else if(mode)openJournal()};$('quest-button').onclick=()=>{if(mode==='offline'){void guarded(startShared)();return;}const quest=getActiveQuest(world,viewer,currentQuestTrail);if(quest.nextAction){followQuestAction(quest.nextAction);return}if(quest.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}if(quest.action==='workbench')view.goTo('workbench');else openPlaces()};$('character-button').onclick=openCharacterSheet;$('interact-button').onclick=()=>view.interact();$('sheet-close').onclick=closeSheet;$('sheet-backdrop').onclick=closeSheet;$('portal-close').onclick=closePortal;$('login-button').onclick=openLogin;$('logout-button').onclick=guarded(async()=>{const dto=await request('/api/logout',{});closePortal();closeSheet();selectedDraft=null;acceptState(dto);await startShared();toast('Logged out. The shared world is now shown as Witness.');});
 for(const pad of document.querySelectorAll('#movement-pad button')){const stop=()=>view.setInput({x:0,y:0});pad.addEventListener('pointerdown',e=>{e.preventDefault();pad.setPointerCapture(e.pointerId);view.setInput({x:Number(pad.dataset.dx||0),y:Number(pad.dataset.dy||0)})});pad.addEventListener('pointerup',stop);pad.addEventListener('pointercancel',stop);pad.addEventListener('lostpointercapture',stop)}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('portal').hidden){e.preventDefault();closePortal()}else if(!$('sheet').hidden){e.preventDefault();closeSheet()}}if(e.key==='Tab'&&document.body.classList.contains('modal-open')){const modal=!$('portal').hidden?$('portal'):$('sheet');const elements=[...modal.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],iframe,[tabindex="0"]')].filter(el=>!el.hidden&&el.getClientRects().length);const first=elements[0],last=elements.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}});
 addEventListener('pagehide',()=>{if(mode==='private')writePrivatePlayerPosition(view.getPlayer());stream?.close()});
