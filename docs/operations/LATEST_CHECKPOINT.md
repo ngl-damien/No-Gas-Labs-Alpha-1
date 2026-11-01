@@ -736,3 +736,35 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 5. Keep linked repositories read-only until their root AGENTS.md and canonical protocol are available.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 20 final exact-head verification and historical correction
+
+- The complete code/test head before this checkpoint append was 62127cd6df420a2c6b7c4f2a19f738edec44844f. All three exact-head hosted workflows completed successfully:
+  - Verify [41282421910](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421910): success. Node 24.22.1 preflight reported ready for 57 unique targets, zero warnings and zero failures. The receipt classified docs/operations/LATEST_CHECKPOINT.md as durable-checkpoint and included its SHA-256 and byte count. Node tests, Python inspector, package build, and bounded institutional exercise all exited 0; exercise reported passed true.
+  - Genesis Evidence Invariant [41282421902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421902): success.
+  - Browser Acceptance [41282421876](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876): success, 12/12 journeys. Artifact [13073671936](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41282421876/artifacts/13073671936), ZIP SHA-256 a655efe8aba4541e8c9424f8bdc9ea6a7c23a644612ee3e26188b83a5a5848c6.
+- The 12 Browser journeys covered desktop, phone, institutional location actions, two-session shared state, 320/360/412px phone toolbars, one-button layouts at 320/412px, standalone file, exact-byte preservation, and shared restart. No physical Android device test or deployment is implied.
+- This evidence is for exact head 62127cd6... before the present checkpoint-only append. The checkpoint update changes the branch head and will trigger a fresh exact-head workflow set; recheck those runs before treating the final branch head as fully green.
+
+#### Historical correction — PR #16
+
+- Correction to the earlier Run 20 sentence that said PR #16 was not the self-signing Founder authorization defect. That statement was wrong.
+- Issue #17 explicitly records that PR #16's older self-signing demonstrate() flow was the original finding and was superseded by the replacement transplanted and merged as PR #18.
+- PR #16 is closed/unmerged. PR #18 is the merged Experiment 001 replacement, which requires a detached Ed25519 INSTALL signature and pins the configured Founder public-key fingerprint.
+- The configured fingerprint is a trust anchor, not proof of Damien's real-world identity or private-key custody. Issue #17 remains open for separately controlled key custody, concurrency, stale-lock/crash recovery, and independent reuse.
+- A distinct current-main defect remains in src/authority/decision.js: authorizationEvent() trusts caller-supplied verification?.valid. This is the PR #164/#180/#203 line, with PR #244 the current helper-level correction. Fresh reads confirmed main game/server.mjs, PR #243 head 1b4ea596d19ecde266823d3fbe72b61fb2348af0, and PR #251 head 3017ee1ead746fd90b7eebe1ff66842561e47799 do not import/call createContextBoundFounderAuthorizationVerifier. Live server authorization remains unintegrated.
+- This correction was posted on PR #244 comment [6554663563](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244#issuecomment-6554663563). The PR #244 preflight overlap note remains at comment [6554594408](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244#issuecomment-6554594408).
+
+#### Portfolio and worker handoff
+
+- Fresh Alpha-1 open-PR search returned 68 open PRs. The first two branch-search pages returned 200 branch names and a continuation cursor; this is a large backlog, not evidence that all branches or PRs were individually audited. No branch or PR was closed or deleted.
+- PR #258 remains open/draft at parent head 6ccfff1163d674800c0d90c6bd08821eb0b0324c; its Verify, Genesis, and Browser runs 41281759839, 41281759876, and 41281759785 succeeded.
+- PR #259 remains open/draft/mergeable as a child of #258. Current pre-checkpoint code/test head 62127cd6... has all three workflows successful as listed above. The checkpoint-only append will require a fresh final-head recheck.
+- PR #239's current ledger head 49195a014f71bda6744bb6934a5d544c32109512 records PR #249 but omits PR #257/Armor Bearer. Handoff to Worker B was posted as comment [6554598960](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/239#issuecomment-6554598960); Worker A did not edit that ledger.
+- Linked repository root AGENTS.md probes returned 404 in ngl-mesh, no-gas-labs-command-center, No_Gas_Labs, no-gas-labs, ngl001-def4us28, and recursive-artifact-engine. No linked-repository writes or further inspection were attempted.
+- PR #255/#256 storage/Windows checks remain successful on their observed exact heads; PR #249 Android emulator is 2/2; PR #257 hosted Verify/Genesis/Browser checks are successful. These are proposed branches, not mainline integrations.
+
+**Next run:** recheck PR #259's checkpoint-updated exact head; then coordinate PR #244's helper with the PR #243/#251 shared server boundary and a Damien-approved trust root. Do not create/enroll/rotate a Founder key. Have Worker B update the MMORPG completion ledger with PR #257 evidence. Continue linked-repository work only when mandatory root instructions and canonical protocol are readable.
+
+No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
