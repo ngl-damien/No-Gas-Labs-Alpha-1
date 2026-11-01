@@ -3,19 +3,73 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, open, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGameServer } from '../game/server.mjs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 
 const VALID_KEY = 'founder-key-fixture-that-is-long-enough-for-tests';
 
-async function createLocalServer(options) {
-  const previousNodeEnv = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'development';
+async function createLocalServer({ dataDir }) {
+  const env = { ...process.env, NODE_ENV: 'development', HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  let port;
   try {
-    return await createGameServer({ ...options, requireExplicitFounderKey: false });
-  } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
+    port = await new Promise((resolvePort, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Local development CLI did not become ready: ' + output));
+      }, 5000);
+      child.on('error', error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on('exit', (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(output || ('Local development CLI exited before readiness (' + code + ', ' + signal + ')')));
+      });
+      child.stdout.on('data', chunk => {
+        output += chunk;
+        const match = /listening on 127\.0\.0\.1:(\d+)/.exec(output);
+        if (match && !settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolvePort(Number(match[1]));
+        }
+      });
+      child.stderr.on('data', chunk => { output += chunk; });
+    });
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+    throw error;
   }
+  let closed = false;
+  return {
+    address() { return { port }; },
+    listen(_port, _host, callback) {
+      if (typeof callback === 'function') callback();
+      return this;
+    },
+    async closeGame() {
+      if (closed) return;
+      closed = true;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+  };
 }
 
 async function directory(t, prefix = 'ngl-founder-key-', beforeRemove = async () => {}) {
