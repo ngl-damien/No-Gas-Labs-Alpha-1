@@ -250,7 +250,7 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
   );
 });
 
-test('published world and accepted kernel history survive restart; generated key stays private', async t => {
+test('published world and accepted kernel history survive restart; generated key stays private in explicit local mode', async t => {
   const f = await fixture(t, undefined, {}, { cleanupDataDir: false });
   let restarted, generated, secretDir;
   t.after(async () => {
@@ -268,7 +268,7 @@ test('published world and accepted kernel history survive restart; generated key
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
   secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-'));
-  generated = await createGameServer({ dataDir: secretDir });
+  generated = await createGameServer({ dataDir: secretDir, requireExplicitFounderKey: false });
   const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
   await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
   const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
@@ -409,9 +409,36 @@ test('an exclusive store lease rejects a second writer and is released by closeG
 });
 
 
+test('network-bound CLI refuses to mint a Founder credential without explicit configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-network-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = { ...process.env, NODE_ENV: 'development', PORT: '0', NGL_DATA_DIR: dataDir };
+  delete env.HOST;
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+});
+
+
 test('the direct CLI starts the HTTP service and releases its exclusive writer lease on SIGTERM without logging secrets', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-cli-'));
-  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env: { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stderr.on('data', chunk => { output += chunk; });
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; } await rm(dataDir, { recursive: true, force: true }); });
   const port = await new Promise((resolvePort, reject) => {
