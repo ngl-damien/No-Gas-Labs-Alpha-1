@@ -471,12 +471,31 @@ test('Adversary drafts survive unrelated appends but disappear when their retain
   assert.equal(projectAdversaryReviewDrafts(changed).drafts.length, 0);
 });
 
+test('Evidence Archive Chronicle rechecks response bytes instead of displaying a forged valid label', () => withDocument(() => {
+  const { world } = worldWithAdversaryResponse();
+  const response = world.events.at(-1);
+  response.responseText = JSON.stringify({ externalText: 'This response is outside the Adversary contract.' });
+  response.responseReceipt = sha256Receipt(response.responseText);
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: false, viewer: founder });
+  const rendered = textOf(root);
+  assert.match(rendered, /REJECTED · PRESERVED/);
+  assert.match(rendered, /Recorded status: valid-for-human-review; recomputed: rejected/);
+  assert.doesNotMatch(rendered, /STRUCTURE VALID · HUMAN REVIEW ONLY/);
+}));
+
 test('Rejected or accessor-backed Adversary responses never become editable drafts', () => {
   const { world } = worldWithAdversaryResponse();
   const rejected = structuredClone(world);
   rejected.events[3].validationStatus = 'rejected';
   rejected.events[3].validationReason = 'RESPONSE_SCHEMA_OR_SCOPE_INVALID';
   assert.equal(projectAdversaryReviewDrafts(rejected).drafts.length, 0);
+
+  const forgedValid = structuredClone(world);
+  forgedValid.events[3].responseText = JSON.stringify({ externalText: 'Not an Adversary response.' });
+  forgedValid.events[3].responseReceipt = sha256Receipt(forgedValid.events[3].responseText);
+  assert.equal(projectAdversaryReviewDrafts(forgedValid).drafts.length, 0,
+    'a stored valid label cannot make invalid response bytes eligible for an NPC challenge draft');
 
   const hostile = structuredClone(world);
   let reads = 0;
