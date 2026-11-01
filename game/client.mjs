@@ -1,6 +1,6 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -14,7 +14,7 @@ import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,projectPlayerGui
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 let currentCharacterRecord=null,currentQuestTrail=null,currentCollaboratorResponseObjects=null;
-async function openInstitution(locationId = null) {
+async function openInstitution(locationId = null, focusDecisionId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
     guild_hall: ['Guild Hall', 'COUNCIL · CAPABILITIES · EVIDENCE'],
@@ -24,7 +24,7 @@ async function openInstitution(locationId = null) {
   const content = showSheet(context[0], context[1]);
   if (mode !== 'shared') {
     content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
-    return;
+    return { decisionSnapshot: null, decisionUnavailable: true };
   }
   const requestGeneration = ++institutionRequestGeneration;
   const principalId = viewer.id;
@@ -42,7 +42,7 @@ async function openInstitution(locationId = null) {
   ]);
   if (requestGeneration !== institutionRequestGeneration || mode !== 'shared' ||
       viewer.id !== principalId || viewer.role !== principalRole || $('sheet').hidden ||
-      content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return;
+      content !== $('sheet-content') || $('sheet-kicker').textContent !== context[1]) return null;
   const snapshot = selectWorldSnapshot(
     stateResult.available ? stateResult.data?.world : null,
     world
@@ -54,6 +54,8 @@ async function openInstitution(locationId = null) {
     worldUnavailable: snapshot.unavailable,
     projectsUnavailable: !projectsResult.available,
     decisionsUnavailable: !gateResult.available,
+    decisionPresentation: locationId === 'decision_chamber' ? 'full'
+      : locationId === 'guild_hall' ? 'hidden' : 'summary',
     kernel: institutionResult.data?.kernel,
     kernelUnavailable: !institutionResult.available || !institutionResult.data?.kernel,
     onOpenArtifact: (id, version) => openCreation(id, version),
@@ -64,9 +66,21 @@ async function openInstitution(locationId = null) {
         requestId: crypto.randomUUID(),
         action,
       });
-      await openInstitution();
+      await openInstitution('decision_chamber', decision.id);
     }),
   });
+  if (locationId === 'decision_chamber' && typeof focusDecisionId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(focusDecisionId)) {
+    const target = Array.from(content.querySelectorAll('[data-decision-id]'))
+      .find(card => card.dataset.decisionId === focusDecisionId);
+    if (target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView?.({ block: 'nearest' });
+    } else {
+      content.prepend(paragraph('The requested decision ID was not present in the refreshed Decision Chamber snapshot. No disposition was submitted.','evidence-warning'));
+    }
+  }
+  return { decisionSnapshot: gateResult.data, decisionUnavailable: !gateResult.available };
 }
 function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
@@ -705,6 +719,80 @@ function renderGuildExpeditionDocket(projection,container){
     target?.focus({preventScroll:true});
   }
 }
+function attachGuildHallDecisionDocket(content,snapshot,unavailable=false){
+  const section=node('section',{
+    id:'guild-decision-docket',
+    'aria-labelledby':'guild-decision-docket-heading'
+  });
+  section.append(
+    node('h3',{id:'guild-decision-docket-heading',class:'section-title',text:'DECISION DOCKET · HUMAN GATE'}),
+    paragraph('Retained decision-service proposals become inspectable Guild Hall objects. This docket is a bounded read-only projection: opening, refreshing or navigating creates no world event, XP, disposition or approval. The Decision Chamber remains the only location for Founder disposition controls.','form-help')
+  );
+  if(mode!=='shared'){
+    section.append(paragraph('The shared Decision Service is not connected in this private world. No local decision records or approvals are invented.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  section.append(button('Refresh decision docket',guarded(async()=>openGuildHall()),{
+    class:'secondary-button',
+    'data-refresh-decision-docket':'true'
+  }));
+  const projection=unavailable?projectDecisionDocket(null):projectDecisionDocket(snapshot);
+  if(!projection.available){
+    section.append(paragraph('Decision register unavailable or malformed. No empty docket is inferred; reconnect to inspect the current human-gated records.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  const countText=['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']
+    .map(status=>status+' '+projection.counts[status]).join(' · ');
+  section.append(paragraph(
+    'Service revision '+projection.revision+' · head '+projection.head.slice(0,12)+'… · '+projection.decisionCount+' retained proposal(s)',
+    'attribution'
+  ));
+  section.append(paragraph('Status counts: '+countText,'form-help'));
+  if(projection.policy){
+    section.append(paragraph(
+      'Review policy '+projection.policy.id+' · revision '+projection.policy.revision+
+      ' · '+projection.policy.reviewWindowMs+' ms · set '+projection.policy.setAt,
+      'form-help'
+    ));
+  }else{
+    section.append(paragraph('No operational review policy is activated. No review window is running.','empty-note'));
+  }
+  if(!projection.decisions.length){
+    section.append(paragraph('No retained decision proposals are available.','empty-note'));
+  }
+  for(const decision of projection.decisions){
+    const card=node('article',{
+      class:'field-card',
+      'data-guild-decision-id':decision.id
+    });
+    card.append(
+      node('h4',{text:decision.title}),
+      node('span',{class:'pill',text:decision.status}),
+      paragraph('Decision '+decision.id+' · revision '+decision.revision+
+        ' · creator account '+decision.createdBy+' · '+decision.createdAt,'attribution'),
+      paragraph('Review expires '+decision.expiresAt,'form-help')
+    );
+    if(decision.expiredAt)card.append(paragraph('Expiry recorded '+decision.expiredAt,'form-help'));
+    if(decision.disposition)card.append(paragraph(
+      'Recorded disposition: '+decision.disposition.action+' by account '+
+      decision.disposition.actorId+' at '+decision.disposition.decidedAt+'.',
+      'form-help'
+    ));
+    card.append(button('Open in Decision Chamber →',()=>openInstitution('decision_chamber',decision.id),{
+      class:'list-button',
+      'data-decision-docket-focus':decision.id
+    }));
+    section.append(card);
+  }
+  if(projection.omittedDecisionCount)section.append(paragraph(
+    projection.omittedDecisionCount+' older decision record(s) remain in the service and are not shown in this bounded docket.',
+    'form-help'
+  ));
+  content.append(section);
+}
+
 function attachGuildHallExpeditionBoard(content){
   const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
   const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
@@ -741,8 +829,9 @@ function attachPlayerGuildBoard(content){
 
 async function openGuildHall(focusRoleId=null){
   if(mode==='shared'){
-    await openInstitution('guild_hall');
+    const register=await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
+      attachGuildHallDecisionDocket($('sheet-content'),register?.decisionSnapshot,register?.decisionUnavailable);
       attachGuildHallExpeditionBoard($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world,['synthesizer']);
       attachPlayerGuildBoard($('sheet-content'));
@@ -752,6 +841,7 @@ async function openGuildHall(focusRoleId=null){
   }
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
+  attachGuildHallDecisionDocket(content,null,true);
   attachGuildHallExpeditionBoard(content);
   appendCollaboratorContracts(content,world,['synthesizer']);
   attachPlayerGuildBoard(content);
