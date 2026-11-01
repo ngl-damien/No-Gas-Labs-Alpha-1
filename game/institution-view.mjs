@@ -195,7 +195,7 @@ export function projectAdversaryReviewDrafts(world) {
  });
 }
 
-function renderAdversaryReviewDrafts(container, world) {
+function renderAdversaryReviewDrafts(container, world, onOpenChallenge) {
  const projection = projectAdversaryReviewDrafts(world);
  if (!projection.available ||
      (!projection.drafts.length && projection.omittedCount === 0 && projection.unavailableCount === 0)) return;
@@ -215,7 +215,7 @@ function renderAdversaryReviewDrafts(container, world) {
   card.className = "field-card adversary-review-card";
   card.dataset.recordType = "ADVERSARY_DRAFT";
   card.dataset.responseId = entry.responseId;
-  card.append(el("h3", `Challenge draft · ${draft.challengeType.replaceAll("-", " ")}`));
+  card.append(el("h3", `Human review · challenge draft · ${draft.challengeType.replaceAll("-", " ")}`));
   card.append(el("p", `Moonshot ${draft.moonshotId} · report ${draft.reportId} · target event ${draft.targetEventId}`));
   card.append(el("p", `Source snapshot revision ${draft.sourceSnapshot.revision} · ${draft.sourceSnapshot.suppliedEventCount} supplied event records`));
   card.append(el("p", `Adversary distinctness assessment (unverified): ${draft.distinctnessAssessment}`));
@@ -256,7 +256,29 @@ function renderAdversaryReviewDrafts(container, world) {
   select.dataset.adversaryDraftSelect = entry.responseId;
   select.onclick = () => { editor.focus(); editor.select(); };
   card.append(select);
-  card.append(el("p", "Edit and copy this text, then open the Moonshot Field and use its separate Challenge this report action. The game kernel requires a different actor from the report author. This draft is not saved; only that later action can append a challenge event. No event, XP, evidence, approval or authority has been created here."));
+  if (typeof onOpenChallenge === "function") {
+   const matchingReports = (Array.isArray(world.events) ? world.events : []).filter(event =>
+    event?.type === "experiment-reported" &&
+    event.id === draft.targetEventId &&
+    event.reportId === draft.reportId &&
+    event.moonshotId === draft.moonshotId
+   );
+   if (matchingReports.length === 1 && matchingReports[0].actor?.id !== onOpenChallenge.actorId) {
+    const review = el("button", "Review challenge in Moonshot Field →");
+    review.type = "button";
+    review.className = "list-button";
+    review.dataset.adversaryDraftReview = entry.responseId;
+    review.onclick = () => onOpenChallenge({
+     reportId: draft.reportId,
+     targetEventId: draft.targetEventId,
+     moonshotId: draft.moonshotId,
+     challengeType: draft.challengeType,
+     challengeText: editor.value
+    });
+    card.append(review);
+   }
+  }
+  card.append(el("p", "Edit the draft, then open its exact retained report in the Moonshot Field. You must review and submit the challenge yourself. The game kernel requires a different actor from the report author. No event, XP, evidence, approval or authority is created until you submit the separate challenge action."));
   container.append(card);
  }
 }
@@ -329,7 +351,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
 }
 
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -352,7 +374,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
    ?'No retained institutional or world events are recorded in this snapshot.'
    :'No retained world events are recorded in this local snapshot.'
  });
- renderAdversaryReviewDrafts(container, world);
+ renderAdversaryReviewDrafts(container, world, onOpenChallenge);
 }
 
 function validProjectSnapshot(projects) {
