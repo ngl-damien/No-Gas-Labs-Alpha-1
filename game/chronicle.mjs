@@ -1,4 +1,4 @@
-import { projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
+import { isCollaboratorResponseProjection, projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -519,7 +519,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
  * Build a read-only chronological view of retained world and institutional events.
  * It never awards progress, changes source records, or treats local byte checks as truth.
  */
-export function projectChronicle({ world = {}, kernel = null } = {}) {
+export function projectChronicle({ world = {}, kernel = null, collaboratorResponseObjects = null } = {}) {
   const entries = [];
   let malformed = 0;
   const worldCollection = retainedEventCollection(world, "events");
@@ -555,8 +555,11 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
+  const responseProjection = isCollaboratorResponseProjection(collaboratorResponseObjects, world)
+    ? collaboratorResponseObjects
+    : projectCollaboratorResponseWorldObjects(world);
   const collaboratorResponseByEventId = new Map(
-    projectCollaboratorResponseWorldObjects(world).map(object => [object.eventId, object])
+    responseProjection.map(object => [object.eventId, object])
   );
 
   for (let index = 0; index < worldEvents.length; index += 1) {
