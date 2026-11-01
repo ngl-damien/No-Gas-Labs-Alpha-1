@@ -781,7 +781,7 @@ export function projectDecisionDocket(snapshot) {
         (candidate.status === 'EXPIRED' &&
           (disposition !== null || expiredAtMs === null || expiredAtMs < expiresAtMs)) ||
         (['APPROVED', 'REJECTED', 'DEFERRED'].includes(candidate.status) &&
-          (disposition === null || candidate.expiredAt !== null ||
+          (disposition === null || disposition.action !== ({ APPROVED: 'APPROVE', REJECTED: 'REJECT', DEFERRED: 'DEFER' })[candidate.status] || candidate.expiredAt !== null ||
             Date.parse(disposition.decidedAt) < createdAtMs ||
             Date.parse(disposition.decidedAt) > expiresAtMs))) {
       return unavailableDecisionDocket('inconsistent-decision-state');
