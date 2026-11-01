@@ -555,9 +555,11 @@ export function projectChronicle({ world = {}, kernel = null, collaboratorRespon
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
-  const responseProjection = isCollaboratorResponseProjection(collaboratorResponseObjects, world)
-    ? collaboratorResponseObjects
-    : projectCollaboratorResponseWorldObjects(world);
+  const responseProjection = worldCollection.valid && creationsCollection.valid
+    ? (isCollaboratorResponseProjection(collaboratorResponseObjects, world)
+      ? collaboratorResponseObjects
+      : projectCollaboratorResponseWorldObjects(world))
+    : [];
   const collaboratorResponseByEventId = new Map(
     responseProjection.map(object => [object.eventId, object])
   );
