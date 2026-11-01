@@ -611,7 +611,11 @@ export function projectCharacter(world, viewer, options = null) {
       title: 'Guild folio · ' + object.name,
       status: rejected ? 'rejected response preserved' : 'structurally valid · human review only',
       summary: rejected
-        ? 'Reason: ' + (object.validationReason || 'structural validation rejected the response') + ' · Moonshot ' + object.moonshotId
+        ? 'Reason: ' + (object.recomputedValidationReason === 'RESPONSE_SCHEMA_OR_SCOPE_INVALID'
+          ? 'response schema mismatch'
+          : object.recomputedValidationReason === 'RESPONSE_JSON_INVALID'
+            ? 'response JSON invalid'
+            : object.validationReason || 'structural validation rejected the response') + ' · Moonshot ' + object.moonshotId
         : 'Response preserved for human review · Moonshot ' + object.moonshotId + '. Structural validity is not truth, evidence, execution or approval.',
       action: { type: 'collaborator-response', id: object.responseId }
     });

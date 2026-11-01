@@ -234,7 +234,7 @@ function followQuestAction(action){
   if(action.type==='location'&&(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall'].includes(action.id)||GUILD_NPCS.some(npc=>npc.id===action.id))){closeSheet();view.goTo(action.id);return}
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
-function renderQuestTrail(milestones,list=$('quest-trail'),objectiveAttribute='data-objective-id'){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),[objectiveAttribute]:item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
+function renderQuestTrail(milestones,list=$('quest-trail'),objectiveAttribute='data-objective-id'){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),[objectiveAttribute]:item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.validationReason?'reason '+evidence.validationReason:null,evidence.validationMismatch?'recorded '+(evidence.recordedValidationStatus||'unknown')+' · rechecked '+(evidence.recomputedValidationStatus||'unknown'):null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
 const proposalObject=evidence.type==='moonshot-proposed'?view.researchObjects.find(object=>object.eventId===evidence.id):null;
 if(proposalObject){
  entry.append(button('Inspect moonshot proposal →',()=>followResearchTarget(proposalObject,()=>openMoonshotField(proposalObject.moonshotId),'research-object'),{class:'text-button quest-evidence-open quest-evidence-world-object'}));
@@ -724,6 +724,7 @@ function renderGuildExpeditionDocket(projection,container){
           class:'list-button','data-expedition-docket-focus':'response:'+response.responseId
         })
       );
+      if(response.validationMismatch)item.append(paragraph('Recorded status '+(response.recordedValidationStatus||'unknown')+' disagreed with recomputed status '+(response.recomputedValidationStatus||'unknown')+'. Displayed as rejected.','evidence-warning'));
       responses.append(item);
     }
     if(expedition.omittedResponseCount)responses.append(paragraph(expedition.omittedResponseCount+' older folio(s) remain in the Evidence Archive.','form-help'));
@@ -1170,20 +1171,24 @@ function openEvidenceArchive(focusResponseId=null,focusRoleId=null){
     content.append(card);
   }
 
+const responseProjectionByEventId=new Map((currentCollaboratorResponseObjects||[]).map(object=>[object.eventId,object]));
 const collaboratorResponses=events.filter(event=>event?.type==='collaborator-response-recorded').slice().reverse();
   content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR RESPONSES'}));
   if(!collaboratorResponses.length)content.append(paragraph('No external collaborator responses have been preserved yet. A returned answer remains untrusted until a human explicitly archives it; archiving does not endorse its claims.','empty-note'));
   const collaboratorNames={archivist:'Hostile Archivist',adversary:'Adversary',synthesizer:'Synthesis Clerk',tutor:'Polymath Tutor'};
   for(const entry of collaboratorResponses){
-    const valid=entry.validationStatus==='valid-for-human-review';
-    const card=node('article',{class:'field-card','data-collaborator-response-id':entry.responseId,tabindex:'-1'},[
-      node('h3',{text:(collaboratorNames[entry.role]||entry.role)+' · '+(valid?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED')}),
+    const projection=responseProjectionByEventId.get(entry.id)||null;
+    const valid=projection?.validationStatus==='valid-for-human-review';
+    const status=projection?(valid?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED'):'UNVERIFIED · NOT PROJECTED';
+    const card=node('article',{class:'field-card','data-collaborator-response-id':entry.responseId,'data-response-validation-status':projection?.validationStatus||'unverified','data-response-validation-mismatch':String(projection?.validationMismatch===true),tabindex:'-1'},[
+      node('h3',{text:(collaboratorNames[entry.role]||entry.role)+' · '+status}),
       paragraph('Moonshot '+entry.moonshotId+' · actor '+(entry.actor?.name||entry.actor?.id||'Unknown actor')+' · '+entry.at,'attribution'),
       paragraph('Source events: '+entry.sourceEventIds.join(' · ')),
       paragraph('Packet SHA-256 '+entry.packetReceipt.digest+' · '+entry.packetReceipt.size+' bytes'),
       paragraph('Response SHA-256 '+entry.responseReceipt.digest+' · '+entry.responseReceipt.size+' bytes'),
-      paragraph(entry.validationReason?'Structural validator result: '+entry.validationReason:'Structural validator result: valid for human review only; no truth or authority was verified.','form-help')
+      paragraph(projection?.validationReason?'Deterministic response recheck: '+projection.validationReason:projection?'Deterministic response recheck: valid for human review only; no truth or authority was verified.':'No source-bound folio was projected; the stored status is not trusted.','form-help')
     ]);
+    if(projection?.validationMismatch)card.append(paragraph('Recorded status '+(projection.recordedValidationStatus||'unknown')+' disagreed with recomputed status '+(projection.recomputedValidationStatus||'unknown')+'. Displayed as rejected.','evidence-warning'));
     const packetDetails=node('details',{class:'collaborator-packet'},[
       node('summary',{text:'Inspect exact archived packet'}),
       node('textarea',{readonly:'',rows:'8','aria-label':'Archived collaborator packet',value:entry.packetJson})
@@ -1209,7 +1214,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const principalRole=viewer.role;
   const stillCurrent=()=>generation===evidenceArchiveGeneration&&mode==='shared'&&viewer.id===principalId&&viewer.role===principalRole&&!$('sheet').hidden&&content===$('sheet-content')&&$('sheet-kicker').textContent===kicker;
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
-    world,kernel,kernelUnavailable,shared:mode==='shared',viewer,
+    world,kernel,kernelUnavailable,shared:mode==='shared',viewer,collaboratorResponseObjects:currentCollaboratorResponseObjects,
     onOpenArtifact:(id,version)=>openCreation(id,version),
     onOpenChallenge:guarded(draft=>{
       const reports=(Array.isArray(world.events)?world.events:[]).filter(event=>
