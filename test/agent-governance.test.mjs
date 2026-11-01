@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
@@ -34,6 +34,30 @@ async function fixture() {
   await writeFile(join(root, 'CHECKPOINT.md'), '# Latest checkpoint\n');
   return root;
 }
+
+test('preflight rejects a path whose fingerprint changes between semantic inspections', () => {
+  const originalBytes = Buffer.from('trusted instructions v1');
+  const original = reconcileInspectedFileRecord(null, 'AGENTS.md', 'root-instructions', originalBytes);
+  assert.equal(original.changed, false);
+  assert.equal(original.record.sha256, createHash('sha256').update(originalBytes).digest('hex'));
+
+  const sameBytes = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'target', Buffer.from(originalBytes)
+  );
+  assert.equal(sameBytes.changed, false);
+  assert.equal(sameBytes.record.kind, 'root-instructions',
+    'target enumeration must not downgrade trusted instruction classification');
+
+  const changedBytes = Buffer.from('trusted instructions v2');
+  assert.equal(changedBytes.byteLength, originalBytes.byteLength,
+    'the regression must exercise same-length replacement, not only a size change');
+  const changed = reconcileInspectedFileRecord(
+    original.record, 'AGENTS.md', 'durable-checkpoint', changedBytes
+  );
+  assert.equal(changed.changed, true);
+  assert.equal(changed.record.sha256, createHash('sha256').update(originalBytes).digest('hex'),
+    'the first receipt remains intact but the caller must block rather than report it as current');
+});
 
 test('preflight hashes root contract, protocol, scoped nested instructions and checkpoint', async () => {
   const root = await fixture();
