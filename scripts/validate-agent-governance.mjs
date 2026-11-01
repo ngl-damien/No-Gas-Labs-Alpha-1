@@ -29,7 +29,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   const files = [];
   const failures = [];
   const warnings = [];
-  const seen = new Set();
+  const seen = new Map();
 
   async function inspect(relativePath, kind, required = true) {
     if (!safeRelativePath(relativePath)) {
@@ -81,9 +81,16 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: 'file is empty' });
         return null;
       }
-      if (!seen.has(relativePath)) {
-        files.push({ path: relativePath, kind, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength });
-        seen.add(relativePath);
+      const existing = seen.get(relativePath);
+      if (!existing) {
+        const record = { path: relativePath, kind, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
+        files.push(record);
+        seen.set(relativePath, record);
+      } else if (kind !== 'target') {
+        // A file can be both a scoped target and a trusted governance input.
+        // Preserve its stronger semantic classification (for example, the
+        // canonical checkpoint) rather than letting target enumeration mask it.
+        existing.kind = kind;
       }
       return content;
     } catch (error) {
