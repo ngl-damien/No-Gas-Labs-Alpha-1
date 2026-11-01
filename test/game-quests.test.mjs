@@ -1425,9 +1425,13 @@ test('Commons quest is actor-bound, routes to the real location, and survives hu
   const hiddenHistory = {
     ...world,
     events: [...world.events, {
+      id: 'commons-report-witness', type: 'message-reported', actor: founderActor,
+      at: '2026-10-28T19:02:00.000Z', reportId: 'commons-report-witness-id',
+      messageId: witnessPost.messageId, reason: 'privacy', details: 'Please review this post.'
+    }, {
       id: 'commons-hide-witness', type: 'message-moderated', actor: founderActor,
-      at: '2026-10-28T19:02:00.000Z', messageId: witnessPost.messageId,
-      disposition: 'hide', reason: 'privacy'
+      at: '2026-10-28T19:03:00.000Z', moderationId: 'commons-moderation-witness-id',
+      messageId: witnessPost.messageId, disposition: 'hide', reason: 'privacy'
     }]
   };
   const stillRecorded = getQuestTrail(hiddenHistory, witness)

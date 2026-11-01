@@ -619,7 +619,7 @@ export function projectCharacter(world, viewer, options = null) {
   for (const event of commonsMessages) {
     addFieldItem('commons-message', event, null, {
       title: 'Commons message',
-      status: 'retained conversation · not evidence or approval',
+      status: 'retained conversation · not evidence or authority',
       summary: event.text,
       locationId: 'commons',
       action: { type: 'location', id: 'commons' }
