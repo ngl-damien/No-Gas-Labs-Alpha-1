@@ -293,3 +293,82 @@ test('aggregate byte accounting includes bytes consumed by a failed digest check
   assert.equal(result.receipts[0].status, 'mismatch');
   assert.equal(result.failures[0].reason, 'sha256-mismatch');
 });
+
+
+test('reference descriptors reject accessors without invoking them', async t => {
+  const directory = await temp(t);
+  let getterCalls = 0;
+  const reference = { sha256: 'a'.repeat(64) };
+  Object.defineProperty(reference, 'path', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'docs/source.md';
+    }
+  });
+
+  await assert.rejects(
+    readVerifiedReference(directory, reference),
+    /Unsafe recovery reference/
+  );
+  assert.equal(getterCalls, 0);
+});
+
+test('reference lists reject accessor-backed entries without invoking them', async t => {
+  const directory = await temp(t);
+  let getterCalls = 0;
+  const references = [];
+  Object.defineProperty(references, '0', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return { path: 'docs/source.md', sha256: 'a'.repeat(64) };
+    }
+  });
+
+  await assert.rejects(
+    verifyRecoveryReferences(directory, references),
+    /dense data array/
+  );
+  assert.equal(getterCalls, 0);
+});
+
+test('continuity validation rejects accessor-backed control and machinery fields without invoking them', () => {
+  let getterCalls = 0;
+  const state = continuityState([{ path: 'missing.md', sha256: 'a'.repeat(64) }]);
+  Object.defineProperty(state, 'authority', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      getterCalls += 1;
+      return 'attacker-controlled authority';
+    }
+  });
+  assert.throws(() => validateContinuityRecord(state), /Incomplete continuity record/);
+
+  const second = continuityState([{ path: 'missing.md', sha256: 'a'.repeat(64) }]);
+  const machinery = { M1: {} };
+  Object.defineProperty(machinery, 'M0', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return {};
+    }
+  });
+  second.machinery = machinery;
+  assert.throws(() => validateContinuityRecord(second), /Incomplete continuity record/);
+  assert.equal(getterCalls, 0);
+});
+
+test('continuity validation returns detached immutable recovery references', () => {
+  const references = [{ path: 'docs/source.md', sha256: 'a'.repeat(64) }];
+  const validated = validateContinuityRecord(continuityState(references));
+
+  references[0].path = '../outside.md';
+  references.push({ path: '.runtime/founder.key', sha256: 'b'.repeat(64) });
+
+  assert.equal(validated.references.length, 1);
+  assert.equal(validated.references[0].path, 'docs/source.md');
+  assert.ok(Object.isFrozen(validated.references));
+  assert.ok(Object.isFrozen(validated.references[0]));
+});
