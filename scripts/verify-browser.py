@@ -1153,6 +1153,61 @@ def shared(browser,url,data,out):
         expect(a.locator('#guild-decision-docket')).not_to_contain_text('STALE · LAST OBSERVED')
         close_sheet(a)
 
+        # The bounded public docket copy survives a reload in this tab. The
+        # offline world is a read-only map shell: it exposes retained records,
+        # not character progression, live authority, or a writable shared world.
+        cached_docket=a.evaluate("()=>sessionStorage.getItem('ngl.decision-docket.local-echo.v1')")
+        assert cached_docket, 'a fresh public Decision Docket projection should be cached for same-tab recovery'
+        assert evaluation_bytes not in cached_docket, 'the local echo must exclude Founder-only evaluation bytes'
+        a.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)",timeout=15000)
+        before_local_echo_world=owner.request.get(url+'api/state').json()['world']
+        before_local_echo_docket=owner.request.get(url+'api/decisions').json()
+        a.set_viewport_size({'width':390,'height':844})
+        owner.set_offline(True)
+        try:
+            a.reload(wait_until='domcontentloaded',timeout=30000)
+            a.locator('#start-shared').wait_for(timeout=15000)
+            a.locator('#start-shared').click()
+            a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Offline archive')",timeout=15000)
+            expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+            expect(a.locator('#world')).to_have_attribute('data-decision-docket-unverified','true')
+            expect(a.locator('#xp-count')).to_have_text('—')
+            expect(a.locator('#creation-count')).to_have_text('—')
+            expect(a.locator('#make-button')).to_be_disabled()
+            expect(a.locator('#journal-button')).to_be_disabled()
+            expect(a.locator('#character-button')).to_be_disabled()
+            expect(a.locator('#quest-trail li')).to_have_count(0)
+            a.locator('#places-button').click()
+            a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall · local docket'",timeout=30000)
+            expect(a.locator('#sheet')).to_contain_text('LOCAL COPY · UNVERIFIED')
+            offline_card=a.locator('[data-offline-decision-id="browser-docket-pending"]')
+            expect(offline_card).to_be_visible()
+            expect(offline_card).to_contain_text('LOCAL STATUS CLAIM · PENDING')
+            offline_card.get_by_role('button',name='Walk to map record →',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-content')?.getAttribute('data-institution-record-id')==='decision-docket:browser-docket-pending'",timeout=30000)
+            offline_record=a.locator('#sheet-content')
+            expect(offline_record).to_contain_text('LOCAL COPY · UNVERIFIED')
+            expect(offline_record.locator('[data-gate-action]')).to_have_count(0)
+            expect(offline_record.get_by_role('button',name='Open local docket →',exact=True)).to_be_visible()
+            offline_record.get_by_role('button',name='Open local docket →',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber · local archive'",timeout=15000)
+            expect(a.locator('#sheet-content')).to_contain_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+            close_sheet(a)
+        finally:
+            owner.set_offline(False)
+        a.locator('#quest-button').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')",timeout=30000)
+        a.wait_for_function("()=>document.querySelector('#world')?.getAttribute('data-decision-docket-unverified')==='false'",timeout=30000)
+        a.set_viewport_size({'width':1440,'height':1000})
+        after_local_echo_world=owner.request.get(url+'api/state').json()['world']
+        after_local_echo_docket=owner.request.get(url+'api/decisions').json()
+        assert (after_local_echo_world['revision'],len(after_local_echo_world['events']),after_local_echo_world['xp'])==(before_local_echo_world['revision'],len(before_local_echo_world['events']),before_local_echo_world['xp']), 'offline map navigation must not mutate canonical world progress'
+        assert after_local_echo_docket['revision']==before_local_echo_docket['revision']
+        assert after_local_echo_docket['decisions'][0]['status']=='PENDING' and after_local_echo_docket['decisions'][0]['disposition'] is None, 'offline cache inspection must not create a disposition'
+        assert not errors,errors
+
         # The older Moonshot dossier route still reaches the Chamber, but it
         # does not pretend that a Moonshot ID is a decision-service ID.
         a.locator('#places-button').click()
