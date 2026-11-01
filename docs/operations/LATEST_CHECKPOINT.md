@@ -500,3 +500,54 @@ No merge, release, deployment, workflow dispatch, branch deletion, spending, ext
 4. Keep the ngl-mesh full integration blocked until PR #1's `verify_bridge.py` compile list includes PR #3's helpers and the operator-supplied RAE archive/APK/report are available.
 
 No merge, release, deployment, spending, external publication, key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 18 — 2026-11-01 UTC — Windows signer ACL repair and portfolio re-audit
+
+### Bootstrap and fresh state
+
+- Read root `AGENTS.md` alone, then the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone. Re-read this complete checkpoint through Run 17 before acting.
+- Rechecked main, branches, open PRs/issues, PR #16/#18, issue #17, and the active Worker B result. Relevant nested `AGENTS.md` checks for `src/`, `src/authority/`, `test/`, `.github/`, `.github/workflows/`, `experiment-001/`, `scripts/`, `docs/`, and `docs/operations/` found no additional files.
+- Main remains at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No merge or mainline change occurred.
+
+### PR #16 disposition — verified, not reopened
+
+PR #16 is closed unmerged; replacement PR #18 is merged at `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. Current main's `experiment-001/institutional-cycle.mjs` captures `NGL_FOUNDER_KEY_FINGERPRINT` at module import and checks the detached Ed25519 approval against that independent startup pin. The signer requires a separately configured fingerprint and an inspect-then-confirm digest. The original self-signing defect is therefore superseded; do not reimplement PR #16. This still proves key possession, not Damien's human identity or consent.
+
+Issue #17 remains open. Main still has a separate source-backed authority-event gap: `src/authority/decision.js` accepts a caller-provided `verification.valid` boolean in `authorizationEvent()`. Draft PRs #244 → #245 → #251 propose sealed verification, service-store ownership/concurrency hardening, and explicit Founder-key requirements for programmatic/network startup, but remain unmerged. Treat them as proposals, not live protection. Actual key custody, live mutation-route integration, and safe stale-lock recovery remain unresolved.
+
+### Stutter-step cycle A — Windows ACL command failure
+
+PR #255's original Windows run [41271924036](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41271924036) on `1366dd9e5c6b480fb3be82b145ffe49f66f862b5` failed in the Windows key-reader tests. The logs showed PowerShell `Get-Acl`/`Set-Acl` module auto-loading failures and 5-second child-process timeouts.
+
+- `fcacc12fb8ab843404c4dd9c110e6f5f88c5e4c4` replaces module-dependent `Get-Acl` with Windows PowerShell 5.1's .NET `FileInfo.GetAccessControl()` and raises the bounded process timeout to 15 seconds.
+- `b001c7a49d2f8b8f646a6b78f72e34606b9fe57d` changes the test ACL writer to `FileInfo.SetAccessControl()`, removing the failing `Set-Acl` module dependency.
+- Exact-head run [41272625763](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272625763) then isolated two fixture failures: malformed-key and fingerprint-mismatch fixtures inherited a Windows owner ACL and failed at `FOUNDER_KEY_OWNER_MISMATCH` before reaching their intended assertions. The implementation was not weakened.
+
+### Stutter-step cycle B — Windows rejection fixtures corrected
+
+- `0840b3c5c42be0049fed159e91ff873e06092119` applies the same owner-only test ACL to those two Windows fixtures, so the tests exercise malformed UTF-8 and trust-fingerprint rejection rather than an unrelated owner precondition.
+- Exact-head results on `0840b3c5c42be0049fed159e91ff873e06092119`:
+  - Windows Founder ACL [41272740602](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272740602): **success** — 20 passed, 0 failed, 6 skipped.
+  - Verify [41272740581](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272740581): **success**; portable preflight reported `ready` with no warnings or failures.
+  - Genesis Evidence Invariant [41272740611](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272740611): **success**.
+  - Browser acceptance [41272740586](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272740586): **success**, 12/12 journeys; artifact [13069403847](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41272740586/artifacts/13069403847), ZIP SHA-256 `eb3cbd71ce0456bdd6769fdce1e05d9a0f7f40b2ba2e29f20bf2ce74d8d8bac3`.
+
+PR #255 remains draft/open and unmerged. These hosted checks prove the tested Windows runner path and repository journeys; they do not establish production key custody, human identity, device deployment, or Founder enrollment.
+
+### Linked-repository re-audit
+
+`ngl-mesh` has no open PRs or issues. Its PR #1 and PR #3 were closed unmerged at 2026-11-01 03:11 UTC; their head commits remain inspectable, but their branch refs are unavailable. PR #3's head `074c6f8c4a26910a8307f284585f0e324568cf11` is 16 commits ahead of main and none of that work is integrated. Main has no root `AGENTS.md`; the PR #3 snapshot's `AGENTS.md` points to the shared Alpha1 protocol, but that protocol is absent at that snapshot (404). Its own rule says stop if the protocol is unavailable, so no ngl-mesh write or PR reopening was attempted. The recovered RAE archive, reference APK, and report remain operator-supplied prerequisites; standalone UTF-8/file-reader checks are not full bridge integration.
+
+Worker B's latest completed result is still the prior MMORPG handoff; its newer run was observed in progress, so no result is attributed to it here. PR #249's exact Android run [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) subsequently completed **2/2 instrumentation tests** with `BUILD SUCCESSFUL`. PR #250's prior exact-head browser suite remains 14/14. PR #253 still needs reconciliation with the latest PR #250 parent before its evidence can be treated as current.
+
+### Next ranked steps
+
+1. Re-inspect and reconcile PR #255 against the latest canonical checkpoint/base; rerun all checks on the resulting exact head before asking for review.
+2. Rebase/reconcile the PR #244 → #245 → #251 Founder-decision/service-store stack against current main and PR #255 without merging. Verify that the expected fingerprint comes from a separately trusted host configuration and that signed decisions reach the live mutation boundary; helper tests alone are insufficient.
+3. Reconcile PR #249/#250/#253 and the MMORPG completion ledger; preserve the 2/2 Android result and the earlier failed run as separate evidence.
+4. Leave ngl-mesh read-only until its canonical shared protocol is present at the target commit and the closed PRs' integration authority is resolved. Keep Command Center writes paused under the existing no-write boundary.
+
+No merge, release, deployment, external publication, spending, key generation/enrollment/rotation, credential change, or Founder acceptance occurred. No uninterrupted between-run execution is claimed. The PR #255 checkpoint-only commit will trigger fresh exact-head CI; those results must be inspected before treating the updated PR head as verified.
