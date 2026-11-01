@@ -372,3 +372,24 @@ test('continuity validation returns detached immutable recovery references', () 
   assert.ok(Object.isFrozen(validated.references));
   assert.ok(Object.isFrozen(validated.references[0]));
 });
+
+
+test('recovery command rejects duplicate continuity JSON keys before parsing', async t => {
+  const directory = await temp(t);
+  const statePath = join(directory, 'state.json');
+  const state = continuityState([
+    { path: 'missing.md', sha256: 'a'.repeat(64) }
+  ]);
+  const source = JSON.stringify(state);
+  const duplicate = source.replace(
+    '"authority":"Test-only authority statement"',
+    '"authority":"first","authority":"second"'
+  );
+  assert.notEqual(duplicate, source, 'fixture must contain duplicate authority keys');
+  await writeFile(statePath, duplicate, { mode: 0o600 });
+
+  await assert.rejects(
+    runRecovery(statePath),
+    error => error.code === 1 && /CONTINUITY_DUPLICATE_JSON_KEY/.test(error.stderr)
+  );
+});
