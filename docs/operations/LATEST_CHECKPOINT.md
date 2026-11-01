@@ -632,7 +632,7 @@ Code head tested: `d5104bef288c638f35e8785b5f7aff4fb8a84bfa`.
 - Windows Founder ACL run [41276403044](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403044): **success** — 26 passed, 0 failed, 6 skipped. The new private-directory/envelope, broad-directory rejection, broad-envelope rejection, guard ACL, and lock-inspector ACL tests all passed.
 - Verify run [41276403084](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403084): **success**.
 - Genesis Evidence Invariant run [41276403040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403040): **success**.
-- Browser acceptance run [41276403091](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403091): still **in progress** at checkpoint time; do not attribute a result until the exact-head job completes.
+- Browser acceptance run [41276403091](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403091): **success** — 12/12 journeys passed; artifact [13071304092](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41276403091/artifacts/13071304092), ZIP SHA-256 `3100de54ad38cda8ac8687e897233492f93637e2ac5e3ba951cba826733a5319`.
 - PR #249 Android instrumentation run [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) remains current at head `1686806143b11e7c70366b719621b50037e8ab94`: **2/2 passed**, `BUILD SUCCESSFUL`, artifact [13069314480](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565/artifacts/13069314480). PR #250's earlier exact-head browser acceptance remains 14/14; PR #253 is newer and still requires parent/evidence reconciliation.
 
 ### Linked-repository blockers
