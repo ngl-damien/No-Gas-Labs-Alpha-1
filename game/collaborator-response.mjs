@@ -301,6 +301,24 @@ function reportMatchesPacketRecord(event, source) {
     ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
 }
 
+function challengeMatchesPacketRecord(event, source) {
+  const actor = ownDataValue(event, 'actor');
+  const sourceActor = ownDataValue(source, 'actor');
+  const evidence = ownDataValue(source, 'evidence');
+  return ownDataValue(event, 'id') === ownDataValue(source, 'eventId') &&
+    ownDataValue(event, 'type') === 'experiment-challenged' &&
+    ownDataValue(event, 'challengeId') === ownDataValue(source, 'challengeId') &&
+    ownDataValue(event, 'reportId') === ownDataValue(source, 'reportId') &&
+    ownDataValue(event, 'moonshotId') === ownDataValue(source, 'moonshotId') &&
+    ownDataValue(event, 'at') === ownDataValue(source, 'at') &&
+    ownDataValue(event, 'challengeType') === ownDataValue(source, 'challengeType') &&
+    ownDataValue(event, 'challengeText') === ownDataValue(source, 'challengeText') &&
+    (ownDataValue(event, 'evidenceCreationId') ?? null) === ownDataValue(evidence, 'creationId') &&
+    (ownDataValue(event, 'evidenceVersion') ?? null) === ownDataValue(evidence, 'version') &&
+    ownDataValue(actor, 'id') === ownDataValue(sourceActor, 'id') &&
+    ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
+}
+
 /**
  * Turn a structurally valid Adversary response into an editable, human-review
  * draft bound to one exact retained experiment report. This is not an event:
@@ -350,13 +368,39 @@ export function createAdversaryChallengeDraft(packet, responseText, world) {
       ownDataValue(target, 'moonshotId') !== validation.moonshotId) {
     return reject('TARGET_REPORT_SOURCE_MISMATCH');
   }
+  const targetIndex = events.indexOf(target);
+  const targetAt = Date.parse(ownDataValue(target, 'at'));
   for (const duplicateId of response.duplicateOfEventIds) {
+    const duplicateSource = payload.inputRecords.find(record => record?.eventId === duplicateId);
     const duplicateMatches = events.filter(event => ownDataValue(event, 'id') === duplicateId);
-    if (duplicateMatches.length !== 1 ||
+    if (!duplicateSource || duplicateSource.type !== 'experiment-challenged' ||
+        duplicateSource.targetReportStatus !== 'linked' ||
+        duplicateSource.reportId !== source.reportId ||
+        duplicateSource.moonshotId !== source.moonshotId ||
+        duplicateMatches.length !== 1 ||
         ownDataValue(duplicateMatches[0], 'type') !== 'experiment-challenged' ||
         ownDataValue(duplicateMatches[0], 'reportId') !== source.reportId ||
         ownDataValue(duplicateMatches[0], 'moonshotId') !== validation.moonshotId) {
       return reject('DUPLICATE_REFERENCE_NOT_UNIQUE');
+    }
+
+    const duplicateEvent = duplicateMatches[0];
+    const duplicateChallengeMatches = events.filter(event =>
+      ownDataValue(event, 'type') === 'experiment-challenged' &&
+      ownDataValue(event, 'challengeId') === duplicateSource.challengeId
+    );
+    if (duplicateChallengeMatches.length !== 1 || duplicateChallengeMatches[0] !== duplicateEvent) {
+      return reject('DUPLICATE_REFERENCE_NOT_UNIQUE');
+    }
+    if (!challengeMatchesPacketRecord(duplicateEvent, duplicateSource)) {
+      return reject('DUPLICATE_REFERENCE_SOURCE_MISMATCH');
+    }
+
+    const duplicateIndex = events.indexOf(duplicateEvent);
+    const duplicateAt = Date.parse(ownDataValue(duplicateEvent, 'at'));
+    if (duplicateIndex <= targetIndex || !Number.isFinite(targetAt) ||
+        !Number.isFinite(duplicateAt) || duplicateAt < targetAt) {
+      return reject('DUPLICATE_REFERENCE_ORDER_MISMATCH');
     }
   }
 
