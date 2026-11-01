@@ -130,6 +130,9 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       continue;
     }
     normalizedTargets.push(target);
+    // Fingerprint each requested target, not just its ancestor instructions.
+    // Missing, unreadable, or invalid-UTF-8 targets must block a ready receipt.
+    await inspect(target, 'target');
     const parts = target.split('/');
     for (let index = 1; index <= parts.length; index += 1) {
       const prefix = parts.slice(0, index).join('/');
