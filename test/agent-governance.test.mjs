@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
   await mkdir(join(root, 'docs/operations'), { recursive: true });
   await mkdir(join(root, '.github'), { recursive: true });
-  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nPreflight command: npm run agent:preflight -- --path scripts/worker.mjs --checkpoint CHECKPOINT.md\nLeave a durable, factual record.\n');
   await writeFile(join(root, protocolPath), protocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
@@ -26,12 +27,67 @@ test('preflight hashes root contract, protocol, scoped nested instructions and c
   try {
     await mkdir(join(root, 'scripts'));
     await writeFile(join(root, 'scripts/AGENTS.md'), 'Scripts-specific instructions.');
+    const workerBytes = Buffer.from('export const worker = true;\n', 'utf8');
+    await writeFile(join(root, 'scripts/worker.mjs'), workerBytes);
     const result = await runPreflight({ root, paths: ['scripts/worker.mjs'], checkpoint: 'CHECKPOINT.md' });
     assert.equal(result.status, 'ready');
     assert.equal(result.protocol, protocolPath);
     assert.ok(result.files.some(file => file.path === 'scripts/AGENTS.md' && file.kind === 'nested-instructions'));
     assert.ok(result.files.some(file => file.path === 'CHECKPOINT.md' && file.kind === 'durable-checkpoint'));
+    const target = result.files.find(file => file.path === 'scripts/worker.mjs');
+    assert.equal(target.kind, 'target');
+    assert.equal(target.bytes, workerBytes.byteLength);
+    assert.equal(target.sha256, createHash('sha256').update(workerBytes).digest('hex'));
     assert.ok(result.files.every(file => /^[a-f0-9]{64}$/.test(file.sha256)));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight preserves durable-checkpoint classification when checkpoint is also a target', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({
+      root,
+      paths: ['CHECKPOINT.md'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'ready');
+    const checkpoint = result.files.find(file => file.path === 'CHECKPOINT.md');
+    assert.equal(checkpoint.kind, 'durable-checkpoint');
+    assert.equal(result.checkpoint, 'CHECKPOINT.md');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight blocks a missing scoped target instead of returning a ready receipt', async () => {
+  const root = await fixture();
+  try {
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/missing.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/missing.mjs' && item.reason.includes('cannot read')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/missing.mjs'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight rejects invalid UTF-8 in a scoped target', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/bad.mjs'), Buffer.from([0x52, 0x65, 0xff]));
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/bad.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/bad.mjs' && item.reason.includes('valid UTF-8')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/bad.mjs'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -187,6 +243,76 @@ test('preflight requires the standard vendor entry points to remain present', as
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects an in-repository symlink used as root AGENTS.md', async () => {
+  const root = await fixture();
+  try {
+    const instructions = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    await writeFile(join(root, 'AGENTS-copy.md'), instructions);
+    await rm(join(root, 'AGENTS.md'));
+    await symlink('AGENTS-copy.md', join(root, 'AGENTS.md'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'AGENTS.md' && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as the canonical shared protocol', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'docs/operations/PROTOCOL-copy.md'), protocolText);
+    await rm(join(root, protocolPath));
+    await symlink('PROTOCOL-copy.md', join(root, protocolPath), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === protocolPath && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === protocolPath));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as a nested AGENTS.md', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/AGENTS-copy.md'), 'Scripts-specific instructions.');
+    await symlink('AGENTS-copy.md', join(root, 'scripts/AGENTS.md'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/AGENTS.md' && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight refuses receipt creation through an escaping directory symlink', async () => {
   const root = await fixture();
   const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-outside-'));
@@ -201,3 +327,12 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('hosted preflight includes the world-view source and canonical checkpoint', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  assert.equal(typeof command, 'string');
+  assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
+  assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
+});
+
