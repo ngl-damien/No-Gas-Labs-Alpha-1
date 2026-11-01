@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { openDecisions } from '../src/institution/decisions.mjs';
 import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
+import { verifyWindowsDirectorySecurity, verifyWindowsFileSecurity } from '../src/windows-acl.mjs';
 
 const windowsOnly = { skip: process.platform !== 'win32' };
 const founder = { id: 'damien', role: 'founder' };
@@ -79,10 +80,12 @@ function setWindowsAcl(path, kind, includeEveryone = false) {
 }
 
 test('decision store reopens a private Windows ACL envelope and its live lease remains inspectable', windowsOnly, async t => {
-  const directory = await temporaryDirectory(t);
-  setWindowsAcl(directory, 'directory');
+  const root = await temporaryDirectory(t);
+  const directory = join(root, 'private-store');
 
   const store = await openDecisions({ directory, now });
+  assert.equal(verifyWindowsDirectorySecurity(directory, 'TEST_DECISIONS_DIRECTORY'), true);
+  assert.equal(verifyWindowsFileSecurity(join(directory, 'decisions.json'), 'TEST_DECISIONS_ENVELOPE'), true);
   try {
     await store.setPolicy(founder, policy);
     const lock = await inspectWriterLock(join(directory, '.decisions.lock'));
