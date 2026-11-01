@@ -5,10 +5,15 @@ on:
     paths:
       - 'src/bounded-file-reader.mjs'
       - 'src/windows-acl.mjs'
+      - 'src/institution/decisions.mjs'
+      - 'src/institution/lock-inspector.mjs'
       - 'scripts/approve-install.mjs'
       - 'experiment-001/FOUNDER-APPROVAL.md'
       - 'test/approve-install-file-reader.test.mjs'
       - 'test/windows-acl.test.mjs'
+      - 'test/windows-decision-store-acl.test.mjs'
+      - 'test/institution-decisions.test.mjs'
+      - 'test/writer-lock-inspector.test.mjs'
       - '.github/workflows/windows-founder-key-ownership.yml'
 
 permissions:
@@ -26,4 +31,4 @@ jobs:
       - name: Run portable governance preflight
         run: npm.cmd run agent:preflight:ci
       - name: Verify Windows ACL-backed Founder signing
-        run: node --test test/approve-install-file-reader.test.mjs test/windows-acl.test.mjs
+        run: node --test test/approve-install-file-reader.test.mjs test/windows-acl.test.mjs test/windows-decision-store-acl.test.mjs
