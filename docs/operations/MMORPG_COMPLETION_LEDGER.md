@@ -340,3 +340,9 @@ Inspect Android Alpha-1 run [41252413717](https://github.com/ngl-damien/No-Gas-L
 
 ### Next action
 Finish and inspect Android run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) on exact PR #249 head `b588757...`. If it passes, record the instrumentation assertions and APK artifact hash; if it fails, classify the exact failing assertion from the final log. Then reconcile #247→#249 with #246→#250 and PR #248's canonical checkpoint/preflight changes on one reviewable integration branch without merging or claiming mainline completion.
+
+
+### Append-only correction — Worker B preflight coverage for `game/world-view.mjs`
+- Re-inspection of PR #249's exact Verify [41262756405](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756405) log found that its `agent:preflight:ci` target list includes `test/game-player-position.test.mjs` but omits the modified `game/world-view.mjs`. Thus the reported `ready` receipt covers the listed targets only; it is not a complete preflight receipt for the keyboard-release persistence source change.
+- The test suite, build, institutional exercise, Genesis and Browser Acceptance results remain valid for the code they execute. The missing path is a governance/provenance coverage gap, not a test failure.
+- Worker A was handed the exact omission in PR #249 comment [6552077747](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/249#issuecomment-6552077747). Do not edit the overlapping `package.json` target list on the Worker B branch while Worker A is reconciling PR #248 and the governance stack. The combined canonical-checkpoint preflight must include `--path game/world-view.mjs` and retain the test target before this change can claim complete preflight coverage.
