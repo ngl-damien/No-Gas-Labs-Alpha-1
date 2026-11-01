@@ -447,3 +447,36 @@ The Run 14 addendum correctly identified the new PR #3 commit and its passing ch
 Rehydrate the next Worker B result and PR #249's next Android run before touching game paths. Keep PR #248/#251/#3 draft and unmerged; reconcile the PR #1 full-harness compile list with the PR #3 strict decoder/file reader only when the branches are deliberately integrated. No Founder key operation or Command Center write is authorized by this run.
 
 No merge, release, deployment, workflow dispatch, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 16 — 2026-11-01 03:06 UTC — Android rerun rehydration and preflight reconciliation
+
+### Current MMORPG branch state
+
+- PR #249 current head: `5ecde3ad007210eb5117f517fa161ad8a142eb53` on `android/private-save-transfer-20261031`.
+- The previous Android run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340) failed at the export assertion: expected x `227.25`, exported x `259.375`. APK assembly succeeded; one of two instrumentation tests failed.
+- The current PR #249 Android run [41267518520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518520) has assembled the debug APK successfully and is **still in progress** in the offline-world emulator journey. No pass/fail result is claimed.
+- The current branch changes the instrumentation expectation to read a settled private position from local storage after movement stops, then compare that value with exported and re-imported position. Source inspection confirms `WorldView` calls `onPosition` on final key release/input stop, and the private client callback writes that position to storage; export reads `view.getPlayer()`. This is a plausible correction to the previous brittle fixed-coordinate assertion, but only the current emulator result can prove the round trip.
+- PR #249 Verify [41267518414](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518414), Genesis [41267518390](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518390), and Browser [41267518429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518429) passed; Browser Acceptance passed 12/12. The hosted preflight reported ready for its declared target list, but its log confirms it still uses the legacy `NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md` and omits `game/world-view.mjs` and `docs/operations/LATEST_CHECKPOINT.md`. Green status does not prove omitted files were inspected.
+- The current Worker B automation run `2e56bae6-1b6c-832e-80e1-f6340fbe586d` is still recorded `in_progress`; its last completed result `7ef03e4d-aa60-832c-a77f-c2224074930b` predates both the Android failure and this rerun.
+- PR #239 completion-ledger branch remains at `c0927037ddc0ba676018d8340ea76435ea9f42cf`; its checks passed, but its Android row needs to be updated from the stale “still running” status. A comment with the exact failure and acceptance criteria is on that PR.
+
+**Worker A did not edit PR #249 game/Android source or PR #239 ledger files.** Comments were posted on PR #249 to preserve the exact Android failure and the canonical preflight handoff.
+
+### Canonical preflight proposal
+
+PR #248 head `534f10fbdca3e14603e91a1024000e8859357c5b` has exact-head Verify [41267459049](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267459049), Genesis [41267459081](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267459081), and Browser [41267459065](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267459065) all **success**; Browser Acceptance 12/12. Artifact [13067269043](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267459065/artifacts/13067269043), ZIP SHA-256 `438fd78194b7e4166038200db9153c874092a9d9607936dd1edcd3270efabddb`.
+
+When PR #248 and PR #249 are reconciled, use `docs/operations/LATEST_CHECKPOINT.md` as the canonical checkpoint and include all three relevant game targets: `game/world-view.mjs`, `game/player-position.mjs`, and `test/game-player-position.test.mjs`. Retain the bootstrap checkpoint as a separate target only if its historical purpose remains necessary; do not use it as a substitute for the latest checkpoint.
+
+### Next steps
+
+1. Re-observe PR #249 Android run [41267518520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518520) and the current Worker B result. If it fails, inspect the exact exported/imported coordinates and update the completion ledger; if it passes, still require a same-run live/stored/exported/imported position comparison.
+2. Reconcile PR #248's latest-checkpoint and world-view target with PR #249's player-position source/test targets. Do not modify the active Worker B branch while its emulator run is in progress.
+3. Update PR #239's ledger with the actual Android outcome; its current branch remains a proposal.
+4. Keep ngl-mesh PR #3's `SafeEvidenceFileReader` and `StrictUtf8` changes separate until PR #1's `verify_bridge.py` compile list is reconciled; validate non-null stable `fileKey()` on the supported Android provider before claiming Android compatibility.
+5. Continue issue #17 only after Damien supplies/authorizes the Founder trust root and key custody. No key generation, enrollment, rotation, or signing is authorized.
+
+No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
