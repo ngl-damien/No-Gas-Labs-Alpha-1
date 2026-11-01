@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPreflight } from '../scripts/validate-agent-governance.mjs';
@@ -56,5 +56,55 @@ test('preflight refuses a durable checkpoint symlink that resolves outside the r
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+  }
+});
+
+
+test('preflight rejects an in-repository symlink used as the canonical checkpoint file', async () => {
+  const root = await fixture();
+  const checkpoint = join(root, 'docs/operations/LATEST_CHECKPOINT.md');
+  try {
+    await writeFile(join(root, 'docs/operations/previous-checkpoint.md'), '# Previous checkpoint must not be substituted\\n');
+    await symlink('previous-checkpoint.md', checkpoint, 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['AGENTS.md'],
+      checkpoint: 'docs/operations/LATEST_CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'docs/operations/LATEST_CHECKPOINT.md' &&
+      item.reason.includes('durable checkpoint path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'docs/operations/LATEST_CHECKPOINT.md'));
+    assert.equal(await readFile(join(root, 'docs/operations/previous-checkpoint.md'), 'utf8'), '# Previous checkpoint must not be substituted\\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlinked parent of the canonical checkpoint', async () => {
+  const root = await fixture();
+  try {
+    await rename(join(root, 'docs/operations'), join(root, 'docs/operations-real'));
+    await writeFile(join(root, 'docs/operations-real/LATEST_CHECKPOINT.md'), '# Canonical checkpoint bytes\\n');
+    await symlink('operations-real', join(root, 'docs/operations'), 'dir');
+
+    const result = await runPreflight({
+      root,
+      paths: ['AGENTS.md'],
+      checkpoint: 'docs/operations/LATEST_CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'docs/operations' &&
+      item.reason.includes('durable checkpoint path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'docs/operations/LATEST_CHECKPOINT.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
