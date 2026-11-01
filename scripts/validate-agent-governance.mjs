@@ -20,8 +20,8 @@ export const MAX_PREFLIGHT_FILE_BYTES = 16 * 1024 * 1024;
 const PREFLIGHT_READ_CHUNK_BYTES = 64 * 1024;
 
 export async function readBoundedHandle(handle, maxBytes = MAX_PREFLIGHT_FILE_BYTES) {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-    throw new TypeError('preflight byte limit must be a non-negative safe integer');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > MAX_PREFLIGHT_FILE_BYTES) {
+    throw new TypeError('preflight byte limit must be a non-negative safe integer within the configured maximum');
   }
   const chunks = [];
   let total = 0;
