@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket, selectDecisionDocketProjection } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket, selectDecisionDocketProjection, encodeDecisionDocketCache, decodeDecisionDocketCache } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -1493,4 +1493,65 @@ test('Commons quest is actor-bound, routes to the real location, and survives hu
     .find(item => item.id === 'witness-commons-message');
   assert.equal(rejected.complete, false);
   assert.deepEqual(rejected.action, { type: 'location', id: 'commons' });
+});
+
+
+test('Decision Docket local echo cache is bounded, public-only, actor-bound, and explicitly incomplete when truncated', () => {
+  const base = decisionDocketFixture();
+  const decisions = Array.from({ length: 22 }, (_, index) => ({
+    ...base.decisions[0],
+    id: `decision-${index + 1}`,
+    title: `Bounded cached decision ${index + 1}`,
+    revision: 1,
+    createdAt: '2026-10-31T12:00:00.000Z',
+    expiresAt: '2026-10-31T13:00:00.000Z',
+    expiredAt: null,
+    disposition: null,
+    evaluation: { bytes: 'PRIVATE EVALUATION BYTES' },
+    risks: ['PRIVATE RISK'],
+    rollback: 'PRIVATE ROLLBACK',
+    proposedEffect: 'PRIVATE EFFECT'
+  }));
+  const snapshot = {
+    ...base,
+    revision: 2,
+    decisions,
+    counts: { PENDING: 22, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+  const projection = projectDecisionDocket(snapshot);
+  assert.equal(projection.available, true);
+  assert.equal(projection.decisions.length, 20);
+  assert.equal(projection.omittedDecisionCount, 2);
+
+  const viewer = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const savedAt = '2026-11-01T22:00:00.000Z';
+  const encoded = encodeDecisionDocketCache(projection, viewer, savedAt);
+  assert.equal(typeof encoded, 'string');
+  assert.doesNotMatch(encoded, /PRIVATE EVALUATION|PRIVATE RISK|PRIVATE ROLLBACK|PRIVATE EFFECT|PRIVATE POLICY BASIS/);
+
+  const decoded = decodeDecisionDocketCache(encoded);
+  assert.ok(decoded);
+  assert.deepEqual(decoded.actor, viewer);
+  assert.equal(decoded.savedAt, savedAt);
+  assert.equal(decoded.sourceDecisionCount, 22);
+  assert.equal(decoded.sourceOmittedDecisionCount, 2);
+  assert.equal(decoded.truncated, true);
+  assert.equal(decoded.projection.available, true);
+  assert.equal(decoded.projection.decisions.length, 20);
+  assert.equal(decoded.projection.decisionCount, 20,
+    'the local projection counts only the bounded records actually stored');
+  assert.equal(decoded.projection.omittedDecisionCount, 0,
+    'omitted source history is disclosed by the cache envelope, not fabricated into the bounded projection');
+  assert.doesNotMatch(JSON.stringify(decoded.projection), /PRIVATE EVALUATION|PRIVATE RISK|PRIVATE ROLLBACK|PRIVATE EFFECT|PRIVATE POLICY BASIS/);
+
+  assert.equal(decodeDecisionDocketCache(encoded, { id: 'another-player', role: 'founder' }), null);
+  assert.equal(decodeDecisionDocketCache('not-json'), null);
+  assert.equal(decodeDecisionDocketCache('x'.repeat(65537)), null);
+  assert.equal(encodeDecisionDocketCache(projectDecisionDocket(null), viewer, savedAt), null);
+  assert.equal(encodeDecisionDocketCache(projection, { id: 'damien', name: 'Damien', role: 'admin' }, savedAt), null);
+
+  const malformed = JSON.parse(encoded);
+  malformed.snapshot.counts.PENDING = 19;
+  assert.equal(decodeDecisionDocketCache(JSON.stringify(malformed)), null,
+    'the cached visible subset is revalidated instead of trusted as an arbitrary local object');
 });
