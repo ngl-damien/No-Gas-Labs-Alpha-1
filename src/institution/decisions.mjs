@@ -3,7 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { link, mkdir, open, rename, unlink, lstat, rmdir } from 'node:fs/promises';
 import { join, parse, resolve, sep } from 'node:path';
 import { canonicalStringify, artifactReceipt } from './kernel.mjs';
-import { verifyWindowsDirectorySecurity, verifyWindowsFileSecurity } from '../windows-acl.mjs';
+import { verifyWindowsDirectorySecurity, verifyWindowsFileSecurity, secureWindowsDirectorySecurity, secureWindowsFileSecurity } from '../windows-acl.mjs';
 
 const STORE_SCHEMA = 'ngl.decisions.store.v1';
 const PROJECTION_SCHEMA = 'ngl.decisions.projection.v1';
@@ -194,6 +194,7 @@ async function atomicWrite(file, bytes, directory, syncDirectoryFn = syncDirecto
   let renamed = false;
   try {
     handle = await open(pending, 'wx', 0o600);
+    if (process.platform === 'win32') secureWindowsFileSecurity(pending, 'DECISIONS_TEMP_INIT');
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close(); handle = undefined;
@@ -251,6 +252,7 @@ async function acquireDecisionLockMutationGuard(location, directoryIdentity) {
   const guardPath = join(location, '.decisions.lock.guard');
   try {
     await mkdir(guardPath, { mode: 0o700 });
+    if (process.platform === 'win32') secureWindowsDirectorySecurity(guardPath, 'DECISIONS_GUARD_INIT');
   } catch (error) {
     if (error.code === 'EEXIST') {
       fail('DECISIONS_LOCKED', 'Another process is changing the decision writer lease; an interrupted guard requires explicit offline recovery');
@@ -262,6 +264,7 @@ async function acquireDecisionLockMutationGuard(location, directoryIdentity) {
   let owner;
   try {
     owner = await open(ownerPath, 'wx', 0o600);
+    if (process.platform === 'win32') secureWindowsFileSecurity(ownerPath, 'DECISIONS_GUARD_OWNER_INIT');
     const ownerIdentity = await owner.stat();
     await owner.writeFile(canonicalStringify({
       schema: 'ngl.decisions-lock-guard.v1',
@@ -374,7 +377,11 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
   await assertNoSymlinkPathComponents(location);
+  let directoryExisted = true;
+  try { await lstat(location); }
+  catch (error) { if (error.code === 'ENOENT') directoryExisted = false; else throw error; }
   await mkdir(location, { recursive: true, mode: 0o700 });
+  if (process.platform === 'win32' && !directoryExisted) secureWindowsDirectorySecurity(location, 'DECISIONS_DIRECTORY_INIT');
   const directoryIdentity = await assertPrivateDecisionDirectory(location);
   const lockPath = join(location, '.decisions.lock');
   const lockTemporaryPath = join(location, `.decisions-lock-${randomUUID()}.tmp`);
@@ -383,6 +390,7 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
   let lockPublished = false;
   try {
     lease = await open(lockTemporaryPath, 'wx', 0o600);
+    if (process.platform === 'win32') secureWindowsFileSecurity(lockTemporaryPath, 'DECISIONS_LOCK_INIT');
     const lockStat = await lease.stat();
     leaseIdentity = { dev: lockStat.dev, ino: lockStat.ino };
     await lease.writeFile(canonicalStringify({ schema: 'ngl.decisions-lock.v1', pid: process.pid, openedAt: new Date().toISOString() }));
