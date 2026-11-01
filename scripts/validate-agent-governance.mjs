@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { writeFile, mkdir, realpath, stat, lstat, open } from 'node:fs/promises';
+import { writeFile, mkdir, realpath, stat } from 'node:fs/promises';
+import fsPromises from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -93,7 +94,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
           const component = segments.slice(0, index).join('/');
-          const metadata = await lstat(resolve(rootPath, component));
+          const metadata = await fsPromises.lstat(resolve(rootPath, component));
           if (metadata.isSymbolicLink()) {
             failures.push({ path: component, reason: label + ' path must not traverse a symlink' });
             return null;
@@ -115,9 +116,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
         return null;
       }
-      // Open the resolved file non-blocking and pin the descriptor before reading.
-      // A FIFO/device must not hang a preflight, and a path replaced during the
-      // realpath/open/read window must not make the receipt describe different bytes.
+      // Open the original requested path, not its resolved referent. O_NOFOLLOW
+      // rejects a final-component symlink swap where supported; the immediate
+      // post-open lstat below is the fail-closed fallback on platforms without it.
+      // Keep non-blocking mode so a FIFO/device cannot hang preflight.
       const initialMetadata = await stat(actualPath, { bigint: true });
       if (!initialMetadata.isFile()) {
         failures.push({ path: relativePath, reason: 'target must be a regular file' });
@@ -135,9 +137,14 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         return null;
       }
       const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
-      const handle = await open(actualPath, flags);
+      const handle = await fsPromises.open(absolutePath, flags);
       let bytes;
       try {
+        const openedEntry = await fsPromises.lstat(absolutePath);
+        if (openedEntry.isSymbolicLink()) {
+          failures.push({ path: relativePath, reason: 'path changed to a symlink while opening for preflight inspection' });
+          return null;
+        }
         const openedMetadata = await handle.stat({ bigint: true });
         if (!sameFileSnapshot(initialMetadata, openedMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
