@@ -52,7 +52,7 @@ test('preflight refuses a durable checkpoint symlink that resolves outside the r
       item.reason.includes('resolved path escapes repository root through a symlink')
     ));
     assert.ok(!result.files.some(file => file.path === 'docs/operations/LATEST_CHECKPOINT.md'));
-    assert.equal(await readFile(checkpoint, 'utf8'), '# External checkpoint must not be trusted\\n');
+    assert.equal(await readFile(checkpoint, 'utf8'), '# External checkpoint must not be trusted\n');
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
