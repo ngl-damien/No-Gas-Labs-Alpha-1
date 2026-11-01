@@ -313,8 +313,8 @@ function challengeMatchesPacketRecord(event, source) {
     ownDataValue(event, 'at') === ownDataValue(source, 'at') &&
     ownDataValue(event, 'challengeType') === ownDataValue(source, 'challengeType') &&
     ownDataValue(event, 'challengeText') === ownDataValue(source, 'challengeText') &&
-    (ownDataValue(event, 'evidenceCreationId') ?? null) === ownDataValue(evidence, 'creationId') &&
-    (ownDataValue(event, 'evidenceVersion') ?? null) === ownDataValue(evidence, 'version') &&
+    ownDataValue(event, 'evidenceCreationId') === ownDataValue(evidence, 'creationId') &&
+    ownDataValue(event, 'evidenceVersion') === ownDataValue(evidence, 'version') &&
     ownDataValue(actor, 'id') === ownDataValue(sourceActor, 'id') &&
     ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
 }
