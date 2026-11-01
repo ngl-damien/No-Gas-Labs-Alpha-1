@@ -44,12 +44,30 @@ def stop_server(process):
     assert process.returncode==0, 'Service process exited unsuccessfully'
 
 
+def character_xp_from_open_sheet(page):
+    match=re.search(r'(\d+) character XP \((\d+) publication XP \+ (\d+) quest-activity XP',page.locator('#sheet').inner_text())
+    assert match, 'Character sheet must expose the deterministic XP breakdown'
+    return tuple(int(value) for value in match.groups())
+
+
+def armor_bearer_steps(page):
+    card=page.locator('#sheet [data-skill-id="armor-bearer"]')
+    expect(card).to_have_count(1)
+    expect(card).to_contain_text(re.compile(r'\d+ recorded of \d+ evidence-derived field-kit steps'))
+    match=re.search(r'(\d+) recorded of (\d+) evidence-derived field-kit steps',card.inner_text())
+    assert match, 'Armor Bearer must expose its evidence-derived step count'
+    steps,total=(int(value) for value in match.groups())
+    button=page.locator('#character-button')
+    assert button.get_attribute('data-armor-bearer-steps')==str(steps)
+    assert button.get_attribute('data-armor-bearer-total')==str(total)
+    expect(button.locator('.character-status')).to_have_text(f'Armor {steps}/{total}')
+    return steps,total
+
+
 def character_xp_components(page):
     page.locator('#character-button').click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
-    match=re.search(r'(\d+) character XP \((\d+) publication XP \+ (\d+) quest-activity XP',page.locator('#sheet').inner_text())
-    assert match, 'Character sheet must expose the deterministic XP breakdown'
-    result=tuple(int(value) for value in match.groups())
+    result=character_xp_from_open_sheet(page)
     close_sheet(page)
     return result
 
@@ -219,6 +237,7 @@ def phone_toolbar_layout(browser,url,width):
             assert box['x']>=0 and box['x']+box['width']<=width, f'Control {index} is clipped at {width}px: {box}'
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), f'Horizontal overflow at {width}px'
         character=page.locator('#character-button')
+        expect(character.locator('.character-status')).to_have_text(re.compile(r'^Armor \d+/\d+$'))
         character.click()
         expect(page.locator('#sheet-title')).to_have_text('Character & field record')
         expect(page.locator('#sheet')).to_contain_text('Questkeeper')
@@ -957,6 +976,9 @@ def shared(browser,url,data,out):
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
+        armor_bearer_before=armor_bearer_steps(a)
+        character_xp_before=character_xp_from_open_sheet(a)
+        assert armor_bearer_before[0]>=1 and armor_bearer_before[1]==8, armor_bearer_before
         adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         expect(adversarial_slot).to_contain_text('Contradiction Ward')
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
@@ -973,6 +995,8 @@ def shared(browser,url,data,out):
         pinned_state=owner.request.get(url+'api/state').json()
         assert pinned_state['world']['revision']==before_revision+1
         assert pinned_state['world']['xp']==before_xp, 'Equipping a retained source must not award XP'
+        assert armor_bearer_steps(a)==armor_bearer_before, 'Pinning a different source must preserve the number of record-backed field-kit steps'
+        assert character_xp_from_open_sheet(a)==character_xp_before, 'Pinning equipment must not award character XP'
         loadout_events=[event for event in pinned_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('role')=='founder']
         assert loadout_events and loadout_events[-1]['slotId']=='adversarial' and loadout_events[-1]['sourceEventId']==selected_source_id
         close_sheet(a)
@@ -983,6 +1007,8 @@ def shared(browser,url,data,out):
         expect(adversarial_slot).to_contain_text('AUTOMATIC')
         reset_state=owner.request.get(url+'api/state').json()
         assert reset_state['world']['xp']==before_xp
+        assert armor_bearer_steps(a)==armor_bearer_before, 'Restoring automatic selection must preserve Armor Bearer steps'
+        assert character_xp_from_open_sheet(a)==character_xp_before, 'Restoring automatic selection must not award character XP'
         expect(adversarial_slot.get_by_role('button',name='Unequip slot',exact=True)).to_have_count(1)
         adversarial_slot.get_by_role('button',name='Unequip slot',exact=True).click()
         expect(adversarial_slot).to_contain_text('UNEQUIPPED')
@@ -990,6 +1016,8 @@ def shared(browser,url,data,out):
         unequipped_state=owner.request.get(url+'api/state').json()
         assert unequipped_state['world']['revision']==reset_state['world']['revision']+1
         assert unequipped_state['world']['xp']==before_xp, 'Unequipping must not award XP'
+        assert armor_bearer_steps(a)==(armor_bearer_before[0]-1,armor_bearer_before[1]), 'Unequipping one occupied slot must remove exactly one Armor Bearer step'
+        assert character_xp_from_open_sheet(a)==character_xp_before, 'Unequipping must not award character XP'
         unequip_events=[event for event in unequipped_state['world']['events'] if event.get('type')=='field-item-unequipped' and event.get('actor',{}).get('role')=='founder']
         assert unequip_events and unequip_events[-1]['slotId']=='adversarial'
         adversarial_slot.get_by_role('button',name='Use newest source',exact=True).click()
@@ -997,6 +1025,8 @@ def shared(browser,url,data,out):
         restored_state=owner.request.get(url+'api/state').json()
         assert restored_state['world']['revision']==unequipped_state['world']['revision']+1
         assert restored_state['world']['xp']==before_xp
+        assert armor_bearer_steps(a)==armor_bearer_before, 'Restoring the retained source must restore the original Armor Bearer step count'
+        assert character_xp_from_open_sheet(a)==character_xp_before, 'Restoring a field-kit source must not award character XP'
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
         dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)

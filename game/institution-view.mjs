@@ -357,7 +357,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
 }
 
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge,viewer}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onOpenChallenge,viewer,collaboratorResponseObjects=null}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -366,7 +366,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
   warning.className='evidence-warning';container.append(warning);
  }
- const chronicle=projectChronicle({world,kernel});
+ const chronicle=projectChronicle({world,kernel,collaboratorResponseObjects});
  const entries=chronicle.entries.filter(entry=>{
   if(entry.source==='kernel')return shared;
   return entry.source==='world'&&!['report','contribute'].includes(entry.eventType);
@@ -399,12 +399,12 @@ function warning(container, message) {
 export function renderInstitution(container,projects,gate,{
  founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,
  projectsUnavailable=false,decisionsUnavailable=false,worldSnapshotStale=false,worldUnavailable=false,
- decisionPresentation='full',decisionProjection=null
+ decisionPresentation='full',decisionProjection=null,collaboratorResponseObjects=null
 }={}) {
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
  if(worldSnapshotStale)warning(container,'Live world state could not be refreshed. The Chronicle below is the last snapshot received by this session; it may be stale. It is read-only and does not authorize decisions.');
  if(worldUnavailable)warning(container,'No world snapshot is available. The missing history is not being treated as an empty world.');
- else renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
+ else renderChronicle(container,projectChronicle({world,kernel,collaboratorResponseObjects}),onOpenArtifact);
  if(kernelUnavailable){
   container.append(el('h3','CANONICAL WORK RECEIPTS'));
   warning(container,'Canonical work receipts could not be loaded from the shared service. Other available records remain inspectable; the missing kernel history is not being treated as empty.');

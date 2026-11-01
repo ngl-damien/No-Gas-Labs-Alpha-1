@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
+import { createHash } from "node:crypto";
 
 function fixture() {
   const world = {
@@ -28,6 +30,63 @@ function fixture() {
   };
   return { world, kernel };
 }
+
+test("chronicle recomputes archived collaborator validation instead of trusting the stored label", () => {
+  const proposal = {
+    id: "proposal-1",
+    type: "moonshot-proposed",
+    moonshotId: "moonshot-1",
+    actor: { id: "damien", role: "founder" },
+    at: "2026-10-26T10:00:00.000Z",
+    title: "Can this claim be falsified?",
+    hypothesis: "The retained claim holds under its stated conditions.",
+    falsifier: "A reproducible counterexample appears under those conditions.",
+    evidenceNeeded: "Independent observation and exact source bytes."
+  };
+  const world = {
+    id: "world-1",
+    revision: 1,
+    creations: [],
+    events: [proposal],
+    reports: [],
+    contributions: [],
+    discoveries: []
+  };
+  const packet = projectCollaboratorPackets(world)
+    .find(candidate => candidate.id === "tutor" && candidate.available);
+  assert.ok(packet);
+  const responseText = JSON.stringify({ externalText: "This does not satisfy the Tutor response schema." });
+  const receipt = value => ({
+    algorithm: "sha256",
+    digest: createHash("sha256").update(value, "utf8").digest("hex"),
+    size: Buffer.byteLength(value, "utf8")
+  });
+  world.events.push({
+    id: "response-event-1",
+    type: "collaborator-response-recorded",
+    actor: { id: "witness-1", role: "witness" },
+    at: "2026-10-26T10:01:00.000Z",
+    responseId: "response-1",
+    role: "tutor",
+    moonshotId: "moonshot-1",
+    sourceEventIds: [...packet.inputRefs],
+    packetJson: packet.packetJson,
+    packetReceipt: receipt(packet.packetJson),
+    responseText,
+    responseReceipt: receipt(responseText),
+    validationStatus: "valid-for-human-review",
+    validationReason: null,
+    validator: "ngl.collaborator-response.v1"
+  });
+  world.revision = world.events.length;
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:response-event-1");
+  assert.match(entry.title, /REJECTED · PRESERVED/);
+  assert.match(entry.detail, /RESPONSE_SCHEMA_OR_SCOPE_INVALID/);
+  assert.match(entry.detail, /Recorded status: valid-for-human-review; recomputed: rejected/);
+  assert.match(entry.warning, /disagreed with deterministic response revalidation/);
+});
 
 test("chronicle merges retained world and institutional events newest-first deterministically", () => {
   const { world, kernel } = fixture();
@@ -663,8 +722,8 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.equal(challenge.category, "DISSENT & CHALLENGE");
   assert.match(challenge.summary, /does not adjudicate/i);
   assert.equal(response.category, "GUILD HALL");
-  assert.match(response.title, /REJECTED · PRESERVED/);
+  assert.match(response.title, /UNVERIFIED · NOT PROJECTED/);
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
-  assert.match(response.warning, /untrusted text/i);
+  assert.match(response.warning, /stored validation label is not trusted/i);
 });

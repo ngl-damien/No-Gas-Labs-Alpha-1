@@ -5,6 +5,7 @@ import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaborato
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorResponseWorldObjects } from '../game/collaborator-world-objects.mjs';
+import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -653,10 +654,55 @@ test('quest trail does not unlock research progress from incomplete or unattribu
 });
 
 
+function collaboratorResponseForRole(role, payload) {
+  if (role === 'archivist') return {
+    eventChainFindings: [], claims: [], linkageIssues: [], unknowns: [], nextChecks: []
+  };
+  if (role === 'adversary') return {
+    targetEventId: payload.inputRecords.find(record => record.type === 'experiment-reported')?.eventId || payload.inputRefs[0],
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The retained report needs an independently reproducible measurement.',
+    distinctnessAssessment: 'This challenge is scoped to the exact retained report.',
+    duplicateOfEventIds: [],
+    counterexample: '',
+    evidenceNeeded: ['Retain the procedure settings and measured result.'],
+    unknowns: ['Independent reproduction remains unobserved.']
+  };
+  if (role === 'synthesizer') return {
+    scope: {
+      moonshotId: payload.targetMoonshotId,
+      includedEventIds: payload.inputRefs,
+      omittedEventIds: payload.omittedEventIds
+    },
+    recordedSupport: [{
+      sourceEventIds: [payload.inputRefs[0]],
+      statement: 'The retained proposal records a falsifiable question.'
+    }],
+    contradictions: [],
+    dissentPreserved: payload.inputRecords
+      .filter(record => record.type === 'experiment-challenged')
+      .map(record => record.eventId),
+    unknowns: [],
+    nextDiscriminatingExperiment: {
+      procedure: 'Repeat the stated procedure while retaining every setting.',
+      outcome: 'Record the observed result without inferring truth.'
+    }
+  };
+  return {
+    concepts: ['falsifiable hypotheses'],
+    prerequisites: ['retained observations'],
+    explanation: 'A falsifier is an observation that would contradict the hypothesis under the stated conditions.',
+    questions: ['What observation would count against the claim?'],
+    answerKey: ['A reproducible counterexample under the stated conditions.'],
+    whatRemainsUnproven: ['This response is not evidence that the experiment ran.']
+  };
+}
+
 function collaboratorArchiveEvent({
   world, id, role, actor = founder, responseId = 'response-' + id,
-  validationStatus = 'valid-for-human-review', at = '2026-10-28T17:04:00.000Z',
-  sourceEventIds = null
+  validationStatus = null, validationReason = undefined,
+  at = '2026-10-28T17:04:00.000Z',
+  sourceEventIds = null, responseText: suppliedResponseText = null
 }) {
   // Fixtures use the same packet builder as the runtime. Witness packets see
   // the same redacted event slice as publicWorld(); their revision remains the
@@ -670,7 +716,7 @@ function collaboratorArchiveEvent({
   assert.ok(packet, 'the fixture world must provide a source-bound Tutor packet');
   const payload = JSON.parse(packet.packetJson);
   if (payload.role !== role) payload.role = role;
-  let refs = sourceEventIds ?? [...payload.inputRefs];
+  const refs = sourceEventIds ?? [...payload.inputRefs];
   if (sourceEventIds) {
     const projectedById = new Map(projectResearchRecords(packetWorld.events, packetWorld.creations)
       .map(record => [record.id, record]));
@@ -690,7 +736,13 @@ function collaboratorArchiveEvent({
   const packetJson = payload.role === role && sourceEventIds === null
     ? packet.packetJson
     : JSON.stringify(payload);
-  const responseText = JSON.stringify({ externalText: 'Untrusted response retained for human review.' });
+  const responseRole = ['archivist', 'adversary', 'synthesizer', 'tutor'].includes(role) ? role : 'tutor';
+  const responseText = suppliedResponseText ?? JSON.stringify(
+    validationStatus === 'rejected' ? {} : collaboratorResponseForRole(responseRole, payload)
+  );
+  const validation = validateCollaboratorResponse(packet, responseText);
+  const recordedValidationStatus = validationStatus ?? validation.status;
+  const recordedValidationReason = validationReason === undefined ? validation.reason : validationReason;
   const receipt = value => ({
     algorithm: 'sha256',
     digest: createHash('sha256').update(value, 'utf8').digest('hex'),
@@ -700,8 +752,8 @@ function collaboratorArchiveEvent({
     id, type: 'collaborator-response-recorded', responseId, role, moonshotId: 'moon-1',
     sourceEventIds: refs, packetJson, packetReceipt: receipt(packetJson),
     responseText, responseReceipt: receipt(responseText),
-    validationStatus,
-    validationReason: validationStatus === 'rejected' ? 'RESPONSE_SCHEMA_OR_SCOPE_INVALID' : null,
+    validationStatus: recordedValidationStatus,
+    validationReason: recordedValidationReason,
     validator: 'ngl.collaborator-response.v1',
     actor, at,
     semantics: 'Preserved external text; no truth, execution, approval or authority claim.'
@@ -720,6 +772,14 @@ function refreshPacketReceipt(event) {
     algorithm: 'sha256',
     digest: createHash('sha256').update(event.packetJson, 'utf8').digest('hex'),
     size: new TextEncoder().encode(event.packetJson).length
+  };
+}
+
+function refreshResponseReceipt(event) {
+  event.responseReceipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(event.responseText, 'utf8').digest('hex'),
+    size: new TextEncoder().encode(event.responseText).length
   };
 }
 
@@ -760,6 +820,33 @@ test('Guild Hall role-coverage quest counts only source-bound folios and routes 
   assert.equal(current.complete, true);
   assert.equal(current.action, null);
   assert.deepEqual(current.evidence.map(item => item.collaboratorRole), COLLABORATOR_ROLES.map(role => role.id));
+});
+
+test('Guild Hall quest evidence recomputes response status and preserves a forged-valid response as rejected activity', () => {
+  const world = experimentQuestWorld();
+  const event = appendCollaboratorArchive(world, {
+    id: 'forged-valid-response',
+    role: 'tutor',
+    validationStatus: 'valid-for-human-review',
+    validationReason: null,
+    responseText: JSON.stringify({ externalText: 'This response does not satisfy the Tutor schema.' })
+  });
+  refreshResponseReceipt(event);
+
+  const [folio] = projectCollaboratorResponseWorldObjects(world);
+  assert.equal(folio.validationStatus, 'rejected');
+  assert.equal(folio.validationReason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
+  assert.equal(folio.recordedValidationStatus, 'valid-for-human-review');
+  assert.equal(folio.recomputedValidationStatus, 'rejected');
+  assert.equal(folio.validationMismatch, true);
+
+  const coverage = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(coverage.progress, 1,
+    'preserving the response attempt remains activity progress, not a correctness award');
+  assert.equal(coverage.evidence[0].validationStatus, 'rejected');
+  assert.equal(coverage.evidence[0].recordedValidationStatus, 'valid-for-human-review');
+  assert.equal(coverage.evidence[0].validationMismatch, true);
 });
 
 test('Guild Hall role coverage rejects unknown roles, other actors, malformed receipts, invalid statuses and ambiguous IDs', () => {
