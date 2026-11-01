@@ -188,6 +188,7 @@ test('Founder approval rejects malformed UTF-8 in the private-key file', async t
   assert.notEqual(index, -1, 'fixture must contain the private-key PEM marker');
   bytes[index] = 0xff;
   await writeFile(privateKeyPath, bytes, { mode: 0o600 });
+  if (process.platform === 'win32') setWindowsKeyAcl(privateKeyPath);
 
   const result = run([
     '--confirm',
@@ -320,6 +321,7 @@ test('approval refuses to sign when the configured trust fingerprint does not ma
   const privateKeyPath = join(directory, 'founder-private.pem');
   await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
   await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  if (process.platform === 'win32') setWindowsKeyAcl(privateKeyPath);
   const wrongFingerprint = '0'.repeat(64);
   assert.notEqual(wrongFingerprint, publicKeyFingerprint(founder.publicKeyPem));
 
