@@ -74,6 +74,23 @@ test('preflight blocks a missing scoped target instead of returning a ready rece
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects directories as scoped targets instead of reading them', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts', 'directory-target'), { recursive: true });
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/directory-target'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/directory-target' && item.reason.includes('regular file')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/directory-target'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('preflight rejects FIFO targets without blocking on a writer', { skip: process.platform === 'win32' }, async () => {
   const root = await fixture();
   try {
