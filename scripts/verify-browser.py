@@ -914,7 +914,7 @@ def shared(browser,url,data,out):
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The institution at work.'")
-        expect(a.locator('#sheet-content')).to_contain_text('DECISION STATUS')
+        expect(a.locator('#sheet-content')).to_contain_text('DECISION SERVICE · STATUS')
         expect(a.locator('#sheet-content')).to_contain_text('Browser decision docket: preserve the human gate')
         expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
         close_sheet(a)
