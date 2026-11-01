@@ -687,7 +687,7 @@ def adversary_challenge_handoff(browser,url,out):
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
     visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     try:
         a,b=owner.new_page(),visitor.new_page()
