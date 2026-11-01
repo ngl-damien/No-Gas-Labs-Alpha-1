@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { COLLABORATOR_ROLES, isBoundedIdentifier, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { validateCollaboratorResponse } from './collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_WORLD_EVENT_SCAN = 100_000;
@@ -263,6 +264,17 @@ export function projectCollaboratorResponseWorldObjects(world) {
       candidate.available === true && candidate.moonshotId === moonshotId);
     if (!expectedPacket || expectedPacket.packetJson !== packetJson) continue;
 
+    // validationStatus is retained as an attributed claim, not trusted as the
+    // result. Re-run the bounded validator over the exact archived bytes and
+    // the module-issued packet reconstructed from prior world history.
+    const checked = validateCollaboratorResponse(expectedPacket, responseText);
+    const validationMatches = checked.status === event.validationStatus &&
+      checked.reason === event.validationReason;
+    const validationStatus = validationMatches ? checked.status : 'rejected';
+    const validationReason = validationMatches
+      ? checked.reason
+      : checked.reason || 'ARCHIVED_VALIDATION_STATUS_MISMATCH';
+
     valid.push({
       id: 'collaborator-response-object:' + responseId,
       type: 'collaborator-response-object',
@@ -277,8 +289,13 @@ export function projectCollaboratorResponseWorldObjects(world) {
       actorId: actor.id,
       actorRole: actor.role,
       at: event.at,
-      validationStatus: event.validationStatus,
-      validationReason: event.validationReason,
+      validationStatus,
+      validationReason,
+      recordedValidationStatus: event.validationStatus,
+      recordedValidationReason: event.validationReason,
+      recomputedValidationStatus: checked.status,
+      recomputedValidationReason: checked.reason,
+      validationMismatch: !validationMatches,
       sourceEventIds: Object.freeze([...sourceIds])
     });
   }
