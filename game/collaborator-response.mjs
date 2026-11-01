@@ -260,6 +260,19 @@ function ownDataValue(object, key) {
   }
 }
 
+function optionalOwnDataValue(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    if (!descriptor) return { valid: true, value: null };
+    if (descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) {
+      return { valid: false, value: null };
+    }
+    return { valid: true, value: descriptor.value ?? null };
+  } catch {
+    return { valid: false, value: null };
+  }
+}
+
 function retainedWorldEvents(world) {
   const events = ownDataValue(world, 'events');
   if (!Array.isArray(events)) return null;
@@ -305,7 +318,10 @@ function challengeMatchesPacketRecord(event, source) {
   const actor = ownDataValue(event, 'actor');
   const sourceActor = ownDataValue(source, 'actor');
   const evidence = ownDataValue(source, 'evidence');
-  return ownDataValue(event, 'id') === ownDataValue(source, 'eventId') &&
+  const evidenceCreationId = optionalOwnDataValue(event, 'evidenceCreationId');
+  const evidenceVersion = optionalOwnDataValue(event, 'evidenceVersion');
+  return evidenceCreationId.valid && evidenceVersion.valid &&
+    ownDataValue(event, 'id') === ownDataValue(source, 'eventId') &&
     ownDataValue(event, 'type') === 'experiment-challenged' &&
     ownDataValue(event, 'challengeId') === ownDataValue(source, 'challengeId') &&
     ownDataValue(event, 'reportId') === ownDataValue(source, 'reportId') &&
@@ -313,8 +329,8 @@ function challengeMatchesPacketRecord(event, source) {
     ownDataValue(event, 'at') === ownDataValue(source, 'at') &&
     ownDataValue(event, 'challengeType') === ownDataValue(source, 'challengeType') &&
     ownDataValue(event, 'challengeText') === ownDataValue(source, 'challengeText') &&
-    ownDataValue(event, 'evidenceCreationId') === ownDataValue(evidence, 'creationId') &&
-    ownDataValue(event, 'evidenceVersion') === ownDataValue(evidence, 'version') &&
+    evidenceCreationId.value === ownDataValue(evidence, 'creationId') &&
+    evidenceVersion.value === ownDataValue(evidence, 'version') &&
     ownDataValue(actor, 'id') === ownDataValue(sourceActor, 'id') &&
     ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
 }
