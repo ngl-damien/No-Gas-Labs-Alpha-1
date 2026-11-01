@@ -548,11 +548,18 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
   }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
-  await assertNoSymlinkPathComponents(dataDir);
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const dataDirectory = await assertPrivateDataDirectory(dataDir);
-  const key = await getFounderKey(dataDir, founderKey);
-  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+  let dataDirectory, key, dataDirectoryAfterKeyRead;
+  try {
+    await assertNoSymlinkPathComponents(dataDir);
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    dataDirectory = await assertPrivateDataDirectory(dataDir);
+    key = await getFounderKey(dataDir, founderKey);
+    dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+  } catch (error) {
+    if (!String(error.code || '').startsWith('FOUNDER_')) error.storageCode = error.code;
+    error.code = 'FOUNDER_STORAGE_INVALID';
+    throw error;
+  }
   if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
       dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
       dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
@@ -927,7 +934,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
-    console.error(error.code === 'SERVICE_LOCKED' || error.code === 'FOUNDER_KEY_REQUIRED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
+    const safeStartupError = error.code === 'SERVICE_LOCKED' || (typeof error.code === 'string' && error.code.startsWith('FOUNDER_'));
+    console.error(safeStartupError ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
     process.exitCode = 1;
   }
 }
