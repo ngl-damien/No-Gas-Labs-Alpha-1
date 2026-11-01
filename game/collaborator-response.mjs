@@ -248,3 +248,204 @@ export function validateCollaboratorResponse(packet, responseText) {
     response
   });
 }
+
+
+function ownDataValue(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return descriptor && descriptor.enumerable === true && Object.hasOwn(descriptor, 'value')
+      ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function optionalOwnDataValue(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    if (!descriptor) return { valid: true, value: null };
+    if (descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value')) {
+      return { valid: false, value: null };
+    }
+    return { valid: true, value: descriptor.value ?? null };
+  } catch {
+    return { valid: false, value: null };
+  }
+}
+
+function retainedWorldEvents(world) {
+  const events = ownDataValue(world, 'events');
+  if (!Array.isArray(events)) return null;
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(events);
+    const lengthDescriptor = descriptors.length;
+    const length = lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+      ? lengthDescriptor.value : null;
+    if (!Number.isSafeInteger(length) || length < 0 || length > 100_000 ||
+        Reflect.ownKeys(descriptors).length !== length + 1) return null;
+    const values = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, 'value') ||
+          !ownPlainObject(descriptor.value)) return null;
+      values.push(descriptor.value);
+    }
+    return values;
+  } catch {
+    return null;
+  }
+}
+
+function reportMatchesPacketRecord(event, source) {
+  const actor = ownDataValue(event, 'actor');
+  const sourceActor = ownDataValue(source, 'actor');
+  const evidence = ownDataValue(source, 'evidence');
+  return ownDataValue(event, 'id') === ownDataValue(source, 'eventId') &&
+    ownDataValue(event, 'type') === 'experiment-reported' &&
+    ownDataValue(event, 'reportId') === ownDataValue(source, 'reportId') &&
+    ownDataValue(event, 'moonshotId') === ownDataValue(source, 'moonshotId') &&
+    ownDataValue(event, 'at') === ownDataValue(source, 'at') &&
+    ownDataValue(event, 'procedure') === ownDataValue(source, 'procedure') &&
+    ownDataValue(event, 'observation') === ownDataValue(source, 'observation') &&
+    ownDataValue(event, 'reportedOutcome') === ownDataValue(source, 'reportedOutcome') &&
+    ownDataValue(event, 'evidenceCreationId') === ownDataValue(evidence, 'creationId') &&
+    ownDataValue(event, 'evidenceVersion') === ownDataValue(evidence, 'version') &&
+    ownDataValue(actor, 'id') === ownDataValue(sourceActor, 'id') &&
+    ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
+}
+
+function challengeMatchesPacketRecord(event, source) {
+  const actor = ownDataValue(event, 'actor');
+  const sourceActor = ownDataValue(source, 'actor');
+  const evidence = ownDataValue(source, 'evidence');
+  const evidenceCreationId = optionalOwnDataValue(event, 'evidenceCreationId');
+  const evidenceVersion = optionalOwnDataValue(event, 'evidenceVersion');
+  return evidenceCreationId.valid && evidenceVersion.valid &&
+    ownDataValue(event, 'id') === ownDataValue(source, 'eventId') &&
+    ownDataValue(event, 'type') === 'experiment-challenged' &&
+    ownDataValue(event, 'challengeId') === ownDataValue(source, 'challengeId') &&
+    ownDataValue(event, 'reportId') === ownDataValue(source, 'reportId') &&
+    ownDataValue(event, 'moonshotId') === ownDataValue(source, 'moonshotId') &&
+    ownDataValue(event, 'at') === ownDataValue(source, 'at') &&
+    ownDataValue(event, 'challengeType') === ownDataValue(source, 'challengeType') &&
+    ownDataValue(event, 'challengeText') === ownDataValue(source, 'challengeText') &&
+    evidenceCreationId.value === ownDataValue(evidence, 'creationId') &&
+    evidenceVersion.value === ownDataValue(evidence, 'version') &&
+    ownDataValue(actor, 'id') === ownDataValue(sourceActor, 'id') &&
+    ownDataValue(actor, 'role') === ownDataValue(sourceActor, 'role');
+}
+
+/**
+ * Turn a structurally valid Adversary response into an editable, human-review
+ * draft bound to one exact retained experiment report. This is not an event:
+ * it cannot write world state, adjudicate the report, award XP, or grant authority.
+ */
+export function createAdversaryChallengeDraft(packet, responseText, world) {
+  const validation = validateCollaboratorResponse(packet, responseText);
+  if (!validation.valid) return reject(validation.reason);
+  if (validation.role !== 'adversary') return reject('ADVERSARY_ROLE_REQUIRED');
+
+  const payload = packetPayload(packet);
+  if (!payload) return reject('PACKET_INVALID_OR_UNAVAILABLE');
+  const response = validation.response;
+  const source = payload.inputRecords.find(record => record?.eventId === response.targetEventId);
+  if (!source || source.type !== 'experiment-reported' ||
+      !isBoundedIdentifier(source.reportId) || source.moonshotId !== payload.targetMoonshotId) {
+    return reject('TARGET_REPORT_NOT_IN_PACKET');
+  }
+
+  const sourceSnapshot = payload.sourceSnapshot;
+  const sourceWorldId = ownDataValue(sourceSnapshot, 'worldId');
+  const sourceRevision = ownDataValue(sourceSnapshot, 'revision');
+  const sourceEventCount = ownDataValue(sourceSnapshot, 'suppliedEventCount');
+  if (!ownPlainObject(sourceSnapshot) || ownDataValue(sourceSnapshot, 'status') !== 'identified' ||
+      !isBoundedIdentifier(sourceWorldId) || !Number.isSafeInteger(sourceRevision) || sourceRevision < 0 ||
+      !Number.isSafeInteger(sourceEventCount) || sourceEventCount < 0) {
+    return reject('WORLD_SNAPSHOT_UNIDENTIFIED');
+  }
+
+  const worldId = ownDataValue(world, 'id');
+  const worldRevision = ownDataValue(world, 'revision');
+  const events = retainedWorldEvents(world);
+  if (!events) return reject('WORLD_EVENT_HISTORY_UNAVAILABLE');
+  if (worldId !== sourceWorldId || !Number.isSafeInteger(worldRevision) ||
+      worldRevision < sourceRevision || events.length < sourceEventCount) {
+    return reject('WORLD_SNAPSHOT_MISMATCH');
+  }
+  const matchingEvents = events.filter(event => ownDataValue(event, 'id') === response.targetEventId);
+  const matchingReports = events.filter(event =>
+    ownDataValue(event, 'type') === 'experiment-reported' &&
+    ownDataValue(event, 'reportId') === source.reportId
+  );
+  if (matchingEvents.length !== 1 || matchingReports.length !== 1 ||
+      matchingEvents[0] !== matchingReports[0]) return reject('TARGET_REPORT_NOT_UNIQUE');
+  const target = matchingEvents[0];
+  if (!reportMatchesPacketRecord(target, source) ||
+      ownDataValue(target, 'moonshotId') !== validation.moonshotId) {
+    return reject('TARGET_REPORT_SOURCE_MISMATCH');
+  }
+  const targetIndex = events.indexOf(target);
+  const targetAt = Date.parse(ownDataValue(target, 'at'));
+  for (const duplicateId of response.duplicateOfEventIds) {
+    const duplicateSource = payload.inputRecords.find(record => record?.eventId === duplicateId);
+    const duplicateMatches = events.filter(event => ownDataValue(event, 'id') === duplicateId);
+    if (!duplicateSource || duplicateSource.type !== 'experiment-challenged' ||
+        duplicateSource.targetReportStatus !== 'linked' ||
+        duplicateSource.reportId !== source.reportId ||
+        duplicateSource.moonshotId !== source.moonshotId ||
+        duplicateMatches.length !== 1 ||
+        ownDataValue(duplicateMatches[0], 'type') !== 'experiment-challenged' ||
+        ownDataValue(duplicateMatches[0], 'reportId') !== source.reportId ||
+        ownDataValue(duplicateMatches[0], 'moonshotId') !== validation.moonshotId) {
+      return reject('DUPLICATE_REFERENCE_NOT_UNIQUE');
+    }
+
+    const duplicateEvent = duplicateMatches[0];
+    const duplicateChallengeMatches = events.filter(event =>
+      ownDataValue(event, 'type') === 'experiment-challenged' &&
+      ownDataValue(event, 'challengeId') === duplicateSource.challengeId
+    );
+    if (duplicateChallengeMatches.length !== 1 || duplicateChallengeMatches[0] !== duplicateEvent) {
+      return reject('DUPLICATE_REFERENCE_NOT_UNIQUE');
+    }
+    if (!challengeMatchesPacketRecord(duplicateEvent, duplicateSource)) {
+      return reject('DUPLICATE_REFERENCE_SOURCE_MISMATCH');
+    }
+
+    const duplicateIndex = events.indexOf(duplicateEvent);
+    const duplicateAt = Date.parse(ownDataValue(duplicateEvent, 'at'));
+    if (duplicateIndex <= targetIndex || !Number.isFinite(targetAt) ||
+        !Number.isFinite(duplicateAt) || duplicateAt < targetAt) {
+      return reject('DUPLICATE_REFERENCE_ORDER_MISMATCH');
+    }
+  }
+
+  const truncatedFields = Array.isArray(source.truncatedFields)
+    ? Object.freeze([...source.truncatedFields]) : Object.freeze([]);
+  return Object.freeze({
+    valid: true,
+    status: 'human-review-draft',
+    role: 'adversary',
+    moonshotId: validation.moonshotId,
+    targetEventId: response.targetEventId,
+    reportId: source.reportId,
+    challengeType: response.challengeType,
+    challengeText: response.challengeDraft,
+    distinctnessAssessment: response.distinctnessAssessment,
+    duplicateOfEventIds: Object.freeze([...response.duplicateOfEventIds]),
+    counterexample: response.counterexample,
+    evidenceNeeded: Object.freeze([...response.evidenceNeeded]),
+    unknowns: Object.freeze([...response.unknowns]),
+    sourceEventIds: validation.sourceEventIds,
+    sourceSnapshot: Object.freeze({
+      status: 'identified',
+      worldId: sourceWorldId,
+      revision: sourceRevision,
+      suppliedEventCount: sourceEventCount
+    }),
+    omittedCount: payload.omittedCount,
+    omittedEventIds: Object.freeze([...payload.omittedEventIds]),
+    omittedEventIdListTruncated: payload.omittedEventIdListTruncated,
+    truncatedFields
+  });
+}

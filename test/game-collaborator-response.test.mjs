@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
-import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
+import { validateCollaboratorResponse, createAdversaryChallengeDraft } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
 
@@ -42,7 +42,9 @@ function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
     creations: [],
     events
   };
-  return Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
+  const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
+  Object.defineProperty(packets, 'world', { value: world, enumerable: false });
+  return packets;
 }
 const validResponses = {
   archivist: {
@@ -425,4 +427,130 @@ test('omission ID length uses Unicode code points consistently with producer lim
     assert.equal(payload.inputRefs.includes(overLimit), false, packet.id);
     assert.equal(payload.omittedEventIds.includes(overLimit), false, packet.id);
   }
+});
+
+
+test('Adversary folio becomes an editable human-review draft bound to the exact retained report', () => {
+  const packets = packetsForTest();
+  const before = structuredClone(packets.world);
+  const draft = createAdversaryChallengeDraft(
+    packets.adversary,
+    JSON.stringify(validResponses.adversary),
+    packets.world
+  );
+
+  assert.equal(draft.valid, true);
+  assert.equal(draft.status, 'human-review-draft');
+  assert.equal(draft.role, 'adversary');
+  assert.equal(draft.moonshotId, 'moonshot-1');
+  assert.equal(draft.targetEventId, 'report-event-1');
+  assert.equal(draft.reportId, 'report-1');
+  assert.equal(draft.challengeType, 'methodology');
+  assert.equal(draft.challengeText, validResponses.adversary.challengeDraft);
+  assert.deepEqual(draft.duplicateOfEventIds, ['challenge-event-1']);
+  assert.deepEqual(draft.evidenceNeeded, validResponses.adversary.evidenceNeeded);
+  assert.deepEqual(draft.unknowns, validResponses.adversary.unknowns);
+  assert.equal(draft.sourceSnapshot.worldId, 'world-test-1');
+  assert.equal(Object.isFrozen(draft), true);
+  assert.equal(Object.isFrozen(draft.evidenceNeeded), true);
+  assert.equal(Object.isFrozen(draft.sourceSnapshot), true);
+  assert.equal(Object.hasOwn(draft, 'worldEvent'), false);
+  assert.equal(Object.hasOwn(draft, 'authorized'), false);
+  assert.equal(Object.hasOwn(draft, 'approval'), false);
+  assert.deepEqual(packets.world, before, 'drafting cannot append or mutate world history');
+});
+
+test('Adversary draft bridge rejects cross-world, stale, duplicate, and source-mismatched targets', () => {
+  const packets = packetsForTest();
+  const responseText = JSON.stringify(validResponses.adversary);
+
+  const otherWorld = structuredClone(packets.world);
+  otherWorld.id = 'different-world';
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, otherWorld).reason,
+    'WORLD_SNAPSHOT_MISMATCH');
+
+  const missingTarget = structuredClone(packets.world);
+  missingTarget.events[1] = {
+    ...missingTarget.events[1], id: 'replacement-report-event', reportId: 'replacement-report'
+  };
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, missingTarget).reason,
+    'TARGET_REPORT_NOT_UNIQUE');
+
+  const duplicateTarget = structuredClone(packets.world);
+  duplicateTarget.events.push(structuredClone(duplicateTarget.events[1]));
+  duplicateTarget.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, duplicateTarget).reason,
+    'TARGET_REPORT_NOT_UNIQUE');
+
+  const changedSource = structuredClone(packets.world);
+  changedSource.events.find(event => event.id === 'report-event-1').observation = 'A different retained observation.';
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, changedSource).reason,
+    'TARGET_REPORT_SOURCE_MISMATCH');
+
+  const misboundDuplicate = structuredClone(packets.world);
+  misboundDuplicate.events.find(event => event.id === 'challenge-event-1').reportId = 'another-report';
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, misboundDuplicate).reason,
+    'DUPLICATE_REFERENCE_NOT_UNIQUE');
+});
+
+test('Adversary draft bridge rejects non-Adversary and accessor-backed world histories', () => {
+  const packets = packetsForTest();
+  assert.equal(createAdversaryChallengeDraft(
+    packets.tutor, JSON.stringify(validResponses.tutor), packets.world
+  ).reason, 'ADVERSARY_ROLE_REQUIRED');
+
+  const unsafeWorld = { id: 'world-test-1', revision: 3 };
+  Object.defineProperty(unsafeWorld, 'events', {
+    enumerable: true,
+    get() { throw new Error('must not execute an event-history getter'); }
+  });
+  assert.equal(createAdversaryChallengeDraft(
+    packets.adversary, JSON.stringify(validResponses.adversary), unsafeWorld
+  ).reason, 'WORLD_EVENT_HISTORY_UNAVAILABLE');
+});
+
+test('Adversary draft bridge revalidates prior challenge identity, content, and chronology', () => {
+  const packets = packetsForTest();
+  const responseText = JSON.stringify(validResponses.adversary);
+
+  const changedChallenge = structuredClone(packets.world);
+  changedChallenge.events[2].challengeText = 'A substituted challenge record.';
+  changedChallenge.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, changedChallenge).reason,
+    'DUPLICATE_REFERENCE_SOURCE_MISMATCH');
+
+
+  const hiddenEvidenceReference = structuredClone(packets.world);
+  Object.defineProperty(hiddenEvidenceReference.events[2], 'evidenceCreationId', {
+    value: 'hidden-evidence-reference',
+    enumerable: false
+  });
+  hiddenEvidenceReference.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, hiddenEvidenceReference).reason,
+    'DUPLICATE_REFERENCE_SOURCE_MISMATCH',
+    'a hidden evidence reference cannot be normalized to null');
+
+  const duplicateChallengeId = structuredClone(packets.world);
+  duplicateChallengeId.events.push({
+    ...structuredClone(duplicateChallengeId.events[2]),
+    id: 'challenge-event-duplicate'
+  });
+  duplicateChallengeId.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, duplicateChallengeId).reason,
+    'DUPLICATE_REFERENCE_NOT_UNIQUE');
+
+  const reorderedChallenge = structuredClone(packets.world);
+  const [proposal, report, challenge] = reorderedChallenge.events;
+  reorderedChallenge.events = [proposal, challenge, report];
+  reorderedChallenge.revision += 1;
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, reorderedChallenge).reason,
+    'DUPLICATE_REFERENCE_ORDER_MISMATCH');
+
+  const appendedWorld = structuredClone(packets.world);
+  appendedWorld.events.push({ id: 'later-unrelated-event', type: 'unrelated-note' });
+  appendedWorld.revision += 1;
+  const before = structuredClone(appendedWorld);
+  const draft = createAdversaryChallengeDraft(packets.adversary, responseText, appendedWorld);
+  assert.equal(draft.valid, true, 'an unchanged source challenge remains valid after an unrelated append');
+  assert.deepEqual(appendedWorld, before, 'revalidation remains read-only');
 });
