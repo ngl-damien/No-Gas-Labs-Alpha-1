@@ -3,10 +3,10 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight, reconcileInspectedFileRecord } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
@@ -126,6 +126,73 @@ test('preflight rejects directories as scoped targets instead of reading them', 
     assert.ok(!result.files.some(file => file.path === 'scripts/directory-target'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('preflight rejects oversized sparse targets before allocating their contents', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const oversizedPath = join(root, 'scripts/oversized.bin');
+    await writeFile(oversizedPath, '');
+    await truncate(oversizedPath, MAX_PREFLIGHT_FILE_BYTES + 1);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/oversized.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/oversized.bin' && item.reason.includes('preflight size limit')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/oversized.bin'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('preflight accepts a regular file exactly at the configured size limit', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const exactPath = join(root, 'scripts/exact-limit.bin');
+    await writeFile(exactPath, '');
+    await truncate(exactPath, MAX_PREFLIGHT_FILE_BYTES);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/exact-limit.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'ready', JSON.stringify(result.failures));
+    const record = result.files.find(file => file.path === 'scripts/exact-limit.bin');
+    assert.equal(record.bytes, MAX_PREFLIGHT_FILE_BYTES);
+    assert.match(record.sha256, /^[a-f0-9]{64}$/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('bounded descriptor reader stops at max plus one byte when a file grows during reading', async () => {
+  const source = Buffer.from('twelve-bytes');
+  const requests = [];
+  const handle = {
+    async read(buffer, offset, length, position) {
+      requests.push({ length, position });
+      const chunk = source.subarray(position, position + length);
+      chunk.copy(buffer, offset);
+      return { bytesRead: chunk.length };
+    }
+  };
+  const result = await readBoundedHandle(handle, 10);
+  assert.deepEqual(result, { tooLarge: true, total: 11 });
+  assert.equal(requests.reduce((sum, request) => sum + request.length, 0), 11);
+  assert.deepEqual(requests.map(request => request.position), [0]);
+});
+
+test('bounded descriptor reader rejects a caller limit above its configured maximum before reading', async () => {
+  let readCalls = 0;
+  const handle = { async read() { readCalls += 1; return { bytesRead: 0 }; } };
+  await assert.rejects(
+    readBoundedHandle(handle, MAX_PREFLIGHT_FILE_BYTES + 1),
+    /within the configured maximum/
+  );
+  assert.equal(readCalls, 0);
+});
+
 
 test('preflight rejects FIFO targets without blocking on a writer', {
   skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
