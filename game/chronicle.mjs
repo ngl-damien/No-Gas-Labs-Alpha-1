@@ -396,6 +396,30 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
     entry.category = "GUILD HALL";
     entry.summary = "The sole remaining leader closed the guild. Earlier membership events remain retained.";
     entry.detail = "Guild ID: " + (text(event?.guildId) || "unavailable");
+  } else if (type === "message-posted") {
+    entry.title = "Commons message retained";
+    entry.category = "THE COMMONS";
+    entry.summary = "A player message was retained. Message text and visibility are governed by the Commons projection; this history object does not expose message content.";
+  } else if (type === "message-reported") {
+    entry.title = "Commons message report retained";
+    entry.category = "THE COMMONS · MODERATION";
+    entry.summary = "A report against a Commons message was retained. A report is not a moderation finding or an instruction to hide content.";
+  } else if (type === "message-moderated") {
+    entry.title = "Commons moderation action retained";
+    entry.category = "THE COMMONS · MODERATION";
+    entry.summary = "A human moderation action was retained. It may change message visibility under Commons rules; the original history remains.";
+  } else if (["decision", "revocation", "revoke", "policy-set", "proposal-created", "decision-attempted", "expiry-observed"].includes(type)) {
+    const labels = {
+      decision: ["Decision record retained", "A decision event was retained; inspect the Decision Chamber for its recorded disposition."],
+      revocation: ["Revocation record retained", "A revocation record was retained. It does not erase earlier authorization or prove a consequence was executed."],
+      revoke: ["Revocation record retained", "A revocation record was retained. It does not erase earlier authorization or prove a consequence was executed."],
+      "policy-set": ["Policy change record retained", "A policy change record was retained; this display does not establish authority beyond the recorded event."],
+      "proposal-created": ["Decision proposal retained", "A proposal was retained for human-gated review; it is not an approved decision."],
+      "decision-attempted": ["Decision attempt retained", "An attempt to submit a decision was retained. It is not proof that the decision was accepted."],
+      "expiry-observed": ["Expiry observation retained", "An expiry observation was retained; it does not create or renew authority."],
+    };
+    [entry.title, entry.summary] = labels[type];
+    entry.category = "DECISION CHAMBER";
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
