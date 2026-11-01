@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { defineQuest } from "../src/quest/engine.js";
@@ -242,4 +243,78 @@ test("context-bound verifier requires trusted synchronous proposal, quest, and o
     resolveQuest: () => quest,
     resolveOutputs: true
   }), /FOUNDER_CONTEXT_TRUST_CONFIGURATION_INVALID/);
+});
+
+test("authorization event fails closed if trusted monotonic time becomes invalid after verification", () => {
+  const moduleUrl = new URL("../src/authority/decision.js", import.meta.url).href;
+  const script = `
+    import assert from "node:assert/strict";
+    import { createHash, generateKeyPairSync, sign } from "node:crypto";
+    import { performance } from "node:perf_hooks";
+
+    let invalidTime = false;
+    Object.defineProperty(performance, "now", {
+      configurable: true,
+      value: () => invalidTime ? NaN : 0
+    });
+
+    const authority = await import(${JSON.stringify(moduleUrl)});
+    const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const publicKeyJwk = publicKey.export({ format: "jwk" });
+    const expectedFingerprint = createHash("sha256")
+      .update(publicKey.export({ type: "spki", format: "der" }))
+      .digest("hex");
+    const audience = "ngl-alpha-1-clock-test";
+    const proposal = {
+      event_id: "proposal-clock",
+      type: "PROPOSAL",
+      quest_id: "quest-clock",
+      capability: "repository.write"
+    };
+    const quest = {
+      quest_id: "quest-clock",
+      capabilities: ["repository.write"],
+      acceptance: ["clock-check"]
+    };
+    const payload = authority.makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["repository.write"],
+      outputs: ["clock-output"],
+      acceptance: ["clock-check"],
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      audience
+    });
+    const canonical = value => Array.isArray(value)
+      ? "[" + value.map(canonical).join(",") + "]"
+      : value && typeof value === "object"
+        ? "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}"
+        : JSON.stringify(value);
+    const signed = {
+      payload_sha256: authority.decisionDigest(payload),
+      key_fingerprint: expectedFingerprint,
+      signature: sign("sha256", Buffer.from(canonical(payload)), {
+        key: privateKey,
+        dsaEncoding: "ieee-p1363"
+      }).toString("base64url")
+    };
+    const verification = authority.verifyFounderDecision({
+      signed,
+      payload,
+      public_key_jwk: publicKeyJwk,
+      expected_fingerprint: expectedFingerprint,
+      expected_audience: audience
+    });
+    assert.equal(verification.valid, true);
+    invalidTime = true;
+    assert.throws(
+      () => authority.authorizationEvent({ signed, payload, verification }),
+      /verified Founder decision required/
+    );
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+    encoding: "utf8",
+    timeout: 15_000
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
