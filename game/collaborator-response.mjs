@@ -350,6 +350,15 @@ export function createAdversaryChallengeDraft(packet, responseText, world) {
       ownDataValue(target, 'moonshotId') !== validation.moonshotId) {
     return reject('TARGET_REPORT_SOURCE_MISMATCH');
   }
+  for (const duplicateId of response.duplicateOfEventIds) {
+    const duplicateMatches = events.filter(event => ownDataValue(event, 'id') === duplicateId);
+    if (duplicateMatches.length !== 1 ||
+        ownDataValue(duplicateMatches[0], 'type') !== 'experiment-challenged' ||
+        ownDataValue(duplicateMatches[0], 'reportId') !== source.reportId ||
+        ownDataValue(duplicateMatches[0], 'moonshotId') !== validation.moonshotId) {
+      return reject('DUPLICATE_REFERENCE_NOT_UNIQUE');
+    }
+  }
 
   const truncatedFields = Array.isArray(source.truncatedFields)
     ? Object.freeze([...source.truncatedFields]) : Object.freeze([]);
