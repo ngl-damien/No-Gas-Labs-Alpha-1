@@ -1197,7 +1197,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
     world,kernel,kernelUnavailable,shared:mode==='shared',viewer,
     onOpenArtifact:(id,version)=>openCreation(id,version),
-    onOpenChallenge:draft=>{
+    onOpenChallenge:guarded(draft=>{
       const reports=(Array.isArray(world.events)?world.events:[]).filter(event=>
         event?.type==='experiment-reported'&&event.id===draft.targetEventId&&
         event.reportId===draft.reportId&&event.moonshotId===draft.moonshotId
@@ -1206,7 +1206,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
       if(reports[0].actor?.id===viewer.id&&reports[0].actor?.role===viewer.role)
         throw new Error('A different actor must submit a challenge to this report.');
       openExperimentChallenge(reports[0],draft.challengeText,draft.challengeType);
-    }
+    })
   });
   if(mode!=='shared'){
     renderHistory(null,false);
