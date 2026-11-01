@@ -280,7 +280,7 @@ test('only the full Decision Chamber presentation exposes Founder disposition co
     founder: true,
     decisionPresentation: 'hidden'
   });
-  assert.doesNotMatch(textOf(hidden), /FOUNDER GATE|DECISION STATUS/);
+  assert.doesNotMatch(textOf(hidden), /FOUNDER GATE|DECISION SERVICE · STATUS/);
   assert.equal(walk(hidden).filter(item => item.dataset?.gateAction).length, 0);
 }));
 
