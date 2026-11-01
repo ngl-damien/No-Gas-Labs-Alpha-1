@@ -559,3 +559,27 @@ No merge, release, deployment, spending, external publication, key operation, or
 5. Recheck ngl-mesh PR #1/#3 and Command Center PR #6/incident state before any linked-repository write; retain their existing artifact and authority blockers.
 
 No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, permission change, key operation, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 18 correction — Founder-authorization PR identity and live integration boundary
+
+The earlier Run 18 sentence naming PR #16/#18 must **not** be interpreted as the Founder-authorization fix. The actual Alpha-1 PR records establish:
+
+- PR [#16](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/16), **Experiment 001: competing proposals → durable capability → restart and reuse**, is closed/unmerged. Its own description explicitly says it is not Founder authentication or production security.
+- PR [#18](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/18) is the content-preserving Experiment 001 transplant of PR #16 onto main; it is merged. It is not a replacement for the Founder-decision authorization flow.
+- The earlier Decision Chamber proposal is PR [#8](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/8), merged into PR #7's branch; PR #7 was itself merged into `world/spine-001`, not directly into main.
+- The actual forgeable Founder-decision helper defect is the PR [#164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/164) / [#180](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/180) / [#203](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/203) line, with current proposal [#244](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244). The earlier checkpoint/PR #251 wording that labels Alpha-1 PR #16 as the self-signing defect is not supported by the actual PR #16 record.
+
+**Current source recheck:**
+
+- Alpha-1 main `src/authority/decision.js` still has `authorizationEvent({ signed, payload, verification })` trusting caller-supplied `verification?.valid`. This is a real source-backed helper defect on main.
+- PR #244's branch `90d9a04bf28bcd641dc4e2c6fa287b9f534774d9` contains module-private `WeakMap` verification seals, immutable snapshots, P-256 fingerprint/audience checks, and a context-bound verifier resolving canonical proposal, quest, and exact output policy. Its exact-head Verify, Genesis, and Browser checks passed.
+- PR #244 is not current-main based: its base `93bc9157dca95f7d4f552a88e8570823b30c11aa` is 2 commits behind current main `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; its head is 3 commits ahead and 2 behind main. Rebase/reconcile before treating its checks as current-base verification.
+- PR #251's server branch `3017ee1ead746fd90b7eebe1ff66842561e47799` has an explicit Founder-key startup guard but `game/server.mjs` does not import or call the PR #244 context-bound verifier. The helper fix is therefore not live-server authorization. The key-startup guard and the signed decision verifier are separate proposals.
+- Issue #17 remains the actual unresolved authority boundary: trusted Founder identity/key custody, canonical state resolvers, live mutation-boundary wiring, concurrency, and stale-lock recovery. No key was generated, enrolled, rotated, read, or changed.
+
+**Linked-repository scope check:** A fresh root `AGENTS.md` probe returned 404 in `ngl-mesh`, `no-gas-labs-command-center`, `No_Gas_Labs`, `no-gas-labs`, `ngl001-def4us28`, and `recursive-artifact-engine`. Repository inspection/writes stopped at that missing mandatory instruction boundary. The org-wide PR search did not establish a separate matching PR #16 in those repositories. If the intended PR #16 reference is outside Alpha-1, it remains unverified rather than guessed.
+
+**Next security step:** reconcile/rebase PR #244 onto current main, then design the server mutation-boundary integration against an explicit Damien-approved trust root and canonical proposal/quest/output resolvers. Do not create or enroll a key, infer Founder identity from a self-signed key, or treat PR #251's startup guard as a substitute for signed-decision verification.
