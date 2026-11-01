@@ -47,8 +47,8 @@ export function validateWindowsAclSnapshot(snapshot, label = 'FOUNDER_KEY') {
   return true;
 }
 
-// Windows PowerShell 5.1's .NET FileInfo ACL methods avoid depending on the
-// Microsoft.PowerShell.Security module's Get-Acl cmdlet auto-import.
+// Windows PowerShell 5.1's .NET FileInfo/DirectoryInfo ACL methods avoid depending on
+// the Microsoft.PowerShell.Security module's Get-Acl cmdlet auto-import.
 function powershellSnapshot(kind) {
   const entryType = kind === 'directory' ? 'DirectoryInfo' : 'FileInfo';
   return [
@@ -63,7 +63,7 @@ function powershellSnapshot(kind) {
     "  [pscustomobject]@{ sid = $_.IdentityReference.Value; accessType = $_.AccessControlType.ToString() }",
     "})",
     "[pscustomobject]@{ ownerSid = $ownerSid; currentSid = $currentSid; rules = $rules } | ConvertTo-Json -Compress -Depth 4"
-  ].join('\\n');
+  ].join('\n');
 }
 
 function verifyWindowsPathSecurity(path, label, kind) {
