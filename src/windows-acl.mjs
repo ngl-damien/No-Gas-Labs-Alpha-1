@@ -10,7 +10,7 @@ function fail(label, reason) {
 }
 
 /**
- * Validate a PowerShell Get-Acl snapshot without trusting localized account names.
+ * Validate a Windows FileSecurity snapshot without trusting localized account names.
  * Only the file owner, SYSTEM, local Administrators, and the special CREATOR OWNER
  * inheritance SID may have allow ACEs. Broad or unknown allow principals fail closed.
  */
@@ -47,11 +47,14 @@ export function validateWindowsAclSnapshot(snapshot, label = 'FOUNDER_KEY') {
   return true;
 }
 
+// Windows PowerShell 5.1's .NET FileInfo ACL methods avoid depending on the
+// Microsoft.PowerShell.Security module's Get-Acl cmdlet auto-import.
 const POWERSHELL_SNAPSHOT = [
   "$ErrorActionPreference = 'Stop'",
   "$path = $env:NGL_ACL_TARGET",
   "if ([string]::IsNullOrWhiteSpace($path)) { throw 'NGL_ACL_TARGET_REQUIRED' }",
-  "$acl = Get-Acl -LiteralPath $path",
+  "$file = [System.IO.FileInfo]::new($path)",
+  "$acl = $file.GetAccessControl()",
   "$ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value",
   "$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
   "$rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {",
@@ -75,7 +78,7 @@ export function verifyWindowsFileSecurity(path, label = 'FOUNDER_KEY') {
     '-EncodedCommand', encoded
   ], {
     encoding: 'utf8',
-    timeout: 5000,
+    timeout: 15_000,
     windowsHide: true,
     maxBuffer: 64 * 1024,
     env: { ...process.env, NGL_ACL_TARGET: path }
