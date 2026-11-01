@@ -432,3 +432,36 @@ test('map only reuses a Relay projection sealed to the exact world snapshot', t 
   view.setWorld(world, null, ownProjection);
   assert.strictEqual(view.collaboratorResponseObjects, ownProjection, 'the same-snapshot projection is reused');
 });
+
+
+test('retained institutional records are reachable map objects and interaction stays read-only', t => {
+  const { view, interactions } = makeView(t);
+  const world = createWorld({ id: 'institution-record-world', now: '2026-10-31T12:00:00.000Z' });
+  world.events.push({
+    id: 'publish-map-record',
+    type: 'publish',
+    creationId: 'missing-artifact',
+    version: 1,
+    actor: { id: 'founder-map', name: 'Founder' },
+    at: '2026-10-31T12:01:00.000Z',
+  });
+  world.revision = world.events.length;
+  const before = structuredClone(world);
+
+  view.setWorld(world);
+  const record = view.institutionRecordObjects.find(item => item.entryId === 'world:publish-map-record');
+  assert.ok(record, 'the retained publication must become an institutional world object');
+  assert.equal(record.locationId, 'publication_house');
+  assert.equal(record.mapVisible, true, 'the record must receive a walkable map pin');
+  view.setPlayer({ x: record.x, y: record.y + 60 });
+  view.interact(record.id, 'institution-record');
+  assert.deepEqual(interactions, [{
+    type: 'institution-record',
+    recordId: 'world:publish-map-record',
+    locationId: 'publication_house',
+  }]);
+  view.setQuestAction({ type: 'institution-record', id: record.id }, 'Inspect the retained publication');
+  assert.equal(view.questMarker?.targetId, record.id);
+  assert.equal(view.questMarker?.targetType, 'institution-record');
+  assert.deepEqual(world, before, 'walking to or inspecting a record must not append progress or alter history');
+});
