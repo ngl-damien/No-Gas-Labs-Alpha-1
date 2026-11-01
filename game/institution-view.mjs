@@ -243,3 +243,4 @@ export function renderInstitution(container,projects,gate,{
   }
   if(projection.omittedDecisionCount)container.append(el('p',`${projection.omittedDecisionCount} older decision record(s) remain in the service and are not shown in this bounded view.`));
  }
+}
