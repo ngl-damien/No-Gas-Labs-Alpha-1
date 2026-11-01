@@ -19,12 +19,15 @@ function sameFileSnapshot(left, right) {
 export const MAX_PREFLIGHT_FILE_BYTES = 16 * 1024 * 1024;
 const PREFLIGHT_READ_CHUNK_BYTES = 64 * 1024;
 
-async function readBoundedHandle(handle) {
+export async function readBoundedHandle(handle, maxBytes = MAX_PREFLIGHT_FILE_BYTES) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new TypeError('preflight byte limit must be a non-negative safe integer');
+  }
   const chunks = [];
   let total = 0;
   let position = 0;
-  while (total <= MAX_PREFLIGHT_FILE_BYTES) {
-    const remaining = MAX_PREFLIGHT_FILE_BYTES + 1 - total;
+  while (total <= maxBytes) {
+    const remaining = maxBytes + 1 - total;
     const buffer = Buffer.allocUnsafe(Math.min(PREFLIGHT_READ_CHUNK_BYTES, remaining));
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
     if (bytesRead === 0) break;
@@ -32,7 +35,7 @@ async function readBoundedHandle(handle) {
     total += bytesRead;
     position += bytesRead;
   }
-  if (total > MAX_PREFLIGHT_FILE_BYTES) return { tooLarge: true, total };
+  if (total > maxBytes) return { tooLarge: true, total };
   return { tooLarge: false, total, bytes: Buffer.concat(chunks, total) };
 }
 
