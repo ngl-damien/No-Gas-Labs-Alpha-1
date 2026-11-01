@@ -7,6 +7,17 @@ import { createGameServer } from '../game/server.mjs';
 
 const VALID_KEY = 'founder-key-fixture-that-is-long-enough-for-tests';
 
+async function createLocalServer(options) {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    return await createLocalServer({ ...options, requireExplicitFounderKey: false });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+}
+
 async function directory(t, prefix = 'ngl-founder-key-', beforeRemove = async () => {}) {
   const path = await mkdtemp(join(tmpdir(), prefix));
   t.after(async () => {
@@ -37,7 +48,7 @@ test('accepts the maximum supported persisted Founder key size', async t => {
   const dataDir = await directory(t);
   const path = join(dataDir, 'founder.key');
   await writeFile(path, 'k'.repeat(1024) + '\n', { mode: 0o600 });
-  const server = await createGameServer({ dataDir });
+  const server = await createLocalServer({ dataDir });
   await server.closeGame();
 });
 
@@ -80,7 +91,7 @@ test('rejects a symlinked or non-private Founder data directory', async t => {
 test('generated Founder key is private and reused after restart', async t => {
   let second;
   const dataDir = await directory(t, 'ngl-founder-key-', async () => { await second?.closeGame(); });
-  const first = await createGameServer({ dataDir });
+  const first = await createLocalServer({ dataDir });
   await first.closeGame();
   const path = join(dataDir, 'founder.key');
   const key1 = (await readFile(path, 'utf8')).trim();
@@ -88,7 +99,7 @@ test('generated Founder key is private and reused after restart', async t => {
   assert.ok(key1.length >= 32);
   assert.equal(metadata.mode & 0o077, 0);
 
-  second = await createGameServer({ dataDir });
+  second = await createLocalServer({ dataDir });
   assert.equal((await readFile(path, 'utf8')).trim(), key1);
   await new Promise(resolve => second.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${second.address().port}`;
@@ -104,7 +115,7 @@ test('generated Founder key is private and reused after restart', async t => {
 test('unauthenticated session churn cannot evict a live Founder session', async t => {
   let server;
   const dataDir = await directory(t, 'ngl-founder-key-', async () => { await server?.closeGame(); });
-  server = await createGameServer({ dataDir });
+  server = await createLocalServer({ dataDir });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -166,7 +177,7 @@ test('unauthenticated session churn cannot evict a live Founder session', async 
 test('rejected cross-origin and malformed writes do not allocate sessions', async t => {
   let server;
   const dataDir = await directory(t, 'ngl-founder-key-', async () => { await server?.closeGame(); });
-  server = await createGameServer({ dataDir });
+  server = await createLocalServer({ dataDir });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
 
