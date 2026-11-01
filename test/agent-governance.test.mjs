@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { accessSync, constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
@@ -479,5 +479,48 @@ test('hosted preflight includes the world-view source and canonical checkpoint',
   assert.equal(typeof command, 'string');
   assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
+});
+
+test('preflight rejects root instructions that share a hard-linked inode outside the checkout', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-hardlink-outside-'));
+  try {
+    await link(join(root, 'AGENTS.md'), join(outside, 'linked-AGENTS.md'));
+    const result = await runPreflight({ root });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'AGENTS.md' && item.reason.includes('multiple hard links')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects a scoped target hard-linked to a file outside the checkout', async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-target-hardlink-outside-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    const outsideFile = join(outside, 'external.mjs');
+    const targetFile = join(root, 'scripts/linked.mjs');
+    await writeFile(outsideFile, 'bytes that do not belong to this repository');
+    await link(outsideFile, targetFile);
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/linked.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/linked.mjs' && item.reason.includes('multiple hard links')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/linked.mjs'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
 });
 
