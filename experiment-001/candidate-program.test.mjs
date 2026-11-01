@@ -124,6 +124,12 @@ test('candidate-program-v3 proves exact polynomial equivalence and rejects unsup
   assert.equal(proof.certificate.inputMax, 1_000_000);
   assert.equal(proof.certificate.maxIntermediateAbsoluteBound, '1000000000001');
   assert.equal(proof.certificate.matchesSquare, true);
+  const doubleNegated = lib.challenge('candidate-program-v3', {
+    op: 'negate', arg: { op: 'negate', arg: equivalent }
+  });
+  assert.equal(doubleNegated.passed, 1);
+  assert.deepEqual(doubleNegated.certificate.coefficients, ['0', '0', '1']);
+  assert.notEqual(candidateProgramHash(equivalent, 'v2'), candidateProgramHash(equivalent, 'v3'));
   for (const input of [-1_000_000, -17, 0, 17, 1_000_000]) {
     assert.equal(evaluateCandidateProgram(equivalent, input), input * input);
   }
@@ -211,11 +217,14 @@ test('signed candidate-program-v3 proof is reusable after a fresh-process restar
   assert.equal(snapshot.capabilities[draft.id].strategy, 'candidate-program-v3');
   assert.equal(snapshot.capabilities[draft.id].uses, 1);
   assert.deepEqual(snapshot.capabilities[draft.id].program, program);
+  assert.deepEqual(snapshot.capabilities[draft.id].proof, draft.proof,
+    'the signed symbolic certificate must survive fresh-process ledger replay');
   assert.equal(snapshot.capabilities[draft.id].implementationHash, draft.implementationHash);
 
   const reopened = await lib.openInstitution(storePath, pem(founder));
   assert.equal(reopened.snapshot().sequence, 2);
   assert.equal(reopened.snapshot().capabilities[draft.id].strategy, 'candidate-program-v3');
+  assert.deepEqual(reopened.snapshot().capabilities[draft.id].proof, draft.proof);
   assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
 }));
 
