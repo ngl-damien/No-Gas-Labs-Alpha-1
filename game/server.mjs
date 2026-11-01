@@ -541,7 +541,7 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, requireExplicitFounderKey = false } = {}) {
+export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, requireExplicitFounderKey = true } = {}) {
   // A production host must not mint its own Founder bearer credential.
   if ((process.env.NODE_ENV === 'production' || requireExplicitFounderKey) && (typeof founderKey !== 'string' || founderKey.length < 16 || Buffer.byteLength(founderKey) > 1024)) {
     throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required (16–1024 bytes) for production or custom host/port startup; automatic Founder-key generation is disabled.'), { code: 'FOUNDER_KEY_REQUIRED' });
