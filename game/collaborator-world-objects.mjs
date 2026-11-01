@@ -17,26 +17,35 @@ const roleStyles = Object.freeze({
 });
 
 const responseProjectionWorld = new WeakMap();
+function safeArrayLength(value) {
+  try { return Array.isArray(value) ? value.length : -1; } catch { return -1; }
+}
 function sealResponseProjection(world, objects) {
   const projection = Object.freeze(objects);
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
   responseProjectionWorld.set(projection, {
     world,
-    revision: world?.revision,
-    events: world?.events,
-    eventCount: Array.isArray(world?.events) ? world.events.length : 0,
-    creations: world?.creations,
-    creationCount: Array.isArray(world?.creations) ? world.creations.length : 0
+    id: ownDataValue(world, 'id'),
+    revision: ownDataValue(world, 'revision'),
+    events,
+    eventCount: safeArrayLength(events),
+    creations,
+    creationCount: safeArrayLength(creations)
   });
   return projection;
 }
 
 export function isCollaboratorResponseProjection(value, world) {
   const context = responseProjectionWorld.get(value);
-  return Boolean(context && context.world === world &&
-    context.revision === world?.revision && context.events === world?.events &&
-    context.eventCount === (Array.isArray(world?.events) ? world.events.length : 0) &&
-    context.creations === world?.creations &&
-    context.creationCount === (Array.isArray(world?.creations) ? world.creations.length : 0));
+  if (!context || context.world !== world) return false;
+  const id = ownDataValue(world, 'id');
+  const revision = ownDataValue(world, 'revision');
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
+  return context.id === id && context.revision === revision &&
+    context.events === events && context.eventCount === safeArrayLength(events) &&
+    context.creations === creations && context.creationCount === safeArrayLength(creations);
 }
 
 function ownDataValue(value, key) {
