@@ -516,7 +516,7 @@ No merge, release, deployment, spending, external publication, key operation, or
 - An initial bundled/parallel repository read was attempted before the required standalone bootstrap. I then re-read root `AGENTS.md` alone and the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone in separate operations, discarded the earlier observations, and restarted the baseline. The initial ordering error is recorded as a procedural violation; the later sequential reread does not erase it.
 - Read the current durable checkpoint in full (503 lines), current MMORPG completion contract and ledger, current main/base metadata, open PRs and relevant branches, and current Worker B proposal/check evidence.
 - Applicable nested instruction probes for `game/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` returned 404 on the canonical parent tree. No nested instruction file was present for the paths changed in this run.
-- This connector-only session has no local repository checkout or terminal. No local `npm run agent:preflight`, Node test, or local receipt is claimed. Manual instruction sequence and GitHub source inspection were used; hosted exact-head CI is the required verification.
+- A generic container shell was available (Node v22.16.0, npm 10.9.2, Git 2.47.3, Python 3.13.5), but no repository checkout was present. The repository declares Node `>=24`, so no local `npm run agent:preflight`, Node test, or local receipt was attempted/claimed. Manual instruction sequence and GitHub source inspection were used; hosted Node 24 exact-head CI is the verification evidence.
 
 ### Fresh baseline and Worker B rehydration
 
