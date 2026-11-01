@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createGameServer } from '../game/server.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { COMMONS_MESSAGE_LIMIT, projectCommonsMessages, projectTownSquare, projectPlayerGuilds, PLAYER_GUILD_MEMBER_LIMIT } from '../game/social.mjs';
@@ -340,4 +345,143 @@ test('Commons activity projection is actor-bound, unique, bounded and retains hi
   const beforeProjection = structuredClone(world);
   projectCommonsMessages(world, firstWitness);
   assert.deepEqual(world, beforeProjection, 'the projection is read-only');
+});
+
+
+test('shared Commons HTTP post completes only its actor quest and remains in the redacted satchel after moderation', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-commons-quest-http-'));
+  const founderKey = 'test-founder-key-not-a-production-secret';
+  let server;
+  t.after(async () => {
+    await server?.closeGame();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  server = await createGameServer({ dataDir, founderKey });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  function client() {
+    let cookie = '';
+    return {
+      async request(path, payload) {
+        const headers = cookie ? { cookie } : {};
+        const options = { method: payload === undefined ? 'GET' : 'POST', headers };
+        if (payload !== undefined) {
+          headers['content-type'] = 'application/json';
+          headers.origin = origin;
+          options.body = JSON.stringify(payload);
+        }
+        const response = await fetch(origin + path, options);
+        const setCookie = response.headers.get('set-cookie');
+        if (setCookie) cookie = setCookie.split(';')[0];
+        return { response, body: await response.json() };
+      }
+    };
+  }
+
+  const speaker = client();
+  const otherWitness = client();
+  const initial = await speaker.request('/api/state');
+  const otherInitial = await otherWitness.request('/api/state');
+  assert.equal(initial.response.status, 200);
+  assert.equal(otherInitial.response.status, 200);
+  const speakerActor = initial.body.viewer;
+  const otherActor = otherInitial.body.viewer;
+  assert.equal(speakerActor.role, 'witness');
+  assert.equal(otherActor.role, 'witness');
+  assert.notEqual(speakerActor.id, otherActor.id);
+  const before = projectCharacter(initial.body.world, speakerActor);
+
+  const text = 'A real shared-world message completes its speaker quest.';
+  const action = {
+    type: 'post-message',
+    text,
+    requestId: 'commons-quest-http-acceptance-001'
+  };
+  const posted = await speaker.request('/api/action', action);
+  assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+  assert.equal(posted.body.idempotentReplay, false);
+  const messageId = posted.body.result.messageId;
+  const originalEvent = posted.body.world.events.find(event =>
+    event.type === 'message-posted' && event.messageId === messageId
+  );
+  assert.ok(originalEvent);
+  assert.equal(originalEvent.actor.id, speakerActor.id);
+  assert.equal(originalEvent.actor.role, speakerActor.role);
+  assert.equal(originalEvent.channel, 'commons');
+  assert.equal(originalEvent.text, text);
+
+  const replay = await speaker.request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.messageId, messageId);
+  const foreignReplay = await otherWitness.request('/api/action', action);
+  assert.equal(foreignReplay.response.status, 409);
+  assert.equal(foreignReplay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+
+  const otherState = await otherWitness.request('/api/state');
+  const otherQuest = getQuestTrail(otherState.body.world, otherActor)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(otherQuest.complete, false, 'another Witness cannot inherit the speaker quest');
+  assert.deepEqual(otherQuest.action, { type: 'location', id: 'commons' });
+  assert.equal(projectCharacter(otherState.body.world, otherActor)
+    .skills.find(skill => skill.id === 'speaker').count, 0);
+
+  const speakerState = await speaker.request('/api/state');
+  const completed = getQuestTrail(speakerState.body.world, speakerActor)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(completed.complete, true);
+  assert.deepEqual(completed.evidenceIds, [originalEvent.id]);
+  const speakerRecord = projectCharacter(speakerState.body.world, speakerActor);
+  assert.equal(speakerRecord.skills.find(skill => skill.id === 'speaker').count, 1);
+  const satchelItem = speakerRecord.fieldSatchel.find(item => item.kind === 'commons-message');
+  assert.ok(satchelItem);
+  assert.equal(satchelItem.eventId, originalEvent.id);
+  assert.equal(satchelItem.locationId, 'commons');
+  assert.deepEqual(satchelItem.action, { type: 'location', id: 'commons' });
+  assert.equal(speakerRecord.xp, before.xp, 'Commons participation is not XP');
+  assert.equal(speakerRecord.questXp, before.questXp, 'the Commons objective is XP-neutral');
+
+  const report = await otherWitness.request('/api/action', {
+    type: 'report-message',
+    messageId,
+    reason: 'privacy',
+    details: 'Use a controlled fixture to exercise retained moderation.'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+
+  const founder = client();
+  const login = await founder.request('/api/login', { key: founderKey, name: 'Damien' });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const hidden = await founder.request('/api/action', {
+    type: 'moderate-message',
+    messageId,
+    disposition: 'hide',
+    reason: 'privacy'
+  });
+  assert.equal(hidden.response.status, 200, JSON.stringify(hidden.body));
+
+  const afterHide = await speaker.request('/api/state');
+  const redactedEvent = afterHide.body.world.events.find(event =>
+    event.type === 'message-posted' && event.messageId === messageId
+  );
+  assert.equal(redactedEvent.text, '[Message hidden by human moderation.]');
+  const retainedQuest = getQuestTrail(afterHide.body.world, speakerActor)
+    .find(item => item.id === 'witness-commons-message');
+  assert.equal(retainedQuest.complete, true, 'human hiding changes visibility, not retained participation');
+  assert.deepEqual(retainedQuest.evidenceIds, [originalEvent.id]);
+  const redactedRecord = projectCharacter(afterHide.body.world, speakerActor);
+  assert.equal(redactedRecord.xp, before.xp);
+  assert.equal(redactedRecord.skills.find(skill => skill.id === 'speaker').count, 1);
+  const redactedSatchelItem = redactedRecord.fieldSatchel.find(item => item.kind === 'commons-message');
+  assert.ok(redactedSatchelItem);
+  assert.equal(redactedSatchelItem.eventId, originalEvent.id);
+  assert.equal(redactedSatchelItem.summary, '[Message hidden by human moderation.]');
+
+  const founderState = await founder.request('/api/state');
+  const founderCopy = founderState.body.world.events.find(event =>
+    event.type === 'message-posted' && event.messageId === messageId
+  );
+  assert.equal(founderCopy.text, text, 'Founder history retains the original text for human review');
 });
