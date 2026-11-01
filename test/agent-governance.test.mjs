@@ -183,6 +183,16 @@ test('bounded descriptor reader stops at max plus one byte when a file grows dur
   assert.deepEqual(requests.map(request => request.position), [0]);
 });
 
+test('bounded descriptor reader rejects a caller limit above its configured maximum before reading', async () => {
+  let readCalls = 0;
+  const handle = { async read() { readCalls += 1; return { bytesRead: 0 }; } };
+  await assert.rejects(
+    readBoundedHandle(handle, MAX_PREFLIGHT_FILE_BYTES + 1),
+    /within the configured maximum/
+  );
+  assert.equal(readCalls, 0);
+});
+
 
 test('preflight rejects FIFO targets without blocking on a writer', {
   skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
