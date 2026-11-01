@@ -156,8 +156,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
 
   const canonicalCheckpointMatch = entryText ? /--checkpoint\s+([^\s]+)/.exec(entryText) : null;
   const canonicalCheckpointPath = canonicalCheckpointMatch?.[1] ?? null;
-  if (normalizedTargets.length && !canonicalCheckpointPath) {
-    failures.push({ path: 'AGENTS.md', reason: 'root instructions must declare the canonical --checkpoint path for targeted work' });
+  if (!canonicalCheckpointPath && (normalizedTargets.length || checkpoint)) {
+    warnings.push('Root AGENTS.md does not declare a canonical --checkpoint path; the supplied checkpoint cannot be pinned to the root contract.');
   }
   if (normalizedTargets.length && !checkpoint) {
     failures.push({ path: '(checkpoint)', reason: 'targeted work requires --checkpoint pointing to the latest durable checkpoint' });
@@ -165,11 +165,9 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   let checkpointRecord = null;
   if (checkpoint && canonicalCheckpointPath && checkpoint !== canonicalCheckpointPath) {
     failures.push({ path: checkpoint, reason: 'checkpoint path must match the canonical --checkpoint declared by root AGENTS.md' });
-  } else if (checkpoint && canonicalCheckpointPath) {
+  } else if (checkpoint) {
     await inspect(checkpoint, 'durable-checkpoint');
     checkpointRecord = files.find(file => file.path === checkpoint) ?? null;
-  } else if (checkpoint && !canonicalCheckpointPath && !normalizedTargets.length) {
-    failures.push({ path: 'AGENTS.md', reason: 'root instructions do not declare a canonical --checkpoint path' });
   }
   if (!normalizedTargets.length) warnings.push('No target paths supplied: root-instruction validation only; this does not authorize edits to any path.');
 

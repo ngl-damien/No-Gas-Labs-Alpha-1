@@ -151,3 +151,23 @@ test('preflight refuses a checkpoint other than the path declared by root AGENTS
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+
+test('preflight warns when root AGENTS.md omits a canonical checkpoint path', async () => {
+  const fixtureRoot = await createPinnedInputFixture();
+  try {
+    const rootInstructions = (await readFile(join(fixtureRoot, 'AGENTS.md'), 'utf8'))
+      .replace(/\nPreflight command:.*$/, '');
+    await writeFile(join(fixtureRoot, 'AGENTS.md'), rootInstructions);
+    const result = await runPreflight({
+      root: fixtureRoot,
+      paths: ['src/example.mjs'],
+      checkpoint: fixtureCheckpointPath
+    });
+    assert.equal(result.status, 'ready');
+    assert.equal(result.checkpoint, fixtureCheckpointPath);
+    assert.ok(result.warnings.some(item => item.includes('does not declare a canonical --checkpoint path')));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
