@@ -988,3 +988,51 @@ Code/test head `bafede404aa260952fede4a3b36ddeed77e57c74`:
 6. Worker B should refresh the MMORPG ledger and PR #247/#249/#265 stack using the exact Android 2/2 and PR #265 browser evidence above. Android evidence is emulator-only; no physical-device, release, deployment, shared production service, GPS, or Founder acceptance is evidenced.
 7. Continue the next bounded Worker A cycle on stack integration and live-server trust-boundary design; do not invent a public key or alter Founder credentials.
 
+
+
+## Run 28 — 2026-11-01 — reconcile the preflight stack and close the final-component symlink window
+
+**Worker:** Worker A — Repository Stutter-Step Loop.  
+**PR:** [#264](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/264), draft/open/unmerged.  
+**Branch:** `ops/relay-stack-preflight-fifo-guard-20261101`.  
+**Base:** PR #263 branch `game/offline-shell-cache-write-fallback-20261101`, head `4b8f32c8b033e90e2ae9008cc8da61c876a83fa0`.
+
+### Rehydration and competing work
+
+- Re-read the current branch root `AGENTS.md` (blob `a4beeee1c0ec46faab28502957c0e53850b2855d`) and the complete canonical shared protocol (blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`) sequentially.
+- Read the current Worker A checkpoint and the latest Worker B handoff on PR #265. Worker B's exact head is `a58eee3e5fe192a668982c8ff14e4b12fe227635`; its Verify, Genesis, and Browser Acceptance runs passed, with 16/16 browser journeys. Its game/quest files remain Worker B-owned.
+- Rechecked the live PR #263 and PR #264 heads and compared both sides to their common base. PR #263 had three parent-only commits touching only `game/sw.js` and `test/game-package.test.mjs`; no changed-path overlap existed with PR #264.
+- Linked repositories remain read-only: required root instructions/protocol/bootstrap are absent or cannot be executed through the available interface. No cross-repository write was attempted.
+
+### Ancestry reconciliation
+
+- `5b2cdb511b46af2b3fd42ea44071c043c907f462` — created a two-parent merge commit on the existing PR #264 branch, preserving its history and bringing in the current PR #263 parent changes to `game/sw.js` and `test/game-package.test.mjs`.
+- GitHub compare after reconciliation: PR #264 is 31 commits ahead / 0 behind its current parent. No rebase, force update, parent-branch write, or merge of either PR occurred.
+
+### Source-backed defect and implementation
+
+The scoped preflight checked every path component with `lstat`, then resolved the target with `realpath`, but opened the resolved referent. A final path component replaced with an in-repository symlink between those operations could therefore be followed; an in-root referent could pass the root-containment check.
+
+- `01a9118162c80f530b0de16f5a7515e58e0dc1e7` — open the original requested path, not the resolved referent, with `O_NOFOLLOW` where supported; add an immediate post-open `lstat` fail-closed check for platforms without that flag.
+- `678a2b1aa2d31e82ce889e9b04780241e2851c41` — add a deterministic regression that swaps the final target for an in-repository symlink immediately after the initial `lstat`. The replacement bytes are not admitted to the receipt.
+- This is a final-component guard, not a claim of race-free parent-directory traversal or universal hostile-filesystem immunity.
+
+### Exact-head hosted verification — `678a2b1aa2d31e82ce889e9b04780241e2851c41`
+
+- Verify [41336101428](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41336101428): **success**. Preflight receipt status `ready`; 73 declared targets; `warnings: []`; `failures: []`. Node test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise reported `passed: true`.
+- Genesis Evidence Invariant [41336101352](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41336101352): **success**.
+- Browser Acceptance [41336101360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41336101360): **success**, 16/16 journeys. Artifact [13095129687](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41336101360/artifacts/13095129687), ZIP SHA-256 `37652a4df1eff65e32197fd0569be512dc410c2cdcd9ed9173a062a8ddba94c7`.
+- No local checkout, Node 24 preflight, or local test execution is claimed; the connected remote-computer listing did not expose an available machine. Hosted exact-head results are the observed execution evidence.
+
+### Founder authorization correction
+
+- PR #16's actual diff is the Experiment 001 detached-Ed25519 INSTALL approval flow; it is closed/unmerged and PR #18 is its merged content-preserving transplant. It is not the caller-supplied `verification.valid` defect.
+- Mainline `src/authority/decision.js` still has the separate caller-controlled verification flag; PR #244 proposes sealed/context-bound verification, but the live server mutation boundary does not import it. Mainline `game/server.mjs` also still auto-generates a local Founder bearer key when none is supplied; the explicit-key startup guard is proposed on Worker B's PR #265 lineage, not mainline. No key, trust root, Founder identity, or custody was invented or changed.
+
+### Next ranked work
+
+1. Port the unmerged bounded candidate-program AST capability from `experiment/candidate-program-acquisition-20261030` onto a clean child branch of this reconciled head. The old branch is 2 commits ahead / 12 behind main and has no open PR; its source is a bounded data interpreter with signed INSTALL, durable ledger persistence, and fresh-process REUSE. Preserve its explicit limit: this is deterministic capability installation, not independent AI discovery or proof of human Founder identity. Add its source/test/docs to the scoped preflight manifest and require exact-head CI.
+2. Coordinate the sealed decision verifier with the active server branches only after the trusted key fingerprint/audience and canonical proposal/quest/output resolvers are explicitly grounded. Do not change Founder key custody.
+3. Keep linked repositories read-only until their own root instructions and required bootstrap are available.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
