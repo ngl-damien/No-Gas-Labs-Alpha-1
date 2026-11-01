@@ -1236,7 +1236,7 @@ export function getQuestTrail(world, viewer, options = null) {
           ? { type: 'location', id: 'guild_hall' } : null,
         !guildMembership.available
           ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
-        'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+        'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
       ),
       trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,
@@ -1350,7 +1350,7 @@ export function getQuestTrail(world, viewer, options = null) {
         ? { type: 'location', id: 'guild_hall' } : null,
       !guildMembership.available
         ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
-      'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+      'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
     ),
     trailMilestone(
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
