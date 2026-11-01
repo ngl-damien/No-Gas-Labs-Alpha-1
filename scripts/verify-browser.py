@@ -10,6 +10,7 @@ import select
 import subprocess
 import tempfile
 import functools
+import hashlib
 import http.server
 import threading
 from pathlib import Path
@@ -532,6 +533,39 @@ def shared(browser,url,data,out):
         b.wait_for_function("async()=>{const state=await fetch('/api/state').then(response=>response.json());return state.world.events.some(event=>event.type==='discover'&&event.actor?.id===state.viewer.id&&event.locationId==='relay');}",timeout=15000)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        # Seed one disposable, pending decision through the existing authenticated
+        # service route. The fixture is not a world event or a real approval.
+        evaluation_bytes='Browser fixture bytes: a proposal stays pending until the Founder chooses in the Chamber.'
+        evaluation_raw=evaluation_bytes.encode('utf-8')
+        policy_response=owner.request.post(url+'api/decisions/policy',data={
+            'id':'browser-docket-policy',
+            'reviewWindowMs':3600000,
+            'basis':'Disposable browser fixture only; no production review policy.'
+        })
+        assert policy_response.status==200, policy_response.text()
+        proposal_response=owner.request.post(url+'api/decisions/proposals',data={
+            'id':'browser-docket-pending',
+            'title':'Browser decision docket: preserve the human gate',
+            'evaluation':{
+                'bytes':evaluation_bytes,
+                'receipt':{
+                    'algorithm':'sha256',
+                    'digest':hashlib.sha256(evaluation_raw).hexdigest(),
+                    'size':len(evaluation_raw)
+                }
+            },
+            'risks':['This disposable fixture must never be treated as production approval.'],
+            'rollback':'Discard the disposable browser service data directory.',
+            'proposedEffect':'Verify exact Guild Hall to Decision Chamber routing without a disposition.'
+        })
+        assert proposal_response.status==200, proposal_response.text()
+        decision_id=proposal_response.json()['id']
+        assert decision_id=='browser-docket-pending'
+        decision_snapshot_before=owner.request.get(url+'api/decisions').json()
+        assert decision_snapshot_before['decisions'][0]['status']=='PENDING'
+        assert decision_snapshot_before['decisions'][0]['disposition'] is None
+
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
         close_sheet(a)
         snapshot=visitor.request.get(url+'api/state').json()
@@ -813,9 +847,39 @@ def shared(browser,url,data,out):
             a.locator('#verify-founder').click()
             a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
 
-        # The Guild Hall dossier routes to the existing human gate; navigation
-        # must not create a decision, policy, world event, or XP.
+        # The Guild Hall turns the service snapshot into stable, read-only decision
+        # objects. Only the Decision Chamber exposes the Founder disposition controls.
         decision_before=owner.request.get(url+'api/state').json()['world']
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        decision_board=a.locator('#guild-decision-docket')
+        expect(decision_board).to_contain_text('Browser decision docket: preserve the human gate')
+        expect(decision_board).to_contain_text('PENDING')
+        expect(decision_board.locator('[data-guild-decision-id="browser-docket-pending"]')).to_have_count(1)
+        expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+        expect(decision_board).not_to_contain_text(evaluation_bytes)
+        decision_card=decision_board.locator('[data-guild-decision-id="browser-docket-pending"]')
+        decision_link=decision_card.get_by_role('button',name='Open in Decision Chamber →',exact=True)
+        expect(decision_link).to_be_visible()
+        decision_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
+        expect(a.locator('#sheet-content')).to_contain_text('FOUNDER GATE')
+        chamber_card=a.locator('[data-decision-id="browser-docket-pending"]')
+        expect(chamber_card).to_be_visible()
+        expect(chamber_card.locator('[data-gate-action]')).to_have_count(3)
+        expect(a.locator('#sheet-content')).to_contain_text(evaluation_bytes)
+        assert a.evaluate("id=>{const card=[...document.querySelectorAll('[data-decision-id]')].find(item=>item.dataset.decisionId===id);return Boolean(card&&document.activeElement===card)}",decision_id), 'Guild Hall navigation must focus the exact retained decision card'
+        decision_snapshot=owner.request.get(url+'api/decisions').json()
+        assert decision_snapshot['revision']==decision_snapshot_before['revision']
+        assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'Navigation must not create or dispose the pending decision'
+        decision_after=owner.request.get(url+'api/state').json()['world']
+        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'Opening the docket and exact Chamber card must not mutate world progress'
+        close_sheet(a)
+
+        # The older Moonshot dossier route still reaches the Chamber, but it
+        # does not pretend that a Moonshot ID is a decision-service ID.
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
@@ -826,13 +890,33 @@ def shared(browser,url,data,out):
         expect(decision_link).to_be_visible()
         decision_link.click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
-        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
-        expect(a.locator('#sheet-content')).to_contain_text('FOUNDER GATE')
-        expect(a.locator('#sheet-content')).to_contain_text('No operational review policy is activated.')
-        decision_snapshot=owner.request.get(url+'api/decisions').json()
-        assert decision_snapshot['policy'] is None and decision_snapshot['decisions']==[], 'Opening the Decision Chamber must not create a policy or decision'
-        decision_after=owner.request.get(url+'api/state').json()['world']
-        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'Opening the Decision Chamber must not submit or approve a proposal or mutate world progress'
+        expect(a.locator('[data-decision-id="browser-docket-pending"]')).to_be_visible()
+        close_sheet(a)
+
+        # A Witness can inspect the public docket and Chamber card, but receives
+        # neither Founder evaluation bytes nor disposition controls.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        witness_docket=b.locator('#guild-decision-docket')
+        expect(witness_docket).to_contain_text('Browser decision docket: preserve the human gate')
+        expect(witness_docket).not_to_contain_text(evaluation_bytes)
+        expect(b.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+        witness_link=witness_docket.get_by_role('button',name='Open in Decision Chamber →',exact=True)
+        witness_link.click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        expect(b.locator('[data-decision-id="browser-docket-pending"]')).to_be_visible()
+        expect(b.locator('[data-gate-action]')).to_have_count(0)
+        expect(b.locator('#sheet-content')).not_to_contain_text(evaluation_bytes)
+        close_sheet(b)
+
+        # TownSquare is a status-only register, not a second Founder gate.
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to TownSquare · Institution Records',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The institution at work.'")
+        expect(a.locator('#sheet-content')).to_contain_text('DECISION STATUS')
+        expect(a.locator('#sheet-content')).to_contain_text('Browser decision docket: preserve the human gate')
+        expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
         close_sheet(a)
 
         # Quest objectives live on the world HUD, not inside the character sheet.
@@ -919,7 +1003,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'decisionDocket':1}
     finally:owner.close();visitor.close()
 
 
