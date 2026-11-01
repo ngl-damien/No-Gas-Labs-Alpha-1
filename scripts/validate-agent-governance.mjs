@@ -91,15 +91,23 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     }
   }
 
-  const entryText = await inspect(entry, 'root-instructions');
+  // Governance inputs are anchored to the repository root contract, not caller-selected decoys.
+  if (entry !== 'AGENTS.md') {
+    failures.push({ path: String(entry), reason: 'root instruction entry must be the repository root AGENTS.md; alternate entry paths are not permitted' });
+  }
+  const entryText = await inspect('AGENTS.md', 'root-instructions');
   const inferredProtocol = entryText ? protocolFromEntry(entryText) : null;
-  const protocolPath = protocol ?? (inferredProtocol && !/^https?:\/\//i.test(inferredProtocol) ? inferredProtocol : null);
-  if (!protocolPath) failures.push({ path: entry, reason: 'no local canonical protocol path resolved; for a remote protocol URL, pass --protocol pointing to a locally pinned copy' });
+  const inferredProtocolIsRemote = typeof inferredProtocol === 'string' && /^https?:\/\//i.test(inferredProtocol);
+  const protocolPath = inferredProtocolIsRemote ? protocol : inferredProtocol;
+  if (!protocolPath) failures.push({ path: 'AGENTS.md', reason: 'no local canonical protocol path resolved; for a remote protocol URL, pass --protocol pointing to a locally pinned copy' });
+  if (inferredProtocol && !inferredProtocolIsRemote && protocol && protocol !== inferredProtocol) {
+    failures.push({ path: protocol, reason: 'explicit --protocol cannot override the local canonical protocol declared by root AGENTS.md' });
+  }
   if (entryText && !/(STOP:\s*Read this file before|Before any work)/i.test(entryText)) {
-    failures.push({ path: entry, reason: 'root instructions must explicitly require reading them before repository work' });
+    failures.push({ path: 'AGENTS.md', reason: 'root instructions must explicitly require reading them before repository work' });
   }
   if (entryText) for (const marker of ENTRY_MARKERS) {
-    if (!entryText.includes(marker)) failures.push({ path: entry, reason: 'missing mandatory instruction marker: ' + marker });
+    if (!entryText.includes(marker)) failures.push({ path: 'AGENTS.md', reason: 'missing mandatory instruction marker: ' + marker });
   }
 
   const protocolText = protocolPath ? await inspect(protocolPath, 'shared-protocol') : null;
@@ -146,12 +154,22 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     for (const directory of directories) if (directory) await inspect(directory + '/AGENTS.md', 'nested-instructions', false);
   }
 
-  let checkpointRecord = null;
+  const canonicalCheckpointMatch = entryText ? /--checkpoint\s+([^\s]+)/.exec(entryText) : null;
+  const canonicalCheckpointPath = canonicalCheckpointMatch?.[1] ?? null;
+  if (normalizedTargets.length && !canonicalCheckpointPath) {
+    failures.push({ path: 'AGENTS.md', reason: 'root instructions must declare the canonical --checkpoint path for targeted work' });
+  }
   if (normalizedTargets.length && !checkpoint) {
     failures.push({ path: '(checkpoint)', reason: 'targeted work requires --checkpoint pointing to the latest durable checkpoint' });
-  } else if (checkpoint) {
+  }
+  let checkpointRecord = null;
+  if (checkpoint && canonicalCheckpointPath && checkpoint !== canonicalCheckpointPath) {
+    failures.push({ path: checkpoint, reason: 'checkpoint path must match the canonical --checkpoint declared by root AGENTS.md' });
+  } else if (checkpoint && canonicalCheckpointPath) {
     await inspect(checkpoint, 'durable-checkpoint');
     checkpointRecord = files.find(file => file.path === checkpoint) ?? null;
+  } else if (checkpoint && !canonicalCheckpointPath && !normalizedTargets.length) {
+    failures.push({ path: 'AGENTS.md', reason: 'root instructions do not declare a canonical --checkpoint path' });
   }
   if (!normalizedTargets.length) warnings.push('No target paths supplied: root-instruction validation only; this does not authorize edits to any path.');
 
@@ -160,7 +178,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     generatedAt: new Date().toISOString(),
     repositoryRoot: rootPath,
     status: failures.length ? 'blocked' : 'ready',
-    entry,
+    entry: 'AGENTS.md',
     protocol: protocolPath,
     targets: normalizedTargets,
     checkpoint: checkpointRecord?.path ?? null,
