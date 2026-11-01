@@ -5,7 +5,7 @@ import { createHash, createPublicKey, randomUUID, verify as verifySignature } fr
 import { TextDecoder } from 'node:util';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { publishAtomicLock } from './atomic-lock.mjs';
-import { candidateProgramHash, evaluateCandidateProgram, validateCandidateProgram } from './candidate-program.mjs';
+import { candidateProgramHash, evaluateCandidateProgram, validateCandidateProgram, proveCandidateSquareProgram } from './candidate-program.mjs';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT = 1_000_000;
@@ -63,7 +63,7 @@ const initial = () => ({ version: 2, sequence: 0, previous: 'GENESIS', records: 
 
 function square(n) { return n * n; }
 function double(n) { return n * 2; }
-const CANDIDATE_PROGRAM_STRATEGIES = new Set(['candidate-program-v1', 'candidate-program-v2']);
+const CANDIDATE_PROGRAM_STRATEGIES = new Set(['candidate-program-v1', 'candidate-program-v2', 'candidate-program-v3']);
 
 function implementationFor(strategy, program = undefined) {
   if (strategy === 'square') return square;
@@ -89,7 +89,7 @@ const LEGACY_IMPLEMENTATION_HASHES = Object.freeze({
 });
 export function implementationHash(strategy, program = undefined) {
   if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) {
-    return candidateProgramHash(program, strategy === 'candidate-program-v2' ? 'v2' : 'v1');
+    return candidateProgramHash(program, strategy === 'candidate-program-v3' ? 'v3' : strategy === 'candidate-program-v2' ? 'v2' : 'v1');
   }
   if (program !== undefined || !implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
   return hashBytes(Buffer.from(IMPLEMENTATION_IDENTITIES[strategy]));
@@ -120,6 +120,38 @@ const candidateProgramV2Cases = Object.freeze([
   { n: 1_000_000, out: 1_000_000_000_000 }
 ]);
 function challengeWithHash(strategy, hashFor, program = undefined) {
+  if (strategy === 'candidate-program-v3') {
+    let implementation;
+    try { implementation = implementationFor(strategy, program); }
+    catch { implementation = null; }
+    if (!implementation) {
+      return { total: 1, passed: 0, failed: ['CANDIDATE_PROGRAM_INVALID'], implementationHash: null, certificate: null };
+    }
+    let implementationHashValue;
+    try { implementationHashValue = hashFor(strategy, program); }
+    catch {
+      return { total: 1, passed: 0, failed: ['CANDIDATE_PROGRAM_INVALID'], implementationHash: null, certificate: null };
+    }
+    try {
+      const certificate = proveCandidateSquareProgram(program);
+      const passed = certificate.matchesSquare;
+      return {
+        total: 1,
+        passed: passed ? 1 : 0,
+        failed: passed ? [] : ['POLYNOMIAL_NOT_SQUARE'],
+        implementationHash: implementationHashValue,
+        certificate
+      };
+    } catch (error) {
+      return {
+        total: 1,
+        passed: 0,
+        failed: [error?.message || 'CANDIDATE_PROOF_INVALID'],
+        implementationHash: implementationHashValue,
+        certificate: null
+      };
+    }
+  }
   const challengeCases = strategy === 'candidate-program-v2' ? candidateProgramV2Cases : cases;
   let implementation;
   try { implementation = implementationFor(strategy, program); }

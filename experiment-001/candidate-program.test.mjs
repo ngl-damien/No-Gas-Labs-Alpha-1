@@ -16,6 +16,15 @@ const squareProgram = () => ({
   left: { op: 'input' },
   right: { op: 'input' }
 });
+const factoredSquareProgram = () => ({
+  op: 'add',
+  left: {
+    op: 'multiply',
+    left: { op: 'add', left: { op: 'input' }, right: { op: 'const', value: 1 } },
+    right: { op: 'subtract', left: { op: 'input' }, right: { op: 'const', value: 1 } }
+  },
+  right: { op: 'const', value: 1 }
+});
 const overfitProgram = () => ({
   op: 'add',
   left: squareProgram(),
@@ -100,6 +109,115 @@ test('candidate-program-v2 rejects an arithmetic interpolant that passes every v
     reason: 'INSTALL_PROOF_INVALID'
   }, 'candidate v2 must not fall through to the built-in legacy proof path');
 });
+
+test('candidate-program-v3 proves exact polynomial equivalence and rejects unsupported or unsafe forms', async () => {
+  const lib = await loadPinned(pair());
+  const equivalent = factoredSquareProgram();
+  const proof = lib.challenge('candidate-program-v3', equivalent);
+  assert.equal(proof.total, 1);
+  assert.equal(proof.passed, 1);
+  assert.deepEqual(proof.failed, []);
+  assert.equal(proof.implementationHash, candidateProgramHash(equivalent, 'v3'));
+  assert.deepEqual(proof.certificate.coefficients, ['0', '0', '1']);
+  assert.equal(proof.certificate.method, 'exact-integer-polynomial-normal-form');
+  assert.equal(proof.certificate.inputMin, -1_000_000);
+  assert.equal(proof.certificate.inputMax, 1_000_000);
+  assert.equal(proof.certificate.maxIntermediateAbsoluteBound, '1000000000001');
+  assert.equal(proof.certificate.matchesSquare, true);
+  for (const input of [-1_000_000, -17, 0, 17, 1_000_000]) {
+    assert.equal(evaluateCandidateProgram(equivalent, input), input * input);
+  }
+
+  const nonSquare = {
+    op: 'add',
+    left: squareProgram(),
+    right: { op: 'const', value: 1 }
+  };
+  const mismatch = lib.challenge('candidate-program-v3', nonSquare);
+  assert.equal(mismatch.passed, 0);
+  assert.deepEqual(mismatch.failed, ['POLYNOMIAL_NOT_SQUARE']);
+  assert.deepEqual(mismatch.certificate.coefficients, ['1', '0', '1']);
+
+  const nonPolynomial = lib.challenge('candidate-program-v3', {
+    op: 'abs', arg: { op: 'input' }
+  });
+  assert.equal(nonPolynomial.passed, 0);
+  assert.deepEqual(nonPolynomial.failed, ['CANDIDATE_PROOF_UNSUPPORTED_OPERATOR']);
+
+  const square = () => ({
+    op: 'multiply', left: { op: 'input' }, right: { op: 'input' }
+  });
+  const fourthPower = () => ({
+    op: 'multiply', left: square(), right: square()
+  });
+  const unsafeIntermediate = lib.challenge('candidate-program-v3', {
+    op: 'add',
+    left: { op: 'subtract', left: fourthPower(), right: fourthPower() },
+    right: square()
+  });
+  assert.equal(unsafeIntermediate.passed, 0);
+  assert.deepEqual(unsafeIntermediate.failed, ['CANDIDATE_PROOF_INTERMEDIATE_OUT_OF_BOUNDS']);
+
+  const executor = pair();
+  const rejected = lib.makeInstallationProposal({
+    id: 'candidate-nonsquare-v3',
+    strategy: 'candidate-program-v3',
+    program: nonSquare,
+    executorPublicKeyPem: pem(executor)
+  });
+  assert.equal(lib.validateInstallationProposal(rejected, Date.now(), { allowLegacy: true }).reason,
+    'INSTALL_PROOF_INVALID');
+});
+
+test('signed candidate-program-v3 proof is reusable after a fresh-process restart', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const issuedAt = Date.now();
+  const program = factoredSquareProgram();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-square-v3',
+    strategy: 'candidate-program-v3',
+    program,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-program-v3',
+    issuedAt,
+    expiresAt: issuedAt + 60_000,
+    maxUses: 1
+  });
+  assert.equal(draft.proof.total, 1);
+  assert.equal(draft.proof.passed, 1);
+  assert.deepEqual(draft.proof.certificate.coefficients, ['0', '0', '1']);
+  assert.equal(draft.implementationHash, candidateProgramHash(program, 'v3'));
+
+  const storePath = join(directory, 'store-v3');
+  const store = await lib.openInstitution(storePath, pem(founder));
+  const signature = sign(null, Buffer.from(lib.approvalPayload(draft)), founder.privateKey).toString('base64url');
+  await store.commit(draft, signature);
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-candidate-program-v3', input: -17, output: 289 };
+  const receipt = sign(null, Buffer.from(lib.executionReceiptPayload(use)), executor.privateKey).toString('base64url');
+  const workerPath = new URL('./reuse-worker.mjs', import.meta.url).pathname;
+  const child = spawnSync(process.execPath, [
+    workerPath, storePath, pem(founder), JSON.stringify(use), receipt
+  ], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const snapshot = JSON.parse(child.stdout.trim());
+  assert.equal(snapshot.sequence, 2);
+  assert.equal(snapshot.capabilities[draft.id].strategy, 'candidate-program-v3');
+  assert.equal(snapshot.capabilities[draft.id].uses, 1);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, program);
+  assert.equal(snapshot.capabilities[draft.id].implementationHash, draft.implementationHash);
+
+  const reopened = await lib.openInstitution(storePath, pem(founder));
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.equal(reopened.snapshot().capabilities[draft.id].strategy, 'candidate-program-v3');
+  assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
+}));
 
 test('candidate AST rejects accessors, hidden properties, symbols, and custom prototypes', () => {
   let getterCalls = 0;
