@@ -625,7 +625,7 @@ def adversary_challenge_handoff(browser,url,out):
         draft_editor.fill(edited_text)
         review_button=draft_card.get_by_role('button',name='Review challenge in Moonshot Field →',exact=True)
         expect(review_button).to_be_visible()
-        before_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,characterXp:document.querySelector('#xp-count')?.textContent}}")
+        before_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,publicationXp:document.querySelector('#xp-count')?.textContent}}")
         review_button.click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Challenge experiment report'")
         expect(page.locator('#experiment-challenge-type')).to_have_value('methodology')
@@ -650,13 +650,15 @@ def adversary_challenge_handoff(browser,url,out):
         assert len(challenged_world['events'])==len(before_review['eventIds'])+1
         assert [event['id'] for event in challenged_world['events'] if event['id'] not in before_review['eventIds']]==[challenge['id']]
         assert challenged_world['xp']==before_review['worldXp']==0, 'A challenge must not mint institution-wide publication XP'
-        expect(page.locator('#xp-count')).to_have_text('25')
+        expect(page.locator('#xp-count')).to_have_text('0')
         challenge_card=page.locator('[data-research-activity-id]').filter(has_text=final_text).last
         expect(challenge_card).to_be_visible()
         expect(challenge_card).to_contain_text('DISSENT · NOT ADJUDICATED')
-        assert not errors,errors
         page.screenshot(path=str(out/'adversary-challenge-handoff.png'))
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':25,'worldXp':0,'errors':errors}
+        character_xp=character_xp_components(page)
+        assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        assert not errors,errors
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
     finally:
         context.close()
 
