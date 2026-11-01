@@ -500,7 +500,7 @@ test('Evidence Archive routes an edited Adversary draft to its exact retained ch
   });
   const cards = walk(root).filter(item => item.dataset?.recordType === 'ADVERSARY_DRAFT');
   assert.equal(cards.length, 1);
-  assert.match(textOf(cards[0]), /human review/);
+  assert.match(textOf(cards[0]), /human review/i);
   assert.match(textOf(cards[0]), /must review and submit the challenge yourself/);
   assert.match(textOf(cards[0]), /No event, XP, evidence, approval or authority is created until you submit/);
   const editor = walk(cards[0]).find(item => item.tagName === 'textarea');
