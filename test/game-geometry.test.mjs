@@ -1,12 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,GUILD_NPCS,institutionActivityCount,projectPublicationWorldObjects} from '../game/world-view.mjs';
 import {COLLABORATOR_ROLES} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
 import {createWorld} from '../game/model.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
 
 const viewFixtures = new WeakMap();
+
+function makePublicationWorld(count = 1) {
+  const events = [];
+  const creations = [];
+  const start = Date.parse('2026-10-31T12:00:00.000Z');
+  for (let index = 0; index < count; index += 1) {
+    const creationId = 'publication-' + index;
+    const publishedAt = new Date(start + index * 1000).toISOString();
+    creations.push({
+      id: creationId,
+      title: 'Published work ' + index,
+      kind: 'comic',
+      version: 1,
+      publishedAt,
+      receipt: { algorithm: 'sha256', digest: 'a'.repeat(64), size: 128 + index },
+      versions: [],
+      position: { x: 1100 + index * 2, y: 900 },
+    });
+    events.push({
+      id: 'publication-event-' + index,
+      type: 'publish',
+      actor: { id: 'founder-publisher', role: 'founder' },
+      at: publishedAt,
+      creationId,
+      version: 1,
+    });
+  }
+  return { id: 'publication-house-fixture', events, creations, xp: 999 };
+}
 
 function makeView(t) {
   let fixture = viewFixtures.get(t);
@@ -54,6 +83,113 @@ function makeView(t) {
   fixture.views.push(view);
   return { view, interactions, positions, discoveries, canvas };
 }
+
+test('Publication House projects unique retained publications into walkable, source-bound map objects', t => {
+  const world = makePublicationWorld(2);
+  const before = structuredClone(world);
+  const objects = projectPublicationWorldObjects(world);
+  assert.equal(objects.length, 2);
+  assert.ok(objects.every(object => object.type === 'publication-object' && object.mapVisible));
+  assert.ok(objects.every(object => object.actorId === 'founder-publisher'));
+  assert.ok(objects.every(object => object.retainedVersionCount === 1));
+  assert.ok(objects.every(object => object.receipt.algorithm === 'sha256' && object.receipt.size >= 128));
+  assert.ok(objects.every(object => isWalkable(object.x, object.y + 18, world.creations)));
+  assert.equal(new Set(objects.map(object => object.id)).size, 2);
+  assert.equal(new Set(objects.map(object => object.x + ':' + object.y)).size, 2);
+  assert.deepEqual(
+    projectPublicationWorldObjects(world).map(object => [object.id, object.x, object.y, object.eventId]),
+    objects.map(object => [object.id, object.x, object.y, object.eventId]),
+    'the same append-only history must produce stable shelf positions'
+  );
+  assert.deepEqual(world, before, 'the Publication House is a read-only projection');
+
+  const { view, interactions } = makeView(t);
+  view.setWorld(world);
+  const target = view.publicationObjects.find(object => object.creationId === 'publication-0');
+  assert.ok(target);
+  view.setQuestAction({ type: 'publication-object', creationId: target.creationId, version: target.version }, 'Inspect a publication');
+  assert.equal(view.questMarker?.targetId, target.id);
+  assert.equal(view.questMarker?.targetType, 'publication-object');
+  view.setPlayer({ x: 300, y: 820 });
+  view.goTo(target.id, 'publication-object');
+  assert.equal(view.target, target.id);
+  for (let step = 0; step < 100 && (view.route.length || view.target); step += 1) {
+    view.update(0.045, step * 45);
+  }
+  assert.deepEqual(interactions, [{ type: 'creation', id: target.creationId }],
+    'arriving at a shelf opens its exact current artifact through the existing creation interaction');
+  assert.deepEqual(world, before, 'walking to a publication object creates no canonical event or reward');
+});
+
+test('Publication House fails closed on missing, ambiguous, malformed, stale and non-Founder publication evidence', () => {
+  const valid = makePublicationWorld(1);
+  const noEvent = { ...valid, events: [] };
+  assert.deepEqual(projectPublicationWorldObjects(noEvent), []);
+
+  const duplicateReference = {
+    ...valid,
+    events: [...valid.events, { ...valid.events[0], id: 'publication-event-duplicate' }],
+  };
+  assert.deepEqual(projectPublicationWorldObjects(duplicateReference), []);
+
+  const duplicateEventId = {
+    ...valid,
+    events: [...valid.events, { ...valid.events[0], type: 'note' }],
+  };
+  assert.deepEqual(projectPublicationWorldObjects(duplicateEventId), []);
+
+  const wrongActor = {
+    ...valid,
+    events: valid.events.map(event => ({ ...event, actor: { id: 'witness-publisher', role: 'witness' } })),
+  };
+  assert.deepEqual(projectPublicationWorldObjects(wrongActor), []);
+
+  const wrongTime = {
+    ...valid,
+    events: valid.events.map(event => ({ ...event, at: '2026-10-31T12:10:00.000Z' })),
+  };
+  assert.deepEqual(projectPublicationWorldObjects(wrongTime), []);
+
+  const malformedReceipt = {
+    ...valid,
+    creations: valid.creations.map(creation => ({
+      ...creation,
+      receipt: { ...creation.receipt, digest: 'not-a-sha256-receipt' },
+    })),
+  };
+  assert.deepEqual(projectPublicationWorldObjects(malformedReceipt), []);
+
+  const duplicateCreation = {
+    ...valid,
+    creations: [...valid.creations, structuredClone(valid.creations[0])],
+  };
+  assert.deepEqual(projectPublicationWorldObjects(duplicateCreation), []);
+
+  let getterCalled = false;
+  const accessorCreation = structuredClone(valid.creations[0]);
+  Object.defineProperty(accessorCreation, 'title', {
+    enumerable: true,
+    get() { getterCalled = true; throw new Error('title getter must not run'); },
+  });
+  assert.deepEqual(projectPublicationWorldObjects({
+    ...valid,
+    creations: [accessorCreation],
+  }), []);
+  assert.equal(getterCalled, false, 'untrusted accessors are not evaluated');
+});
+
+test('Publication House bounds visible shelf objects and keeps overflow inspectable outside the map', () => {
+  const world = makePublicationWorld(60);
+  const before = structuredClone(world);
+  const objects = projectPublicationWorldObjects(world);
+  const visible = objects.filter(object => object.mapVisible);
+  assert.equal(objects.length, 60, 'all valid current publications remain in the read-only projection');
+  assert.equal(visible.length, 48, 'the map shelf has a bounded 8 by 6 layout');
+  assert.ok(visible.every(object => Number.isFinite(object.x) && Number.isFinite(object.y)));
+  assert.equal(new Set(visible.map(object => object.x + ':' + object.y)).size, 48);
+  assert.ok(objects.filter(object => !object.mapVisible).every(object => object.x === null && object.y === null));
+  assert.deepEqual(world, before);
+});
 
 test('discovery de-duplication resets when the actor or world scope changes', t => {
   const { view, discoveries } = makeView(t);
