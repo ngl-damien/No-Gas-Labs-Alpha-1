@@ -416,6 +416,25 @@ test('an exclusive store lease rejects a second writer and is released by closeG
 });
 
 
+test('direct server factory requires an explicit Founder key by default before creating runtime data', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-direct-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+
 test('production mode cannot be bypassed with requireExplicitFounderKey false', async t => {
   const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
   const dataDir = join(parentDir, 'runtime');
