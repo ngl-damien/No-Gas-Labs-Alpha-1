@@ -486,6 +486,11 @@ test('Adversary draft bridge rejects cross-world, stale, duplicate, and source-m
   changedSource.events.find(event => event.id === 'report-event-1').observation = 'A different retained observation.';
   assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, changedSource).reason,
     'TARGET_REPORT_SOURCE_MISMATCH');
+
+  const misboundDuplicate = structuredClone(packets.world);
+  misboundDuplicate.events.find(event => event.id === 'challenge-event-1').reportId = 'another-report';
+  assert.equal(createAdversaryChallengeDraft(packets.adversary, responseText, misboundDuplicate).reason,
+    'DUPLICATE_REFERENCE_NOT_UNIQUE');
 });
 
 test('Adversary draft bridge rejects non-Adversary and accessor-backed world histories', () => {
