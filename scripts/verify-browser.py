@@ -1083,7 +1083,6 @@ def shared(browser,url,data,out):
 
         # The Guild Hall turns the service snapshot into stable, read-only decision
         # objects. Only the Decision Chamber exposes the Founder disposition controls.
-        decision_before=owner.request.get(url+'api/state').json()['world']
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
