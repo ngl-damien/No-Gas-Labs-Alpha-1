@@ -96,6 +96,10 @@ self.addEventListener('fetch', event => {
       } catch {
         return offlineNavigation(request);
       }
+      if (!response.ok && response.status >= 500 && response.status <= 599) {
+        const fallback = await offlineNavigation(request);
+        if (fallback?.ok) return fallback;
+      }
       await cacheResponse(await openCache(), request, response);
       return response;
     })());

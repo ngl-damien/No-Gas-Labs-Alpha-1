@@ -14,7 +14,7 @@ test('module escaping game source fails instead of packaging private bytes',asyn
 test('standalone supplies its own network-denying host policy without a server header',async()=>{const dir=await fixture();try{const r=await buildGame({rootDir:dir}),html=await readFile(r.htmlPath,'utf8');assert.match(html,/http-equiv="Content-Security-Policy"/);assert.ok(html.includes("connect-src 'none'"));assert.ok(html.includes("script-src 'unsafe-inline' data:"));assert.ok(html.includes("img-src data:"));}finally{await rm(dir,{recursive:true,force:true});}});
 test('runtime data nested beneath source roots never enters a public source archive',async()=>{const dir=await fixture();try{await mkdir(join(dir,'src/runtime'),{recursive:true});await writeFile(join(dir,'src/runtime/service.json'),'PRIVATE_NESTED_STATE_FIXTURE');await writeFile(join(dir,'src/saved-state.json'),'PRIVATE_CUSTOM_STATE_FIXTURE');const r=await buildGame({rootDir:dir}),entries=unzip(await readFile(r.zipPath));assert.ok(!entries.has('src/runtime/service.json'));assert.ok(!entries.has('src/saved-state.json'));assert.ok([...entries.values()].every(b=>!b.includes(Buffer.from('PRIVATE_NESTED_STATE_FIXTURE'))&&!b.includes(Buffer.from('PRIVATE_CUSTOM_STATE_FIXTURE'))));}finally{await rm(dir,{recursive:true,force:true});}});
 
-function serviceResponse(body, ok=true){return {ok,body,clone(){return serviceResponse(body,ok);}};}
+function serviceResponse(body, ok=true, status=ok?200:500){return {ok,status,body,clone(){return serviceResponse(body,ok,status);}};}
 async function serviceWorkerHarness({fetchImpl,openCache}){
   const handlers=new Map();
   const self={location:{origin:'https://ngl.test'},clients:{claim:async()=>{}},addEventListener:(name,handler)=>handlers.set(name,handler)};
@@ -58,6 +58,17 @@ test('successful network asset remains available when Cache Storage cannot open'
   assert.equal(response.body,'fresh-style');
 });
 
+test('successful network assets survive a cache lookup failure',async()=>{
+  let fetchCalls=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{fetchCalls+=1;return serviceResponse('fresh-module');},
+    openCache:async()=>({match:async()=>{throw new Error('cache read denied');}})
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(fetchCalls,1);
+  assert.equal(response.body,'fresh-module');
+});
+
 test('offline navigation still falls back to the cached application shell',async()=>{
   const cache={
     match:async request=>typeof request==='string'&&request==='https://ngl.test/index.html'?serviceResponse('cached-shell'):null
@@ -68,6 +79,31 @@ test('offline navigation still falls back to the cached application shell',async
   });
   const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/','navigate'));
   assert.equal(response.body,'cached-shell');
+});
+
+test('transient server navigation errors fall back to the cached application shell',async()=>{
+  const cache={match:async request=>typeof request==='string'&&request==='https://ngl.test/index.html'?serviceResponse('cached-shell'):null};
+  const handlers=await serviceWorkerHarness({fetchImpl:async()=>serviceResponse('upstream-unavailable',false,503),openCache:async()=>cache});
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/','navigate'));
+  assert.equal(response.body,'cached-shell');
+});
+
+test('client navigation errors remain visible instead of being hidden by the cached shell',async()=>{
+  let cacheMatches=0;
+  const cache={match:async()=>{cacheMatches+=1;return serviceResponse('cached-shell');}};
+  const handlers=await serviceWorkerHarness({fetchImpl:async()=>serviceResponse('not-found',false,404),openCache:async()=>cache});
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/','navigate'));
+  assert.equal(response.status,404);
+  assert.equal(response.body,'not-found');
+  assert.equal(cacheMatches,0);
+});
+
+test('server navigation errors remain visible when no cached shell is available',async()=>{
+  const cache={match:async()=>null};
+  const handlers=await serviceWorkerHarness({fetchImpl:async()=>serviceResponse('upstream-unavailable',false,503),openCache:async()=>cache});
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/','navigate'));
+  assert.equal(response.status,503);
+  assert.equal(response.body,'upstream-unavailable');
 });
 
 test('shared-world API reads remain outside the application-shell cache',async()=>{
