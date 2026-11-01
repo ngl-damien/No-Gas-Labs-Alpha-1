@@ -1094,9 +1094,21 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
         expect(decision_board).not_to_contain_text(evaluation_bytes)
         decision_card=decision_board.locator('[data-guild-decision-id="browser-docket-pending"]')
-        decision_link=decision_card.get_by_role('button',name='Open in Decision Chamber →',exact=True)
-        expect(decision_link).to_be_visible()
-        decision_link.click()
+        map_link=decision_card.get_by_role('button',name='Walk to map record →',exact=True)
+        expect(map_link).to_be_visible()
+        map_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Browser decision docket: preserve the human gate'")
+        map_record=a.locator('#sheet-content')
+        expect(map_record).to_have_attribute('data-institution-record-id','decision-docket:browser-docket-pending')
+        expect(map_record).to_have_attribute('data-institution-record-read-only','true')
+        expect(map_record).to_contain_text('Separate durable Decision Chamber docket record; not a world event.')
+        expect(map_record.locator('[data-gate-action]')).to_have_count(0)
+        assert (owner.request.get(url+'api/state').json()['world']['revision'],
+                len(owner.request.get(url+'api/state').json()['world']['events']),
+                owner.request.get(url+'api/state').json()['world']['xp']) == (
+                    decision_before['revision'],len(decision_before['events']),decision_before['xp']
+                ), 'walking to and inspecting the map object must not create canonical progress'
+        map_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
         expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
         expect(a.locator('#sheet-content')).to_contain_text('FOUNDER GATE')
@@ -1104,12 +1116,45 @@ def shared(browser,url,data,out):
         expect(chamber_card).to_be_visible()
         expect(chamber_card.locator('[data-gate-action]')).to_have_count(3)
         expect(a.locator('#sheet-content')).to_contain_text(evaluation_bytes)
-        assert a.evaluate("id=>{const card=[...document.querySelectorAll('[data-decision-id]')].find(item=>item.dataset.decisionId===id);return Boolean(card&&document.activeElement===card)}",decision_id), 'Guild Hall navigation must focus the exact retained decision card'
+        assert a.evaluate("id=>{const card=[...document.querySelectorAll('[data-decision-id]')].find(item=>item.dataset.decisionId===id);return Boolean(card&&document.activeElement===card)}",decision_id), 'map-record navigation must focus the exact retained decision card'
         decision_snapshot=owner.request.get(url+'api/decisions').json()
         assert decision_snapshot['revision']==decision_snapshot_before['revision']
-        assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'Navigation must not create or dispose the pending decision'
+        assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'map navigation must not create or dispose the pending decision'
         decision_after=owner.request.get(url+'api/state').json()['world']
-        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'Opening the docket and exact Chamber card must not mutate world progress'
+        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'opening the docket and exact Chamber card must not mutate world progress'
+        close_sheet(a)
+
+        # A transient Decision Service outage keeps the last valid map objects
+        # visible as stale, read-only records. The live Chamber must still refuse
+        # to expose Founder disposition controls until a fresh snapshot returns.
+        a.route('**/api/decisions',lambda route:route.abort())
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        stale_board=a.locator('#guild-decision-docket')
+        expect(stale_board).to_contain_text('STALE · LAST OBSERVED')
+        expect(stale_board).to_have_attribute('data-decision-docket-stale','true')
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+        stale_card=stale_board.locator('[data-guild-decision-id="browser-docket-pending"]')
+        stale_map_link=stale_card.get_by_role('button',name='Walk to map record →',exact=True)
+        stale_map_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Browser decision docket: preserve the human gate'")
+        stale_record=a.locator('#sheet-content')
+        expect(stale_record).to_contain_text('STALE · LAST OBSERVED')
+        expect(stale_record.locator('[data-gate-action]')).to_have_count(0)
+        stale_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+        stale_world=owner.request.get(url+'api/state').json()['world']
+        assert (stale_world['revision'],len(stale_world['events']),stale_world['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'offline inspection and failed live refresh must not mutate canonical world progress'
+        close_sheet(a)
+        a.unroute('**/api/decisions')
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','false')
+        expect(a.locator('#guild-decision-docket')).not_to_contain_text('STALE · LAST OBSERVED')
         close_sheet(a)
 
         # The older Moonshot dossier route still reaches the Chamber, but it
