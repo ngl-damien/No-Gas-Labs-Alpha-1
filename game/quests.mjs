@@ -887,6 +887,24 @@ export function projectDecisionDocket(snapshot) {
   });
 }
 
+
+/**
+ * Keep the last valid Decision Docket projection available as a stale,
+ * read-only map view when a refresh is unavailable or malformed. The fallback
+ * must be a projection produced by this module; callers clear it when the
+ * authenticated principal changes.
+ */
+export function selectDecisionDocketProjection(candidate, fallback = null) {
+  const current = isDecisionDocketProjection(candidate)
+    ? candidate
+    : projectDecisionDocket(candidate);
+  if (current.available) return Object.freeze({ projection: current, stale: false });
+  if (isDecisionDocketProjection(fallback) && fallback.available) {
+    return Object.freeze({ projection: fallback, stale: true });
+  }
+  return Object.freeze({ projection: current, stale: false });
+}
+
 export function getQuestTrail(world, viewer, options = null) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
