@@ -15,68 +15,148 @@ function sameSnapshot(a, b) {
 }
 
 function isPlainRecord(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
-function assertSafeReferenceDescriptor(reference) {
-  const referencePath = reference?.path;
-  if (!isPlainRecord(reference) ||
-      typeof referencePath !== 'string' || !referencePath.trim() ||
+function snapshotPlainDataRecord(value, { requiredKeys = [], optionalKeys = [] } = {}) {
+  try {
+    if (!isPlainRecord(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const allowed = requiredKeys.length || optionalKeys.length
+      ? new Set([...requiredKeys, ...optionalKeys])
+      : null;
+    if ((allowed && keys.some(key => typeof key !== 'string' || !allowed.has(key))) ||
+        requiredKeys.some(key => !Object.hasOwn(descriptors, key))) return null;
+
+    const snapshot = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (typeof key !== 'string' || !descriptor || descriptor.enumerable !== true ||
+          !Object.hasOwn(descriptor, 'value')) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotDenseDataArray(value) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 0 ||
+        keys.length !== length + 1 || !keys.includes('length')) return null;
+
+    const snapshot = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || descriptor.enumerable !== true ||
+          !Object.hasOwn(descriptor, 'value')) return null;
+      snapshot.push(descriptor.value);
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotRecoveryReference(reference) {
+  const snapshot = snapshotPlainDataRecord(reference, {
+    requiredKeys: ['path', 'sha256']
+  });
+  if (!snapshot || Object.keys(snapshot).length !== 2) {
+    throw new Error('Unsafe recovery reference');
+  }
+  const referencePath = snapshot.path;
+  const sha256 = snapshot.sha256;
+  if (typeof referencePath !== 'string' || !referencePath.trim() ||
       referencePath.includes('\\') || isAbsolute(referencePath) ||
       /(^|\/)(\.runtime|\.git|secrets|credentials)(\/|$)|\.(key|pem)$/i.test(referencePath) ||
       referencePath.split('/').some(part => !part || part === '.' || part === '..') ||
-      !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? '')) {
+      typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(sha256)) {
     throw new Error('Unsafe recovery reference');
   }
-  return referencePath;
+  return Object.freeze({ path: referencePath, sha256 });
 }
 
 function assertReferenceList(references, { maxReferences = MAX_RECOVERY_REFERENCES } = {}) {
-  if (!Array.isArray(references) || references.length === 0) {
+  const snapshot = snapshotDenseDataArray(references);
+  if (!snapshot) throw new Error('Recovery references must be a dense data array');
+  if (snapshot.length === 0) {
     throw new Error('Continuity record must contain at least one recovery reference');
   }
   if (!Number.isSafeInteger(maxReferences) || maxReferences < 1 ||
       maxReferences > MAX_RECOVERY_REFERENCES) {
     throw new TypeError('Recovery reference count limit is invalid');
   }
-  if (references.length > maxReferences) {
+  if (snapshot.length > maxReferences) {
     throw new Error(`Continuity record exceeds the ${maxReferences}-reference limit`);
   }
 
   const seen = new Set();
-  for (const reference of references) {
-    const referencePath = assertSafeReferenceDescriptor(reference);
-    if (seen.has(referencePath)) {
-      throw new Error(`Duplicate recovery reference path: ${referencePath}`);
+  const normalized = snapshot.map(snapshotRecoveryReference);
+  for (const reference of normalized) {
+    if (seen.has(reference.path)) {
+      throw new Error(`Duplicate recovery reference path: ${reference.path}`);
     }
-    seen.add(referencePath);
+    seen.add(reference.path);
   }
-  return references;
+  return Object.freeze(normalized);
 }
 
 /** Validate the continuity record's control fields before any reference I/O. */
 export function validateContinuityRecord(state) {
-  if (!isPlainRecord(state) ||
-      state.schema !== 'ngl.institution-continuity.v1' ||
-      state.principal !== 'Damien Featherstone' ||
-      (Object.hasOwn(state, 'mission') && (typeof state.mission !== 'string' || !state.mission.trim())) ||
-      typeof state.authority !== 'string' || !state.authority.trim() ||
-      typeof state.nextAction !== 'string' || !state.nextAction.trim() ||
-      typeof state.rollback !== 'string' || !state.rollback.trim() ||
-      !Array.isArray(state.assignments) || state.assignments.length === 0 ||
-      !isPlainRecord(state.machinery) ||
-      (!isPlainRecord(state.machinery.M0) && typeof state.machinery.M0 !== 'string') ||
-      (!isPlainRecord(state.machinery.M1) && typeof state.machinery.M1 !== 'string') ||
-      !Array.isArray(state.openFailures) ||
-      !state.openFailures.every(item => typeof item === 'string') ||
-      !isPlainRecord(state.taskB) ||
-      !isPlainRecord(state.founderDecision)) {
+  const snapshot = snapshotPlainDataRecord(state, {
+    requiredKeys: [
+      'schema', 'principal', 'authority', 'nextAction', 'rollback',
+      'assignments', 'machinery', 'openFailures', 'taskB', 'founderDecision', 'references'
+    ],
+    optionalKeys: ['mission']
+  });
+  const assignments = snapshot && snapshotDenseDataArray(snapshot.assignments);
+  const openFailures = snapshot && snapshotDenseDataArray(snapshot.openFailures);
+  const machinery = snapshot && snapshotPlainDataRecord(snapshot.machinery, {
+    requiredKeys: ['M0', 'M1']
+  });
+  const taskB = snapshot && snapshotPlainDataRecord(snapshot.taskB);
+  const founderDecision = snapshot && snapshotPlainDataRecord(snapshot.founderDecision);
+
+  if (!snapshot ||
+      snapshot.schema !== 'ngl.institution-continuity.v1' ||
+      snapshot.principal !== 'Damien Featherstone' ||
+      (Object.hasOwn(snapshot, 'mission') && (typeof snapshot.mission !== 'string' || !snapshot.mission.trim())) ||
+      typeof snapshot.authority !== 'string' || !snapshot.authority.trim() ||
+      typeof snapshot.nextAction !== 'string' || !snapshot.nextAction.trim() ||
+      typeof snapshot.rollback !== 'string' || !snapshot.rollback.trim() ||
+      !assignments || assignments.length === 0 ||
+      !machinery ||
+      (!isPlainRecord(machinery.M0) && typeof machinery.M0 !== 'string') ||
+      (!isPlainRecord(machinery.M1) && typeof machinery.M1 !== 'string') ||
+      !openFailures || !openFailures.every(item => typeof item === 'string') ||
+      !taskB || !founderDecision) {
     throw new Error('Incomplete continuity record');
   }
-  assertReferenceList(state.references);
-  return state;
+
+  const references = assertReferenceList(snapshot.references);
+  return Object.freeze({
+    ...snapshot,
+    assignments: Object.freeze(assignments),
+    machinery: Object.freeze(machinery),
+    openFailures: Object.freeze(openFailures),
+    taskB: Object.freeze(taskB),
+    founderDecision: Object.freeze(founderDecision),
+    references
+  });
 }
 
 /**
@@ -175,7 +255,8 @@ export async function readRecoveryState(filePath) {
 export async function readVerifiedReference(rootPath, reference, {
   maxBytes = MAX_RECOVERY_REFERENCE_BYTES
 } = {}) {
-  const referencePath = assertSafeReferenceDescriptor(reference);
+  const normalizedReference = snapshotRecoveryReference(reference);
+  const referencePath = normalizedReference.path;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
       maxBytes > MAX_RECOVERY_REFERENCE_BYTES) {
     throw new TypeError('Recovery reference byte limit is invalid');
@@ -212,9 +293,9 @@ export async function readVerifiedReference(rootPath, reference, {
   return {
     target,
     size: bytes.length,
-    expectedSha256: reference.sha256,
+    expectedSha256: normalizedReference.sha256,
     actualSha256,
-    verified: actualSha256 === reference.sha256
+    verified: actualSha256 === normalizedReference.sha256
   };
 }
 
@@ -228,7 +309,7 @@ export async function verifyRecoveryReferences(rootPath, references, {
   maxTotalBytes = MAX_RECOVERY_TOTAL_BYTES,
   maxReferenceBytes = MAX_RECOVERY_REFERENCE_BYTES
 } = {}) {
-  assertReferenceList(references, { maxReferences });
+  const referenceList = assertReferenceList(references, { maxReferences });
   if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1 || maxTotalBytes > MAX_RECOVERY_TOTAL_BYTES) {
     throw new TypeError(`Total recovery byte limit must not exceed ${MAX_RECOVERY_TOTAL_BYTES} bytes`);
   }
@@ -242,7 +323,7 @@ export async function verifyRecoveryReferences(rootPath, references, {
   const failures = [];
   let bytesRead = 0;
 
-  for (const reference of references) {
+  for (const reference of referenceList) {
     const referencePath = reference.path;
     const remaining = maxTotalBytes - bytesRead;
     if (remaining <= 0) {
