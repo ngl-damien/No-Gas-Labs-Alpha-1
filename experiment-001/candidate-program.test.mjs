@@ -194,3 +194,40 @@ test('candidate AST enforces the exact 63-node budget before evaluation', () => 
   const overLimit = { op: 'negate', arg: atLimit };
   assert.throws(() => validateCandidateProgram(overLimit), /CANDIDATE_PROGRAM_LIMIT_EXCEEDED/);
 });
+
+
+test('candidate AST payload is required only for the candidate-program strategy', async () => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+
+  assert.throws(() => lib.makeInstallationProposal({
+    strategy: 'candidate-program-v1',
+    executorPublicKeyPem: pem(executor)
+  }), /CANDIDATE_PROGRAM_INVALID/);
+
+  assert.throws(() => lib.makeInstallationProposal({
+    strategy: 'square',
+    program: squareProgram(),
+    executorPublicKeyPem: pem(executor)
+  }), /PROGRAM_NOT_ALLOWED_FOR_STRATEGY/);
+
+  const square = lib.makeInstallationProposal({ executorPublicKeyPem: pem(executor) });
+  const smuggledProgram = { ...square, program: squareProgram() };
+  assert.deepEqual(lib.validateInstallationProposal(smuggledProgram), {
+    valid: false,
+    reason: 'INSTALL_SCHEMA_INVALID'
+  });
+
+  const candidate = lib.makeInstallationProposal({
+    strategy: 'candidate-program-v1',
+    program: squareProgram(),
+    executorPublicKeyPem: pem(executor)
+  });
+  const missingProgram = { ...candidate };
+  delete missingProgram.program;
+  assert.deepEqual(lib.validateInstallationProposal(missingProgram), {
+    valid: false,
+    reason: 'INSTALL_SCHEMA_INVALID'
+  });
+});
