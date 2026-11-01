@@ -36,6 +36,41 @@ function run(args, env = {}) {
   });
 }
 
+function setWindowsKeyAcl(path, includeEveryone = false) {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$path = $env:NGL_ACL_TEST_TARGET",
+    "$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User",
+    "$system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
+    "$administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')",
+    "$acl = [System.Security.AccessControl.FileSecurity]::new()",
+    "$acl.SetAccessRuleProtection($true, $false)",
+    "$acl.SetOwner($current)",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($current, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow))",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow))",
+    "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($administrators, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow))",
+    "if ($env:NGL_ACL_TEST_EVERYONE -eq '1') { $everyone = [System.Security.Principal.SecurityIdentifier]::new('S-1-1-0'); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($everyone, [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Allow)) }",
+    "Set-Acl -LiteralPath $path -AclObject $acl"
+  ].join('\n');
+  const executable = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const result = spawnSync(executable, [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
+  ], {
+    encoding: 'utf8',
+    timeout: 5000,
+    windowsHide: true,
+    env: {
+      ...process.env,
+      NGL_ACL_TEST_TARGET: path,
+      NGL_ACL_TEST_EVERYONE: includeEveryone ? '1' : '0'
+    }
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+
 test('bounded reader accepts valid UTF-8 across multiple chunks', async t => {
   const directory = await temp(t);
   const path = join(directory, 'input.txt');
@@ -109,6 +144,7 @@ test('Founder approval still signs a valid proposal with a private owner-only ke
   await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
   await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
   await chmod(privateKeyPath, 0o600);
+  if (process.platform === 'win32') setWindowsKeyAcl(privateKeyPath);
 
   const result = run([
     '--confirm',
@@ -305,4 +341,115 @@ test('bounded reader rejects unsafe configured limits before filesystem access',
     readBoundedRegularFile(missingPath, 16 * 1024 * 1024 + 1, 'TEST'),
     /BOUNDED_FILE_READER_INVALID_CONFIG/
   );
+});
+
+
+test('Founder approval rejects a Windows private-key ACL that grants Everyone read', async t => {
+  if (process.platform !== 'win32') return t.skip('Windows ACL verification is platform-specific');
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  setWindowsKeyAcl(privateKeyPath, true);
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], { NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem) });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /FOUNDER_KEY_PERMISSIONS_TOO_BROAD/);
+  assert.equal(result.stdout, '');
+});
+
+const boundedReaderUrl = new URL('../src/bounded-file-reader.mjs', import.meta.url).href;
+
+function runOwnershipCheck(path, setup, expectedError) {
+  const code = [
+    'import { readBoundedRegularFile } from ' + JSON.stringify(boundedReaderUrl) + ';',
+    setup,
+    'try {',
+    '  await readBoundedRegularFile(' + JSON.stringify(path) + ', 100, "TEST", { requireCurrentUserOwnership: true });',
+    '  process.exitCode = 1;',
+    '} catch (error) {',
+    '  if (error?.message !== ' + JSON.stringify(expectedError) + ') { console.error(error); process.exitCode = 2; }',
+    '}'
+  ].join('\n');
+  return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    encoding: 'utf8',
+    timeout: 5000
+  });
+}
+
+test('bounded reader fails closed when current-user ownership verification is unavailable', async t => {
+  if (process.platform === 'win32') return t.skip('Windows uses SID and ACL verification');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });";
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_UNAVAILABLE');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader rejects a file owned by a different process user when ownership is required', async t => {
+  if (typeof process.getuid !== 'function') return t.skip('POSIX process UID ownership is unavailable');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = "const actualGetuid = process.getuid.bind(process); Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => actualGetuid() + 1 });";
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_MISMATCH');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader fails closed when current-user ownership lookup throws', async t => {
+  if (process.platform === 'win32') return t.skip('Windows uses SID and ACL verification');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => { throw new Error('OS_UID_LOOKUP_FAILED'); } });";
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_FAILED');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('bounded reader fails closed when current-user ownership lookup returns an invalid UID', async t => {
+  if (process.platform === 'win32') return t.skip('Windows uses SID and ACL verification');
+  const directory = await temp(t);
+  const path = join(directory, 'private.txt');
+  await writeFile(path, 'private', { mode: 0o600 });
+  const setup = "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: () => Number.NaN });";
+  const result = runOwnershipCheck(path, setup, 'TEST_OWNER_VERIFICATION_FAILED');
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('Founder CLI refuses to sign when current-user ownership verification is unavailable', async t => {
+  if (process.platform === 'win32') return t.skip('Windows uses SID and ACL verification');
+  const directory = await temp(t);
+  const executor = keyPair();
+  const founder = keyPair();
+  const proposal = proposalFor(executor.publicKeyPem);
+  const proposalPath = join(directory, 'proposal.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  const preloadPath = join(directory, 'disable-getuid.cjs');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  await chmod(privateKeyPath, 0o600);
+  await writeFile(preloadPath, "Object.defineProperty(process, 'getuid', { configurable: true, writable: true, value: undefined });\n");
+
+  const result = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], {
+    NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem),
+    NODE_OPTIONS: '--require=' + JSON.stringify(preloadPath)
+  });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /FOUNDER_KEY_OWNER_VERIFICATION_UNAVAILABLE/);
+  assert.equal(result.stdout, '');
 });
