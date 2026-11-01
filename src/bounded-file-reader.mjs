@@ -1,5 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
+import { verifyWindowsFileSecurity } from './windows-acl.mjs';
 
 const CHUNK_BYTES = 16 * 1024;
 const MAX_CONFIGURED_BYTES = 16 * 1024 * 1024;
@@ -8,12 +9,28 @@ function fail(code) {
   throw new Error(code);
 }
 
-function checkPermissions(stat, label, { requirePrivatePermissions, requireCurrentUserOwnership }) {
-  if (requirePrivatePermissions && process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
+function checkPermissions(path, stat, label, { requirePrivatePermissions, requireCurrentUserOwnership }) {
+  if (process.platform === 'win32' && (requirePrivatePermissions || requireCurrentUserOwnership)) {
+    verifyWindowsFileSecurity(path, label);
+    return;
+  }
+  if (requirePrivatePermissions && (stat.mode & 0o077) !== 0) {
     fail('FOUNDER_KEY_PERMISSIONS_TOO_BROAD');
   }
-  if (requireCurrentUserOwnership && typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-    fail(`${label}_OWNER_MISMATCH`);
+  if (requireCurrentUserOwnership) {
+    let currentUid;
+    try {
+      const getuid = process.getuid;
+      if (typeof getuid !== 'function') fail(label + '_OWNER_VERIFICATION_UNAVAILABLE');
+      currentUid = getuid.call(process);
+    } catch (error) {
+      if (error && error.message === label + '_OWNER_VERIFICATION_UNAVAILABLE') throw error;
+      fail(label + '_OWNER_VERIFICATION_FAILED');
+    }
+    if (!Number.isSafeInteger(currentUid) || currentUid < 0) {
+      fail(label + '_OWNER_VERIFICATION_FAILED');
+    }
+    if (stat.uid !== currentUid) fail(label + '_OWNER_MISMATCH');
   }
 }
 
@@ -25,8 +42,9 @@ function unchanged(stat, original) {
 
 /**
  * Read an untrusted regular file without allocating beyond maxBytes + 1.
- * Path/handle identity and metadata are rechecked before returning. This is a
- * best-effort filesystem-race defense, not an atomic openat capability boundary.
+ * Path/handle identity, metadata, and the requested owner/privacy boundary are
+ * rechecked before returning. This is a best-effort filesystem-race defense,
+ * not an atomic openat capability boundary.
  */
 export async function readBoundedRegularFile(path, maxBytes, label, {
   requirePrivatePermissions = false,
@@ -38,9 +56,9 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
   }
 
   const before = await lstat(path);
-  if (before.isSymbolicLink() || !before.isFile()) fail(`${label}_NOT_REGULAR_FILE`);
-  if (before.size > maxBytes) fail(`${label}_FILE_TOO_LARGE`);
-  checkPermissions(before, label, { requirePrivatePermissions, requireCurrentUserOwnership });
+  if (before.isSymbolicLink() || !before.isFile()) fail(label + '_NOT_REGULAR_FILE');
+  if (before.size > maxBytes) fail(label + '_FILE_TOO_LARGE');
+  checkPermissions(path, before, label, { requirePrivatePermissions, requireCurrentUserOwnership });
 
   const flags = fsConstants.O_RDONLY |
     (fsConstants.O_NOFOLLOW ?? 0) |
@@ -50,18 +68,18 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
     try {
       handle = await open(path, flags);
     } catch (error) {
-      if (error.code === 'ELOOP') fail(`${label}_NOT_REGULAR_FILE`);
-      if (error.code === 'ENOENT') fail(`${label}_FILE_CHANGED_DURING_OPEN`);
+      if (error.code === 'ELOOP') fail(label + '_NOT_REGULAR_FILE');
+      if (error.code === 'ENOENT') fail(label + '_FILE_CHANGED_DURING_OPEN');
       throw error;
     }
 
     const opened = await handle.stat();
     if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
-      fail(`${label}_FILE_CHANGED_DURING_OPEN`);
+      fail(label + '_FILE_CHANGED_DURING_OPEN');
     }
-    if (opened.size > maxBytes) fail(`${label}_FILE_TOO_LARGE`);
-    checkPermissions(opened, label, { requirePrivatePermissions, requireCurrentUserOwnership });
-    if (!unchanged(opened, before)) fail(`${label}_FILE_CHANGED_DURING_OPEN`);
+    if (opened.size > maxBytes) fail(label + '_FILE_TOO_LARGE');
+    checkPermissions(path, opened, label, { requirePrivatePermissions, requireCurrentUserOwnership });
+    if (!unchanged(opened, before)) fail(label + '_FILE_CHANGED_DURING_OPEN');
 
     const chunks = [];
     let total = 0;
@@ -73,14 +91,14 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
       chunks.push(buffer.subarray(0, bytesRead));
       total += bytesRead;
       position += bytesRead;
-      if (total > maxBytes) fail(`${label}_FILE_TOO_LARGE`);
+      if (total > maxBytes) fail(label + '_FILE_TOO_LARGE');
     }
 
     let after;
     try {
       after = await lstat(path);
     } catch (error) {
-      if (error.code === 'ENOENT') fail(`${label}_FILE_CHANGED_DURING_READ`);
+      if (error.code === 'ENOENT') fail(label + '_FILE_CHANGED_DURING_READ');
       throw error;
     }
     const afterHandle = await handle.stat();
@@ -88,12 +106,14 @@ export async function readBoundedRegularFile(path, maxBytes, label, {
         after.dev !== opened.dev || after.ino !== opened.ino ||
         !unchanged(after, opened) || !unchanged(afterHandle, opened) ||
         total !== opened.size) {
-      fail(`${label}_FILE_CHANGED_DURING_READ`);
+      fail(label + '_FILE_CHANGED_DURING_READ');
     }
+    checkPermissions(path, after, label, { requirePrivatePermissions, requireCurrentUserOwnership });
+    checkPermissions(path, afterHandle, label, { requirePrivatePermissions, requireCurrentUserOwnership });
 
     const bytes = Buffer.concat(chunks, total);
     const decoded = bytes.toString('utf8');
-    if (!Buffer.from(decoded, 'utf8').equals(bytes)) fail(`${label}_INVALID_UTF8`);
+    if (!Buffer.from(decoded, 'utf8').equals(bytes)) fail(label + '_INVALID_UTF8');
     return decoded;
   } finally {
     await handle?.close().catch(() => {});
