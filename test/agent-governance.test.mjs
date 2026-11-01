@@ -147,6 +147,25 @@ test('preflight rejects oversized sparse targets before allocating their content
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight accepts a regular file exactly at the configured size limit', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    const exactPath = join(root, 'scripts/exact-limit.bin');
+    await writeFile(exactPath, '');
+    await truncate(exactPath, MAX_PREFLIGHT_FILE_BYTES);
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/exact-limit.bin'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+    assert.equal(result.status, 'ready', JSON.stringify(result.failures));
+    const record = result.files.find(file => file.path === 'scripts/exact-limit.bin');
+    assert.equal(record.bytes, MAX_PREFLIGHT_FILE_BYTES);
+    assert.match(record.sha256, /^[a-f0-9]{64}$/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 
 test('preflight rejects FIFO targets without blocking on a writer', {
   skip: mkfifoExecutable ? false : 'POSIX mkfifo utility is unavailable on the current PATH'
