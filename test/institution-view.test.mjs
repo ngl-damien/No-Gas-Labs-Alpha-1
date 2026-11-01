@@ -24,7 +24,14 @@ function withDocument(run) {
 function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
-const gate = { policy: null, decisions: [] };
+const gate = {
+  schema: 'ngl.decisions.snapshot.v1',
+  revision: 0,
+  head: 'a'.repeat(64),
+  policy: null,
+  decisions: [],
+  counts: { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+};
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
@@ -202,6 +209,82 @@ test('institution view keeps available project records when the decision ledger 
   assert.doesNotMatch(output, /Project, accomplishment, dispute and decision-status registers are unavailable/);
 }));
 
+
+function pendingDecisionSnapshot() {
+  return {
+    schema: 'ngl.decisions.snapshot.v1',
+    revision: 2,
+    head: 'b'.repeat(64),
+    policy: {
+      id: 'policy-1',
+      reviewWindowMs: 3600000,
+      revision: 1,
+      setAt: '2026-10-31T12:00:00.000Z'
+    },
+    decisions: [{
+      id: 'decision-1',
+      title: 'A bounded human-gated proposal',
+      status: 'PENDING',
+      revision: 1,
+      createdAt: '2026-10-31T12:00:00.000Z',
+      createdBy: 'damien',
+      expiresAt: '2026-10-31T13:00:00.000Z',
+      expiredAt: null,
+      policy: { id: 'policy-1', revision: 1 },
+      disposition: null,
+      evaluation: { bytes: 'PRIVATE DECISION EVALUATION' },
+      risks: ['PRIVATE DECISION RISK'],
+      rollback: 'PRIVATE DECISION ROLLBACK',
+      proposedEffect: 'PRIVATE DECISION EFFECT'
+    }],
+    counts: { PENDING: 1, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 }
+  };
+}
+
+test('only the full Decision Chamber presentation exposes Founder disposition controls', () => withDocument(() => {
+  const snapshot = pendingDecisionSnapshot();
+  const guildHall = element('div');
+  renderInstitution(guildHall, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'summary'
+  });
+  const guildText = textOf(guildHall);
+  assert.match(guildText, /Status-only decision register/);
+  assert.match(guildText, /Disposition controls are available only in the Decision Chamber/);
+  assert.doesNotMatch(guildText, /PRIVATE DECISION EVALUATION|PRIVATE DECISION RISK|PRIVATE DECISION ROLLBACK|PRIVATE DECISION EFFECT/);
+  assert.equal(walk(guildHall).filter(item => item.dataset?.gateAction).length, 0);
+
+  const chamber = element('div');
+  renderInstitution(chamber, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'full',
+    onChoice: () => {}
+  });
+  const actions = walk(chamber).filter(item => item.dataset?.gateAction).map(item => item.dataset.gateAction);
+  assert.deepEqual(actions, ['APPROVE', 'REJECT', 'DEFER']);
+  assert.match(textOf(chamber), /PRIVATE DECISION EVALUATION/);
+  const card = walk(chamber).find(item => item.dataset?.decisionId === 'decision-1');
+  assert.equal(card?.tabIndex, -1, 'the exact decision card must be programmatically focusable');
+
+  const hidden = element('div');
+  renderInstitution(hidden, projects, snapshot, {
+    founder: true,
+    decisionPresentation: 'hidden'
+  });
+  assert.doesNotMatch(textOf(hidden), /FOUNDER GATE|DECISION STATUS/);
+  assert.equal(walk(hidden).filter(item => item.dataset?.gateAction).length, 0);
+}));
+
+test('Witness Decision Chamber views never expose Founder-only evaluation bytes or controls', () => withDocument(() => {
+  const root = element('div');
+  renderInstitution(root, projects, pendingDecisionSnapshot(), {
+    founder: false,
+    decisionPresentation: 'full'
+  });
+  assert.match(textOf(root), /Witness view: private evaluation bytes and controls are withheld/);
+  assert.doesNotMatch(textOf(root), /PRIVATE DECISION EVALUATION|PRIVATE DECISION RISK|PRIVATE DECISION ROLLBACK|PRIVATE DECISION EFFECT/);
+  assert.equal(walk(root).filter(item => item.dataset?.gateAction).length, 0);
+}));
 
 function validWorldSnapshot(overrides = {}) {
   const at = '2026-10-30T10:00:00.000Z';
