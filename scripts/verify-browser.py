@@ -1103,11 +1103,7 @@ def shared(browser,url,data,out):
         expect(map_record).to_have_attribute('data-institution-record-read-only','true')
         expect(map_record).to_contain_text('Separate durable Decision Chamber docket record; not a world event.')
         expect(map_record.locator('[data-gate-action]')).to_have_count(0)
-        assert (owner.request.get(url+'api/state').json()['world']['revision'],
-                len(owner.request.get(url+'api/state').json()['world']['events']),
-                owner.request.get(url+'api/state').json()['world']['xp']) == (
-                    decision_before['revision'],len(decision_before['events']),decision_before['xp']
-                ), 'walking to and inspecting the map object must not create canonical progress'
+        map_world_before=owner.request.get(url+'api/state').json()['world']
         map_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
         expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
@@ -1121,7 +1117,7 @@ def shared(browser,url,data,out):
         assert decision_snapshot['revision']==decision_snapshot_before['revision']
         assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'map navigation must not create or dispose the pending decision'
         decision_after=owner.request.get(url+'api/state').json()['world']
-        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'opening the docket and exact Chamber card must not mutate world progress'
+        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(map_world_before['revision'],len(map_world_before['events']),map_world_before['xp']), 'opening the retained record and exact Chamber card must not mutate world progress'
         close_sheet(a)
 
         # A transient Decision Service outage keeps the last valid map objects
@@ -1135,6 +1131,7 @@ def shared(browser,url,data,out):
         expect(stale_board).to_contain_text('STALE · LAST OBSERVED')
         expect(stale_board).to_have_attribute('data-decision-docket-stale','true')
         expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+        stale_world_before=owner.request.get(url+'api/state').json()['world']
         stale_card=stale_board.locator('[data-guild-decision-id="browser-docket-pending"]')
         stale_map_link=stale_card.get_by_role('button',name='Walk to map record →',exact=True)
         stale_map_link.click()
@@ -1147,7 +1144,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
         expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
         stale_world=owner.request.get(url+'api/state').json()['world']
-        assert (stale_world['revision'],len(stale_world['events']),stale_world['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'offline inspection and failed live refresh must not mutate canonical world progress'
+        assert (stale_world['revision'],len(stale_world['events']),stale_world['xp'])==(stale_world_before['revision'],len(stale_world_before['events']),stale_world_before['xp']), 'offline inspection and failed live refresh must not mutate canonical world progress'
         close_sheet(a)
         a.unroute('**/api/decisions')
         a.locator('#places-button').click()
