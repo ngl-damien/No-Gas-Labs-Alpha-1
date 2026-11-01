@@ -228,10 +228,14 @@ async function renameDurably(source, target) {
       NGL_DECISION_RENAME_TARGET: target
     }
   });
-  if (result.error) {
+  if (result.error || result.status === null || result.signal) {
     throw Object.assign(new Error(
       'Windows write-through replacement outcome is uncertain; inspect the retained decision envelope before recovery.'
-    ), { code: 'COMMIT_DURABILITY_UNCERTAIN', status: 503, cause: result.error });
+    ), {
+      code: 'COMMIT_DURABILITY_UNCERTAIN',
+      status: 503,
+      cause: result.error || new Error('PowerShell rename process ended without a definitive exit status')
+    });
   }
   if (result.status !== 0) {
     const detail = String(result.stderr || result.stdout || 'MoveFileExW failed')
