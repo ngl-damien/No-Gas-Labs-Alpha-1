@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, realpath, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, realpath, stat, lstat } from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -42,6 +42,27 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
+      if (kind === 'durable-checkpoint') {
+        const segments = relativePath.split('/');
+        for (let index = 1; index <= segments.length; index += 1) {
+          const component = segments.slice(0, index).join('/');
+          const metadata = await lstat(resolve(rootPath, component));
+          if (metadata.isSymbolicLink()) {
+            failures.push({ path: component, reason: 'durable checkpoint path must not traverse a symlink' });
+            return null;
+          }
+          const expectedType = index === segments.length ? metadata.isFile() : metadata.isDirectory();
+          if (!expectedType) {
+            failures.push({
+              path: component,
+              reason: index === segments.length
+                ? 'durable checkpoint must be a regular file'
+                : 'durable checkpoint parent must be a directory'
+            });
+            return null;
+          }
+        }
+      }
       const actualPath = await realpath(absolutePath);
       if (!insideRoot(rootPath, actualPath)) {
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
