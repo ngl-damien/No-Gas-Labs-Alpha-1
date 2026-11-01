@@ -63,10 +63,12 @@ const initial = () => ({ version: 2, sequence: 0, previous: 'GENESIS', records: 
 
 function square(n) { return n * n; }
 function double(n) { return n * 2; }
+const CANDIDATE_PROGRAM_STRATEGIES = new Set(['candidate-program-v1', 'candidate-program-v2']);
+
 function implementationFor(strategy, program = undefined) {
   if (strategy === 'square') return square;
   if (strategy === 'double') return double;
-  if (strategy === 'candidate-program-v1') {
+  if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) {
     const normalized = validateCandidateProgram(program);
     return input => evaluateCandidateProgram(normalized, input);
   }
@@ -86,7 +88,9 @@ const LEGACY_IMPLEMENTATION_HASHES = Object.freeze({
   double: '8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436'
 });
 export function implementationHash(strategy, program = undefined) {
-  if (strategy === 'candidate-program-v1') return candidateProgramHash(program);
+  if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) {
+    return candidateProgramHash(program, strategy === 'candidate-program-v2' ? 'v2' : 'v1');
+  }
   if (program !== undefined || !implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
   return hashBytes(Buffer.from(IMPLEMENTATION_IDENTITIES[strategy]));
 }
@@ -96,16 +100,36 @@ export function legacyImplementationHash(strategy) {
 }
 
 const cases = Object.freeze([{ n: 2, out: 4 }, { n: 3, out: 9 }, { n: 5, out: 25 }, { n: -4, out: 16 }]);
+// v1 remains byte-for-byte compatible with existing proof receipts and ledger replay.
+// v2 adds deterministic edge/boundary inputs to reject simple finite-set interpolation.
+const candidateProgramV2Cases = Object.freeze([
+  { n: -1_000_000, out: 1_000_000_000_000 },
+  { n: -999_983, out: 999_966_000_289 },
+  { n: -257, out: 66_049 },
+  { n: -4, out: 16 },
+  { n: -1, out: 1 },
+  { n: 0, out: 0 },
+  { n: 1, out: 1 },
+  { n: 2, out: 4 },
+  { n: 3, out: 9 },
+  { n: 5, out: 25 },
+  { n: 7, out: 49 },
+  { n: 257, out: 66_049 },
+  { n: 1_000, out: 1_000_000 },
+  { n: 999_983, out: 999_966_000_289 },
+  { n: 1_000_000, out: 1_000_000_000_000 }
+]);
 function challengeWithHash(strategy, hashFor, program = undefined) {
+  const challengeCases = strategy === 'candidate-program-v2' ? candidateProgramV2Cases : cases;
   let implementation;
   try { implementation = implementationFor(strategy, program); }
   catch { implementation = null; }
-  const failed = cases.filter(testCase => {
+  const failed = challengeCases.filter(testCase => {
     if (!implementation) return true;
     try { return implementation(testCase.n) !== testCase.out; }
     catch { return true; }
   }).map(testCase => testCase.n);
-  return { total: cases.length, passed: cases.length - failed.length, failed, implementationHash: implementation ? hashFor(strategy, program) : null };
+  return { total: challengeCases.length, passed: challengeCases.length - failed.length, failed, implementationHash: implementation ? hashFor(strategy, program) : null };
 }
 export function challenge(strategy, program = undefined) { return challengeWithHash(strategy, implementationHash, program); }
 function legacyChallenge(strategy) { return challengeWithHash(strategy, legacyImplementationHash); }
@@ -116,7 +140,7 @@ export function competition() {
 export function makeInstallationProposal({ id = 'square-v1', strategy = 'square', program = undefined, executorPublicKeyPem, nonce = randomUUID(), issuedAt = Date.now(), expiresAt = issuedAt + 60 * 60 * 1000, maxUses = 3 } = {}) {
   if (typeof executorPublicKeyPem !== 'string' || !executorPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('EXECUTOR_PUBLIC_KEY_REQUIRED');
   let normalizedProgram;
-  if (strategy === 'candidate-program-v1') normalizedProgram = validateCandidateProgram(program);
+  if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) normalizedProgram = validateCandidateProgram(program);
   else if (program !== undefined) throw new Error('PROGRAM_NOT_ALLOWED_FOR_STRATEGY');
   const proof = challenge(strategy, normalizedProgram);
   const proposal = { kind: 'INSTALL', id, strategy, executorPublicKeyPem, proof, implementationHash: proof.implementationHash, nonce, issuedAt, expiresAt, maxUses };
@@ -165,7 +189,7 @@ export function validateInstallationProposal(decision, now = Date.now(), { allow
   if (!hasBaseSchema && !hasProgramSchema) return reject('INSTALL_SCHEMA_INVALID');
   if (decision.kind !== 'INSTALL' || typeof decision.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(decision.id)) return reject('INSTALL_ID_INVALID');
   const hasProgram = Object.hasOwn(decision, 'program');
-  if ((decision.strategy === 'candidate-program-v1') !== hasProgram) return reject('INSTALL_SCHEMA_INVALID');
+  if (CANDIDATE_PROGRAM_STRATEGIES.has(decision.strategy) !== hasProgram) return reject('INSTALL_SCHEMA_INVALID');
   let implementation;
   try { implementation = implementationFor(decision.strategy, decision.program); }
   catch { return reject('CANDIDATE_PROGRAM_INVALID'); }
@@ -249,7 +273,7 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
     if (!NONCE_PATTERN.test(decision.nonce || '') || state.used.includes(decision.nonce)) throw new Error('REPLAY');
     if (capability.uses >= capability.maxUses) throw new Error('GRANT_USE_LIMIT_REACHED');
     const expectedImplementationHash = implementationHash(capability.strategy, capability.program);
-    const legacyMatch = capability.strategy !== 'candidate-program-v1' && capability.implementationHash === legacyImplementationHash(capability.strategy);
+    const legacyMatch = !CANDIDATE_PROGRAM_STRATEGIES.has(capability.strategy) && capability.implementationHash === legacyImplementationHash(capability.strategy);
     if (capability.implementationHash !== expectedImplementationHash && !legacyMatch) throw new Error('IMPLEMENTATION_HASH_MISMATCH');
     if (!Number.isSafeInteger(decision.input) || Math.abs(decision.input) > MAX_INPUT) throw new Error('INPUT_OUT_OF_BOUNDS');
     const implementation = implementationFor(capability.strategy, capability.program);

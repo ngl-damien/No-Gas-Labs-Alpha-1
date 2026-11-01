@@ -16,6 +16,23 @@ const squareProgram = () => ({
   left: { op: 'input' },
   right: { op: 'input' }
 });
+const overfitProgram = () => ({
+  op: 'add',
+  left: squareProgram(),
+  right: {
+    op: 'multiply',
+    left: {
+      op: 'multiply',
+      left: { op: 'subtract', left: { op: 'input' }, right: { op: 'const', value: 2 } },
+      right: { op: 'subtract', left: { op: 'input' }, right: { op: 'const', value: 3 } }
+    },
+    right: {
+      op: 'multiply',
+      left: { op: 'subtract', left: { op: 'input' }, right: { op: 'const', value: 5 } },
+      right: { op: 'add', left: { op: 'input' }, right: { op: 'const', value: 4 } }
+    }
+  }
+});
 const pair = () => generateKeyPairSync('ed25519');
 const pem = key => key.publicKey.export({ type: 'spki', format: 'pem' }).toString();
 const fingerprint = key => createHash('sha256')
@@ -52,6 +69,24 @@ test('candidate AST computes the square contract without evaluating JavaScript s
   assert.notEqual(candidateProgramHash(program), candidateProgramHash({
     op: 'multiply', left: { op: 'input' }, right: { op: 'const', value: 2 }
   }));
+});
+
+test('candidate-program-v2 rejects an arithmetic interpolant that passes every v1 challenge case', async () => {
+  const founder = pair();
+  const lib = await loadPinned(founder);
+  const program = overfitProgram();
+  const v1 = lib.challenge('candidate-program-v1', program);
+  const v2 = lib.challenge('candidate-program-v2', program);
+  const squareV2 = lib.challenge('candidate-program-v2', squareProgram());
+
+  assert.deepEqual([v1.total, v1.passed], [4, 4]);
+  assert.equal(v2.total, 15);
+  assert.equal(v2.passed, 4);
+  assert.equal(v2.failed.length, 11);
+  assert.ok(v2.failed.includes(0), 'the wider suite must challenge points outside the four v1 examples');
+  assert.ok(v2.failed.includes(1_000_000), 'the wider suite must challenge the declared input boundary');
+  assert.equal(squareV2.passed, squareV2.total);
+  assert.notEqual(v1.implementationHash, v2.implementationHash, 'proof versions must have distinct implementation identities');
 });
 
 test('candidate AST rejects accessors, hidden properties, symbols, and custom prototypes', () => {
@@ -130,6 +165,54 @@ test('signed candidate program is challenged, persisted, and reused by a fresh p
   assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
 }));
 
+test('signed candidate-program-v2 INSTALL is reusable after a fresh-process restart', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const issuedAt = Date.now();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-square-v2',
+    strategy: 'candidate-program-v2',
+    program: squareProgram(),
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-program-v2',
+    issuedAt,
+    expiresAt: issuedAt + 60_000,
+    maxUses: 1
+  });
+  assert.equal(draft.proof.total, 15);
+  assert.equal(draft.proof.passed, 15);
+  assert.equal(lib.validateInstallationProposal(draft).valid, true);
+
+  const storePath = join(directory, 'store-v2');
+  const store = await lib.openInstitution(storePath, pem(founder));
+  const signature = sign(null, Buffer.from(lib.approvalPayload(draft)), founder.privateKey).toString('base64url');
+  await store.commit(draft, signature);
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-candidate-program-v2', input: -17, output: 289 };
+  const receipt = sign(null, Buffer.from(lib.executionReceiptPayload(use)), executor.privateKey).toString('base64url');
+  const workerPath = new URL('./reuse-worker.mjs', import.meta.url).pathname;
+  const child = spawnSync(process.execPath, [
+    workerPath, storePath, pem(founder), JSON.stringify(use), receipt
+  ], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const snapshot = JSON.parse(child.stdout.trim());
+  assert.equal(snapshot.sequence, 2);
+  assert.equal(snapshot.capabilities[draft.id].strategy, 'candidate-program-v2');
+  assert.equal(snapshot.capabilities[draft.id].uses, 1);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, draft.program);
+  assert.equal(snapshot.capabilities[draft.id].implementationHash, draft.implementationHash);
+
+  const reopened = await lib.openInstitution(storePath, pem(founder));
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.equal(reopened.snapshot().capabilities[draft.id].strategy, 'candidate-program-v2');
+  assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
+}));
+
 test('changing a candidate program after approval cannot install the altered capability', () => withTemp(async directory => {
   const founder = pair();
   const executor = pair();
@@ -203,6 +286,11 @@ test('candidate AST payload is required only for the candidate-program strategy'
 
   assert.throws(() => lib.makeInstallationProposal({
     strategy: 'candidate-program-v1',
+    executorPublicKeyPem: pem(executor)
+  }), /CANDIDATE_PROGRAM_INVALID/);
+
+  assert.throws(() => lib.makeInstallationProposal({
+    strategy: 'candidate-program-v2',
     executorPublicKeyPem: pem(executor)
   }), /CANDIDATE_PROGRAM_INVALID/);
 
