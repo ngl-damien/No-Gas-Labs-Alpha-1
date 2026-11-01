@@ -1,6 +1,6 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket,selectDecisionDocketProjection} from './quests.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
@@ -50,7 +50,7 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
   const decisionProjection = gateResult.available
     ? projectDecisionDocket(gateResult.data) : projectDecisionDocket(null);
   decisionDocketRequestGeneration++;
-  view.setDecisionDocket(decisionProjection);
+  updateDecisionDocketMap(decisionProjection);
   renderInstitution(content, projectsResult.data, gateResult.data, {
     founder: viewer.role === 'founder',
     world: snapshot.world,
@@ -118,6 +118,9 @@ function openInstitutionRecord(entryId) {
   content.append(paragraph(`${record.source.toUpperCase()} · ${record.eventType} · ${record.actor} · ${record.at}`, 'attribution'));
   content.append(node('div', { class: 'receipt' }, [node('code', { text: record.entryId })]));
   if (record.warning) content.append(paragraph(record.warning, 'evidence-warning'));
+  if (typeof record.decisionId === 'string' && view.decisionDocketStale) {
+    content.append(paragraph('STALE · LAST OBSERVED. This map object is retained for offline inspection only. Reconnect and refresh before relying on its status; the live Decision Chamber will not expose disposition controls without a fresh service response.', 'evidence-warning'));
+  }
   if (record.targetAvailable && record.creationId && Number.isInteger(record.version)) {
     content.append(button(`Open retained ${record.targetTitle} · v${record.version} →`, () => openCreation(record.creationId, record.version), { class: 'list-button' }));
   }
@@ -149,7 +152,7 @@ function handleError(error){console.error(error);toast(error.message||'That acti
 function guarded(fn){return async(...args)=>{try{return await fn(...args)}catch(error){handleError(error)}}}
 function download(name,content,type='text/html'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=node('a',{href:url,download:name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function request(path,body){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
-async function refreshDecisionDocket(){const generation=++decisionDocketRequestGeneration;const controller=typeof AbortController==='function'?new AbortController():null;const timeout=controller?setTimeout(()=>controller.abort(),2500):null;let snapshot=null;try{const response=await fetch('/api/decisions',{method:'GET',headers:{},credentials:'same-origin',...(controller?{signal:controller.signal}:{})});if(response.ok)snapshot=await response.json()}catch{}finally{if(timeout!==null)clearTimeout(timeout)}if(mode==='shared'&&generation===decisionDocketRequestGeneration)view.setDecisionDocket(projectDecisionDocket(snapshot))}
+async function refreshDecisionDocket(){const generation=++decisionDocketRequestGeneration;const controller=typeof AbortController==='function'?new AbortController():null;const timeout=controller?setTimeout(()=>controller.abort(),2500):null;let snapshot=null;try{const response=await fetch('/api/decisions',{method:'GET',headers:{},credentials:'same-origin',...(controller?{signal:controller.signal}:{})});if(response.ok)snapshot=await response.json()}catch{}finally{if(timeout!==null)clearTimeout(timeout)}if(mode==='shared'&&generation===decisionDocketRequestGeneration)updateDecisionDocketMap(projectDecisionDocket(snapshot))}
 function stableActionJSON(value){if(Array.isArray(value))return value.map(stableActionJSON);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(key=>value[key]!==undefined).sort().map(key=>[key,stableActionJSON(value[key])]));return value}
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
@@ -199,6 +202,12 @@ const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(intera
   else openGuildHall(roleId);
 })();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · visit retained; quest XP depends on unique objective-matched activity, not guide truth.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
+
+function updateDecisionDocketMap(candidate){
+  const selected=selectDecisionDocketProjection(candidate,view.decisionDocketProjection);
+  view.setDecisionDocket(selected.projection,{stale:selected.stale});
+  return selected;
+}
 function openCharacterSheet(){const record=currentCharacterRecord||projectCharacter(world,viewer,{collaboratorResponseObjects:currentCollaboratorResponseObjects,questTrail:currentQuestTrail});const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP ('+record.publicationXp+' publication XP + '+record.questXp+' quest-activity XP from unique objective-matched events) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide publication XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card','data-skill-id':skill.id},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'Field equipment · evidence-derived'}));content.append(paragraph('Each slot starts with the latest appended qualifying source. Pin a source from your own retained activity, unequip it without deleting its source, or use “Use newest source” to return to automatic selection. This event-backed loadout grants no combat statistics, transferable ownership, approval or XP.','form-help'));for(const slot of record.equipment){
   const source=slot.source;
   const modeLabel=slot.mode==='pinned'?'PINNED':slot.mode==='unequipped'?'UNEQUIPPED':'AUTOMATIC';
@@ -812,7 +821,16 @@ function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=fa
     class:'secondary-button',
     'data-refresh-decision-docket':'true'
   }));
-  const projection=unavailable?projectDecisionDocket(null):decisionProjection;
+  const liveProjection=unavailable?projectDecisionDocket(null):decisionProjection;
+  const retainedProjection=view.decisionDocketStale&&view.decisionDocketProjection?.available===true
+    ?view.decisionDocketProjection:null;
+  const projection=liveProjection?.available?liveProjection:retainedProjection||liveProjection||projectDecisionDocket(null);
+  const stale=!liveProjection?.available&&Boolean(retainedProjection);
+  section.dataset.decisionDocketStale=stale?'true':'false';
+  if(stale)section.append(paragraph(
+    'STALE · LAST OBSERVED. These records remain inspectable while the shared service is unreachable or malformed. They are not current authority; reconnect and refresh before relying on any status. The live Decision Chamber withholds disposition controls until it receives a fresh valid snapshot.',
+    'evidence-warning'
+  ));
   if(!projection.available){
     section.append(paragraph('Decision register unavailable or malformed. No empty docket is inferred; reconnect to inspect the current human-gated records.','evidence-warning'));
     content.append(section);
@@ -855,6 +873,16 @@ function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=fa
       decision.disposition.actorId+' at '+decision.disposition.decidedAt+'.',
       'form-help'
     ));
+    const mapRecord=Array.isArray(view.institutionRecordObjects)
+      ?view.institutionRecordObjects.find(item=>item.decisionId===decision.id):null;
+    if(mapRecord)card.append(button(
+      mapRecord.mapVisible?'Walk to map record →':'Inspect retained map record →',
+      ()=>{
+        if(mapRecord.mapVisible){closeSheet();view.goTo(mapRecord.id,'institution-record');}
+        else openInstitutionRecord(mapRecord.entryId);
+      },
+      {class:'list-button','data-decision-map-route':decision.id}
+    ));
     card.append(button('Open in Decision Chamber →',()=>openInstitution('decision_chamber',decision.id),{
       class:'list-button',
       'data-decision-docket-focus':decision.id
@@ -867,7 +895,6 @@ function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=fa
   ));
   content.append(section);
 }
-
 function attachGuildHallExpeditionBoard(content){
   const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
   const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
