@@ -1096,3 +1096,57 @@ The new test file contains eight named regressions. The challenge is intentional
 5. Keep PR #268 draft and unmerged; the next capability step is to broaden the challenge contract only with an explicit acceptance specification, not to claim general correctness from the four current examples.
 
 No merge, release, deployment, spending, external publication, credential/permission change, key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+
+## Run 30 — 2026-11-01 — versioned candidate-program challenge
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Proposal:** PR #268, draft/open/unmerged.  
+**Branch:** experiment/candidate-program-acquisition-relay-stack-20261101.  
+**Prior checkpoint:** this branch's docs/operations/LATEST_CHECKPOINT.md (read in full; 1,099 lines before this entry).  
+**Other worker inspected:** PR #269, branch game/decision-docket-stale-map-recovery-20261101, head c473a45d476ea4080aee643f6909e7567eca77e2; its Verify and Genesis checks passed, Browser Acceptance remained in progress. PR #267 is its parent and remains Worker B-owned; no game paths were changed.
+
+### Fresh ranking and challenge
+
+1. Candidate-program challenge weakness (selected): v1's four square points admit arithmetic interpolation that passes the fixed suite while differing elsewhere. This is a concrete weakness in the new capability-acquisition experiment, with no overlap with Worker B's active game work.
+2. Live Founder mutation boundary: main still has caller-controlled verification?.valid in src/authority/decision.js; PR #244's sealed helper remains proposed and is not wired to the live server mutation path. Main game/server.mjs still auto-generates a local Founder bearer key when no key is supplied; PR #251 proposes an explicit-key startup guard. Issue #17 remains open.
+3. Cross-worker integration: PR #264's preflight branch and Worker B's #265/#267/#269 game stack still need ancestry reconciliation before the game module can enter the shared manifest. No game-owned paths were edited.
+
+### Cycle 1 — versioned challenge capability
+
+- Commit 720a1344c99ee49555c065c1c71a862eb37f556a added candidate-program-v2 with a distinct hash domain and 15 deterministic boundary cases from -1,000,000 through 1,000,000.
+- candidate-program-v1 retains its four original challenge points and v1 hash domain for existing proof receipts and replay compatibility.
+- Added an arithmetic interpolation fixture that passes all four v1 points but fails v2, plus signed v2 INSTALL / fresh-process REUSE coverage and documentation.
+
+### Cycle 2 — exact-head failure and repair
+
+- Verify run 41358418834 on the first code head failed: 918/919 tests passed; 1 failed. The v2 fresh-process REUSE regression showed INSTALL stored the AST only for v1, so replay reached the v2 implementation without its program. The log also exposed a v1-only exclusion in the legacy-proof fallback.
+- Commit c93adae8848dfc5100db2b8059f3957479861588 repairs both paths by using the registered candidate-strategy set for AST persistence and legacy-fallback exclusion. The v2 overfit regression now also proves invalid v2 proposals do not fall through to the built-in legacy proof path.
+
+### Exact-head hosted verification — c93adae8848dfc5100db2b8059f3957479861588
+
+- Verify 41358531097: success. Hosted preflight status ready, warnings [] and failures []; Node test command exit 0; Python inspector exit 0; game package build exit 0; institutional exercise exit 0 / passed true.
+- Genesis Evidence Invariant 41358531084: success.
+- Browser Acceptance 41358531087: pending at checkpoint creation. Do not claim browser acceptance until it completes on the exact head.
+- The earlier Browser run on superseded head 720a1344c99ee49555c065c1c71a862eb37f556a is not counted as verification for c93adae.
+- No local test or local preflight receipt is claimed. The connected Desktop Commander device list showed all devices offline; hosted Verify is the execution evidence.
+
+### Cross-repository instruction gate
+
+Fresh root-instruction reads for ngl-mesh, no-gas-labs-command-center, no-gas-labs-monorepo, recursive-artifact-engine, and no-gas-labs-execution returned 404 for AGENTS.md; inspection stopped in each repository. no-gas-labs-governance has a root AGENTS.md requiring ./init_repo.sh; that bootstrap cannot be executed through the available GitHub file interface, so no further inspection or edit was made there.
+
+### Founder-authorization correction and limits
+
+- PR #16 is closed/unmerged and its actual scope is the Experiment 001 institutional-cycle prototype, not a distinct self-signed Founder-authorization fix. PR #18 is the merged content-preserving replacement.
+- The live mainline issue is separate: src/authority/decision.js still accepts caller-supplied verification?.valid; the PR #244 sealed verifier is proposed but not connected to the live server mutation boundary. Main game/server.mjs still contains automatic local Founder-key creation; PR #251 proposes an explicit-key guard but remains unmerged.
+- A configured key/fingerprint is not proof of Damien's real-world identity or independent custody. No Founder key, trust root, credential, or permission was created or changed.
+- The v2 suite is still finite and is not a formal proof of equivalence for every integer. It is a stronger rejection filter only.
+
+### Next prioritized actions
+
+1. Finish and inspect Browser Acceptance on the exact code head c93adae; if successful, preserve the exact-head result. If a checkpoint-only commit follows, re-run exact-head checks for that final head.
+2. Reconcile PR #264's preflight ancestry with Worker B's #265/#267/#269 stack before adding game/institution-record-objects.mjs to the scoped manifest.
+3. Continue the live Founder verifier integration only after the canonical proposal/quest/output resolvers and independent trust-root/custody boundary are grounded; do not create or enroll a key.
+4. Do not edit linked repositories until their required instructions and bootstrap can be read and followed.
+
+No merge, release, deployment, external publication, spending, key/credential/permission change, production service call, Founder acceptance, or cross-repository write occurred. No uninterrupted between-run execution is claimed.
