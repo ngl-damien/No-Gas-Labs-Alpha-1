@@ -480,3 +480,23 @@ When PR #248 and PR #249 are reconciled, use `docs/operations/LATEST_CHECKPOINT.
 5. Continue issue #17 only after Damien supplies/authorizes the Founder trust root and key custody. No key generation, enrollment, rotation, or signing is authorized.
 
 No merge, release, deployment, workflow dispatch, branch deletion, spending, external publication, credential/permission change, Founder acceptance, or production service call occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 17 — 2026-11-01 03:14 UTC — latest Android branch head and replacement run
+
+- PR #249 advanced from `5ecde3ad007210eb5117f517fa161ad8a142eb53` to `1686806143b11e7c70366b719621b50037e8ab94` with commit `fix(android-test): keep round-trip coordinates in scope`. The test now declares expected X/Y outside the document-picker try block, captures them from the settled private position, and uses those values for export and import assertions. This is a test-scope correction, not proof of runtime correctness.
+- Current-head Verify [41267898554](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898554), Genesis [41267898552](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898552), and Browser [41267898560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898560) passed; Browser Acceptance 12/12. Android Alpha-1 [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) remains **in progress**. The earlier pending run [41267518520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267518520) was superseded by the new branch head; it is not a pass or failure for current code.
+- The current Verify preflight is green but incomplete for the touched set: it still uses `docs/operations/NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md` and omits `game/world-view.mjs` and `docs/operations/LATEST_CHECKPOINT.md`. PR #248's canonical preflight is the corrected reference; do not infer that PR #249's declared-target receipt covers omitted paths.
+- The latest Worker B automation run `2e56bae6-1b6c-832e-80e1-f6340fbe586d` is recorded **failed** at 03:09:18Z and produced no new `latest_result`; its last completed result remains stale. The independent Android workflow is still running. Comments with the exact current head, run IDs, and preflight gap are on PR #249 and PR #239. PR #239's ledger branch remains at `c0927037ddc0ba676018d8340ea76435ea9f42cf`; it has not yet incorporated the new Android attempt.
+- Source review of the current test confirms the position is sampled after the final keyup and stability wait, then compared against exported and imported values. `WorldView` emits `onPosition` on keyup/input stop and the private client persists it; export reads the live view position. This makes the new assertion more robust than the prior hard-coded coordinate, but only the pending emulator result can validate the round trip.
+
+### Next action
+
+1. Inspect Android run [41267898565](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41267898565) on exact head `1686806143b11e7c70366b719621b50037e8ab94`. Preserve the earlier failed run [41262756340](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41262756340); do not rewrite it as fixed.
+2. Update PR #239's ledger with the actual result of the current Android run, not an automation status.
+3. Reconcile PR #248 and PR #249 preflight inputs so the canonical checkpoint and all touched game source/test paths are covered.
+4. Keep the ngl-mesh full integration blocked until PR #1's `verify_bridge.py` compile list includes PR #3's helpers and the operator-supplied RAE archive/APK/report are available.
+
+No merge, release, deployment, spending, external publication, key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
