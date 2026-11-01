@@ -63,7 +63,7 @@ function powershellSnapshot(kind) {
     "  [pscustomobject]@{ sid = $_.IdentityReference.Value; accessType = $_.AccessControlType.ToString() }",
     "})",
     "[pscustomobject]@{ ownerSid = $ownerSid; currentSid = $currentSid; rules = $rules } | ConvertTo-Json -Compress -Depth 4"
-  ].join('\n');
+  ].join(String.fromCharCode(10));
 }
 
 function verifyWindowsPathSecurity(path, label, kind) {
@@ -129,7 +129,7 @@ function powershellSecure() {
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($system, $rights, $inherit, $none, $allow))",
     "$acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($administrators, $rights, $inherit, $none, $allow))",
     "$entry.SetAccessControl($acl)"
-  ].join('\n');
+  ].join(String.fromCharCode(10));
 }
 
 function secureWindowsPathSecurity(path, label, kind) {
