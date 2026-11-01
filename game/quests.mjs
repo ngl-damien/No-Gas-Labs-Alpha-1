@@ -709,7 +709,7 @@ export function projectDecisionDocket(snapshot) {
         !Number.isSafeInteger(candidate.reviewWindowMs) || candidate.reviewWindowMs < 1 ||
         candidate.reviewWindowMs > 30 * 86400000 ||
         !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
-        !isStrictTimestamp(candidate.setAt)) {
+        candidate.revision > source.revision || !isStrictTimestamp(candidate.setAt)) {
       return unavailableDecisionDocket('invalid-policy');
     }
     policy = Object.freeze({
@@ -742,7 +742,7 @@ export function projectDecisionDocket(snapshot) {
         Array.from(candidate.title).length > 1000 ||
         !DECISION_DOCKET_STATUSES.includes(candidate.status) ||
         !Number.isSafeInteger(candidate.revision) || candidate.revision < 1 ||
-        !decisionDocketIdentifier(candidate.createdBy) ||
+        candidate.revision > source.revision || !decisionDocketIdentifier(candidate.createdBy) ||
         !isStrictTimestamp(candidate.createdAt) ||
         !isStrictTimestamp(candidate.expiresAt) ||
         !(candidate.expiredAt === null || isStrictTimestamp(candidate.expiredAt))) {
@@ -751,7 +751,8 @@ export function projectDecisionDocket(snapshot) {
 
     const decisionPolicy = decisionDocketRecord(candidate.policy);
     if (!decisionPolicy || !decisionDocketIdentifier(decisionPolicy.id) ||
-        !Number.isSafeInteger(decisionPolicy.revision) || decisionPolicy.revision < 1) {
+        !Number.isSafeInteger(decisionPolicy.revision) || decisionPolicy.revision < 1 ||
+        decisionPolicy.revision > policy.revision) {
       return unavailableDecisionDocket('invalid-decision-policy');
     }
 
