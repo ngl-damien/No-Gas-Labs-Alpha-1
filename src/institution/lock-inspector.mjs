@@ -82,7 +82,7 @@ async function inspectDecisionGuardDirectory(path, before) {
       return report('unsafe', path, { reason: 'permissions-too-broad', file: fileSummary(before) });
     }
     const getuid = process.getuid;
-    if (typeof getuid !== 'function)') {
+    if (typeof getuid !== 'function') {
       return report('unsafe', path, { reason: 'owner-verification-failed', file: fileSummary(before) });
     }
     let currentUid;
