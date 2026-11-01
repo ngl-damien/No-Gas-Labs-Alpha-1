@@ -115,3 +115,45 @@ The chronological cross-run history and longer handoffs remain on [PR #210](http
 4. Reconcile PR #241/#244/#245 only after exact heads and overlapping target lists are re-observed; keep issue #17's real Founder custody/identity boundary explicit.
 
 No merges, releases, deployments, spending, external publication, credential/permission changes, branch deletion, physical-device setting changes, or Founder acceptance occurred.
+
+
+## Run 11 — 2026-11-01 01:12 UTC — Founder factory boundary review and Relay re-audit
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior checkpoint:** PR #210 branch `audit/repository-stutter-step-checkpoint-2026-10-30`, head `89450e4167a05a53931047a4af1cbacda4066ad0`; current canonical checkpoint proposal PR #248 was re-read from its live branch before this update.  
+**Other worker:** Build NGL MMORPG automation's latest run was `in_progress` (started 2026-11-01 01:09:16 UTC); latest completed result remains `de705ad0-73fc-832b-9231-79cacc81a5c4` from 2026-10-31 23:39 UTC. Its latest result describes PR #249's emulator repair but does not establish the current emulator outcome or current worker liveness. Current PRs were re-observed directly.
+
+### Fresh Alpha-1 baseline and canonical-checkpoint verification
+
+- Current `main`: `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. Current main still does not contain `docs/operations/LATEST_CHECKPOINT.md`; the attempted default-branch fetch returned 404. PR #248 is the sole observed canonical-checkpoint proposal and remains draft/open/unmerged at `0211a2ad2a01d7e740de049ff490bf5083338149`, 12 commits ahead / 0 behind main.
+- Exact-head PR #248 workflows: Verify [41257474912](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257474912), Genesis Evidence Invariant [41257474953](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257474953), Browser Acceptance [41257474925](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41257474925): all **success**. The Verify job log shows the canonical checkpoint and both regression tests in the scoped preflight; `ngl.agent-preflight.v1` returned `warnings: []`, `failures: []`; the repository verification report returned `passed: true`. This is hosted evidence on the exact head, not a local run.
+- The PR #248 patch remains limited to `docs/operations/LATEST_CHECKPOINT.md`, `package.json`, `test/checkpoint-symlink-safety.test.mjs`, and `test/latest-checkpoint-contract.test.mjs`. PR #249 separately carries Android/game preflight targets while still using the historical bootstrap checkpoint. Do not combine the package scripts by last-write-wins; preserve both target sets and the canonical checkpoint when a reviewed integration branch is prepared.
+
+### Cycle 1 — challenge the PR #16 priority against live source
+
+- PR #16 is **closed/unmerged**; replacement PR #18 is **merged** at `213f3b5c7771da24b36f9ce6ebdde871d22e4602`. The current open issue #17 explicitly records the detached Ed25519 INSTALL signature and import-time fingerprint pin from #18. The old self-signing proposal is not a live fix candidate and was not reopened or copied.
+- This does not establish Damien's real-world identity, separately controlled private-key custody, or production-wide live-server authorization. Issue #17 remains open for those boundaries plus concurrency/crash recovery. No Founder key was generated, enrolled, read, rotated, or changed.
+
+### Cycle 2 — independent security review of the current Founder-key startup proposal
+
+- Re-observed PR #251 at exact head `e91cb936c56401be831ef510b2184f0c6944019e`, stacked on PR #245. Verify [41258820808](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41258820808) and Genesis [41258820831](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41258820831) succeeded; Browser Acceptance [41258820799](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41258820799) was cancelled. Verify log shows preflight `warnings: []`, `failures: []`, and repository verification `passed: true`; that branch still uses the historical bootstrap checkpoint rather than PR #248's canonical path.
+- Source review found a remaining API boundary: exported `createGameServer()` defaults `requireExplicitFounderKey` to `false`. A programmatic caller can create a server with no key under development/unset `NODE_ENV`, allow `getFounderKey()` to mint the bearer credential, then bind the returned server to a non-loopback address. The CLI-only host/port guard does not cover such callers.
+- Posted review [#5725857100](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/251#pullrequestreview-5725857100) on `game/server.mjs` line 544: default to requiring an explicit key and let the CLI opt out only for its known loopback-development case, or enforce the bind address in the factory; add a direct-factory negative test before runtime-directory creation. This is a review finding, not a source fix or merged capability.
+- PR #222 and PR #227 also modify `game/server.mjs` and `test/game-server.test.mjs`; no competing source edit was made. The security proposal needs explicit stack reconciliation with those active gameplay/server changes before integration.
+
+### Cycle 3 — linked ngl-mesh / Relay evidence re-audit
+
+- Read ngl-mesh root `AGENTS.md) alone, then the full Alpha-1 canonical protocol alone; afterward read ngl-mesh `README.md` and `integration/relay/README.md`. No dedicated checkpoint file was present in the current ngl-mesh main tree. No nested `AGENTS.md) exists in the Relay paths inspected.
+- ngl-mesh PR #1 remains draft/open at `c15a10f04de4cb2ac183d45043c9a4b51e25b992`, 70 commits ahead / 0 behind main. Exact-head operator-key trust run [41246181022](https://github.com/ngl-damien/ngl-mesh/actions/runs/41246181022) and agent-governance run [41246181165](https://github.com/ngl-damien/ngl-mesh/actions/runs/41246181165) succeeded. The operator-key job log reports 9 OperatorKeyTrust, 29 DurableMarker, 13 RevocationAuthorization, 15 AuthorityStateMarkers, and 4 source-contract checks passed.
+- ngl-mesh PR #3 remains draft/open at `7847c0fd7eb334d4bed726f12703567bdff9de42`, 5 commits ahead / 0 behind main. Strict UTF-8 run [41110544604](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544604) and agent-governance run [41110544499](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544499) succeeded; logs report 10 strict-decoding and 4 source-contract checks passed.
+- These are isolated Java bridge proposals. They do not prove the missing recovered APK/source/RAE artifacts have been integrated, that the mesh APK can be rebuilt, that a physical Android device accepts it, or that live providers are configured. No ngl-mesh files were changed.
+
+### Next ranked actions
+
+1. **PR #251:** resolve the programmatic factory default gap with a direct-factory negative test, but first reconcile its `game/server.mjs` and `test/game-server.test.mjs` hunks against active PR #222/#227 and the current Android/game stack. Keep the review finding visible until fixed and reverified.
+2. **Checkpoint integration:** reconcile PR #248's canonical `LATEST_CHECKPOINT.md` and hosted preflight target list with PR #249's Android/game targets and PR #251/#244/#245 governance-test targets. Require a clean combined exact-head Verify/Genesis/Browser run; do not merge.
+3. **Worker B:** inspect the current final Android Alpha-1 result for PR #249 and preserve the observed outcome in the MMORPG ledger PR #239; the prior completed result only said the run was still in progress.
+4. **Issue #17:** preserve the distinction between the superseded PR #16 self-signing design and the remaining real key-custody, live-server authorization, concurrency and crash-recovery acceptance.
+5. **ngl-mesh:** keep PR #1/#3 as separate proposals until a source/APK/RAE integration path and device evidence exist; do not equate isolated Java checks with a full Android runtime.
+
+No merge, release, deployment, workflow dispatch, branch deletion, permission/secret/key change, spending, external publication, provider call, or Founder acceptance occurred. No local checkout or local test execution is claimed.
