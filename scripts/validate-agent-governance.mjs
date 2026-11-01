@@ -88,8 +88,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
-      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
-        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint', 'vendor-pointer', 'target'].includes(kind)) {
+        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : kind === 'target' ? 'scoped target' : 'trusted instruction';
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
           const component = segments.slice(0, index).join('/');
