@@ -541,10 +541,11 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, requireExplicitFounderKey = true } = {}) {
-  // A production host must not mint its own Founder bearer credential.
-  if ((process.env.NODE_ENV === 'production' || requireExplicitFounderKey) && (typeof founderKey !== 'string' || founderKey.length < 16 || Buffer.byteLength(founderKey) > 1024)) {
-    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required (16–1024 bytes) for production or custom host/port startup; automatic Founder-key generation is disabled.'), { code: 'FOUNDER_KEY_REQUIRED' });
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, allowGeneratedFounderKey = false } = {}) {
+  const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
+  const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
+  if (!validFounderKey && !mayGenerateLocalFounderKey) {
+    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
   }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
   await assertNoSymlinkPathComponents(dataDir);
@@ -902,6 +903,12 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
   return server;
 }
 
+/** Programmatic server creation always requires an explicit Founder bearer key. */
+export async function createGameServer(options = {}) {
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory });
+}
+
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let server;
@@ -909,8 +916,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport = process.env.NGL_INSTITUTION_REPORT ? await readInstitutionReport(resolve(process.env.NGL_INSTITUTION_REPORT)) : null;
-    const requireExplicitFounderKey = process.env.NODE_ENV === 'production' || process.env.PORT !== undefined || !['127.0.0.1', 'localhost', '::1'].includes(host);
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, requireExplicitFounderKey });
+    // Generated local credentials are private to this built-in loopback development path.
+    const loopbackDevelopment = process.env.NODE_ENV !== 'production' && ['127.0.0.1', 'localhost', '::1'].includes(host);
+    server = await createGameServerInternal({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, allowGeneratedFounderKey: loopbackDevelopment });
     await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
     const address = server.address();
     console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
