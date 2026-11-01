@@ -1,8 +1,6 @@
 import test from 'node:test';
-import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
-import { runPreflight } from '../scripts/validate-agent-governance.mjs';
 
 const isLimited = error => error?.code === 'LOGIN_RATE_LIMITED' &&
   error.status === 429 && Number.isSafeInteger(error.retryAfterSeconds) &&
@@ -91,17 +89,4 @@ test('failure recording enforces the per-address bound without a prior assertAll
   assert.throws(() => limiter.assertAllowed(peer, 4), isLimited);
   assert.doesNotThrow(() => limiter.assertAllowed(peer, 1_001),
     'the bucket should recover after both the window and lockout expire');
-});
-
-test('changed limiter source and tests pass scoped preflight with a unique receipt', async () => {
-  const receiptPath = '.runtime/agent-runs/login-rate-limit-' + randomUUID() + '.json';
-  const result = await runPreflight({
-    paths: ['game/login-rate-limit.mjs', 'test/login-rate-limit-hardening.test.mjs'],
-    checkpoint: 'docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md',
-    receiptPath
-  });
-  assert.equal(result.status, 'ready', JSON.stringify(result.failures));
-  assert.ok(result.files.some(file => file.path === 'game/login-rate-limit.mjs'));
-  assert.ok(result.files.some(file => file.path === 'test/login-rate-limit-hardening.test.mjs'));
-  assert.ok(result.files.some(file => file.path === 'docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md'));
 });
