@@ -630,7 +630,7 @@ def adversary_challenge_handoff(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Challenge experiment report'")
         expect(page.locator('#experiment-challenge-type')).to_have_value('methodology')
         expect(page.locator('#experiment-challenge-text')).to_have_value(edited_text)
-        after_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,characterXp:document.querySelector('#xp-count')?.textContent}}")
+        after_review=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),worldXp:world.xp,publicationXp:document.querySelector('#xp-count')?.textContent}}")
         assert after_review==before_review, 'Opening the human review form must not append an event or award progress'
         assert not [event for event in reviewer_world['events'] if event.get('type')=='experiment-challenged']
 
