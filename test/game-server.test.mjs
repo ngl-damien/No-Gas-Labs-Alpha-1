@@ -288,7 +288,7 @@ test('published world and accepted kernel history survive restart; generated key
       });
       child.stdout.on('data', chunk => {
         output += chunk;
-        const match = /listening on 127\\.0\\.0\\.1:(\\d+)/.exec(output);
+        const match = /listening on 127\.0\.0\.1:(\d+)/.exec(output);
         if (match && !settled) {
           settled = true;
           clearTimeout(timer);
