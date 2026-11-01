@@ -430,7 +430,7 @@ async function unlinkOwnedDecisionLock(path, identity) {
  * this API does not authenticate an object copied from a network payload.
  * APPROVE records a decision only and never invokes an effect or promotes code.
  */
-export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = renameDurably } = {})
+export async function openDecisions({ directory, now = Date.now, syncDirectory: syncDirectoryFn = syncDirectory, renameFile: renameFileFn = renameDurably } = {}) {
   if (typeof directory !== 'string' || !directory || typeof now !== 'function' || typeof syncDirectoryFn !== 'function' || typeof renameFileFn !== 'function') fail('INVALID_CONFIG', 'A private decision directory, server clock function, directory-sync function, and rename function are required');
   const location = resolve(directory);
   // Reject pre-existing symlink ancestors before recursive mkdir can create anything through them.
