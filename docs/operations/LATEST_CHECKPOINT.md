@@ -1316,3 +1316,59 @@ The exact implementation commit is recorded in this PR after the tree update. Ex
 - The repair commit's exact-head hosted workflows are pending; the first failed Verify run is retained as evidence and is not counted as a pass.
 
 Worker B's latest observed PR #269 head is `f714cdfcbffbb81c3a971a2425de301e4f3a7181`. No Worker B game files or ledger rows were changed. PR #16 remains closed/unmerged and PR #18 remains the merged replacement; the live server Decision Gate and actual Founder key custody are still separate unresolved work. No key was created, read, enrolled, rotated, exported, or changed.
+
+
+## Run 36 — 2026-11-02 UTC — offline candidate-task evaluation CLI
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability and capability acquisition.  
+**Prior durable checkpoint:** `docs/operations/LATEST_CHECKPOINT.md` at PR #268 head `de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee`; the latest Run 35 evidence was also re-read from PR #268's current description.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Parent proposal:** PR #268, draft/open/unmerged, exact head `de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee`, based on PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`.  
+**Working branch:** `experiment/candidate-task-evaluation-cli-20261102`, created from the exact PR #268 head. Code/docs head before this checkpoint append: `4895a48c7c83953e178b78d3d6dea8f8ab7f7d9e`.
+
+### Rehydrate and challenge
+
+- Re-read root `AGENTS.md` alone, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone. Root instructions hash: `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol hash: `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the current checkpoint branch copy, MMORPG completion contract and ledger, current open PRs, relevant source/tests, and the latest Worker B PRs. No nested `AGENTS.md` exists under `scripts/`, `test/`, `experiment-001/`, or `docs/operations/` on the target branch.
+- Portable local preflight and local Node tests were unavailable: there is no repository checkout in the runtime, the installed Node is v22.16.0 while the repo requires Node >=24, and `git ls-remote` failed because `github.com` could not be resolved. This is an access limitation, not a test pass. The hosted Verify workflow is the available verification path.
+- Rechecked the requested PR #16 issue: PR #16 is closed/unmerged and merged PR #18 supersedes its old self-signing `demonstrate()` path. Do not recreate that fix. Issue #17 remains open for independent Founder key custody/identity, live-server authorization integration, and residual concurrency/recovery acceptance.
+- Rechecked the active security lineage: PR #244's sealed/context-bound helper remains unmerged and is not wired into the live Decision Gate; PR #265's explicit-key server guard is the newer Worker B server lineage and has exact-head Verify/Genesis/Browser success. PR #251 is an older stacked proposal and must not be integrated independently. No key or trust root was created, enrolled, read, or changed.
+- Worker B's latest observed work is PR #271 at `f4946f4e91ee9144b09756b6cfa6e3c9dc3c7231`; its exact-head Verify `41378443024`, Genesis `41378443019`, and Browser Acceptance `41378443097` all succeeded. PR #270 exact-head Verify `41378082543`, Genesis `41378082521`, and Browser Acceptance `41378082536` also succeeded. No Worker B game paths or MMORPG ledger rows were edited.
+
+### Ranked candidates and selected work
+
+1. Live signed Founder Decision Gate integration — highest security value, but currently blocked by overlapping server lineages, the missing canonical retained decision envelope/context mapping, and the Founder trust-root/custody boundary. No safe unilateral integration was made.
+2. Explicit-key server startup guard — already owned by Worker B's PR #265; not duplicated.
+3. Offline candidate-task evaluation — safe, independent, and directly complements the existing deterministic synthesizer without requiring keys or canonical writes. Selected.
+4. PWA cache and Questkeeper route improvements — active Worker B PRs #270/#271; not duplicated.
+5. Linked-repository integration — stopped where root instructions are absent or repository-specific bootstrap cannot be executed.
+
+### Cycle 1 — implement receipt-verifying offline evaluation
+
+- `cefb3f5e9ac3c9cb82542995510efe180a0a66c` adds `scripts/evaluate-candidate-task.mjs`.
+- `0334326a63e2dde4f76ebcede51120f110ec13f1` adds `test/evaluate-candidate-task.test.mjs`.
+- `e72376ed2537183d0271446633b76df4ed6360df`, `bac59e5522a5cd64b03a77c938353243451219c7`, and `20218b88c7e5312ba1e7d85a2224cb07eb43a524` correct CLI line-ending/output details found during source reinspection before hosted verification. No test pass is claimed for the intermediate source.
+- The evaluator accepts only the existing synthesis-receipt schema, uses the bounded regular-file reader, rejects duplicate JSON keys and unexpected fields, recomputes the task-specification digest and exact polynomial proof, validates the restricted AST, enforces canonical in-range integer input, evaluates the AST, and independently computes the target with BigInt Horner evaluation. It rejects a mismatch.
+- Its result includes the implementation hash and explicit false values for task-spec signature verification, INSTALL approval verification, capability installation, and canonical-state mutation. It cannot sign, install, reuse, or write the ledger.
+
+### Cycle 2 — wire the capability into the operator/preflight contract
+
+- `3e049666ea0020688680e75451e6edb0657832c1` adds `npm run candidate:evaluate` and includes both evaluator source and its regression in the hosted preflight target list.
+- `651971ef0887706a0fd59701430dd862846e20b1` extends `test/agent-governance.test.mjs` to require the evaluator script/test and package command in that manifest.
+- `4895a48c7c83953e178b78d3d6dea8f8ab7f7d9e` documents the inspect → synthesize → evaluate flow in `experiment-001/FOUNDER-APPROVAL.md`.
+- Compare against the exact PR #268 parent head reports 8 commits ahead / 0 behind. Changed paths are limited to `scripts/evaluate-candidate-task.mjs`, `test/evaluate-candidate-task.test.mjs`, `package.json`, `test/agent-governance.test.mjs`, and `experiment-001/FOUNDER-APPROVAL.md`. No game, server, key, permission, or workflow source was changed.
+
+### Verification boundary
+
+- The parent PR #268 exact head `de465f4` has Verify `41378129579`, Genesis `41378129560`, and Browser Acceptance `41378129573` all completed successfully. Those results apply to the parent, not this new child branch.
+- No local test, local preflight receipt, or hosted result is claimed yet for this new branch. Exact-head hosted Verify, Genesis Evidence Invariant, and Browser Acceptance are required after the child PR is opened. Verify must show hosted preflight `ready`, zero warnings/failures, and the new evaluator regressions passing.
+- The initial evaluator source contained escaped literal line-break text; reinspection caught it and the final source was corrected before requesting CI. This is recorded as a repaired implementation issue, not a failed test run.
+
+### Next actions
+
+1. Open a draft child PR from `experiment/candidate-task-evaluation-cli-20261102` to PR #268's branch; inspect the full diff and exact-head workflows.
+2. Inspect Verify logs for preflight receipt and Node test count, Genesis invariant result, and Browser Acceptance result. Repair attributable failures and rerun on the repaired exact head.
+3. After exact-head checks pass, update the PR description with the exact run IDs and handoff; do not merge.
+4. Keep the live Decision Gate integration and real Founder trust-root/custody decision separate. Preserve PR #16/#18 supersession and do not create or enroll credentials.
+
+No local test pass, merge, release, deployment, spending, external announcement, permission/credential change, Founder decision, or canonical-state mutation occurred. No uninterrupted between-run execution is claimed.
