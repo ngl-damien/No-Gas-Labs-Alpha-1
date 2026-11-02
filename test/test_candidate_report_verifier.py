@@ -75,6 +75,19 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         report_path.write_text(evaluated.stdout, encoding="utf-8")
         return report_path, json.loads(evaluated.stdout)
 
+    def decimalize_numeric_fields(self, source, fields, exponent_fields=()):
+        names = "|".join(re.escape(name) for name in sorted(fields))
+        pattern = re.compile(
+            r'(?P<prefix>"(?P<key>' + names +
+            r')"\s*:\s*)(?P<value>-?(?:0|[1-9][0-9]*))(?=\s*[,}])'
+        )
+
+        def spell(match):
+            suffix = "e0" if match.group("key") in exponent_fields else ".0"
+            return match.group("prefix") + match.group("value") + suffix
+
+        return pattern.sub(spell, source)
+
     def test_single_and_range_reports_match_node_receipts_and_are_deterministic(self):
         scenarios = [
             ("single", ["17"], 1),
@@ -111,6 +124,69 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     "capabilityInstalled": False,
                     "canonicalStateChanged": False,
                 })
+
+    def test_integral_decimal_and_exponent_tokens_match_node_number_semantics(self):
+        numeric_receipt = self.directory / "numeric-receipt.json"
+        receipt_source = self.receipt_path.read_text(encoding="utf-8")
+        numeric_receipt.write_text(
+            self.decimalize_numeric_fields(
+                receipt_source,
+                {
+                    "inputMin", "inputMax", "maxAstDepth", "maxAstNodes",
+                    "maxPolynomialDegree", "maxCoefficientBits", "maxSafeInteger", "value",
+                },
+                exponent_fields={"maxSafeInteger", "value"},
+            ),
+            encoding="utf-8",
+        )
+
+        single_path = None
+        for name, arguments in (
+            ("single", ["17"]),
+            ("range", ["--range", "-3", "3"]),
+        ):
+            with self.subTest(name=name):
+                report_path, _ = self.make_report("numeric-" + name, arguments)
+                report_path.write_text(
+                    self.decimalize_numeric_fields(
+                        report_path.read_text(encoding="utf-8"),
+                        {"start", "end", "evaluationCount", "input", "output"},
+                        exponent_fields={"end", "output"},
+                    ),
+                    encoding="utf-8",
+                )
+                node = self.run_node(
+                    EVALUATOR,
+                    ["--verify-report", str(numeric_receipt), str(report_path)],
+                )
+                independent = self.run_verifier(report_path, numeric_receipt)
+                self.assertEqual(node.returncode, 0, node.stderr)
+                self.assertEqual(independent.returncode, 0, independent.stderr)
+                node_receipt = json.loads(node.stdout)
+                python_receipt = json.loads(independent.stdout)
+                self.assertEqual(python_receipt["implementationHash"], node_receipt["implementationHash"])
+                self.assertEqual(python_receipt["reportDigest"], node_receipt["reportDigest"])
+                self.assertEqual(python_receipt["resultDigest"], node_receipt["resultDigest"])
+                if name == "single":
+                    single_path = report_path
+
+        self.assertIsNotNone(single_path)
+        invalid_path = self.directory / "nonintegral-number.json"
+        original_source = single_path.read_text(encoding="utf-8")
+        invalid_source = original_source.replace('"input": 17.0', '"input": 17.5', 1)
+        self.assertNotEqual(invalid_source, original_source)
+        invalid_path.write_text(invalid_source, encoding="utf-8")
+        node_invalid = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(numeric_receipt), str(invalid_path)],
+        )
+        python_invalid = self.run_verifier(invalid_path, numeric_receipt)
+        self.assertEqual(node_invalid.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_INPUT_INVALID", node_invalid.stderr)
+        self.assertEqual(python_invalid.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_INPUT_INVALID", python_invalid.stderr)
+        self.assertEqual(node_invalid.stdout, "")
+        self.assertEqual(python_invalid.stdout, "")
 
     def test_rejects_report_tampering_and_context_substitution(self):
         _, original = self.make_report("range-original", ["--range", "-3", "3"])

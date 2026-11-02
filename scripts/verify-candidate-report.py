@@ -8,6 +8,7 @@ install capabilities, or mutate institutional state.
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -295,7 +296,17 @@ def parse_json(source, label):
 
 
 def exact_int(value):
-    return type(value) is int
+    # Match ECMAScript Number.isSafeInteger after JSON.parse: integral
+    # decimal/exponent tokens are numbers too, while booleans, fractions,
+    # infinities, NaN, and values outside the safe-integer range are not.
+    if type(value) is int:
+        return abs(value) <= MAX_SAFE_INTEGER
+    return (
+        type(value) is float
+        and math.isfinite(value)
+        and value.is_integer()
+        and abs(value) <= MAX_SAFE_INTEGER
+    )
 
 
 def coefficient(value):
@@ -346,8 +357,8 @@ def validate_specification(value):
     normalized = {
         "schema": value["schema"],
         "id": value["id"],
-        "inputMin": value["inputMin"],
-        "inputMax": value["inputMax"],
+        "inputMin": int(value["inputMin"]),
+        "inputMax": int(value["inputMax"]),
         "proofMethod": value["proofMethod"],
         "limits": dict(LIMITS),
         "targetCoefficients": list(raw_coefficients),
@@ -375,7 +386,7 @@ def validate_program(value):
             number = node["value"]
             if not exact_int(number) or abs(number) > MAX_CONSTANT or abs(number) > MAX_SAFE_INTEGER:
                 fail("CANDIDATE_PROGRAM_INVALID")
-            return {"op": op, "value": number}
+            return {"op": op, "value": int(number)}
         if op in PROGRAM_UNARY:
             require_exact_keys(node, {"op", "arg"}, "CANDIDATE_PROGRAM_INVALID")
             return {"op": op, "arg": visit(node["arg"], depth + 1)}
@@ -540,7 +551,7 @@ def validate_input(value, specification, code):
         fail(code)
     if value < specification["inputMin"] or value > specification["inputMax"]:
         fail(code)
-    return value
+    return int(value)
 
 
 def verify_authority(value):
