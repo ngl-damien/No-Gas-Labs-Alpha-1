@@ -1,5 +1,6 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
+import {projectResearchRecords,CHALLENGE_REVIEW_DISPOSITIONS} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
@@ -21,7 +22,7 @@ function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
-  if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
+  if(['draft','publish','repair','moderate-message','review-experiment-challenge'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can perform this action.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
   const world=clone(original),at=date(now);const previousAt=Date.parse(original?.updatedAt);if(!isStrictTimestamp(original?.updatedAt)||!Number.isFinite(previousAt)||Date.parse(at)<previousAt)fail('INVALID_CHRONOLOGY','Action time cannot precede the current world update time.',409);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
@@ -171,6 +172,38 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const challengeId=uid('experiment-challenge');
       result={challengeId};
       recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
+      break;
+    }
+    case 'review-experiment-challenge': {
+      const reportId = text(action.reportId, 128, 'Experiment report ID');
+      const challengeId = text(action.challengeId, 128, 'Experiment challenge ID');
+      if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === action.disposition)) {
+        fail('INVALID_CHALLENGE_REVIEW_DISPOSITION', 'Choose a bounded Founder disposition.');
+      }
+      const rationale = text(action.rationale, 1000, 'Disposition rationale');
+      if (world.events.some(candidate => candidate?.type === 'experiment-challenge-reviewed' && candidate.challengeId === challengeId)) {
+        fail('CHALLENGE_ALREADY_REVIEWED', 'This challenge already has an immutable disposition. Preserve the prior review; new evidence requires a new challenge.', 409);
+      }
+      const records = projectResearchRecords(world.events, world.creations);
+      const report = records.find(record => record.type === 'experiment-reported' &&
+        record.reportId === reportId && record._projection?.proposalStatus === 'linked');
+      const challenge = records.find(record => record.type === 'experiment-challenged' &&
+        record.challengeId === challengeId && record._projection?.proposalStatus === 'linked' &&
+        record._projection?.targetReportStatus === 'linked');
+      if (!report || !challenge) {
+        fail('CHALLENGE_REVIEW_TARGET_UNAVAILABLE', 'A uniquely retained report and its earlier distinct-actor challenge are required.', 409);
+      }
+      if (challenge.reportId !== reportId || challenge.moonshotId !== report.moonshotId ||
+          challenge._projection?.targetReport?.id !== report.id) {
+        fail('CHALLENGE_REVIEW_TARGET_MISMATCH', 'The selected challenge does not resolve to the exact retained report.', 409);
+      }
+      const reviewId = uid('challenge-review');
+      result = { reviewId };
+      recordEvent('experiment-challenge-reviewed', {
+        reviewId, reportId, challengeId, moonshotId: report.moonshotId,
+        disposition: action.disposition, rationale,
+        sourceEventIds: [report.id, challenge.id]
+      });
       break;
     }
     case 'record-collaborator-response':{
