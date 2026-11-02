@@ -677,9 +677,12 @@ def adversary_challenge_handoff(browser,url,out):
         character_button_label=page.locator('#character-button').get_attribute('aria-label')
         assert character_button_label and '25 character XP' in character_button_label, character_button_label
         close_sheet(page)
-        # Exercise the Polymath Academy as the tutor's in-world home. Both
-        # accepted-for-review and rejected replies must remain source-bound
-        # folios; opening them is read-only and never certifies mastery.
+        challenge_character_xp=character_xp_components(page)
+        assert challenge_character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {challenge_character_xp}'
+        # Exercise the Polymath Academy as the tutor's in-world home. Walking
+        # there can discover one guide; both archived responses count as
+        # attributed activity, including the rejected attempt, not as truth.
+        # Opening the resulting folios is read-only and never certifies mastery.
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
         page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
@@ -742,6 +745,16 @@ def adversary_challenge_handoff(browser,url,out):
         assert rejected_tutor_event['validationReason']=='RESPONSE_SCHEMA_OR_SCOPE_INVALID' and rejected_tutor_event['responseText']=='{}'
         assert after_rejected_archive['xp']==0
 
+        challenged_event_ids={event['id'] for event in challenged_world['events']}
+        academy_activity_events=[event for event in after_rejected_archive['events'] if event['id'] not in challenged_event_ids]
+        academy_discoveries=[event for event in academy_activity_events if event.get('type')=='discover' and event.get('locationId') in {'relay','river','overlook','ruins'}]
+        academy_responses=[event for event in academy_activity_events if event.get('type')=='collaborator-response-recorded']
+        assert len(academy_activity_events)==3, f'Walking to the tutor and archiving two responses should retain three new activity events, got {[event.get("type") for event in academy_activity_events]}'
+        assert len(academy_discoveries)==1, 'The walk to the tutor should retain one guide discovery'
+        assert len(academy_responses)==2, 'Both valid and rejected tutor replies should remain retained activity'
+        assert [event['validationStatus'] for event in academy_responses]==['valid-for-human-review','rejected']
+        assert all(event['actor']['id']==reviewer_id and event['actor']['role']=='founder' for event in academy_activity_events)
+
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
@@ -758,6 +771,13 @@ def adversary_challenge_handoff(browser,url,out):
         expect(rejected_tutor_card).to_contain_text('REJECTED · PRESERVED')
         shelf_state=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
         page.screenshot(path=str(out/'academy-tutor-folios.png'))
+        close_sheet(page)
+        academy_activity_xp=character_xp_components(page)
+        assert academy_activity_xp==(challenge_character_xp[0]+75,challenge_character_xp[1],challenge_character_xp[2]+75), f'One guide discovery and two archived responses should add 75 quest XP without publication XP, got {academy_activity_xp}'
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        valid_tutor_card=page.locator('[data-academy-tutor-response="'+valid_tutor_event['responseId']+'"]')
         valid_tutor_card.get_by_role('button',name='Inspect exact retained tutor folio →',exact=True).click()
         page.wait_for_function("(id)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&Array.from(sheet.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id&&card===document.activeElement)}",arg=valid_tutor_event['responseId'])
         valid_archive_card=page.locator('[data-collaborator-response-id="'+valid_tutor_event['responseId']+'"]')
@@ -785,9 +805,9 @@ def adversary_challenge_handoff(browser,url,out):
         assert page.locator('#xp-count').text_content()=='0'
         close_sheet(page)
         character_xp=character_xp_components(page)
-        assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        assert character_xp==academy_activity_xp, f'Opening valid and rejected tutor folios must not change character XP, got {academy_activity_xp} then {character_xp}'
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'academyTutorFolios':2,'academyRejectedFolios':1,'academyNewestFirst':True,'academyExactArchiveNavigation':True,'academyInspectionReadOnly':True,'boundedTutorPacket':True,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'academyActivityEvents':len(academy_activity_events),'academyQuestXpEarned':academy_activity_xp[2]-challenge_character_xp[2],'worldXp':0,'academyTutorFolios':2,'academyRejectedFolios':1,'academyNewestFirst':True,'academyExactArchiveNavigation':True,'academyInspectionReadOnly':True,'academyInspectionXpUnchanged':character_xp==academy_activity_xp,'boundedTutorPacket':True,'errors':errors}
     finally:
         context.close()
 
