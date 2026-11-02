@@ -678,6 +678,8 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
         }
         require_exact_keys(report, keys, "EVALUATION_REPORT_INVALID")
         require_exact_keys(report["range"], {"start", "end"}, "EVALUATION_REPORT_RANGE_INVALID")
+        if is_negative_zero(report["range"]["start"]) or is_negative_zero(report["range"]["end"]):
+            fail("EVALUATION_REPORT_RANGE_INVALID")
         start = validate_input(report["range"]["start"], specification, "EVALUATION_REPORT_RANGE_INVALID")
         end = validate_input(report["range"]["end"], specification, "EVALUATION_REPORT_RANGE_INVALID")
         if start > end:
