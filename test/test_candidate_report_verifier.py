@@ -193,7 +193,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(directory_result.stdout, "")
 
         invalid_utf8 = self.directory / "invalid-utf8.json"
-        invalid_utf8.write_bytes(b"\\xff")
+        invalid_utf8.write_bytes(b"\xff")
         invalid_result = self.run_verifier(invalid_utf8)
         self.assertEqual(invalid_result.returncode, 1)
         self.assertIn("EVALUATION_REPORT_INVALID_UTF8", invalid_result.stderr)
