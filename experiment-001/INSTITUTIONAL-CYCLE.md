@@ -30,3 +30,52 @@ The version-2 ledger reader retains a narrow compatibility path for INSTALL reco
 - `double`: `8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436`
 
 Legacy hashes are accepted only when replaying existing ledger history; new INSTALL commits must use the current versioned identity. Existing legacy capabilities remain reusable under their recorded identity. This is a compatibility fix, not proof that a strategy's implementation is correct: strategy IDs are immutable behavior contracts, and any semantic change must introduce a new version and corresponding tests rather than silently changing the behavior associated with an existing ID. No ledger migration, production key provisioning, or capability installation is performed by this code change.
+
+
+## Bounded candidate-program acquisition
+
+`candidate-program-v1` accepts a small JSON AST using only `input`, `const`, `add`, `subtract`, `multiply`, `negate`, `abs`, `min`, and `max`. The validator caps depth at 12 and total nodes at 63; constants and inputs are bounded to 1,000,000, and every arithmetic result must remain a safe integer. It rejects unknown fields/operators, accessors, custom prototypes, excessive depth/node count, unsafe constants, and out-of-range results.
+
+This is data interpretation, not JavaScript evaluation: no `eval`, dynamic import, loop, file access, network access, or host callback is exposed. The proposal signature covers the normalized AST and its content-derived implementation hash; the ledger persists that AST, and a fresh process evaluates it under the same bounded interpreter.
+
+The challenge contract is versioned. `candidate-program-v1` retains its original four square cases (`2→4`, `3→9`, `5→25`, `-4→16`) so existing v1 proof receipts and ledger replay keep their original semantics and hash identity. New `candidate-program-v2` proposals use 15 deterministic boundary cases spanning `-1,000,000` through `1,000,000`, including negative, zero, small, and near-boundary inputs; v2 uses a distinct `candidate-program:v2` content-hash domain. A regression constructs an arithmetic polynomial that passes all four v1 points but fails the v2 suite. This is a stronger finite rejection filter, not a mathematical proof of equivalence for every integer input. It demonstrates deterministic capability installation, not novel AI discovery, a general-purpose runtime, or an independent verifier process.
+
+
+## Exact polynomial proof — candidate-program-v3
+
+candidate-program-v3 is a separate, versioned proof mode. It accepts only the polynomial operators input, const, add, subtract, multiply, and negate; abs, min, and max remain available to v1/v2 but are outside this proof language. The verifier constructs an exact BigInt polynomial normal form and accepts only the coefficient vector [0, 0, 1], which establishes equality to x² as a polynomial rather than agreement at a finite set of examples.
+
+The verifier also computes a conservative absolute-value bound for every AST node over the supported input interval [-1,000,000, 1,000,000]. It rejects a program if any intermediate bound can exceed JavaScript's maximum safe integer, so the evaluator does not silently round an intermediate value within that domain. The signed certificate publishes the exact limits: AST depth 12, 63 AST nodes, polynomial degree 32, coefficient width 4,096 bits, and JavaScript's maximum safe integer. The signed INSTALL contains the certificate and the v3 implementation hash; the ledger persists the program and certificate, and a fresh process reuses it under the same verifier.
+
+This is a formal equivalence proof only for the restricted polynomial language and the declared runtime-safety domain. It is not a proof for v1/v2 programs using non-polynomial operators, not a general-purpose theorem prover, not independent Founder identity/custody, and not novel AI discovery.
+
+
+## Second exact target — candidate-program-v4
+
+candidate-program-v4 reuses the same exact BigInt polynomial normal-form engine for a second verifier-defined target: **2x² − 3x + 7**. The target is fixed by the verifier, not supplied by the candidate proposal. Its ascending coefficient vector is [7, −3, 2], and the proof certificate uses a separate v2 schema containing the stable target ID and expected coefficients. The implementation hash uses the distinct `candidate-program:v4` domain; v1/v2/v3 identities and replay rules remain unchanged.
+
+The same restricted polynomial language and input interval [-1,000,000, 1,000,000] apply. The candidate's conservative maximum intermediate bound for this target is 2,000,003,000,007, below JavaScript's maximum safe integer. A signed INSTALL and fresh-process REUSE regression exercises persistence of the v4 program and its target-bound proof; negative tests reject a coefficient near-miss, unsupported non-polynomial operators, and a signed certificate that attempts to replace the verifier's target.
+
+This demonstrates reuse of the exact proof mechanism for one additional fixed target. It does not provide arbitrary caller-defined targets, general-purpose theorem proving, novel AI discovery, independent Founder identity/custody, or production autonomy.
+
+
+## Founder-signed reusable task specifications — candidate-program-v5
+
+`candidate-program-v5` accepts a task specification supplied with a candidate proposal, but it does not trust the candidate to define its own acceptance target. The exact schema fixes the proof method, input interval, and resource limits; the target is an ascending vector of canonical decimal integer coefficients. The restricted AST is still limited to polynomial operators, exact BigInt normal-form comparison, degree 32, 63 nodes, depth 12, and safe-integer intermediate bounds.
+
+The task specification has its own domain-separated Ed25519 signature (`NGL_FOUNDER_CANDIDATE_TASK_SPECIFICATION_V1`) under the same configured Founder public key already pinned at module startup. The INSTALL decision still has its separate `NGL_FOUNDER_INSTALL_APPROVAL_V1` signature. The v5 implementation hash binds both the normalized candidate AST and the task-specification digest. The ledger persists the specification and its signature, rechecks the signature during replay and every REUSE, and rejects a second specification that reuses an installed task ID with different content. A changed target must receive a new explicit task version ID (for example `:v2`); the old version remains immutable.
+
+This is a new bounded authoring capability, not an independent trust root: both signatures use the same configured key. No real Founder key, identity, private-key custody, external signer, production service, or independent AI discovery is established. The tests use ephemeral keys. The feature proves only exact polynomial equivalence inside this deliberately narrow language and declared input domain; it is not a general theorem prover or arbitrary program runner.
+
+
+## Deterministic task-program synthesis
+
+`scripts/synthesize-candidate-task.mjs` converts a validated v1 task specification into a bounded Horner-form candidate AST:
+
+```sh
+npm run candidate:synthesize -- ./task-spec.json
+```
+
+The synthesizer builds the polynomial from ascending canonical integer coefficients, decomposes safe-integer constants into base-1,000,000 AST operations, validates the depth/node/runtime bounds, and recomputes the exact BigInt polynomial certificate before returning. The CLI reads a bounded regular file and rejects duplicate JSON keys. It has no private-key access and makes no ledger changes.
+
+The output is a **candidate**, not an approval or installation. The task specification still requires its separate Founder signature, and the INSTALL proposal still requires its own detached signature under the configured trust pin. Both signatures use the same key; this is not an independent trust root. The synthesizer is deterministic polynomial compilation, not AI discovery, arbitrary code generation, a general theorem prover, or execution of a newly installed capability.
