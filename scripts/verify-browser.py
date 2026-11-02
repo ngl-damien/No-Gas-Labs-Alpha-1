@@ -1139,11 +1139,13 @@ def research_follow_up_loop(browser,url,out):
         expect(witness_page.locator('#experiment-evidence-version')).to_have_value('1')
         expect(submit).to_be_enabled()
         submit.click()
+        follow_up_card=witness_page.locator('#sheet-content [data-research-activity-id]').filter(has_text=f'Follow-up of Decision Chamber review {review["reviewId"]}')
+        expect(follow_up_card).to_have_count(1,timeout=15000)
 
         witness_state_after=witness_context.request.get(url+'api/state').json()
         founder_state_after=founder_context.request.get(url+'api/state').json()
         follow_up_events=[event for event in witness_state_after['world']['events'] if event.get('followUpReviewId')==review['reviewId']]
-        assert len(follow_up_events)==1
+        assert len(follow_up_events)==1, f"Expected one follow-up event for {review['reviewId']}; found {len(follow_up_events)}"
         follow_up=follow_up_events[0]
         assert follow_up['actor']['id']==witness_state['viewer']['id']
         assert follow_up['moonshotId']==proposal['moonshotId']
