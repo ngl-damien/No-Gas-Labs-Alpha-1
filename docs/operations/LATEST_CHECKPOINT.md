@@ -1212,3 +1212,48 @@ Fresh root `AGENTS.md` reads for `ngl-mesh`, `no-gas-labs-command-center`, `no-g
 5. Broaden candidate-program proof scope only with an explicit target/acceptance contract. Do not treat the finite v2 sample suite as proof or the v3 square-only proof as general-purpose code verification.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+## Run 32 — 2026-11-02 — second verifier-fixed polynomial target and CI-discovered hash-domain repair
+
+**Worker:** Worker A — candidate capability acquisition / evidence integrity.  
+**Proposal:** PR #268, draft/open/unmerged.  
+**Branch:** `experiment/candidate-program-acquisition-relay-stack-20261101`.  
+**Code head before this checkpoint-only commit:** `6b54eb98d838be798a0472e1e1c2719d5c73290b`.  
+**Base:** PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`.  
+**Prior durable checkpoint:** Run 31 in this file. Root instructions and the full shared scheduler protocol were re-read on this branch before this run's repository inspection.
+
+### Cycle 1 — add a second verifier-defined exact target
+
+- Commit `7e6113792f734e80a9da24e8f893ce32da1e3ba1` adds `candidate-program-v4`, refactors the shared exact polynomial analyzer, and defines the fixed verifier-owned target `2x² - 3x + 7` with ascending coefficients `[7, -3, 2]` and stable target ID `ngl.experiment-001.target:quadratic-2x2-minus-3x-plus-7:v1`.
+- The target is fixed by verifier code, not supplied by the candidate. The proof certificate uses schema `ngl.candidate-program-proof.v2`, includes target ID and expected coefficients, and reuses the restricted polynomial language, input interval `[-1,000,000, 1,000,000]`, and safe-integer/AST limits from v3.
+- The exact target's conservative maximum intermediate bound is `2,000,003,000,007`, below `Number.MAX_SAFE_INTEGER`.
+- Tests cover a positive exact proof, coefficient near-miss, unsupported non-polynomial operators, signed INSTALL/fresh-process REUSE, and signed certificate target substitution.
+- **Observed defect on this intermediate head:** the feature commit added v4 to the strategy set and challenge path but did not yet add `v4` to the `candidateProgramHash` version allowlist. Verify [41368594143](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368594143) failed: Node 24 reported 926 tests, 923 passed and 3 failed. All three failures were the new v4 tests: challenge passed 0 instead of 1; fresh-process INSTALL/REUSE failed; and the target-tamper test received a null certificate. The source path at `candidate-program.mjs:116-120` still rejected v4 with `CANDIDATE_PROGRAM_VERSION_INVALID`, so the v4 challenge returned an invalid result before producing its certificate.
+- Genesis Evidence Invariant [41368594224](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368594224) passed on that intermediate head. Browser Acceptance [41368594243](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368594243) was cancelled when the repair superseded the head; it is not counted as a pass.
+
+### Cycle 2 — repair and verify the v4 hash domain
+
+- Commit `6b54eb98d838be798a0472e1e1c2719d5c73290b` adds `v4` to the allowed candidate-program hash versions, producing the distinct `candidate-program:v4` identity while preserving v1/v2/v3 hash domains.
+- Exact-head Verify [41368713307](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368713307): **success**. Hosted preflight status `ready`, warnings `[]`, failures `[]`; Node 24 test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0.
+- Genesis Evidence Invariant [41368713346](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368713346): **success**.
+- Browser Acceptance [41368713356](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368713356): **success**; 16 individual journey records all report `passed: true`. Artifact [13108566092](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41368713356/artifacts/13108566092).
+- No local checkout, local portable preflight, or local Node test is claimed. Connected Desktop Commander devices were offline; hosted exact-head verification is the available execution evidence.
+- The results above apply to code head `6b54eb9`. The checkpoint-only commit created by this entry requires its own exact-head CI; do not transfer these results to the new checkpoint head.
+
+### Scope and current blockers
+
+- v4 demonstrates that the exact BigInt normal-form engine can verify a second fixed target, not arbitrary caller-defined targets. The target must remain verifier-owned; a future general target contract needs an independently trusted task specification and explicit acceptance semantics. This is not general-purpose theorem proving, novel AI discovery, independent Founder identity/custody, or production autonomy.
+- PR #269 latest head `fbad3249c2aadedc5b73b33e0511191ecab2a053` has exact-head Verify [41367042609](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41367042609), Genesis [41367042688](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41367042688), and Browser [41367042614](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41367042614) all passed; Browser logged 17 individual passing journeys. Worker A's G1 end-to-end playable-loop handoff is in PR #269 comment `6566342219`. G1 remains NOT ASSESSED in the game ledger; the 17 journeys do not by themselves prove a complete start-to-return loop.
+- PR #251 remains draft/unmerged on head `3017ee1ead746fd90b7eebe1ff66842561e47799`; its Verify, Genesis, and Browser checks passed and its description was corrected. PR #244 remains draft/unmerged and is not wired into the live Decision Gate. Issue #17 remains open for actual Founder identity/custody, concurrency, stale-lock/crash recovery, and server integration.
+- PR #16 remains closed/unmerged; PR #18 is the merged content-preserving replacement. The isolated `src/authority/decision.js` caller-supplied verification flag was not established as a live-server call path; main's game server uses the separate session-authenticated `src/institution/decisions.mjs` store and still has a local development key-generation path. No Founder key was generated or enrolled.
+- Linked-repository instruction gate is unchanged: five linked repositories returned 404 for root `AGENTS.md`; `no-gas-labs-governance` has a root instruction requiring `./init_repo.sh`, which cannot be executed through the current GitHub-only interface while Desktop Commander devices are offline. No linked repository was edited.
+
+### Next ranked actions
+
+1. Verify all three workflows on the checkpoint-only head created by this entry; update PR #268's current-head summary only after those results are observed.
+2. Define the trust/provenance and acceptance contract for any future target before implementing caller-defined goals; do not turn a candidate-supplied target into its own proof oracle.
+3. Reconcile the #263/#264 preflight lineage with the #262/#265/#267/#269 game lineage before changing the shared manifest or combining game and capability work. No merge/rebase without authorization.
+4. Reconcile PR #251's #245 base and the competing server lineage before integrating the explicit Founder-key startup guard. Preserve the distinction between bearer-key possession and real-world Founder identity/custody.
+5. Continue the MMORPG G1 end-to-end player-loop gate only in Worker B's game lane; no parallel game-source edits by Worker A.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder key operation, production service call, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
