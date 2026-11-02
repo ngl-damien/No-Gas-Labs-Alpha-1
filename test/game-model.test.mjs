@@ -264,3 +264,84 @@ test('each actor may challenge a retained report once while independent actors p
   assert.ok(challenges.every(event => event.outcome === undefined && event.status === undefined),
     'separate challenges preserve dissent without manufacturing a verdict');
 });
+
+test('Founder challenge dispositions bind immutable source events without granting truth or XP', async () => {
+  const start = createWorld({ id: 'challenge-review-world', now });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot',
+    title: 'Can the observation be reproduced?',
+    hypothesis: 'The observation repeats under the stated conditions.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'The procedure and a retained observation.'
+  }, witness, { now });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The control settings were unavailable.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-17T12:00:01.000Z' });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report omits the control settings needed for reproduction.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const reportEvent = report.world.events.at(-1);
+  const challengeEvent = challenge.world.events.at(-1);
+  const reviewAction = {
+    type: 'review-experiment-challenge',
+    reportId: report.result.reportId,
+    challengeId: challenge.result.challengeId,
+    disposition: 'request-evidence',
+    rationale: 'Retain the control settings and repeat the comparison before drawing a conclusion.'
+  };
+
+  await assert.rejects(
+    applyAction(challenge.world, { ...reviewAction, reportId: 'missing-report' }, founder, {
+      now: '2026-10-17T12:00:03.000Z'
+    }),
+    error => error.code === 'CHALLENGE_REVIEW_TARGET_UNAVAILABLE' && error.status === 409
+  );
+
+  const before = projectCharacter(challenge.world, founder);
+  const reviewed = await applyAction(challenge.world, reviewAction, founder, {
+    now: '2026-10-17T12:00:03.000Z'
+  });
+  const reviewEvent = reviewed.world.events.at(-1);
+  assert.equal(reviewEvent.type, 'experiment-challenge-reviewed');
+  assert.equal(reviewEvent.actor.id, founder.id);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.deepEqual(reviewEvent.sourceEventIds, [reportEvent.id, challengeEvent.id]);
+  assert.equal(reviewEvent.disposition, 'request-evidence');
+  assert.equal(reviewEvent.outcome, undefined);
+  assert.equal(reviewEvent.status, undefined);
+  assert.equal(reviewed.world.xp, challenge.world.xp);
+  const after = projectCharacter(reviewed.world, founder);
+  assert.deepEqual(
+    [after.xp, after.publicationXp, after.questXp],
+    [before.xp, before.publicationXp, before.questXp],
+    'a next-step disposition is not an XP-bearing experiment outcome'
+  );
+  assert.equal(after.skills.find(skill => skill.id === 'deliberator').count, 1);
+  assert.equal(after.fieldSatchel.filter(item => item.kind === 'challenge-review').length, 1);
+  assert.deepEqual(
+    after.fieldSatchel.find(item => item.kind === 'challenge-review').action,
+    { type: 'location', id: 'decision_chamber' }
+  );
+  assert.equal(projectCharacter(reviewed.world, witness).skills.find(skill => skill.id === 'deliberator').count, 0);
+  assert.equal(await validateWorld(reviewed.world).then(() => true), true);
+
+  await assert.rejects(
+    applyAction(reviewed.world, reviewAction, founder, { now: '2026-10-17T12:00:04.000Z' }),
+    error => error.code === 'CHALLENGE_ALREADY_REVIEWED' && error.status === 409
+  );
+  const tampered = structuredClone(reviewed.world);
+  tampered.events.at(-1).sourceEventIds[0] = 'not-the-report-event';
+  await assert.rejects(validateWorld(tampered));
+});
+
