@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lstat, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publishAtomicLock } from './atomic-lock.mjs';
@@ -43,6 +43,64 @@ test('atomic lock publication exposes complete, private metadata to the read-onl
     await cleanup(lockPath);
   }
   assert.deepEqual(await readdir(directory), []);
+});
+
+test('atomic lock publication synchronizes the containing directory before returning', async t => {
+  const directory = await temp(t);
+  const lockPath = join(directory, 'institution.json.lock');
+  const probe = await open(directory, 'r');
+  const prototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  const originalSync = prototype.sync;
+  let directorySyncs = 0;
+  prototype.sync = async function (...args) {
+    if ((await this.stat()).isDirectory()) directorySyncs += 1;
+    return originalSync.apply(this, args);
+  };
+  try {
+    const lease = await publishAtomicLock(lockPath, JSON.stringify({ schema: 'ngl.ledger-lock.v1', pid: process.pid }));
+    assert.equal(directorySyncs, 1);
+    assert.ok((await lstat(lockPath)).isFile());
+    await cleanup(lease.temporaryPath);
+    await cleanup(lockPath);
+  } finally {
+    prototype.sync = originalSync;
+  }
+});
+
+test('directory-sync failure preserves the published lock and blocks a competing writer', async t => {
+  const directory = await temp(t);
+  const lockPath = join(directory, 'institution.json.lock');
+  const record = JSON.stringify({ schema: 'ngl.ledger-lock.v1', pid: process.pid });
+  const probe = await open(directory, 'r');
+  const prototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  const originalSync = prototype.sync;
+  prototype.sync = async function (...args) {
+    if ((await this.stat()).isDirectory()) {
+      const failure = new Error('injected directory sync failure');
+      failure.code = 'EIO';
+      throw failure;
+    }
+    return originalSync.apply(this, args);
+  };
+  try {
+    await assert.rejects(
+      publishAtomicLock(lockPath, record),
+      error => error.code === 'LEDGER_LOCK_DURABILITY_UNCERTAIN' && error.cause?.code === 'EIO'
+    );
+    const published = await lstat(lockPath);
+    assert.ok(published.isFile());
+    assert.equal(await readFile(lockPath, 'utf8'), record);
+    assert.deepEqual((await readdir(directory)).filter(name => name.startsWith('institution.json.lock.tmp-')), []);
+    await assert.rejects(
+      publishAtomicLock(lockPath, JSON.stringify({ schema: 'ngl.ledger-lock.v1', pid: process.pid + 1 })),
+      error => error.code === 'LEDGER_LOCKED'
+    );
+  } finally {
+    prototype.sync = originalSync;
+    await cleanup(lockPath);
+  }
 });
 
 test('a competing publisher fails closed and preserves the first lock inode and bytes', async t => {
