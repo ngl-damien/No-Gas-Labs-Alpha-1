@@ -40,6 +40,29 @@ const OPTIONAL_SHELL = [
 ];
 const SHELL_PATHS = new Set([...CORE_SHELL, ...OPTIONAL_SHELL]);
 
+// Cache Storage is an optimization after installation. A quota or permission
+// failure must not turn a successful network response into an offline fallback.
+async function openCache() {
+  try { return await caches.open(CACHE_NAME); } catch { return null; }
+}
+
+async function matchCache(cache, request) {
+  if (!cache) return null;
+  try { return await cache.match(request) || null; } catch { return null; }
+}
+
+async function cacheResponse(cache, request, response) {
+  if (!cache || !response?.ok) return;
+  try { await cache.put(request, response.clone()); } catch {}
+}
+
+async function offlineNavigation(request) {
+  const cache = await openCache();
+  return await matchCache(cache, request) ||
+    await matchCache(cache, new URL('/index.html', self.location.origin).href) ||
+    Response.error();
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
@@ -68,33 +91,33 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
+      let response;
       try {
-        const response = await fetch(request);
-        if (response.ok) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
-        }
-        return response;
+        response = await fetch(request);
       } catch {
-        const cache = await caches.open(CACHE_NAME);
-        return await cache.match(request) ||
-          await cache.match(new URL('/index.html', self.location.origin).href) ||
-          Response.error();
+        return offlineNavigation(request);
       }
+      if (!response.ok && response.status >= 500 && response.status <= 599) {
+        const fallback = await offlineNavigation(request);
+        if (fallback?.ok) return fallback;
+      }
+      await cacheResponse(await openCache(), request, response);
+      return response;
     })());
     return;
   }
 
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(request);
+    const cache = await openCache();
+    const cached = await matchCache(cache, request);
     if (cached) return cached;
+    let response;
     try {
-      const response = await fetch(request);
-      if (response.ok) await cache.put(request, response.clone());
-      return response;
+      response = await fetch(request);
     } catch {
       return Response.error();
     }
+    await cacheResponse(cache, request, response);
+    return response;
   })());
 });

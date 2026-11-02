@@ -877,3 +877,170 @@ No merge, release, deployment, spending, external publication, credential/permis
 - Cross-worker handoff on PR #264 requests adding `game/institution-record-objects.mjs` to the canonical preflight target list. The current manifest does not fingerprint that module despite zero preflight warnings; do not claim otherwise.
 - The Decision Chamber's durable docket is a separate `/api/decisions` source projected by `projectDecisionDocket`; it is not yet part of this Chronicle projector. Next high-leverage step is a safe, read-only Decision Docket-to-Decision-Chamber world-object projection, without exposing private audit/policy data or changing human authority.
 - No physical Android device acceptance, native Android build, merge, release, deployment, spending, key/permission change or Founder acceptance is claimed. PR #267 remains draft/open/unmerged.
+
+
+---
+
+## 2026-11-01 — Worker B — Decision Docket stale continuity and walkable world records
+
+### Rehydration and ownership
+
+- Re-read root `AGENTS.md` and the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` sequentially on the active PR #267 branch. Their blob SHAs match the current branch: AGENTS `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the latest Worker A durable checkpoint `docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md` on PR #266's branch. Worker A's current scoped limiter work and PR #266 are separate; no overlapping files were changed here.
+- Rechecked main at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`, parent PR #267 at `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`, and its exact-head hosted checks: Verify `41353157683`, Genesis Evidence Invariant `41353157748`, Browser Acceptance `41353157692` all succeeded.
+- The recursive tree at PR #267 contains only root `AGENTS.md` plus the unrelated `recovery/public-repos/TaskAgile/AGENTS.md`; no nested instruction applies to the touched game/test/script paths.
+- Portable local preflight and local Node tests were unavailable: no connected Remote Desktop Commander device/repository checkout was returned, and the available local runtime was Node v22 while this repository requires Node >=24. The child branch retains the existing hosted preflight target list; every changed source/test/browser/checkpoint/ledger path is already listed. The known PR #264 manifest omission for `game/institution-record-objects.mjs` remains separate and is not claimed fixed here.
+
+### Challenge and selected gap
+
+- The previous checkpoint and G6 ledger row said the separate Decision Chamber docket was not yet projected into map objects. Reinspection of current PR #267 source disproved that statement: `game/institution-record-objects.mjs` already accepts a sealed `projectDecisionDocket` projection, maps `source === 'decision-docket'` to `decision_chamber`, and builds read-only map objects. `test/game-geometry.test.mjs` already verifies reachability, exact identity, quest routing and clearing; `scripts/verify-browser.py` already verifies the Guild Hall docket and live Chamber route. The old note is retained as historical evidence and corrected in the ledger.
+- The actual unclosed gap was transient continuity: `refreshDecisionDocket` and `openInstitution` replaced the last valid map projection with an unavailable projection after a failed/malformed refresh, removing useful map objects. The existing `selectWorldSnapshot(candidate, fallback)` pattern in `game/institution-view.mjs` demonstrates the intended stale/read-only behavior for the world snapshot.
+- Selected a bounded extension of PR #267 rather than a competing implementation: keep the last module-sealed valid docket projection in memory as explicitly stale/read-only, route from Guild Hall to its exact world object, and ensure the live Decision Chamber still requires a fresh service response.
+
+### Implementation
+
+- `game/quests.mjs`: add `selectDecisionDocketProjection`. It accepts a fresh module-sealed projection, or retains a previously sealed valid projection with `stale: true` when the candidate is unavailable/malformed. A plain forged fallback object is rejected.
+- `game/world-view.mjs`: track stale state separately from the projection, expose it to the canvas for tests/accessibility, and draw a visible `STALE` marker on Decision Docket map objects. Clearing the projection clears the stale flag.
+- `game/client.mjs`: both background refresh and institution refresh use the selector. Principal changes/private mode still clear the projection. Guild Hall can walk to the exact Decision Chamber map object (or inspect retained overflow directly); stale records are labeled. The live Chamber still renders only the current fetch result and exposes no disposition controls on outage/malformed data.
+- `test/game-quests.test.mjs`: cover fresh replacement, stale fallback, no-fallback unavailable state, and rejection of an unsealed fallback.
+- `test/game-geometry.test.mjs`: cover stale pin retention, stale-state exposure, and clearing.
+- `scripts/verify-browser.py`: extend the two-client decision journey to walk to the actual map object, inspect it read-only, simulate a Decision Service outage, verify stale record inspection and zero gate controls, then reconnect and verify fresh state replaces stale state.
+- Draft child PR #269: [game: preserve stale Decision Docket map objects during outages](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/269), branch `game/decision-docket-stale-map-recovery-20261101`, based on PR #267. Code/test/browser commits through `4b1ce2a19d744cd7836109700b456588599008bd`; the ledger update is committed as `c68105c2536665d29fdcbd55926252b98ea3b7e7`. The checkpoint update is the next commit.
+
+### Verification boundary and handoff
+
+- Child PR #269 exact-head hosted Verify, Genesis Evidence Invariant, and Browser Acceptance are pending. No local test/build or physical Android-device run is claimed.
+- This is in-session stale continuity only, not a durable offline shared-world cache across reloads. Re-entering Shared World still requires the shared service. The stale projection is display-only; it cannot authorize, approve, reject, defer, award XP, or append canonical events.
+- G6 remains IN PROGRESS and proposed. PR #269 is a draft child of draft PR #267; neither is integrated into `main`. No merge, release, deployment, spending, key/permission change, production service call, external publication, or Founder acceptance occurred.
+- Next: inspect exact-head hosted checks for PR #269, repair attributable failures only, record final run IDs/results, then hand off the remaining preflight-manifest omission for `game/institution-record-objects.mjs` to Worker A/PR #264. Do not merge or claim physical Android acceptance.
+
+
+### Verification and cross-worker correction — 2026-11-01
+
+- Final code/test/browser head before this documentation addendum: `f5f0584cffcd308fd37f7858f4655e6f2f2033f5`.
+- Exact-head hosted verification on that code head:
+  - Verify `41357228499`: success. The job ran the portable `agent:preflight:ci`, Node test suite, Python checks, package checks and institutional exercise; preflight reported no warnings or failures.
+  - Genesis Evidence Invariant `41357228558`: success.
+  - Browser Acceptance `41357228575`: success. The two-session shared-world journey passed with one retained decision docket; the added map-object route, stale outage inspection, absence of disposition controls, and fresh recovery assertions are part of that passing journey. All other desktop, phone, social, Guild, Commons, standalone-byte, and shared-restart journeys also passed. Artifact ID `13103464482` was uploaded by the workflow.
+- The browser test adjustment after the earlier checkpoint is commit `f5f0584cffcd308fd37f7858f4655e6f2f2033f5`; it captures the world baseline after walking to the map object so legitimate discovery-on-walk events are not misclassified as read-only inspection mutations.
+- Cross-worker correction: the latest Worker A durable checkpoint is not the older PR #266 branch initially read above. PR #264's newer branch `ops/relay-stack-preflight-fifo-guard-20261101` was also inspected, including its `LATEST_CHECKPOINT.md`, root instructions, protocol and 73-target manifest. Its current head is `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`; Verify `41336881739`, Genesis `41336881760`, and Browser `41336881704` all passed. That branch has no overlap with this child feature. Its manifest still does not include `game/institution-record-objects.mjs`, so the preflight handoff remains open. PR #266 was also rechecked as an older, separate Worker A branch: head `587bb8bbac20d41660b43561c3ebb67b6edb5e58`; its own Verify `41341727832`, Browser Acceptance `41341727839`, and Genesis Evidence Invariant `41341727873` all passed.
+- The current PR #269 branch now has a documentation-only ledger update after code head `f5f0584`; this checkpoint update is also documentation-only. Hosted checks will run again on the resulting branch head. No code changed after `f5f0584`.
+- No local Node 24 execution or physical Android-device run is claimed. The hosted workflow is the independent verification source for the code head. No merge, release, deployment, spending, key operation, authority change, or Founder acceptance occurred.
+
+
+---
+
+## 2026-11-01 — Worker B — offline Decision Docket echo and browser failure repair
+
+### Rehydration and current ownership
+
+- Read root `AGENTS.md` alone, then the complete canonical shared protocol alone. On the current PR #269 branch, root instructions and protocol retain the expected blobs `a4beeee1c0ec46faab28502957c0e53850b2855d` and `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Current `main`: `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. PR #269 branch `game/decision-docket-stale-map-recovery-20261101`, exact pre-repair head `e04afc3b8f2a50765e7257d6484d705f8f364782`, based on PR #267 head `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`. PR #267 remains draft/open/unmerged.
+- Latest Worker A result is PR #268, branch `experiment/candidate-program-acquisition-relay-stack-20261101`, head `b0bb6f8fe33072f18c94d2b2509a33c601e6b61b`, based on PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`. Its exact-head Verify `41358705740`, Genesis `41358705761`, and Browser Acceptance `41358705744` all succeeded. Its bounded candidate-program-v2 work is separate from game/client paths.
+- The current PR #269 exact-head runs on `e04afc3`: Verify `41362732950` success, Genesis Evidence Invariant `41362732988` success, Browser Acceptance `41362732964` failure. The browser artifact is `13105958447`, ZIP SHA-256 `0e3a9a548857576defe435cc72ab741f674621f849b29b52fe593a846feaa4f1`.
+- The connected Remote Desktop Commander returned no online device, and a container `git clone` could not resolve the configured network proxy. No local checkout, local Node 24 test, or local portable preflight was available. The hosted Verify run executed `agent:preflight:ci` on `e04afc3` and reported `warnings: []`, `failures: []`. Its declared target list includes the current game/client/browser/test/checkpoint/ledger paths but omits parent-branch file `game/institution-record-objects.mjs`; the green preflight does not fingerprint that file.
+- The latest Worker A checkpoint reference was corrected by re-reading PR #268's current body. The older `docs/operations/REPOSITORY_STUTTER_STEP_RUN_2026-11-01.md` path is not present on PR #268's branch; the current Worker A run-30 result is recorded in PR #268 itself. No game files overlap that PR.
+
+### Source and donor re-audit
+
+- Re-read `docs/DONOR_REPOSITORY_AUDIT_2026-10-28.md`: the strongest relevant donor candidates remain Damien-Featherstone's persistent-world/district/NPC/counterexample concepts, ngl-mesh's evidence/authority bridge contracts, and TaskAgile's offline/mobile interaction patterns only after server-side validation. The audit explicitly rejects copying whole donor applications or trusting client-local progress. This run adapts Alpha-1's own sealed Decision Docket projection and service-worker shell; no donor source was copied.
+- Partial G2 source audit: main `game/service-store.mjs` `186ce6b028bc1875b6520adbb21ad06434085dc4` persists a canonical digest-checked envelope with bounded reads, private permissions, exclusive writer ownership, atomic replacement and revision guards. Main `game/server.mjs` `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` uses it for the world and institutional records. `test/game-server.test.mjs` `9766f64ccb7b2784eaca2543957b21af682d7bd2` includes restart persistence, exact idempotent retry across service restart, and Witness recovery without Founder-authority restoration. Private client state uses a validated local backup; the position module stores only bounded coordinates. G2 is therefore IN PROGRESS, not complete.
+- The donor/recovery principle is preserved: a local byte copy is not truth, a session label is not identity, and an offline cache is never a canonical event or authority receipt.
+
+### Selected defect and repair
+
+- PR #269's later commits `bacdfeebbd46396b62969d8cab2e28a341cdfc36` through `e04afc3` extended stale in-session continuity into a bounded same-tab `sessionStorage` local echo that survives a reload while the service worker serves the shell. The cache codec revalidates a 64-KiB-bounded, public-only projection; it records the cached actor and save time, discloses truncation, excludes Founder-only evaluation/risk/rollback/effect/policy data, and remains explicitly unverified. Offline mode has no character/XP/quest progression or gate actions.
+- The exact-head Browser Acceptance failure was attributable to the UI renderer: `openInstitutionRecord` displayed the local-copy warning only when `view.decisionDocketUnverified` was true, even though `mode === 'offline'` is itself an unverified boundary. The failing browser assertion was at `scripts/verify-browser.py:1192`; the DOM showed the record's read-only dataset and public status claim but no `LOCAL COPY · UNVERIFIED` warning. The test's expected warning was correct; the detail renderer was too dependent on canvas state.
+- Repair: decision-record details now treat `mode === 'offline'` OR the view's unverified flag as sufficient to label the record `LOCAL COPY · UNVERIFIED`; the DOM exposes `data-institution-record-unverified`. The browser journey asserts the unverified/read-only attributes and warning after walking to the offline map record. This does not change canonical world state, the cache contents, authority, XP or gate behavior.
+
+### Current iteration verification boundary
+
+- The pre-fix failure is preserved: Verify `41362732950` and Genesis `41362732988` succeeded; Browser Acceptance `41362732964` failed. Do not rewrite this as a pass.
+- The repair commit created after this checkpoint refresh has pending exact-head hosted Verify, Genesis and Browser Acceptance. No local test or physical Android-device run is claimed.
+- The same-tab cache does not survive a new tab or browser-session termination; it is not an offline shared-world or character save. Re-entry into the authenticated shared world still requires the service.
+- PR #269 remains a draft child of PR #267, not integrated into `main`. No merge, release, deployment, spending, key/permission change, external publication or Founder acceptance occurred.
+
+### Cross-worker handoff
+
+- Worker A: the 71-target Alpha-1 preflight manifest inherited by PR #269 omits `game/institution-record-objects.mjs`, which is introduced by PR #267 and absent from PR #264/#268's current base tree. Once a deliberate integration branch contains PR #267's file, include it and its tests in the canonical preflight target list and regression contract. Do not claim the current ready receipt fingerprints that file.
+- Worker B next: inspect exact-head Verify, Genesis and Browser results after this renderer repair; repair only attributable failures. Keep the offline docket copy read-only and unverified. Do not merge.
+
+
+---
+
+## 2026-11-01 — Worker B — correction: stale sheet metadata, not missing warning renderer
+
+### Browser failure re-diagnosis
+
+- The exact-head Browser Acceptance run `41363922931` on `bd5448666e2d3b8bf80699fbe7ed26ff17917e0b` failed again at `scripts/verify-browser.py:1198`. The artifact log's actual `#sheet-content` text was the Guild Hall local docket panel (including its local-copy disclaimer, cached status and “Walk to map record” button), not the map-record detail. Yet the same element still carried `data-institution-record-id`, `data-institution-record-unverified` and read-only metadata from the earlier record view.
+- Root cause: `showSheet()` used `replaceChildren()` but left the previous `#sheet-content.dataset` intact. The browser journey's `wait_for_function` therefore returned immediately on stale DOM metadata before the player reached the map record. The assertion then correctly failed because the visible content was still the docket panel. The previous diagnosis that the renderer alone omitted the warning was incomplete/incorrect; the `mode === 'offline'` warning guard remains a defensive fail-closed improvement, but did not fix the stale locator.
+- Repair: every `showSheet()` transition now deletes all `institutionRecord*` dataset keys before replacing children. The browser journey asserts that the newly opened Guild Hall local docket has no record identity/unverified record metadata, then waits for the exact map-record identity before checking the local-copy warning, unverified flag and read-only state. This prevents stale DOM attributes from being mistaken for current object identity.
+
+### Current Worker A handoff refresh
+
+- PR #268 has advanced to head `0b0d214ad10fd60b45d7257c2de806b1cf6bad71` (commit: `test(experiment): retain candidate v3 proof across restart`), based on PR #264 head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`. Exact-head Verify `41364355655` and Genesis `41364355455` succeeded; Browser Acceptance `41364355444` is still in progress. Its Run 30 checkpoint/PR body predates this v3 test commit and does not yet describe it. The branch still does not include Worker B's `game/institution-record-objects.mjs`, which remains a post-integration preflight handoff.
+
+### Verification boundary
+
+- PR #269 head `bd5448666e2d3b8bf80699fbe7ed26ff17917e0b`: Verify `41363922851` success; Genesis `41363922968` success; Browser Acceptance `41363922931` failure, preserved as described above.
+- The stale-dataset fix and stronger browser assertions are in the next commit after `bd544866`; exact-head Verify, Genesis and Browser Acceptance are pending. No local Node 24 test, local preflight, or physical Android-device run is claimed.
+- PR #269 remains a draft child of PR #267; no merge or deployment occurred.
+
+---
+
+## Run 32 — 2026-11-02 — fail-soft PWA shell recovery on the MMORPG branch
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Active proposal:** [PR #269](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/269), draft/open/unmerged, child of PR #267.  
+**Branch:** `game/decision-docket-stale-map-recovery-20261101`.  
+**Prior code head:** `fbad3249c2aadedc5b73b33e0511191ecab2a053`.  
+**Code head delivered:** `0d48f68c1eb400e70ab498b34748c616dadfabb9`.
+
+### Rehydration and ownership
+
+- Re-read root `AGENTS.md` alone, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone on the current PR #269 branch. Read the current MMORPG completion contract and ledger, this branch's latest durable checkpoint, current PR #269/#267/#265/#262 stack, sibling PR #263 cache-fallback donor, and the current Worker A result.
+- Current ancestry: PR #269 is based on PR #267 head `14f8f8c689eaf5088d27710b285bffc52e2e7e8b`; PR #267 is based on PR #265 head `a58eee3e5fe192a668982c8ff14e4b12fe227635`; PR #265 is based on PR #262 head `109e3b7d73f43fe547f09539f261267f1ab41579`. These remain proposals, not mainline integration.
+- Latest Worker A proposal re-observed: PR #268 head `6b54eb98d838be798a0472e1e1c2719d5c73290b`, based on PR #264. Its Verify `41368713307`, Genesis `41368713346`, and Browser Acceptance `41368713356` all completed successfully. It is candidate-program/preflight work and does not overlap the game/client/service-worker paths changed here.
+- Sibling cache-fallback donor re-observed: PR #263 head `4b8f32c8b033e90e2ae9008cc8da61c876a83fa0`; Verify `41295102919`, Genesis `41295102885`, and Browser Acceptance `41295102897` all succeeded. Its source was ported narrowly into PR #269 rather than copied wholesale or merged.
+- PR #249 Android proposal rechecked at head `1686806143b11e7c70366b719621b50037e8ab94`: Verify `41267898554`, Genesis `41267898505`, Browser Acceptance `41267898568`, and Android Alpha-1 `41267898565` all succeeded; API 35 emulator instrumentation reported 2/2 tests, 0 skipped, 0 failed. This is emulator evidence, not physical-device acceptance.
+- `game/AGENTS.md` and `test/AGENTS.md` returned 404 on the current branch. No nested instructions applied to the changed paths. The 71-target preflight already includes `game/sw.js` and `test/game-package.test.mjs`, but omits `game/institution-record-objects.mjs`, a module introduced by PR #267. The latter omission is a cross-worker handoff to Worker A/PR #268; I did not edit the shared `package.json` or `test/latest-checkpoint-contract.test.mjs` while Worker A owns that manifest/contract work.
+- No local checkout was mounted; local Node is v22.16.0 while the repository requires Node >=24. Remote Desktop Commander devices were offline and a container clone cannot resolve the configured network proxy. Therefore no local preflight, Node test, or build is claimed; hosted exact-head CI is the execution evidence.
+
+### Selected defect and why it ranked highest
+
+The service worker treated Cache Storage failures as if they were network failures. In the previous navigation handler, network fetch and cache open/write shared one `try` block: an online 200 response could be discarded when `caches.open()` or `cache.put()` failed, causing a stale cached shell or an error to replace a valid network response. For ordinary shell assets, cache open/read/write errors could prevent a successful network asset from reaching the player. This directly undermined the same-tab offline Decision Docket recovery and the mobile-first PWA under quota/permission pressure.
+
+The donor audit records TaskAgile's offline cache/retry/mobile patterns as candidates only after hardening, and explicitly rejects client-local score/progress as canonical. This change keeps the cache strictly at the public application-shell layer: it never caches `/api/*`, shared state, or progress. The adaptation source is the independently verified Alpha-1 sibling PR #263, not a wholesale donor application copy.
+
+### Implementation
+
+- `game/sw.js`: add fail-soft `openCache`, `matchCache`, `cacheResponse`, and `offlineNavigation` helpers. Cache Storage open/match/put errors are contained after installation; online network responses remain the response returned to the page. Offline navigation still tries the exact cached request and then `/index.html`. A transient 5xx navigation can use a cached shell when available; 4xx responses remain visible. Shared-world API paths remain outside interception. Core-shell installation still fails closed if the complete shell cannot be cached. Preserve the PR #267 `/institution-record-objects.mjs` core-shell entry.
+- `test/game-package.test.mjs`: run the actual service-worker source in a Node VM harness. Port 10 sibling regression cases covering navigation/asset quota failure, cache open/lookup failure, offline fallback, 5xx fallback, 4xx visibility, API bypass and fail-closed installation. Add two PR #269-specific regressions: successful navigation survives Cache Storage open failure, and offline core-shell installation includes the institutional-record projector used by walkable map objects. The file now contains 12 service-worker scenarios plus the existing standalone packaging tests.
+- No server, decision, identity, authority, event, quest, XP, or canonical progression semantics changed.
+
+### Exact-code-head hosted verification — `0d48f68c1eb400e70ab498b34748c616dadfabb9`
+
+- Verify [41369016934](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369016934): **success**. Hosted Node 24 preflight reported 71 declared targets, `warnings: []`, `failures: []`; Node test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0 / `passed: true`.
+- Genesis Evidence Invariant [41369016952](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369016952): **success**.
+- Browser Acceptance [41369016851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369016851): **success**, 17/17 journeys. The exact run includes offline PWA/private recovery, desktop, phone, five institutional location actions, Adversary human-review handoff, two-session shared world, TownSquare moderation, player-guild membership, Commons message quest, 320/360/412px mobile toolbars, one-button layouts, standalone file/exact bytes, and shared restart. Artifact [13108692306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369016851/artifacts/13108692306), ZIP SHA-256 `bf8321a22f67a60589ea08c45280086ae347876fb954dc0bc90c2f3b31c8244f`.
+- The browser log independently records `offline-pwa-private-recovery` passed with one private publication, one private Commons message, and `shared_api: network-only`; `two-session-shared` passed with world version 2, two accepted kernel events and one docket record; `shared-restart` passed with three retained reports and the reconnect replay retained exactly once.
+- No local preflight/test/build, physical Android-device test, mainline integration, release, or deployment is claimed.
+
+### Review, limitations, and handoff
+
+- Re-fetched the exact changed files after the commit. `game/sw.js` still includes `/institution-record-objects.mjs`; the fail-soft helpers are present. `test/game-package.test.mjs` contains the 12 service-worker regression scenarios. Both changed paths are fingerprinted by the 71-target preflight manifest.
+- The preflight receipt is ready but does **not** fingerprint `game/institution-record-objects.mjs`. Worker A/PR #268 was handed the exact path and the requirement to add it and its existing projector test paths when the #263/#264 preflight stack is deliberately reconciled with the #267/#269 game stack (PR #268 comment [6566514158](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/268#issuecomment-6566514158)). The source is not silently treated as covered.
+- Sibling PR #263 was notified that its mechanism has been ported into #269 (comment [6566514578](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/263#issuecomment-6566514578)); both PRs remain draft/unmerged.
+- The offline Decision Docket echo remains same-tab session storage, public-only, bounded and explicitly unverified. It is not a durable character save, cross-tab archive, shared-world cache, or authority receipt. No offline action can award XP, complete a quest, append a canonical event, or adjudicate a decision.
+- G3 is recorded IN PROGRESS because two separate browser contexts exercised the same authoritative service; this does not establish distinct humans, separate physical devices, or declared-scale production behavior. G7 is recorded IN PROGRESS because an API 35 emulator package/instrumentation pass and mobile PWA journeys exist; no physical supported Android device has been tested.
+- PR #269 remains a draft child of PR #267; PR #267/#265/#262 remain proposals. No merge, release, deployment, spending, external publication, credential/permission change, Founder-authority decision, or physical-device setting change occurred.
+
+### Next ranked actions
+
+1. Worker A: add `game/institution-record-objects.mjs` to the canonical preflight manifest/contract when the #263/#264 and #267/#269 stacks are deliberately reconciled; keep the current branch's green receipt scoped to its 71 declared targets.
+2. Worker B: next inspect the current game stack for an unowned, bounded player-owned inventory/equipment or repeatable encounter capability. Do not infer Damien's conventional-combat preference; keep any encounter model evidence-backed and human-reviewable.
+3. Preserve the Android API 35 emulator pass as emulator-only evidence and seek actual supported-device acceptance only when a device is available; do not label the PWA as native Android.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder acceptance, or uninterrupted background execution occurred.

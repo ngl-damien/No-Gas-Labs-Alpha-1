@@ -687,7 +687,7 @@ def adversary_challenge_handoff(browser,url,out):
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
     visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     try:
         a,b=owner.new_page(),visitor.new_page()
@@ -1083,10 +1083,9 @@ def shared(browser,url,data,out):
 
         # The Guild Hall turns the service snapshot into stable, read-only decision
         # objects. Only the Decision Chamber exposes the Founder disposition controls.
-        decision_before=owner.request.get(url+'api/state').json()['world']
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
         decision_board=a.locator('#guild-decision-docket')
         expect(decision_board).to_contain_text('Browser decision docket: preserve the human gate')
         expect(decision_board).to_contain_text('PENDING')
@@ -1094,36 +1093,146 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
         expect(decision_board).not_to_contain_text(evaluation_bytes)
         decision_card=decision_board.locator('[data-guild-decision-id="browser-docket-pending"]')
-        decision_link=decision_card.get_by_role('button',name='Open in Decision Chamber →',exact=True)
-        expect(decision_link).to_be_visible()
-        decision_link.click()
-        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        map_link=decision_card.get_by_role('button',name='Walk to map record →',exact=True)
+        expect(map_link).to_be_visible()
+        map_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Browser decision docket: preserve the human gate'",timeout=30000)
+        map_record=a.locator('#sheet-content')
+        expect(map_record).to_have_attribute('data-institution-record-id','decision-docket:browser-docket-pending')
+        expect(map_record).to_have_attribute('data-institution-record-read-only','true')
+        expect(map_record).to_contain_text('Separate durable Decision Chamber docket record; not a world event.')
+        expect(map_record.locator('[data-gate-action]')).to_have_count(0)
+        map_world_before=owner.request.get(url+'api/state').json()['world']
+        map_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
         expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
         expect(a.locator('#sheet-content')).to_contain_text('FOUNDER GATE')
         chamber_card=a.locator('[data-decision-id="browser-docket-pending"]')
         expect(chamber_card).to_be_visible()
         expect(chamber_card.locator('[data-gate-action]')).to_have_count(3)
         expect(a.locator('#sheet-content')).to_contain_text(evaluation_bytes)
-        assert a.evaluate("id=>{const card=[...document.querySelectorAll('[data-decision-id]')].find(item=>item.dataset.decisionId===id);return Boolean(card&&document.activeElement===card)}",decision_id), 'Guild Hall navigation must focus the exact retained decision card'
+        assert a.evaluate("id=>{const card=[...document.querySelectorAll('[data-decision-id]')].find(item=>item.dataset.decisionId===id);return Boolean(card&&document.activeElement===card)}",decision_id), 'map-record navigation must focus the exact retained decision card'
         decision_snapshot=owner.request.get(url+'api/decisions').json()
         assert decision_snapshot['revision']==decision_snapshot_before['revision']
-        assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'Navigation must not create or dispose the pending decision'
+        assert decision_snapshot['decisions'][0]['status']=='PENDING' and decision_snapshot['decisions'][0]['disposition'] is None, 'map navigation must not create or dispose the pending decision'
         decision_after=owner.request.get(url+'api/state').json()['world']
-        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(decision_before['revision'],len(decision_before['events']),decision_before['xp']), 'Opening the docket and exact Chamber card must not mutate world progress'
+        assert (decision_after['revision'],len(decision_after['events']),decision_after['xp'])==(map_world_before['revision'],len(map_world_before['events']),map_world_before['xp']), 'opening the retained record and exact Chamber card must not mutate world progress'
         close_sheet(a)
+
+        # A transient Decision Service outage keeps the last valid map objects
+        # visible as stale, read-only records. The live Chamber must still refuse
+        # to expose Founder disposition controls until a fresh snapshot returns.
+        a.route('**/api/decisions',lambda route:route.abort())
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
+        stale_board=a.locator('#guild-decision-docket')
+        expect(stale_board).to_contain_text('STALE · LAST OBSERVED')
+        expect(stale_board).to_have_attribute('data-decision-docket-stale','true')
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+        stale_card=stale_board.locator('[data-guild-decision-id="browser-docket-pending"]')
+        stale_map_link=stale_card.get_by_role('button',name='Walk to map record →',exact=True)
+        stale_map_link.click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Browser decision docket: preserve the human gate'",timeout=30000)
+        stale_record=a.locator('#sheet-content')
+        expect(stale_record).to_contain_text('STALE · LAST OBSERVED')
+        expect(stale_record.locator('[data-gate-action]')).to_have_count(0)
+        stale_world_before=owner.request.get(url+'api/state').json()['world']
+        stale_record.get_by_role('button',name='Open Decision Chamber record →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+        stale_world=owner.request.get(url+'api/state').json()['world']
+        assert (stale_world['revision'],len(stale_world['events']),stale_world['xp'])==(stale_world_before['revision'],len(stale_world_before['events']),stale_world_before['xp']), 'offline inspection and failed live refresh must not mutate canonical world progress'
+        close_sheet(a)
+        a.unroute('**/api/decisions')
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
+        expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','false')
+        expect(a.locator('#guild-decision-docket')).not_to_contain_text('STALE · LAST OBSERVED')
+        close_sheet(a)
+
+        # The bounded public docket copy survives a reload in this tab. The
+        # offline world is a read-only map shell: it exposes retained records,
+        # not character progression, live authority, or a writable shared world.
+        cached_docket=a.evaluate("()=>sessionStorage.getItem('ngl.decision-docket.local-echo.v1')")
+        assert cached_docket, 'a fresh public Decision Docket projection should be cached for same-tab recovery'
+        assert evaluation_bytes not in cached_docket, 'the local echo must exclude Founder-only evaluation bytes'
+        a.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)",timeout=15000)
+        before_local_echo_world=owner.request.get(url+'api/state').json()['world']
+        before_local_echo_docket=owner.request.get(url+'api/decisions').json()
+        a.set_viewport_size({'width':390,'height':844})
+        owner.set_offline(True)
+        try:
+            a.reload(wait_until='domcontentloaded',timeout=30000)
+            a.locator('#start-shared').wait_for(timeout=15000)
+            a.locator('#start-shared').click()
+            a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Offline archive')",timeout=15000)
+            expect(a.locator('#world')).to_have_attribute('data-decision-docket-stale','true')
+            expect(a.locator('#world')).to_have_attribute('data-decision-docket-unverified','true')
+            expect(a.locator('#xp-count')).to_have_text('—')
+            expect(a.locator('#creation-count')).to_have_text('—')
+            expect(a.locator('#make-button')).to_be_disabled()
+            expect(a.locator('#journal-button')).to_be_disabled()
+            expect(a.locator('#character-button')).to_be_disabled()
+            expect(a.locator('#quest-trail li')).to_have_count(0)
+            a.locator('#places-button').click()
+            a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall · local docket'",timeout=30000)
+            # A new docket sheet must not inherit the prior record's DOM identity.
+            sheet_content = a.locator('#sheet-content')
+            assert sheet_content.evaluate(
+                "element => !element.hasAttribute('data-institution-record-id')"
+            ), 'A new docket sheet must not inherit a prior record ID, including an empty attribute'
+            assert sheet_content.evaluate(
+                "element => !element.hasAttribute('data-institution-record-unverified')"
+            ), 'A new docket sheet must not inherit prior unverified-record metadata, including an empty attribute'
+            expect(a.locator('#sheet-kicker')).to_have_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-content')).to_contain_text('not authenticated')
+            offline_card=a.locator('[data-offline-decision-id="browser-docket-pending"]')
+            expect(offline_card).to_be_visible()
+            expect(offline_card).to_contain_text('LOCAL STATUS CLAIM · PENDING')
+            offline_card.get_by_role('button',name='Walk to map record →',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-content')?.getAttribute('data-institution-record-id')==='decision-docket:browser-docket-pending'",timeout=30000)
+            offline_record=a.locator('#sheet-content')
+            expect(a.locator('#world')).to_have_attribute('data-decision-docket-unverified','true')
+            expect(offline_record).to_have_attribute('data-institution-record-unverified','true')
+            expect(offline_record).to_have_attribute('data-institution-record-read-only','true')
+            expect(offline_record).to_contain_text('LOCAL COPY · UNVERIFIED')
+            expect(offline_record.locator('[data-gate-action]')).to_have_count(0)
+            expect(offline_record.get_by_role('button',name='Open local docket →',exact=True)).to_be_visible()
+            offline_record.get_by_role('button',name='Open local docket →',exact=True).click()
+            a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber · local archive'",timeout=15000)
+            expect(a.locator('#sheet-kicker')).to_have_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-content')).to_contain_text('not authenticated')
+            expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
+            close_sheet(a)
+        finally:
+            owner.set_offline(False)
+        a.locator('#quest-button').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')",timeout=30000)
+        a.wait_for_function("()=>document.querySelector('#world')?.getAttribute('data-decision-docket-unverified')==='false'",timeout=30000)
+        a.set_viewport_size({'width':1440,'height':1000})
+        after_local_echo_world=owner.request.get(url+'api/state').json()['world']
+        after_local_echo_docket=owner.request.get(url+'api/decisions').json()
+        assert (after_local_echo_world['revision'],len(after_local_echo_world['events']),after_local_echo_world['xp'])==(before_local_echo_world['revision'],len(before_local_echo_world['events']),before_local_echo_world['xp']), 'offline map navigation must not mutate canonical world progress'
+        assert after_local_echo_docket['revision']==before_local_echo_docket['revision']
+        assert after_local_echo_docket['decisions'][0]['status']=='PENDING' and after_local_echo_docket['decisions'][0]['disposition'] is None, 'offline cache inspection must not create a disposition'
+        assert not errors,errors
 
         # The older Moonshot dossier route still reaches the Chamber, but it
         # does not pretend that a Moonshot ID is a decision-service ID.
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
         shared_docket=a.locator('#guild-expedition-docket')
         expect(shared_docket).to_contain_text('Can the shared observation be reproduced?')
         expect(shared_docket.locator('[data-expedition-docket-id]')).to_have_count(2)
         decision_link=shared_docket.get_by_role('button',name='Open Decision Chamber →',exact=True).first
         expect(decision_link).to_be_visible()
         decision_link.click()
-        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
         expect(a.locator('[data-decision-id="browser-docket-pending"]')).to_be_visible()
         close_sheet(a)
 

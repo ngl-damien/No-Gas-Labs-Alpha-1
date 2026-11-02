@@ -887,6 +887,126 @@ export function projectDecisionDocket(snapshot) {
   });
 }
 
+
+/**
+ * Keep the last valid Decision Docket projection available as a stale,
+ * read-only map view when a refresh is unavailable or malformed. The fallback
+ * must be a projection produced by this module; callers clear it when the
+ * authenticated principal changes.
+ */
+export function selectDecisionDocketProjection(candidate, fallback = null) {
+  const current = isDecisionDocketProjection(candidate)
+    ? candidate
+    : projectDecisionDocket(candidate);
+  if (current.available) return Object.freeze({ projection: current, stale: false });
+  if (isDecisionDocketProjection(fallback) && fallback.available) {
+    return Object.freeze({ projection: fallback, stale: true });
+  }
+  return Object.freeze({ projection: current, stale: false });
+}
+
+const DECISION_DOCKET_CACHE_SCHEMA = 'ngl.decision-docket.local-echo.v1';
+const DECISION_DOCKET_CACHE_MAX_CHARS = 65536;
+
+function exactDecisionDocketKeys(record, expected) {
+  const keys = Reflect.ownKeys(record);
+  return keys.length === expected.length && expected.every(key => Object.hasOwn(record, key));
+}
+
+/**
+ * Serialize only the already-public, bounded Decision Docket projection.
+ * Founder evaluation bytes, risks, rollback details, proposed effects, policy
+ * basis, audit rows, and raw service payloads are deliberately excluded.
+ * The cache is a local reference copy, never an authority receipt.
+ */
+export function encodeDecisionDocketCache(projection, viewer, savedAt) {
+  const actorId = viewer?.id;
+  const actorName = viewer?.name;
+  const actorRole = viewer?.role;
+  if (!isDecisionDocketProjection(projection) || projection.available !== true ||
+      !decisionDocketIdentifier(actorId) || !['founder', 'witness'].includes(actorRole) ||
+      typeof actorName !== 'string' || !actorName.trim() || Array.from(actorName).length > 80 ||
+      !isStrictTimestamp(savedAt) || !Number.isSafeInteger(projection.decisionCount) ||
+      !Number.isSafeInteger(projection.omittedDecisionCount)) return null;
+
+  const visibleCounts = Object.fromEntries(DECISION_DOCKET_STATUSES.map(status => [status, 0]));
+  for (const decision of projection.decisions) {
+    if (!Object.hasOwn(visibleCounts, decision.status)) return null;
+    visibleCounts[decision.status] += 1;
+  }
+  const snapshot = {
+    schema: DECISION_DOCKET_SCHEMA,
+    revision: projection.revision,
+    head: projection.head,
+    policy: projection.policy,
+    decisions: projection.decisions,
+    counts: visibleCounts
+  };
+  let serialized;
+  try {
+    serialized = JSON.stringify({
+      schema: DECISION_DOCKET_CACHE_SCHEMA,
+      actor: { id: actorId, name: actorName.trim(), role: actorRole },
+      savedAt,
+      sourceDecisionCount: projection.decisionCount,
+      sourceOmittedDecisionCount: projection.omittedDecisionCount,
+      snapshot
+    });
+  } catch {
+    return null;
+  }
+  return serialized.length <= DECISION_DOCKET_CACHE_MAX_CHARS ? serialized : null;
+}
+
+/**
+ * Revalidate a session-local cache as a bounded public projection. The
+ * resulting object is structurally safe but remains UNVERIFIED after reload:
+ * local storage cannot prove who wrote it or whether the service still agrees.
+ */
+export function decodeDecisionDocketCache(raw, expectedViewer = null) {
+  if (typeof raw !== 'string' || raw.length > DECISION_DOCKET_CACHE_MAX_CHARS) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const envelope = decisionDocketRecord(parsed);
+  if (!envelope || !exactDecisionDocketKeys(envelope, [
+    'schema', 'actor', 'savedAt', 'sourceDecisionCount', 'sourceOmittedDecisionCount', 'snapshot'
+  ]) || envelope.schema !== DECISION_DOCKET_CACHE_SCHEMA || !isStrictTimestamp(envelope.savedAt) ||
+      !Number.isSafeInteger(envelope.sourceDecisionCount) || envelope.sourceDecisionCount < 0 ||
+      !Number.isSafeInteger(envelope.sourceOmittedDecisionCount) || envelope.sourceOmittedDecisionCount < 0) return null;
+
+  const actor = decisionDocketRecord(envelope.actor);
+  if (!actor || !exactDecisionDocketKeys(actor, ['id', 'name', 'role']) ||
+      !decisionDocketIdentifier(actor.id) || typeof actor.name !== 'string' ||
+      !actor.name.trim() || Array.from(actor.name).length > 80 ||
+      !['founder', 'witness'].includes(actor.role)) return null;
+  if (expectedViewer !== null &&
+      (expectedViewer?.id !== actor.id || expectedViewer?.role !== actor.role)) return null;
+
+  const snapshot = decisionDocketRecord(envelope.snapshot);
+  if (!snapshot || !exactDecisionDocketKeys(snapshot, [
+    'schema', 'revision', 'head', 'policy', 'decisions', 'counts'
+  ])) return null;
+  const rawDecisions = decisionDocketArray(snapshot.decisions, DECISION_DOCKET_LIMIT);
+  if (!rawDecisions || envelope.sourceDecisionCount < rawDecisions.length ||
+      envelope.sourceOmittedDecisionCount !== envelope.sourceDecisionCount - rawDecisions.length) return null;
+
+  const projection = projectDecisionDocket(snapshot);
+  if (!projection.available || projection.decisionCount !== rawDecisions.length ||
+      projection.omittedDecisionCount !== 0) return null;
+  return Object.freeze({
+    actor: Object.freeze({ id: actor.id, name: actor.name, role: actor.role }),
+    savedAt: envelope.savedAt,
+    sourceDecisionCount: envelope.sourceDecisionCount,
+    sourceOmittedDecisionCount: envelope.sourceOmittedDecisionCount,
+    truncated: envelope.sourceOmittedDecisionCount > 0,
+    projection
+  });
+}
+
 export function getQuestTrail(world, viewer, options = null) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
