@@ -468,11 +468,11 @@ test('preflight rejects a trusted parent replaced by an in-repository symlink du
     const instructions = (await readFile(instructionsPath, 'utf8'))
       .replace('--checkpoint CHECKPOINT.md', '--checkpoint ' + checkpointPath);
     await writeFile(instructionsPath, instructions);
-    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\\n\\nOriginal checkpoint.\\n');
+    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\n\nOriginal checkpoint.\n');
     await mkdir(join(root, 'docs/operations-real'));
-    await writeFile(join(root, 'docs/operations-real/LATEST_CHECKPOINT.md'), '# Latest Durable Checkpoint\\n\\nDecoy checkpoint.\\n');
+    await writeFile(join(root, 'docs/operations-real/LATEST_CHECKPOINT.md'), '# Latest Durable Checkpoint\n\nDecoy checkpoint.\n');
     await mkdir(join(root, 'scripts'));
-    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\\n');
+    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\n');
 
     const hookPath = join(root, 'preflight-symlink-swap.cjs');
     await writeFile(hookPath, [
@@ -492,7 +492,7 @@ test('preflight rejects a trusted parent replaced by an in-repository symlink du
       "  return originalRealpath.call(this, candidate, ...args);",
       "};",
       "syncBuiltinESMExports();"
-    ].join('\\n'));
+    ].join('\n'));
 
     const child = spawnSync(process.execPath, [
       '--require', hookPath,
