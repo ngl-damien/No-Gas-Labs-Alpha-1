@@ -296,12 +296,18 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
             });
             return null;
           }
-          trustedPathSnapshot.push({
+          const snapshot = {
             component,
             dev: metadata.dev,
             ino: metadata.ino,
             type: index === segments.length ? 'file' : 'directory'
-          });
+          };
+          if (index === segments.length) {
+            snapshot.size = metadata.size;
+            snapshot.mtimeNs = metadata.mtimeNs;
+            snapshot.ctimeNs = metadata.ctimeNs;
+          }
+          trustedPathSnapshot.push(snapshot);
         }
       }
       const actualPath = await realpath(absolutePath);
@@ -343,6 +349,14 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       let bytes;
       try {
         const openedMetadata = await handle.stat({ bigint: true });
+        const trustedFileSnapshot = trustedPathSnapshot?.[trustedPathSnapshot.length - 1];
+        if (trustedFileSnapshot && !sameFileSnapshot(trustedFileSnapshot, openedMetadata)) {
+          failures.push({
+            path: relativePath,
+            reason: trustedPathLabel + ' file changed between initial snapshot and descriptor-relative open'
+          });
+          return null;
+        }
         if (!sameFileSnapshot(initialMetadata, openedMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
           return null;
