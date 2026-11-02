@@ -540,6 +540,42 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     self.assertIn("EVALUATION_REPORT_MISMATCH", independent.stderr)
                     self.assertEqual(independent.stdout, "")
 
+    def test_negative_zero_range_bounds_are_rejected_by_both_verifiers(self):
+        scenarios = (
+            ("start", ["--range", "0", "1"]),
+            ("end", ["--range", "-1", "0"]),
+        )
+        for field, arguments in scenarios:
+            report_path, _ = self.make_report("negative-zero-range-" + field, arguments)
+            source = report_path.read_text(encoding="utf-8")
+            pattern = re.compile(
+                r'("' + re.escape(field) + r'"\\s*:\\s*)0(?=\\s*[,}])'
+            )
+            for spelling in ("-0", "-0.0"):
+                with self.subTest(field=field, spelling=spelling):
+                    mutated, count = pattern.subn(
+                        lambda match: match.group(1) + spelling,
+                        source,
+                        count=1,
+                    )
+                    self.assertEqual(count, 1)
+                    negative_zero_report = self.directory / (
+                        "negative-zero-range-" + field + "-" + spelling.replace(".", "dot") + ".json"
+                    )
+                    negative_zero_report.write_text(mutated, encoding="utf-8")
+
+                    node = self.run_node(
+                        EVALUATOR,
+                        ["--verify-report", str(self.receipt_path), str(negative_zero_report)],
+                    )
+                    independent = self.run_verifier(negative_zero_report)
+                    self.assertEqual(node.returncode, 1)
+                    self.assertEqual(node.stderr.strip(), "EVALUATION_REPORT_RANGE_INVALID")
+                    self.assertEqual(node.stdout, "")
+                    self.assertEqual(independent.returncode, 1)
+                    self.assertEqual(independent.stderr.strip(), "EVALUATION_REPORT_RANGE_INVALID")
+                    self.assertEqual(independent.stdout, "")
+
     def test_large_integer_tokens_keep_node_python_schema_error_parity(self):
         report_path, _ = self.make_report("large-integer", ["17"])
         huge_integer = "9" * 700
