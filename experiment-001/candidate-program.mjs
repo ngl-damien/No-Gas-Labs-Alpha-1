@@ -380,3 +380,60 @@ export function proveCandidateTaskProgram(program, taskSpecification) {
     matchesTask: matchesPolynomial(coefficients, target)
   });
 }
+
+
+function safeIntegerConstantProgram(value) {
+  const base = BigInt(MAX_CONSTANT);
+  const negative = value < 0n;
+  let magnitude = negative ? -value : value;
+  const digits = [];
+  do {
+    digits.push(Number(magnitude % base));
+    magnitude /= base;
+  } while (magnitude > 0n);
+
+  let program = { op: 'const', value: digits.at(-1) };
+  for (let index = digits.length - 2; index >= 0; index -= 1) {
+    program = {
+      op: 'add',
+      left: {
+        op: 'multiply',
+        left: program,
+        right: { op: 'const', value: MAX_CONSTANT }
+      },
+      right: { op: 'const', value: digits[index] }
+    };
+  }
+  return negative ? { op: 'negate', arg: program } : program;
+}
+
+/**
+ * Deterministically synthesize a bounded Horner-form AST for a normalized task.
+ * This is a small polynomial compiler, not AI discovery or a general program
+ * synthesizer. The returned proof is recomputed from the generated AST.
+ */
+export function synthesizeCandidateTaskProgram(taskSpecification) {
+  const specification = validateCandidateTaskSpecification(taskSpecification);
+  const coefficients = specification.targetCoefficients.map(value => BigInt(value));
+  let program = safeIntegerConstantProgram(coefficients.at(-1));
+
+  for (let index = coefficients.length - 2; index >= 0; index -= 1) {
+    program = {
+      op: 'multiply',
+      left: program,
+      right: { op: 'input' }
+    };
+    if (coefficients[index] !== 0n) {
+      program = {
+        op: 'add',
+        left: program,
+        right: safeIntegerConstantProgram(coefficients[index])
+      };
+    }
+  }
+
+  const normalizedProgram = validateCandidateProgram(program);
+  const proof = proveCandidateTaskProgram(normalizedProgram, specification);
+  if (!proof.matchesTask) throw new Error('CANDIDATE_SYNTHESIS_PROOF_FAILED');
+  return Object.freeze({ program: normalizedProgram, proof });
+}
