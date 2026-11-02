@@ -49,3 +49,14 @@ The synthesis receipt's `instruction` field is bounded to 512 JavaScript string-
 The end-to-end Node/Python regression corpus now synthesizes, evaluates, and independently verifies zero and negative constants, a negative-slope linear polynomial, a sparse quadratic, coefficients that require bounded AST decomposition above the single-node constant limit, and a quadratic evaluated near the input-domain edge. For every case the tests compare the task digest, implementation hash, report digest, range-result digest, evaluation count, and authority-false result fields across both verifiers.
 
 The near-safe-integer case uses coefficients `["0", "1", "9000"]` over inputs `-1,000,000` and `-999,999`. Its worst-case absolute polynomial bound is 9,000,000,001,000,000, below `Number.MAX_SAFE_INTEGER`. The advertised degree limit is a hard ceiling, not a claim that every degree is realizable under the tighter input-domain and safe-integer bounds; higher-degree candidates may be rejected by the intermediate-bound proof.
+
+## Escaped duplicate-key parity
+
+The Node and Python lexical preflights compare decoded JSON object-key strings, not their raw escape spellings. Therefore two different JSON tokens that decode to the same property name are duplicates before schema validation or replay.
+
+The regression `test_escaped_equivalent_duplicate_keys_match_node_and_python` exercises both synthesis receipts and evaluation reports with:
+
+- ASCII key spelling `schema` versus the equivalent escaped spelling `\\u0073chema`.
+- Literal astral character `😀` versus the equivalent UTF-16 surrogate-pair escape `\\ud83d\\ude00`.
+
+For each document type and encoding, the Node verifier and independent Python verifier must return the same stable duplicate-key error and emit no stdout. This checks JSON escape decoding parity; it does not claim Unicode normalization (for example, NFC equivalence) beyond the JSON string-decoding rules.
