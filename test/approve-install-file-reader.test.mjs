@@ -459,7 +459,7 @@ test('candidate-program-v1 review exposes the exact program and implementation h
     maxUses: 1
   });
   const proposalPath = join(directory, 'proposal-v1.json');
-  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
 
   const result = run(['--inspect', proposalPath]);
   assert.equal(result.status, 0, result.stderr);
