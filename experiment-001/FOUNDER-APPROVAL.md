@@ -73,3 +73,17 @@ The CLI never creates, enrolls, rotates, exports, or stores a Founder key. Both 
 
 
 Within one institutional ledger, a task-specification ID is immutable: multiple capability installations may reference the same ID and digest, but a different normalized specification under an existing ID is rejected with `CANDIDATE_TASK_SPEC_ID_CONFLICT` before the ledger advances.
+
+
+## Evaluate a synthesized candidate without installing it
+
+The synthesis receipt can be checked and exercised offline before any signing or installation:
+
+```sh
+npm run candidate:synthesize -- ./task-spec.json > ./candidate.json
+npm run candidate:evaluate -- ./candidate.json 17
+```
+
+The evaluator reads a bounded regular file, rejects duplicate JSON keys and unexpected fields, recomputes the task-specification digest and exact polynomial proof, validates the restricted AST, and compares its output with an independent BigInt evaluation of the signed-target coefficients. It accepts only canonical integer inputs inside the declared interval and emits the implementation hash with a machine-readable result.
+
+This is an unsigned local evaluation only. It does not verify a task-specification signature or INSTALL approval, install or reuse a capability, read a Founder key, or change canonical state. A successful evaluation is not evidence of Founder authorization or real-world identity.
