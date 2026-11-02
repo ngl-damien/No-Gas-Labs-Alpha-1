@@ -311,19 +311,27 @@ function verifyEvaluationReport(verified, report) {
 
 async function main() {
   const args = process.argv.slice(2);
+  const verifyReport = args.length === 3 && args[0] === '--verify-report';
   const singleInput = args.length === 2 && args[1] !== '--range';
   const rangeInput = args.length === 4 && args[1] === '--range';
-  if (!singleInput && !rangeInput) {
+  if (!verifyReport && !singleInput && !rangeInput) {
     process.stderr.write(
-      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n' +
-      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\n'
+      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs --verify-report <synthesis-receipt.json> <evaluation-report.json>\\n'
     );
     process.exitCode = 2;
     return;
   }
 
-  const receipt = await readReceipt(args[0]);
+  const receipt = await readReceipt(verifyReport ? args[1] : args[0]);
   const verified = verifySynthesisReceipt(receipt);
+  if (verifyReport) {
+    const report = await readEvaluationReport(args[2]);
+    const verification = verifyEvaluationReport(verified, report);
+    process.stdout.write(JSON.stringify(verification, null, 2) + '\\n');
+    return;
+  }
   const implementationHash = candidateProgramHash(verified.program, 'v5', verified.specification);
 
   if (singleInput) {
