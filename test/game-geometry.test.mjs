@@ -98,6 +98,29 @@ test('the map pennant projects the next actor-scoped Questkeeper objective witho
  }
 });
 
+test('selected Questkeeper routes are visible navigation state, never canonical progress',t=>{
+ const world=createWorld({id:'selected-quest-route-world',now:'2026-10-31T12:40:00.000Z'});
+ const before=structuredClone(world),{view,canvas}=makeView(t);
+ view.setWorld(world);
+ const selected=view.setQuestAction({type:'location',id:'commons'},'Leave a message in The Commons','witness-commons-message',true);
+ assert.equal(selected?.targetId,'commons');
+ assert.equal(selected?.objectiveId,'witness-commons-message');
+ assert.equal(selected?.selected,true);
+ assert.equal(canvas.getAttribute('data-quest-objective-id'),'witness-commons-message');
+ assert.equal(canvas.getAttribute('data-quest-selection'),'selected');
+ assert.match(canvas.getAttribute('aria-label'),/Selected route/);
+ assert.match(canvas.getAttribute('aria-label'),/Navigation only/);
+ assert.deepEqual(world,before,'selecting a route must not append events or alter the canonical world');
+ const next=view.setQuestAction({type:'location',id:'relay'},'Map the four guide locations','witness-map-grounds',false);
+ assert.equal(next?.objectiveId,'witness-map-grounds');
+ assert.equal(next?.selected,false);
+ assert.equal(canvas.getAttribute('data-quest-objective-id'),'witness-map-grounds');
+ assert.equal(canvas.getAttribute('data-quest-selection'),'next');
+ view.setQuestAction(null,'');
+ assert.equal(canvas.getAttribute('data-quest-objective-id'),null);
+ assert.equal(canvas.getAttribute('data-quest-selection'),null);
+});
+
 test('tapping the active quest pennant routes to the real destination but does not itself record discovery',t=>{
  const world=createWorld({id:'quest-map-route-world',now:'2026-10-31T12:40:00.000Z'});
  const viewer={id:'witness-map-route',role:'witness'},trail=getQuestTrail(world,viewer),quest=getActiveQuest(world,viewer,trail);
