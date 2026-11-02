@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createGameServer } from '../game/server.mjs';
+import { createGameServer, validatePayload } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -1014,6 +1014,50 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   });
   assert.equal(forbiddenReview.response.status, 403, JSON.stringify(forbiddenReview.body));
   assert.equal(forbiddenReview.body.error.code, 'FORBIDDEN');
+
+  const beforeReview = await founder.request('/api/state');
+  assert.equal(beforeReview.body.viewer.id, 'damien');
+  assert.equal(beforeReview.body.viewer.role, 'founder');
+  const { requestId: diagnosticRequestId, ...diagnosticAction } = reviewAction;
+  const diagnosticActor = beforeReview.body.viewer;
+  const diagnosticFingerprint = artifactReceipt(canonicalStringify({
+    actor: { id: diagnosticActor.id, role: diagnosticActor.role },
+    action: diagnosticAction
+  })).digest;
+  const diagnosticOutcome = await applyAction(
+    beforeReview.body.world,
+    diagnosticAction,
+    diagnosticActor,
+    { requestId: diagnosticRequestId, actionFingerprint: diagnosticFingerprint }
+  );
+  const diagnosticPublications = beforeReview.body.world.creations.flatMap(creation => [
+    ...creation.versions,
+    creation
+  ]);
+  const acceptedWorks = beforeReview.body.institution.kernel.accepted;
+  const diagnosticBindings = diagnosticPublications.map(publication => {
+    const accepted = acceptedWorks.find(work =>
+      work.subject.id === publication.id && work.subject.version === publication.version
+    );
+    assert.ok(accepted, 'each retained publication must have its matching accepted preservation work');
+    return {
+      creationId: publication.id,
+      version: publication.version,
+      digest: publication.receipt.digest,
+      size: publication.receipt.size,
+      workId: accepted.workId
+    };
+  });
+  const diagnosticArtifacts = Object.fromEntries(diagnosticPublications.map(publication => [
+    publication.receipt.digest,
+    Buffer.from(publication.html, 'utf8').toString('base64')
+  ]));
+  await validatePayload({
+    world: diagnosticOutcome.world,
+    institutionalEvents: beforeReview.body.institution.kernel.events,
+    artifacts: diagnosticArtifacts,
+    publicationBindings: diagnosticBindings
+  });
 
   const founderReview = await founder.request('/api/action', reviewAction);
   assert.equal(founderReview.response.status, 200, JSON.stringify(founderReview.body));

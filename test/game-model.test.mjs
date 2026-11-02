@@ -268,6 +268,7 @@ test('each actor may challenge a retained report once while independent actors p
 });
 
 test('Founder challenge dispositions bind immutable source events without granting truth or XP', async () => {
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const start = createWorld({ id: 'challenge-review-world', now });
   const proposal = await applyAction(start, {
     type: 'propose-moonshot',
