@@ -251,7 +251,8 @@ function verifyEvaluationReport(verified, report) {
   if (report.schema === 'ngl.candidate-program-evaluation-range.v1') {
     requireExactKeys(report, RANGE_EVALUATION_REPORT_KEYS, 'EVALUATION_REPORT_INVALID');
     requireExactKeys(report.range, ['start', 'end'], 'EVALUATION_REPORT_RANGE_INVALID');
-    if (!Number.isSafeInteger(report.range.start) || !Number.isSafeInteger(report.range.end)) {
+    if (!Number.isSafeInteger(report.range.start) || !Number.isSafeInteger(report.range.end) ||
+        Object.is(report.range.start, -0) || Object.is(report.range.end, -0)) {
       fail('EVALUATION_REPORT_RANGE_INVALID');
     }
     let start;
