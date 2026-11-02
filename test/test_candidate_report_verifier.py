@@ -534,6 +534,34 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(python_report.stdout, "")
 
 
+    def test_duplicate_key_errors_precede_later_json_parse_errors_in_both_verifiers(self):
+        report_path, _ = self.make_report("duplicate-before-malformed", ["17"])
+        malformed = '{"schema": "first", "schema": "second",'
+        malformed_path = self.directory / "duplicate-before-malformed.json"
+        malformed_path.write_text(malformed, encoding="utf-8")
+
+        node_receipt = self.run_node(EVALUATOR, [str(malformed_path), "17"])
+        python_receipt = self.run_verifier(report_path, malformed_path)
+        self.assertEqual(node_receipt.returncode, 1)
+        self.assertEqual(node_receipt.stderr.strip(), "SYNTHESIS_RECEIPT_DUPLICATE_JSON_KEY")
+        self.assertEqual(node_receipt.stdout, "")
+        self.assertEqual(python_receipt.returncode, 1)
+        self.assertEqual(python_receipt.stderr.strip(), "SYNTHESIS_RECEIPT_DUPLICATE_JSON_KEY")
+        self.assertEqual(python_receipt.stdout, "")
+
+        node_report = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(self.receipt_path), str(malformed_path)],
+        )
+        python_report = self.run_verifier(malformed_path)
+        self.assertEqual(node_report.returncode, 1)
+        self.assertEqual(node_report.stderr.strip(), "EVALUATION_REPORT_DUPLICATE_JSON_KEY")
+        self.assertEqual(node_report.stdout, "")
+        self.assertEqual(python_report.returncode, 1)
+        self.assertEqual(python_report.stderr.strip(), "EVALUATION_REPORT_DUPLICATE_JSON_KEY")
+        self.assertEqual(python_report.stdout, "")
+
+
     def test_negative_zero_numeric_fields_match_node_deep_equality(self):
         scenarios = (
             ("single-input", ["0"], "input"),
