@@ -154,8 +154,8 @@ async function main() {
   const rangeInput = args.length === 4 && args[1] === '--range';
   if (!singleInput && !rangeInput) {
     process.stderr.write(
-      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\\n' +
-      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\\n'
+      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\n'
     );
     process.exitCode = 2;
     return;
@@ -177,7 +177,7 @@ async function main() {
       proofVerified: true,
       evaluationMatchesTarget: true,
       authority: authorityBoundary()
-    }, null, 2) + '\\n');
+    }, null, 2) + '\n');
     return;
   }
 
@@ -205,10 +205,10 @@ async function main() {
     authority: authorityBoundary()
   };
   const resultDigest = createHash('sha256')
-    .update('ngl.candidate-program-evaluation-range:v1\\n')
+    .update('ngl.candidate-program-evaluation-range:v1\n')
     .update(JSON.stringify(report))
     .digest('hex');
-  process.stdout.write(JSON.stringify({ ...report, resultDigest }, null, 2) + '\\n');
+  process.stdout.write(JSON.stringify({ ...report, resultDigest }, null, 2) + '\n');
 }
 main().catch(error => {
   process.stderr.write((error?.message || 'CANDIDATE_EVALUATION_FAILED') + '\n');

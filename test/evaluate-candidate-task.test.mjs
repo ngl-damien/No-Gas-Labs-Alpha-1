@@ -147,7 +147,7 @@ test('offline evaluator accepts only canonical in-range integer arguments', asyn
 test('offline evaluator supports single-input and bounded range usage forms', () => {
   const result = run(evaluateScript, []);
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /Usage: node scripts\\/evaluate-candidate-task\\.mjs/);
+  assert.match(result.stderr, /Usage: node scripts\/evaluate-candidate-task\.mjs/);
   assert.match(result.stderr, /--range <start> <end>/);
   const incompleteRange = run(evaluateScript, ['unused.json', '--range', '0']);
   assert.equal(incompleteRange.status, 2);
@@ -204,4 +204,4 @@ test('offline range evaluation accepts the exact 4096-input bound and rejects la
     assert.match(result.stderr, new RegExp(code), start + '..' + end);
     assert.equal(result.stdout, '');
   }
-});;
+});
