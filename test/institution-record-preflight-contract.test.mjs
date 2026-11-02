@@ -7,10 +7,11 @@ const preflightCommand = packageJson.scripts['agent:preflight:ci'];
 
 test('hosted preflight fingerprints the institutional record projector and its regression', async () => {
   assert.equal(typeof preflightCommand, 'string');
-  const targets = Array.from(
-    preflightCommand.matchAll(/(?:^|\\s)--path\\s+([^\\s]+)/g),
-    match => match[1],
-  );
+  const tokens = preflightCommand.split(' ');
+  const targets = [];
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    if (tokens[index] === '--path') targets.push(tokens[index + 1]);
+  }
 
   assert.ok(targets.includes('game/institution-record-objects.mjs'));
   assert.ok(targets.includes('test/chronicle.test.mjs'));
