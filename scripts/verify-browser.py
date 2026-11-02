@@ -1578,7 +1578,7 @@ def player_guild_membership(browser,url,out):
 
 
 def commons_message_quest(browser,url,out):
-    """A real two-player mobile quest, projected only from each actor's retained post."""
+    """A shared mobile quest loop with pinned routes, lost-response retry and actor-bound progression."""
     errors=[]
     speaker_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
     other_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
@@ -1624,6 +1624,9 @@ def commons_message_quest(browser,url,out):
             expect(objective).to_be_visible()
             expect(objective).to_contain_text('OPEN')
             expect(objective).to_contain_text('0/1')
+            expect(page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+            expect(page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+            expect(page.locator('#world')).to_have_attribute('data-quest-selection','next')
 
         after_boards=speaker_context.request.get(url+'api/state').json()['world']
         assert (after_boards['revision'],len(after_boards['events']),after_boards['xp'])==(
@@ -1641,12 +1644,70 @@ def commons_message_quest(browser,url,out):
 
         message_text='A retained Commons message completes my Speaker quest.'
         speaker_page.locator('#places-button').click()
-        speaker_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
-        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        speaker_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        speaker_objective=speaker_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-commons-message"]')
+        speaker_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'",timeout=30000)
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-commons-message')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','selected')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','commons')
+        expect(other_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(other_page.locator('#world')).to_have_attribute('data-quest-selection','next')
+        route_state=speaker_context.request.get(url+'api/state').json()['world']
+        assert (route_state['revision'],len(route_state['events']),route_state['xp'])==(
+            baseline_revision,baseline_event_count,baseline_xp
+        ),'Selecting a route must not create canonical progress or XP'
+        action_payloads=[]
+        lost_response={'injected':False,'status':None}
+        def capture_message_action(request):
+            if request.method!='POST' or not request.url.endswith('/api/action') or not request.post_data:
+                return
+            try:
+                payload=json.loads(request.post_data)
+            except (TypeError,ValueError):
+                return
+            if payload.get('type')=='post-message' and payload.get('text')==message_text:
+                action_payloads.append(request.post_data)
+        def drop_first_action_response(route):
+            if not lost_response['injected']:
+                response=route.fetch()
+                lost_response['status']=response.status
+                lost_response['injected']=True
+                route.abort()
+            else:
+                route.continue_()
+        speaker_page.on('request',capture_message_action)
+        speaker_page.route('**/api/action',drop_first_action_response)
         speaker_page.locator('#commons-message').fill(message_text)
+        speaker_page.locator('#commons-post-message').click()
+        expect(speaker_page.locator('#toast')).to_contain_text('The shared world is unreachable',timeout=10000)
+        assert lost_response['injected'] and lost_response['status']==200,'The first server-accepted response must be deliberately lost'
+        pending_after_loss=speaker_page.evaluate(
+            "()=>JSON.parse(localStorage.getItem('ngl.common-ground.pending-shared-action.v1')||'null')"
+        )
+        assert pending_after_loss and pending_after_loss.get('actorId')==speaker_actor['id']
+        assert pending_after_loss.get('actorRole')=='witness'
+        assert pending_after_loss.get('action',{}).get('type')=='post-message'
+        assert pending_after_loss.get('action',{}).get('text')==message_text
+        assert pending_after_loss.get('requestId'),'The client must preserve the exact retry identity after response loss'
+        assert speaker_page.locator('#commons-message').input_value()==message_text,'The uncertain message must remain available for exact retry'
+        first_delivery_state=speaker_context.request.get(url+'api/state').json()
+        assert first_delivery_state['world']['revision']==baseline_revision+1
+        assert first_delivery_state['world']['xp']==baseline_xp
+        assert sum(
+            event.get('type')=='message-posted' and event.get('actor',{}).get('id')==speaker_actor['id']
+            for event in first_delivery_state['world']['events']
+        )==1,'The server accepted one event before the response was lost'
         speaker_page.locator('#commons-post-message').click()
         own_message=speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)
         expect(own_message).to_be_visible()
+        speaker_page.wait_for_function(
+            "()=>localStorage.getItem('ngl.common-ground.pending-shared-action.v1')===null",
+            timeout=10000
+        )
+        speaker_page.unroute('**/api/action',drop_first_action_response)
+        speaker_page.remove_listener('request',capture_message_action)
 
         posted_state=speaker_context.request.get(url+'api/state').json()
         assert posted_state['world']['revision']==baseline_revision+1
@@ -1663,6 +1724,30 @@ def commons_message_quest(browser,url,out):
             event.get('type')=='message-posted' and event.get('messageId')==retained['messageId']
             for event in posted_state['world']['events']
         )==1,'The retained message ID must be unique in the public world projection'
+        assert len(action_payloads)==2,'The lost response and exact client retry must issue two identifiable requests'
+        assert action_payloads[0]==action_payloads[1],'The retry must reuse the byte-identical action body and request ID'
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','next')
+        replay=speaker_page.evaluate(
+            """async body=>{
+                const response=await fetch('/api/action',{
+                    method:'POST',
+                    credentials:'same-origin',
+                    headers:{'content-type':'application/json'},
+                    body
+                });
+                return {status:response.status,body:await response.json()};
+            }""",
+            action_payloads[0]
+        )
+        assert replay['status']==200,repr(replay)
+        assert replay['body'].get('idempotentReplay') is True,repr(replay)
+        assert replay['body']['result']['messageId']==retained['messageId']
+        replayed_state=speaker_context.request.get(url+'api/state').json()['world']
+        assert (replayed_state['revision'],len(replayed_state['events']),replayed_state['xp'])==(
+            posted_state['world']['revision'],len(posted_state['world']['events']),posted_state['world']['xp']
+        ),'An exact request retry must not append a second event or reward'
 
         # The other session sees the shared post, but its own actor-bound objective stays open.
         other_page.locator('#places-button').click()
@@ -1717,8 +1802,24 @@ def commons_message_quest(browser,url,out):
             timeout=30000
         )
         expect(speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)).to_be_visible()
+        speaker_page.locator('#sheet-close').click()
+        speaker_page.locator('#places-button').click()
+        speaker_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
+        next_objective=speaker_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-map-grounds"]')
+        expect(next_objective).to_be_visible()
+        expect(next_objective).to_contain_text('OPEN')
+        expect(next_objective).to_contain_text('0/4')
+        next_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','selected')
+        selected_hud_objective=speaker_page.locator('#quest-trail [data-objective-id="witness-map-grounds"]')
+        expect(selected_hud_objective).to_have_attribute('aria-current','step')
+        expect(selected_hud_objective).to_contain_text('ROUTE SELECTED · NAVIGATION ONLY')
         final_state=speaker_context.request.get(url+'api/state').json()
-        assert final_state['world']['revision']==baseline_revision+1,'Reading and routing to the satchel object must not append world events'
+        assert final_state['world']['revision']==baseline_revision+1,'Reading, replaying and selecting the next route must not append world events'
+        assert len(final_state['world']['events'])==baseline_event_count+1
         assert final_state['world']['xp']==baseline_xp
         assert not errors,errors
         speaker_page.screenshot(path=str(out/'commons-message-quest.png'))
@@ -1727,12 +1828,18 @@ def commons_message_quest(browser,url,out):
             'passed':True,
             'sessions':2,
             'messageEvents':1,
+            'duplicateReplay':'idempotent-no-extra-event',
+            'lostResponseRecovery':'same-request-id-one-event',
             'actorScoped':True,
             'speakerCount':speaker_after['skills']['speaker'],
             'questkeeperDelta':speaker_after['skills']['questkeeper']-speaker_before['skills']['questkeeper'],
             'characterXpNeutral':True,
             'worldXp':baseline_xp,
             'satchelRoute':'The Commons',
+            'nextObjective':'witness-map-grounds · 0/4',
+            'nextRoute':'The Relay',
+            'routeSelection':'navigation-only',
+            'routeSelectionNoWorldMutation':True,
             'errors':errors
         }
     finally:
