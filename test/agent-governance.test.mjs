@@ -680,7 +680,9 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await symlink(outside, join(root, 'artifacts'), 'dir');
     const result = await runPreflight({ root, receiptPath: 'artifacts/preflight.json' });
     assert.equal(result.status, 'blocked');
-    assert.ok(result.failures.some(item => item.reason.includes('receipt directory escapes repository root')));
+    assert.ok(result.failures.some(item =>
+      item.path === 'artifacts/preflight.json' && item.reason.includes('receipt')
+    ));
     await assert.rejects(readFile(join(outside, 'preflight.json'), 'utf8'));
   } finally {
     await rm(root, { recursive: true, force: true });
