@@ -161,7 +161,7 @@ test('offline evaluator supports single-input and bounded range usage forms', ()
   ]) {
     const malformed = run(evaluateScript, args);
     assert.equal(malformed.status, 2, args.join(' '));
-    assert.match(malformed.stderr, /Usage: node scripts\\/evaluate-candidate-task\\.mjs/, args.join(' '));
+    assert.match(malformed.stderr, /Usage: node scripts\/evaluate-candidate-task\.mjs/, args.join(' '));
   }
 });
 
