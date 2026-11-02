@@ -357,7 +357,10 @@ function validateHistory(world) {
       const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
       const reviewIndex = eventPositions.get(event);
       if (Object.keys(event).some(key => !['id', 'type', 'actor', 'at', 'semantics', 'reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds', 'requestId', 'actionFingerprint', 'actionResult'].includes(key))) throw new Error('Stored research challenge disposition contains an unknown field');
-      unique(event.reviewId);
+      if (typeof event.reviewId !== 'string' || !event.reviewId || reviewIds.has(event.reviewId)) {
+        throw new Error('Stored research challenge disposition ID is malformed or repeated');
+      }
+      reviewIds.add(event.reviewId);
       if (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId) throw new Error('Stored research challenge disposition requires the authenticated Founder');
       if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === event.disposition) || typeof event.rationale !== 'string' || !event.rationale.trim() || Array.from(event.rationale).length > 1000) throw new Error('Stored research challenge disposition is malformed');
       if (!report || !challenge || challenge.index >= reviewIndex || eventPositions.get(report) >= challenge.index || challenge.event.reportId !== event.reportId || challenge.event.moonshotId !== event.moonshotId || report.moonshotId !== event.moonshotId) throw new Error('Stored research challenge disposition target is missing, mismatched or out of order');
