@@ -514,7 +514,7 @@ test('preflight rejects a trusted parent replaced by an in-repository symlink du
     const result = JSON.parse(child.stdout);
     assert.equal(result.status, 'blocked');
     assert.ok(result.failures.some(item =>
-      item.path === 'docs/operations' && item.reason.includes('symlink')
+      item.path === checkpointPath && item.reason.includes('symlink')
     ));
     assert.match(await readFile(join(root, 'docs/operations/LATEST_CHECKPOINT.md'), 'utf8'), /Decoy checkpoint/);
   } finally {
