@@ -276,8 +276,27 @@ def parse_json(source, label):
     def reject_constant(_value):
         fail(label + "_JSON_INVALID")
 
+    def parse_integer_token(token):
+        try:
+            return int(token)
+        except ValueError:
+            # CPython may impose a configurable decimal-digit cap on int().
+            # ECMAScript JSON.parse still parses a syntactically valid large
+            # integer token as a Number (usually +/-Infinity), then the
+            # domain validator rejects it as an unsafe value. Preserve that
+            # error boundary instead of misclassifying valid JSON as malformed.
+            try:
+                return float(token)
+            except (OverflowError, ValueError):
+                fail(label + "_JSON_INVALID")
+
     try:
-        value = json.loads(source, object_pairs_hook=pairs, parse_constant=reject_constant)
+        value = json.loads(
+            source,
+            object_pairs_hook=pairs,
+            parse_constant=reject_constant,
+            parse_int=parse_integer_token,
+        )
     except VerificationError:
         raise
     except RecursionError:
