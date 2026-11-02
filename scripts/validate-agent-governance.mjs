@@ -177,7 +177,9 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         }
         const finalPathMetadata = await stat(finalPath, { bigint: true });
         if (trustedPathSnapshot) {
-          for (const snapshot of trustedPathSnapshot) {
+          // Recheck deepest components first so an ancestor replaced after its
+          // own check is still observed before this trusted path is accepted.
+          for (const snapshot of [...trustedPathSnapshot].reverse()) {
             let currentMetadata;
             try {
               currentMetadata = await lstat(resolve(rootPath, snapshot.component), { bigint: true });
