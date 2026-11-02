@@ -12,7 +12,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'ngl-agent-preflight-'));
   await mkdir(join(root, 'docs/operations'), { recursive: true });
   await mkdir(join(root, '.github'), { recursive: true });
-  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nLeave a durable, factual record.\n');
+  await writeFile(join(root, 'AGENTS.md'), 'STOP: Read this file before repository work.\nFirst repository operation: read root AGENTS.md alone.\nSecond repository operation: read the complete shared protocol alone.\nDiscard any pre-read observations and restart the baseline.\n[Shared protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md)\nPreflight command: npm run agent:preflight -- --path scripts/worker.mjs --checkpoint CHECKPOINT.md\nLeave a durable, factual record.\n');
   await writeFile(join(root, protocolPath), protocolText);
   for (const path of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md', '.github/copilot-instructions.md']) {
     await writeFile(join(root, path), 'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md first.');
@@ -187,6 +187,76 @@ test('preflight requires the standard vendor entry points to remain present', as
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('preflight rejects an in-repository symlink used as root AGENTS.md', async () => {
+  const root = await fixture();
+  try {
+    const instructions = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    await writeFile(join(root, 'AGENTS-copy.md'), instructions);
+    await rm(join(root, 'AGENTS.md'));
+    await symlink('AGENTS-copy.md', join(root, 'AGENTS.md'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'AGENTS.md' && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as the canonical shared protocol', async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'docs/operations/PROTOCOL-copy.md'), protocolText);
+    await rm(join(root, protocolPath));
+    await symlink('PROTOCOL-copy.md', join(root, protocolPath), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === protocolPath && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === protocolPath));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight rejects an in-repository symlink used as a nested AGENTS.md', async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/AGENTS-copy.md'), 'Scripts-specific instructions.');
+    await symlink('AGENTS-copy.md', join(root, 'scripts/AGENTS.md'), 'file');
+
+    const result = await runPreflight({
+      root,
+      paths: ['scripts/worker.mjs'],
+      checkpoint: 'CHECKPOINT.md'
+    });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'scripts/AGENTS.md' && item.reason.includes('trusted instruction path must not traverse a symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'scripts/AGENTS.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight refuses receipt creation through an escaping directory symlink', async () => {
   const root = await fixture();
   const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-outside-'));
@@ -201,3 +271,12 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('hosted preflight includes the world-view source and canonical checkpoint', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  assert.equal(typeof command, 'string');
+  assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
+  assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
+});
+

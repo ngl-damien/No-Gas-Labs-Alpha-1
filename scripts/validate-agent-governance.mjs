@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, realpath, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, realpath, stat, lstat } from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -42,6 +42,28 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
+      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
+        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+        const segments = relativePath.split('/');
+        for (let index = 1; index <= segments.length; index += 1) {
+          const component = segments.slice(0, index).join('/');
+          const metadata = await lstat(resolve(rootPath, component));
+          if (metadata.isSymbolicLink()) {
+            failures.push({ path: component, reason: label + ' path must not traverse a symlink' });
+            return null;
+          }
+          const expectedType = index === segments.length ? metadata.isFile() : metadata.isDirectory();
+          if (!expectedType) {
+            failures.push({
+              path: component,
+              reason: index === segments.length
+                ? label + ' must be a regular file'
+                : 'trusted governance parent must be a directory'
+            });
+            return null;
+          }
+        }
+      }
       const actualPath = await realpath(absolutePath);
       if (!insideRoot(rootPath, actualPath)) {
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
@@ -70,15 +92,23 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     }
   }
 
-  const entryText = await inspect(entry, 'root-instructions');
+  // Governance inputs are anchored to the repository root contract, not caller-selected decoys.
+  if (entry !== 'AGENTS.md') {
+    failures.push({ path: String(entry), reason: 'root instruction entry must be the repository root AGENTS.md; alternate entry paths are not permitted' });
+  }
+  const entryText = await inspect('AGENTS.md', 'root-instructions');
   const inferredProtocol = entryText ? protocolFromEntry(entryText) : null;
-  const protocolPath = protocol ?? (inferredProtocol && !/^https?:\/\//i.test(inferredProtocol) ? inferredProtocol : null);
-  if (!protocolPath) failures.push({ path: entry, reason: 'no local canonical protocol path resolved; for a remote protocol URL, pass --protocol pointing to a locally pinned copy' });
+  const inferredProtocolIsRemote = typeof inferredProtocol === 'string' && /^https?:\/\//i.test(inferredProtocol);
+  const protocolPath = inferredProtocolIsRemote ? protocol : inferredProtocol;
+  if (!protocolPath) failures.push({ path: 'AGENTS.md', reason: 'no local canonical protocol path resolved; for a remote protocol URL, pass --protocol pointing to a locally pinned copy' });
+  if (inferredProtocol && !inferredProtocolIsRemote && protocol && protocol !== inferredProtocol) {
+    failures.push({ path: protocol, reason: 'explicit --protocol cannot override the local canonical protocol declared by root AGENTS.md' });
+  }
   if (entryText && !/(STOP:\s*Read this file before|Before any work)/i.test(entryText)) {
-    failures.push({ path: entry, reason: 'root instructions must explicitly require reading them before repository work' });
+    failures.push({ path: 'AGENTS.md', reason: 'root instructions must explicitly require reading them before repository work' });
   }
   if (entryText) for (const marker of ENTRY_MARKERS) {
-    if (!entryText.includes(marker)) failures.push({ path: entry, reason: 'missing mandatory instruction marker: ' + marker });
+    if (!entryText.includes(marker)) failures.push({ path: 'AGENTS.md', reason: 'missing mandatory instruction marker: ' + marker });
   }
 
   const protocolText = protocolPath ? await inspect(protocolPath, 'shared-protocol') : null;
@@ -125,9 +155,17 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     for (const directory of directories) if (directory) await inspect(directory + '/AGENTS.md', 'nested-instructions', false);
   }
 
-  let checkpointRecord = null;
+  const canonicalCheckpointMatch = entryText ? /--checkpoint\s+([^\s]+)/.exec(entryText) : null;
+  const canonicalCheckpointPath = canonicalCheckpointMatch?.[1] ?? null;
+  if (!canonicalCheckpointPath && (normalizedTargets.length || checkpoint)) {
+    warnings.push('Root AGENTS.md does not declare a canonical --checkpoint path; the supplied checkpoint cannot be pinned to the root contract.');
+  }
   if (normalizedTargets.length && !checkpoint) {
     failures.push({ path: '(checkpoint)', reason: 'targeted work requires --checkpoint pointing to the latest durable checkpoint' });
+  }
+  let checkpointRecord = null;
+  if (checkpoint && canonicalCheckpointPath && checkpoint !== canonicalCheckpointPath) {
+    failures.push({ path: checkpoint, reason: 'checkpoint path must match the canonical --checkpoint declared by root AGENTS.md' });
   } else if (checkpoint) {
     await inspect(checkpoint, 'durable-checkpoint');
     checkpointRecord = files.find(file => file.path === checkpoint) ?? null;
@@ -139,7 +177,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     generatedAt: new Date().toISOString(),
     repositoryRoot: rootPath,
     status: failures.length ? 'blocked' : 'ready',
-    entry,
+    entry: 'AGENTS.md',
     protocol: protocolPath,
     targets: normalizedTargets,
     checkpoint: checkpointRecord?.path ?? null,
