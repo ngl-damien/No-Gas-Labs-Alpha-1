@@ -896,5 +896,47 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 })
 
 
+
+    def test_escaped_equivalent_duplicate_keys_match_node_and_python(self):
+        report_path, _ = self.make_report("escaped-duplicate-keys", ["17"])
+        duplicate_pairs = (
+            r'"schema": "untrusted", "\u0073chema": "trusted"',
+            r'"😀": 1, "\ud83d\ude00": 2',
+        )
+        scenarios = (
+            ("receipt", self.receipt_path, "SYNTHESIS_RECEIPT_DUPLICATE_JSON_KEY"),
+            ("report", report_path, "EVALUATION_REPORT_DUPLICATE_JSON_KEY"),
+        )
+
+        for index, pair in enumerate(duplicate_pairs):
+            for label, original_path, expected_error in scenarios:
+                with self.subTest(encoding=index, document=label):
+                    original = original_path.read_text(encoding="utf-8")
+                    altered_path = self.directory / (label + "-escaped-duplicate-" + str(index) + ".json")
+                    altered_path.write_text(
+                        original.replace("{", "{\n  " + pair + ",", 1),
+                        encoding="utf-8",
+                    )
+                    if label == "receipt":
+                        node = self.run_node(
+                            EVALUATOR,
+                            ["--verify-report", str(altered_path), str(report_path)],
+                        )
+                        independent = self.run_verifier(report_path, altered_path)
+                    else:
+                        node = self.run_node(
+                            EVALUATOR,
+                            ["--verify-report", str(self.receipt_path), str(altered_path)],
+                        )
+                        independent = self.run_verifier(altered_path)
+
+                    self.assertEqual(node.returncode, 1)
+                    self.assertEqual(node.stderr.strip(), expected_error)
+                    self.assertEqual(node.stdout, "")
+                    self.assertEqual(independent.returncode, 1)
+                    self.assertEqual(independent.stderr.strip(), expected_error)
+                    self.assertEqual(independent.stdout, "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
