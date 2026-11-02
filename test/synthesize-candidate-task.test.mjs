@@ -97,5 +97,5 @@ test('offline synthesis CLI rejects duplicate JSON keys and noncanonical task co
 test('offline synthesis CLI requires one task-spec path', () => {
   const result = run([]);
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /Usage: node scripts\\/synthesize-candidate-task\\.mjs/);
+  assert.match(result.stderr, /Usage: node scripts\/synthesize-candidate-task\.mjs/);
 });
