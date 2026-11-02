@@ -607,3 +607,17 @@ test('preflight rejects a scoped target hard-linked to a file outside the checko
   }
 });
 
+test('hosted preflight includes the Founder decision context-binding regression suite', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  assert.equal(typeof command, 'string');
+  for (const target of [
+    'src/authority/decision.js',
+    'authority/index.html',
+    'test/decision-chamber.test.js',
+    'test/decision-context-binding.test.js',
+    'test/decision-world-integration.test.js'
+  ]) {
+    assert.ok(command.includes('--path ' + target), 'hosted preflight must fingerprint ' + target);
+  }
+});
