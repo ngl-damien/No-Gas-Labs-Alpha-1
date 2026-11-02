@@ -930,3 +930,52 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 5. Revisit the live Founder Decision Gate only with canonical proposal-context mapping and a Damien-controlled trust-root/custody decision. Do not recreate PR #16 or infer identity from a fingerprint.
 
 **Authority and limits:** no merge, release, deployment, spending, external publication, credential/permission change, key operation, destructive action, or Founder decision occurred. No linked repository was changed. No uninterrupted between-run execution is claimed.
+
+---
+
+## Run 24 — 2026-11-02 UTC — reject transient symlink substitution of trusted preflight inputs
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**PR/branch:** #283, `fix/preflight-trusted-path-race-20261102`, draft/open/unmerged.  
+**Code head before this checkpoint append:** `962503043e80e2a436c4c995b21e4bd412c26de5`.  
+**Base:** PR #259 branch `ops/preflight-target-byte-fingerprints-20261101`, `6156b23c56ee9bb5e884d26255f59dd2aebbe532`.
+
+### Bootstrap and access
+
+- Read root `AGENTS.md` alone, then the complete shared protocol alone, on main; repeated the same sequence on the active PR #283 branch.
+- Read this branch's full `docs/operations/LATEST_CHECKPOINT.md`.
+- `scripts/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` returned 404; no nested instructions apply to the changed paths.
+- Local `npm run agent:preflight` and Node 24 tests could not run: both registered Desktop Commander devices were offline. This is not a local pass. Hosted Verify executed the scoped preflight and test suite.
+
+### Cycle 1 — reproduce and repair the transient trusted-path substitution
+
+At pre-repair head `eecd09de632e36680f50ba0ba4f24d14cc321d61`, Verify [41476390555](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41476390555) failed in the new transient checkpoint-parent-symlink regression: the preflight subprocess exited 0 instead of the expected blocked exit 1. The hook temporarily replaced `docs/operations` with an in-repository decoy symlink during each `realpath()`, then restored the original parent before the component snapshots ran. The preflight checked only that the resolved target stayed inside the repository, so the decoy could be selected.
+
+- `e66a3241b0ef5527ba72addebb4f106130c373e2`: add `sameResolvedPath()`; for every trusted-path kind, require `actualPath`, `openedPath`, and `finalPath` to resolve to the same normalized lexical path as `absolutePath`, in addition to existing component and file-identity checks.
+- `8d77e7e7d47e8d0b5e4aacd04062af7f063ccba5`: adjust the transient-race test so early fail-closed rejection requires at least one injected swap rather than three later calls.
+- The first Verify after that edit, [41478277701](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1), exposed one stale assertion in the earlier persistent-parent-symlink test: it expected a failure path of `docs/operations`, while the new earlier rejection correctly reports the full checkpoint path. The new transient regression itself passed.
+- `962503043e80e2a436c4c995b21e4bd412c26de5`: align the older assertion with the stable contract (checkpoint path + symlink reason).
+
+### Exact-head hosted verification — `962503043e80e2a436c4c995b21e4bd412c26de5`
+
+- Verify [41478499751](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41478499751): **success**. Hosted preflight reported ready with zero warnings/failures; Node 24 test command, Python inspector, game package build, and bounded institutional exercise exited 0; report `passed: true`.
+- Genesis Evidence Invariant [41478499709](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41478499709): **success**.
+- Browser Acceptance [41478500015](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41478500015): **success, 12/12 journeys** (desktop, phone, institutional location actions, two-session shared world, three mobile toolbar widths, two one-button layouts, standalone file/exact bytes, shared restart). Artifact [13159545606](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41478500015/artifacts/13159545606), 5,290,906 bytes, SHA-256 `d3a26b7d2d61732130d8736f1ac2fc62b30d14b0b195f2a6f087d1409660b438`.
+- These are proposed-branch hosted results only. Main was not modified; no local test/preflight or physical Android-device test is claimed.
+
+### Cross-worker and Founder-authority recheck
+
+- Worker B PR #285 remains draft/open at `7705c7559e15319b8e003f0440dc002d441e25f6`, based on PR #284 head `632cd11980862c659021d0f78874b4496c42ec45`. Its changed paths are only `docs/operations/LATEST_CHECKPOINT.md` and `docs/operations/MMORPG_COMPLETION_LEDGER.md`; its description still says runtime implementation is pending. Its green checks therefore do not verify the planned follow-up quest feature. Worker A did not edit game files.
+- PR #16 remains closed/unmerged; PR #18 is merged. The historical self-signing claim is superseded, not a current defect to recreate. Issue #17 remains open for real key custody/identity, live authorization integration, concurrency, and stale-lock recovery. Current main's `src/authority/decision.js` caller-supplied `verification.valid` path remains an isolated helper concern in the inspected call graph; the live server uses `src/institution/decisions.mjs`. The automatic local `founder.key` startup path remains proposed for correction by the #251/#265 lineages. PRs #274/#275 remain proposed authorization work. No key was generated, read, enrolled, rotated, or changed.
+- Linked `ngl-mesh` root `AGENTS.md` returned 404; inspection stopped. For `AI-BI-Intelligence-node-gate`, root instructions and all three continuity files were read, but its mandatory `init_node.sh` bootstrap/install/build verification could not run because both Desktop Commander devices were offline. No linked-repository source inspection or write occurred.
+
+### Next ranked actions
+
+1. Reconcile PR #283's preflight hardening with #259/#264/#262 and PR #284's projector target coverage; preserve all scoped target paths and verify the combined exact tree before any integration decision.
+2. Add platform-specific acceptance for the `/dev/fd` path and document/test the Windows best-effort fallback; current hosted execution is Linux evidence only.
+3. Keep PR #279's Python verifier read-only and unsigned; its current cross-runtime parity work is proposed capability, not installation authority. Continue only if a new differential mismatch is reproduced.
+4. Reconcile #274/#275 with the actual live Decision Gate only after canonical context mapping and a Damien-controlled trust-root/custody decision.
+5. Worker B: continue PR #285 from its claim into runtime implementation and exact-head acceptance; do not promote any MMORPG gate from the claim-only checkpoint.
+6. Retry the AI-BI bootstrap only when an authorized Desktop Commander device is online; keep ngl-mesh read-only until its root instructions are available.
+
+**Authority:** no merge, release, deployment, spending, external publication, credential/permission change, key operation, branch deletion, or Founder decision occurred. No uninterrupted between-run execution is claimed.
