@@ -148,6 +148,13 @@ No merges, releases, deployments, spending, external publication, credential/per
 - ngl-mesh PR #3 remains draft/open at `7847c0fd7eb334d4bed726f12703567bdff9de42`, 5 commits ahead / 0 behind main. Strict UTF-8 run [41110544604](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544604) and agent-governance run [41110544499](https://github.com/ngl-damien/ngl-mesh/actions/runs/41110544499) succeeded; logs report 10 strict-decoding and 4 source-contract checks passed.
 - These are isolated Java bridge proposals. They do not prove the missing recovered APK/source/RAE artifacts have been integrated, that the mesh APK can be rebuilt, that a physical Android device accepts it, or that live providers are configured. No ngl-mesh files were changed.
 
+### Cycle 3 — prove the self-pinned-key boundary
+
+- Reinspection of the transplanted verifier found that the low-level `verifyFounderDecision()` can verify a signature when the caller supplies its own public key/fingerprint/audience. That is a cryptographic key-possession result, not Founder enrollment. The host-side `createFounderAuthorizationVerifier()` must therefore remain the authority gate.
+- Added a regression that generates an attacker key, self-pins it through the low-level verifier, constructs an event, then proves the independently pinned host verifier rejects it and the quest/world projections remain OPEN with zero XP, inventory or world mutation. The rejected claim remains in retained history.
+- Commit: `4fb1c32b636e867c7e55f63a256eceef4584ba71` (`test/decision-world-integration.test.js`).
+- This test deliberately does not claim the helper prevents event-object construction; it proves the host verifier must be used for authority. The live server still does not call this verifier, so server-route integration remains unresolved.
+
 ### Next ranked actions
 
 1. **PR #251:** resolve the programmatic factory default gap with a direct-factory negative test, but first reconcile its `game/server.mjs` and `test/game-server.test.mjs` hunks against active PR #222/#227 and the current Android/game stack. Keep the review finding visible until fixed and reverified.
@@ -1044,7 +1051,7 @@ No merge, release, deployment, spending, external publication, credential/permis
 **Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
 **Parent:** PR #264, exact base head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`, itself stacked on PR #263.  
 **Working branch:** `security/founder-decision-context-bound-relay-20261102`.  
-**Code head before this checkpoint append:** `858cfd80659b4504b0ef91c6bbfee589c544ec5e`.
+**Code head before this checkpoint append:** `4fb1c32b636e867c7e55f63a256eceef4584ba71`.
 
 ### Rehydrate and ranked selection
 
