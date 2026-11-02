@@ -527,7 +527,7 @@ const EXPEDITION_DOCKET_LIMIT = 3;
 const EXPEDITION_ACTIVITY_LIMIT = 3;
 const EXPEDITION_RESPONSE_LIMIT = 4;
 const DOCKET_RESEARCH_TYPES = new Set([
-  'moonshot-proposed', 'experiment-reported', 'experiment-challenged'
+  'moonshot-proposed', 'experiment-reported', 'experiment-challenged', 'experiment-challenge-reviewed'
 ]);
 const DOCKET_OUTCOMES = new Set(['supports', 'contradicts', 'inconclusive', 'failed']);
 const DOCKET_CHALLENGE_TYPES = new Set([
@@ -539,6 +539,114 @@ function newestDocketRecordFirst(left, right) {
   const rightAt = isStrictTimestamp(right?.at) ? Date.parse(right.at) : Number.NEGATIVE_INFINITY;
   return rightAt - leftAt ||
     (right?._projection?.index ?? -1) - (left?._projection?.index ?? -1);
+}
+
+function challengeReportSummary(record) {
+  if (!record) return null;
+  return Object.freeze({
+    eventId: record.id,
+    reportId: record.reportId,
+    at: record.at,
+    actorId: record.actor?.id ?? null,
+    actorRole: record.actor?.role ?? null,
+    procedure: record.procedure,
+    observation: record.observation,
+    reportedOutcome: DOCKET_OUTCOMES.has(record.reportedOutcome) ? record.reportedOutcome : 'unclassified',
+    evidenceStatus: record._projection?.evidenceStatus ?? 'not-applicable'
+  });
+}
+
+function challengeReviewSummary(record) {
+  if (!record) return null;
+  return Object.freeze({
+    eventId: record.id,
+    reviewId: record.reviewId,
+    reportId: record.reportId,
+    challengeId: record.challengeId,
+    disposition: record.disposition,
+    rationale: record.rationale,
+    at: record.at,
+    actorId: record.actor?.id ?? null,
+    actorRole: record.actor?.role ?? null,
+    reviewerSameAsReport: record._projection?.reviewerSameAsReport === true,
+    reviewerSameAsChallenge: record._projection?.reviewerSameAsChallenge === true,
+    sourceEventIds: Object.freeze(Array.isArray(record.sourceEventIds) ? [...record.sourceEventIds] : [])
+  });
+}
+
+const RESEARCH_ENCOUNTER_REVIEW_QUEUE_LIMIT = 50;
+
+/**
+ * Read-only, source-linked Decision Chamber queue. Pending encounters sort
+ * before completed ones; actor IDs never establish distinct human reviewers.
+ */
+export function getResearchEncounterReviewQueue(world, options = null) {
+  const events = Array.isArray(world?.events) ? world.events : [];
+  const creations = Array.isArray(world?.creations) ? world.creations : [];
+  const records = projectResearchRecords(events, creations);
+  const recordById = new Map(records.filter(record => typeof record.id === 'string').map(record => [record.id, record]));
+  const reviewsByChallengeId = new Map();
+  for (const record of records) {
+    if (record.type !== 'experiment-challenge-reviewed' || typeof record.challengeId !== 'string') continue;
+    const list = reviewsByChallengeId.get(record.challengeId) || [];
+    list.push(record);
+    reviewsByChallengeId.set(record.challengeId, list);
+  }
+  const challenges = records.filter(record =>
+    record.type === 'experiment-challenged' &&
+    record._projection?.proposalStatus === 'linked' &&
+    record._projection?.targetReportStatus === 'linked'
+  ).map(record => {
+    const rawReviews = reviewsByChallengeId.get(record.challengeId) || [];
+    const linkedReviews = rawReviews.filter(review =>
+      review._projection?.proposalStatus === 'linked' &&
+      review._projection?.targetChallengeStatus === 'linked'
+    );
+    const reviewStatus = rawReviews.length > 1 ? 'ambiguous' :
+      linkedReviews.length === 1 ? 'reviewed' : rawReviews.length === 1 ? 'unlinked' : 'pending';
+    const targetReportId = record._projection?.targetReport?.id;
+    const targetReport = challengeReportSummary(recordById.get(targetReportId));
+    return Object.freeze({
+      eventId: record.id,
+      challengeId: record.challengeId,
+      reportId: record.reportId,
+      moonshotId: record.moonshotId,
+      proposalTitle: record._projection?.proposal?.title ?? 'Untitled moonshot',
+      challengeType: DOCKET_CHALLENGE_TYPES.has(record.challengeType) ? record.challengeType : 'other',
+      challengeText: typeof record.challengeText === 'string' ? record.challengeText : '',
+      at: record.at,
+      actorId: record.actor?.id ?? null,
+      actorRole: record.actor?.role ?? null,
+      evidenceStatus: record._projection?.evidenceStatus ?? 'not-applicable',
+      targetReport,
+      reviewStatus,
+      review: reviewStatus === 'reviewed' ? challengeReviewSummary(linkedReviews[0]) : null,
+      appendIndex: record._projection?.index ?? -1
+    });
+  });
+  challenges.sort((left, right) => {
+    const rank = { pending: 0, unlinked: 1, ambiguous: 1, reviewed: 2 };
+    return rank[left.reviewStatus] - rank[right.reviewStatus] ||
+      (left.reviewStatus === 'reviewed' ? right.appendIndex - left.appendIndex : left.appendIndex - right.appendIndex);
+  });
+  const requestedLimit = options && Number.isSafeInteger(options.limit) ? options.limit : RESEARCH_ENCOUNTER_REVIEW_QUEUE_LIMIT;
+  const limit = Math.max(1, Math.min(200, requestedLimit));
+  const visible = challenges.slice(0, limit).map(({ appendIndex, ...record }) => Object.freeze(record));
+  const rawReviews = records.filter(record => record.type === 'experiment-challenge-reviewed');
+  const unlinkedReviewCount = rawReviews.filter(record =>
+    record._projection?.proposalStatus !== 'linked' || record._projection?.targetChallengeStatus !== 'linked'
+  ).length;
+  return Object.freeze({
+    worldId: typeof world?.id === 'string' ? world.id : null,
+    worldRevision: Number.isSafeInteger(world?.revision) ? world.revision : null,
+    challengeCount: challenges.length,
+    pendingCount: challenges.filter(record => record.reviewStatus === 'pending').length,
+    reviewedCount: challenges.filter(record => record.reviewStatus === 'reviewed').length,
+    unlinkedCount: challenges.filter(record => ['unlinked', 'ambiguous'].includes(record.reviewStatus)).length,
+    unlinkedReviewCount,
+    omittedChallengeCount: Math.max(0, challenges.length - visible.length),
+    challenges: Object.freeze(visible)
+  });
 }
 
 /**
@@ -572,6 +680,17 @@ export function getExpeditionDocket(world, options = null) {
     const challenges = related
       .filter(record => record.type === 'experiment-challenged')
       .sort(newestDocketRecordFirst);
+    const reviewRecords = related
+      .filter(record => record.type === 'experiment-challenge-reviewed')
+      .sort(newestDocketRecordFirst);
+    const recordById = new Map(records.filter(record => typeof record.id === 'string').map(record => [record.id, record]));
+    const reviewsByChallengeId = new Map();
+    for (const review of reviewRecords) {
+      const list = reviewsByChallengeId.get(review.challengeId) || [];
+      list.push(review);
+      reviewsByChallengeId.set(review.challengeId, list);
+    }
+    const validReviews = reviewRecords.filter(record => record._projection?.targetChallengeStatus === 'linked');
     const responses = responseObjects
       .filter(record => record.moonshotId === proposal.moonshotId)
       .slice()
@@ -608,8 +727,14 @@ export function getExpeditionDocket(world, options = null) {
       )),
       omittedAttemptCount: Math.max(0, reports.length - EXPEDITION_ACTIVITY_LIMIT),
       challengeCount: challenges.length,
-      challenges: Object.freeze(challenges.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record =>
-        Object.freeze({
+      challenges: Object.freeze(challenges.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(record => {
+        const rawReviews = reviewsByChallengeId.get(record.challengeId) || [];
+        const linkedReview = rawReviews.length === 1 && rawReviews[0]._projection?.targetChallengeStatus === 'linked'
+          ? rawReviews[0] : null;
+        const reviewStatus = rawReviews.length > 1 ? 'ambiguous' :
+          linkedReview ? 'reviewed' : rawReviews.length === 1 ? 'unlinked' : 'pending';
+        const targetReport = record._projection?.targetReport;
+        return Object.freeze({
           id: record.id,
           challengeId: record.challengeId ?? null,
           reportId: record.reportId ?? null,
@@ -620,10 +745,16 @@ export function getExpeditionDocket(world, options = null) {
             ? record.challengeType : 'other',
           challengeText: typeof record.challengeText === 'string' ? record.challengeText : '',
           targetReportStatus: record._projection.targetReportStatus,
-          evidenceStatus: record._projection.evidenceStatus
-        })
-      )),
+          evidenceStatus: record._projection.evidenceStatus,
+          targetReport: challengeReportSummary(recordById.get(targetReport?.id)),
+          reviewStatus,
+          review: linkedReview ? challengeReviewSummary(linkedReview) : null
+        });
+      })),
       omittedChallengeCount: Math.max(0, challenges.length - EXPEDITION_ACTIVITY_LIMIT),
+      reviewCount: validReviews.length,
+      reviews: Object.freeze(validReviews.slice(0, EXPEDITION_ACTIVITY_LIMIT).map(challengeReviewSummary)),
+      omittedReviewCount: Math.max(0, validReviews.length - EXPEDITION_ACTIVITY_LIMIT),
       responseCount: responses.length,
       responses: Object.freeze(responses.slice(0, EXPEDITION_RESPONSE_LIMIT).map(record =>
         Object.freeze({
@@ -652,6 +783,9 @@ export function getExpeditionDocket(world, options = null) {
     DOCKET_RESEARCH_TYPES.has(record.type) &&
     !['unique', 'linked'].includes(record._projection?.proposalStatus)
   ).length;
+  const unlinkedReviewCount = records.filter(record => record.type === 'experiment-challenge-reviewed' &&
+    (record._projection?.proposalStatus !== 'linked' || record._projection?.targetChallengeStatus !== 'linked')
+  ).length;
 
   return Object.freeze({
     worldId: typeof world?.id === 'string' ? world.id : null,
@@ -659,6 +793,7 @@ export function getExpeditionDocket(world, options = null) {
     proposalCount: proposals.length,
     omittedProposalCount: Math.max(0, proposals.length - EXPEDITION_DOCKET_LIMIT),
     unlinkedResearchRecordCount,
+    unlinkedReviewCount,
     expeditions: Object.freeze(expeditions)
   });
 
@@ -1017,6 +1152,7 @@ export function getQuestTrail(world, viewer, options = null) {
     ? suppliedResponseObjects
     : projectCollaboratorResponseWorldObjects(world);
   const events = trailRows(world?.events);
+  const researchRecords = projectResearchRecords(events, trailRows(world?.creations));
   const commonsMessages = projectCommonsMessages(world, viewer);
   const firstCommonsMessage = commonsMessages[0] || null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
@@ -1273,6 +1409,17 @@ export function getQuestTrail(world, viewer, options = null) {
     challengedReportIds.add(event.reportId);
     return true;
   });
+  const validResearchChallenges = researchRecords.filter(record =>
+    record.type === 'experiment-challenged' &&
+    record._projection?.proposalStatus === 'linked' &&
+    record._projection?.targetReportStatus === 'linked'
+  );
+  const validChallengeReviewRecords = researchRecords.filter(record =>
+    record.type === 'experiment-challenge-reviewed' &&
+    record._projection?.proposalStatus === 'linked' &&
+    record._projection?.targetChallengeStatus === 'linked' &&
+    record.actor?.id === actorId && record.actor?.role === actorRole
+  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
@@ -1424,6 +1571,14 @@ export function getQuestTrail(world, viewer, options = null) {
         !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
         'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
       ),
+      ...(validResearchChallenges.length ? [trailMilestone(
+        'founder-review-research-encounters', 'Record a Founder disposition for each Contradiction encounter', validResearchChallenges.length,
+        validChallengeReviewRecords.map(event => event.id), validChallengeReviewRecords,
+        validChallengeReviewRecords.length < validResearchChallenges.length
+          ? { type: 'location', id: 'decision_chamber' } : null,
+        null,
+        'One immutable game-level next-step disposition per retained challenge. This is not a truth verdict, proof of independent review, institutional approval, or permission to erase dissent.'
+      )] : []),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
         !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
