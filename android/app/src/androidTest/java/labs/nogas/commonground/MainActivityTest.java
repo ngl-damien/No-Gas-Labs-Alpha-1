@@ -27,6 +27,8 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @RunWith(AndroidJUnit4.class)
 public final class MainActivityTest {
@@ -77,6 +79,167 @@ public final class MainActivityTest {
                 evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
     }
 
+
+    @Test
+    public void nativeBridgeRejectsSameOriginSiblingDocuments() throws Exception {
+        MainActivity activity = activity();
+        assertTrue(activity.isNativeFileBridgeSupportedForTests());
+        String siblingUrl = "https://" + MainActivity.APP_HOST + "/assets/game/sibling.html";
+        assertTrue(MainActivity.isTrustedGameDocumentForTests(MainActivity.GAME_URL));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(siblingUrl));
+
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        IntentFilter filter = new IntentFilter(Intent.ACTION_OPEN_DOCUMENT);
+        filter.addCategory(Intent.CATEGORY_OPENABLE);
+        filter.addDataType("application/json");
+        Instrumentation.ActivityMonitor pickerMonitor = instrumentation.addMonitor(
+                filter,
+                new Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null),
+                true
+        );
+        try {
+            WebView webView = activity.getGameWebViewForTests();
+            String siblingPage = """
+                    <!doctype html>
+                    <html><body><script>
+                      document.documentElement.dataset.bridgeType =
+                        typeof window.NglNative;
+                      if (window.NglNative &&
+                          typeof window.NglNative.postMessage === 'function') {
+                        window.NglNative.postMessage(
+                          JSON.stringify({ type: 'import-request' })
+                        );
+                      }
+                    </script></body></html>
+                    """;
+            instrumentation.runOnMainSync(() ->
+                    webView.loadDataWithBaseURL(siblingUrl, siblingPage, "text/html", "UTF-8", null)
+            );
+            awaitJavaScript(activity,
+                    "document.readyState === 'complete' && " +
+                    "document.documentElement.dataset.bridgeType === 'object'");
+            Thread.sleep(500);
+            assertEquals("same-origin sibling pages must not reach the native document picker",
+                    0, pickerMonitor.getHits());
+            assertEquals("the sibling page is not the trusted game document",
+                    siblingUrl, webView.getUrl());
+        } finally {
+            instrumentation.removeMonitor(pickerMonitor);
+        }
+    }
+
+    @Test
+    public void nativeExportQueueBoundsBytesAndMessageCount() throws Exception {
+        MainActivity activity = activity();
+        ThreadPoolExecutor executor = blockedExecutor(NativeWorldFiles.MAX_QUEUED_MESSAGES);
+        NativeWorldFiles files = new NativeWorldFiles(activity, executor);
+        try {
+            files.onMessage(new androidx.webkit.WebMessageCompat(
+                    "{\"type\":\"export-start\",\"name\":\"bounded.json\",\"mime\":\"application/json\",\"size\":33554432}"
+            ), null);
+            for (int index = 0; index < NativeWorldFiles.MAX_QUEUED_CHUNKS; index++) {
+                files.onMessage(new androidx.webkit.WebMessageCompat(
+                        new byte[NativeWorldFiles.CHUNK_BYTES]
+                ), null);
+            }
+
+            assertEquals("accepted bytes include queued and not-yet-written chunks",
+                    NativeWorldFiles.MAX_BYTES, files.getAcceptedExportBytesForTests());
+            assertEquals("one start plus 512 bounded chunks remain in the bounded queue",
+                    NativeWorldFiles.MAX_QUEUED_CHUNKS + 1, files.getPendingIoTasksForTests());
+
+            files.onMessage(new androidx.webkit.WebMessageCompat(
+                    "{\"type\":\"export-complete\"}"
+            ), null);
+            assertEquals("the maximum valid transfer plus completion fits exactly in the queue",
+                    NativeWorldFiles.MAX_QUEUED_MESSAGES, files.getPendingIoTasksForTests());
+
+            files.onMessage(new androidx.webkit.WebMessageCompat(
+                    "{\"type\":\"export-complete\"}"
+            ), null);
+            assertEquals("duplicate completion cannot grow the queue",
+                    NativeWorldFiles.MAX_QUEUED_MESSAGES, files.getPendingIoTasksForTests());
+
+            files.onMessage(new androidx.webkit.WebMessageCompat(new byte[]{1}), null);
+            assertEquals("an extra byte after the declared 32-MiB transfer aborts and releases reservations",
+                    0, files.getAcceptedExportBytesForTests());
+            assertFalse(files.isExportTransferActiveForTests());
+            assertTrue(files.getPendingIoTasksForTests() <= NativeWorldFiles.MAX_QUEUED_MESSAGES);
+        } finally {
+            files.close();
+        }
+    }
+
+    @Test
+    public void nativeExportQueueRejectsOversizedChunksAndExecutorSaturation() throws Exception {
+        MainActivity activity = activity();
+        ThreadPoolExecutor oversizedExecutor = blockedExecutor(NativeWorldFiles.MAX_QUEUED_MESSAGES);
+        NativeWorldFiles oversizedFiles = new NativeWorldFiles(activity, oversizedExecutor);
+        try {
+            oversizedFiles.onMessage(new androidx.webkit.WebMessageCompat(
+                    "{\"type\":\"export-start\",\"name\":\"oversized.json\",\"mime\":\"application/json\",\"size\":65537}"
+            ), null);
+            oversizedFiles.onMessage(new androidx.webkit.WebMessageCompat(
+                    new byte[NativeWorldFiles.CHUNK_BYTES + 1]
+            ), null);
+            assertEquals("oversized chunks are rejected before enqueue",
+                    1, oversizedFiles.getPendingIoTasksForTests());
+            assertEquals(0, oversizedFiles.getAcceptedExportBytesForTests());
+            assertFalse(oversizedFiles.isExportTransferActiveForTests());
+        } finally {
+            oversizedFiles.close();
+        }
+
+        ThreadPoolExecutor saturatedExecutor = blockedExecutor(2);
+        NativeWorldFiles saturatedFiles = new NativeWorldFiles(activity, saturatedExecutor);
+        try {
+            saturatedFiles.onMessage(new androidx.webkit.WebMessageCompat(
+                    "{\"type\":\"export-start\",\"name\":\"saturated.json\",\"mime\":\"application/json\",\"size\":131072}"
+            ), null);
+            saturatedFiles.onMessage(new androidx.webkit.WebMessageCompat(
+                    new byte[NativeWorldFiles.CHUNK_BYTES]
+            ), null);
+            assertEquals(2, saturatedFiles.getPendingIoTasksForTests());
+            saturatedFiles.onMessage(new androidx.webkit.WebMessageCompat(
+                    new byte[NativeWorldFiles.CHUNK_BYTES]
+            ), null);
+            assertTrue("the queue remains bounded when the executor rejects a chunk",
+                    saturatedFiles.getPendingIoTasksForTests() <= 2);
+            assertEquals("rejected enqueue releases the reservation and aborts the transfer",
+                    0, saturatedFiles.getAcceptedExportBytesForTests());
+            assertFalse(saturatedFiles.isExportTransferActiveForTests());
+        } finally {
+            saturatedFiles.close();
+        }
+    }
+
+    private ThreadPoolExecutor blockedExecutor(int queueCapacity) throws Exception {
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1,
+                1,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "ngl-test-blocked-file-io");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.execute(() -> {
+            workerStarted.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue("test executor worker should enter its blocking task",
+                workerStarted.await(5, TimeUnit.SECONDS));
+        return executor;
+    }
 
     @Test
     public void nativeWorldExportAndImportRoundTripsEarnedProgress() throws Exception {

@@ -157,8 +157,7 @@ public final class MainActivity extends Activity {
                     "NglNative",
                     Collections.singleton("https://" + APP_HOST),
                     (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                        if (!isMainFrame || !"https".equals(sourceOrigin.getScheme())
-                                || !APP_HOST.equals(sourceOrigin.getHost())) return;
+                        if (!isTrustedGameDocument(view, sourceOrigin, isMainFrame)) return;
                         nativeWorldFiles.onMessage(message, replyProxy);
                     }
             );
@@ -193,22 +192,40 @@ public final class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 Uri finished = Uri.parse(url);
-                if (nativeFileBridgeSupported && "https".equals(finished.getScheme())
-                        && APP_HOST.equals(finished.getHost())
-                        && "/assets/game/index.html".equals(finished.getPath())) {
+                if (nativeFileBridgeSupported && isTrustedGameDocument(finished)) {
                     view.evaluateJavascript(NATIVE_FILE_BRIDGE_SCRIPT, null);
                 }
             }
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                return !("https".equals(uri.getScheme()) && APP_HOST.equals(uri.getHost()));
+                return !isTrustedGameDocument(request.getUrl());
             }
         });
 
         setContentView(webView);
         webView.loadUrl(GAME_URL);
+    }
+
+    private static boolean isTrustedGameDocument(WebView view, Uri sourceOrigin, boolean isMainFrame) {
+        if (!isMainFrame || sourceOrigin == null
+                || !"https".equals(sourceOrigin.getScheme())
+                || !APP_HOST.equals(sourceOrigin.getHost())) return false;
+        String currentUrl = view.getUrl();
+        return currentUrl != null && isTrustedGameDocument(Uri.parse(currentUrl));
+    }
+
+    private static boolean isTrustedGameDocument(Uri uri) {
+        return uri != null
+                && "https".equals(uri.getScheme())
+                && APP_HOST.equals(uri.getHost())
+                && (uri.getPort() == -1 || uri.getPort() == 443)
+                && uri.getUserInfo() == null
+                && "/assets/game/index.html".equals(uri.getPath());
+    }
+
+    static boolean isTrustedGameDocumentForTests(String url) {
+        return url != null && isTrustedGameDocument(Uri.parse(url));
     }
 
     private WebResourceResponse jsonError(int status, String reason, String code, String message) {
