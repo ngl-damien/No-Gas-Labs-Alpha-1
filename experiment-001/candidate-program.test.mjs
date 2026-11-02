@@ -7,8 +7,10 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   candidateProgramHash,
+  candidateTaskSpecificationDigest,
   evaluateCandidateProgram,
-  validateCandidateProgram
+  validateCandidateProgram,
+  validateCandidateTaskSpecification
 } from './candidate-program.mjs';
 
 const squareProgram = () => ({
@@ -33,6 +35,30 @@ const quadraticTargetProgram = () => ({
     right: { op: 'multiply', left: { op: 'const', value: 3 }, right: { op: 'input' } }
   },
   right: { op: 'const', value: 7 }
+});
+const callerDefinedTaskSpecification = () => ({
+  schema: 'ngl.candidate-task-spec.v1',
+  id: 'ngl.experiment-001.task:quadratic-3x2-plus-2x-minus-5:v1',
+  inputMin: -1_000_000,
+  inputMax: 1_000_000,
+  proofMethod: 'exact-integer-polynomial-normal-form',
+  limits: {
+    maxAstDepth: 12,
+    maxAstNodes: 63,
+    maxPolynomialDegree: 32,
+    maxCoefficientBits: 4096,
+    maxSafeInteger: Number.MAX_SAFE_INTEGER
+  },
+  targetCoefficients: ['-5', '2', '3']
+});
+const callerDefinedTaskProgram = () => ({
+  op: 'add',
+  left: {
+    op: 'add',
+    left: { op: 'multiply', left: { op: 'const', value: 3 }, right: squareProgram() },
+    right: { op: 'multiply', left: { op: 'const', value: 2 }, right: { op: 'input' } }
+  },
+  right: { op: 'const', value: -5 }
 });
 const overfitProgram = () => ({
   op: 'add',
@@ -658,5 +684,216 @@ test('candidate-program-v4 INSTALL rejects a signed certificate that changes the
   const store = await lib.openInstitution(join(directory, 'store-v4-tampered'), pem(founder));
   const signature = sign(null, Buffer.from(lib.approvalPayload(tampered)), founder.privateKey).toString('base64url');
   await assert.rejects(() => store.commit(tampered, signature), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 0);
+}));
+
+
+test('candidate task specifications are exact, canonical, and verifier-bounded', () => {
+  const specification = callerDefinedTaskSpecification();
+  const normalized = validateCandidateTaskSpecification(specification);
+  assert.deepEqual(normalized, specification);
+  assert.equal(candidateTaskSpecificationDigest(specification), candidateTaskSpecificationDigest({
+    targetCoefficients: [...specification.targetCoefficients],
+    limits: { ...specification.limits },
+    proofMethod: specification.proofMethod,
+    inputMax: specification.inputMax,
+    inputMin: specification.inputMin,
+    id: specification.id,
+    schema: specification.schema
+  }), 'field ordering must not change the task identity');
+
+  const widened = structuredClone(specification);
+  widened.limits.maxAstNodes = 64;
+  assert.throws(() => validateCandidateTaskSpecification(widened), /CANDIDATE_TASK_SPEC_INVALID/);
+  const nonCanonical = structuredClone(specification);
+  nonCanonical.targetCoefficients[0] = '-05';
+  assert.throws(() => validateCandidateTaskSpecification(nonCanonical), /CANDIDATE_TASK_SPEC_INVALID/);
+  const trailingZero = structuredClone(specification);
+  trailingZero.targetCoefficients.push('0');
+  assert.throws(() => validateCandidateTaskSpecification(trailingZero), /CANDIDATE_TASK_SPEC_INVALID/);
+  const outOfRange = structuredClone(specification);
+  outOfRange.targetCoefficients = ['9007199254740992'];
+  assert.throws(() => validateCandidateTaskSpecification(outOfRange), /CANDIDATE_TASK_SPEC_INVALID/);
+
+  let getterCalls = 0;
+  const accessor = { ...specification };
+  Object.defineProperty(accessor, 'id', {
+    enumerable: true,
+    configurable: true,
+    get() { getterCalls += 1; return specification.id; }
+  });
+  assert.throws(() => validateCandidateTaskSpecification(accessor), /CANDIDATE_TASK_SPEC_INVALID/);
+  assert.equal(getterCalls, 0, 'task-spec validation must not execute accessor-backed fields');
+});
+
+test('candidate-program-v5 proves a separately Founder-signed caller-defined polynomial task', async () => {
+  const founder = pair();
+  const lib = await loadPinned(founder);
+  const specification = callerDefinedTaskSpecification();
+  const program = callerDefinedTaskProgram();
+  const specificationSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
+    founder.privateKey
+  ).toString('base64url');
+
+  const proof = lib.challenge('candidate-program-v5', program, specification);
+  assert.equal(proof.total, 1);
+  assert.equal(proof.passed, 1);
+  assert.deepEqual(proof.failed, []);
+  assert.equal(proof.certificate.schema, 'ngl.candidate-program-proof.v3');
+  assert.equal(proof.certificate.taskSpecificationId, specification.id);
+  assert.equal(proof.certificate.taskSpecificationDigest, candidateTaskSpecificationDigest(specification));
+  assert.deepEqual(proof.certificate.coefficients, ['-5', '2', '3']);
+  assert.deepEqual(proof.certificate.targetCoefficients, ['-5', '2', '3']);
+  assert.equal(proof.certificate.maxIntermediateAbsoluteBound, '3000002000005');
+  assert.equal(proof.certificate.matchesTask, true);
+
+  const nearMiss = structuredClone(program);
+  nearMiss.right.value = -4;
+  const mismatch = lib.challenge('candidate-program-v5', nearMiss, specification);
+  assert.equal(mismatch.passed, 0);
+  assert.deepEqual(mismatch.failed, ['POLYNOMIAL_NOT_TASK']);
+
+  const unsupported = lib.challenge('candidate-program-v5', piecewiseOverfitProgram(), specification);
+  assert.equal(unsupported.passed, 0);
+  assert.deepEqual(unsupported.failed, ['CANDIDATE_PROOF_UNSUPPORTED_OPERATOR']);
+
+  const executor = pair();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-task-v5',
+    strategy: 'candidate-program-v5',
+    program,
+    taskSpecification: specification,
+    taskSpecificationSignature: specificationSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5',
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + 5 * 60_000,
+    maxUses: 1
+  });
+  assert.equal(draft.implementationHash, candidateProgramHash(program, 'v5', specification));
+  assert.equal(lib.validateInstallationProposal(draft, Date.now(), {
+    founderPublicKey: createPublicKey(pem(founder))
+  }).valid, true);
+  assert.deepEqual(lib.validateInstallationProposal(draft), {
+    valid: false,
+    reason: 'CANDIDATE_TASK_SPEC_SIGNATURE_INVALID'
+  }, 'the task spec must be checked against the configured Founder key, not a caller-selected key');
+});
+
+test('signed candidate-program-v5 INSTALL persists its trusted task spec across a fresh-process REUSE', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const specification = callerDefinedTaskSpecification();
+  const specificationSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
+    founder.privateKey
+  ).toString('base64url');
+  const issuedAt = Date.now();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-restart',
+    strategy: 'candidate-program-v5',
+    program: callerDefinedTaskProgram(),
+    taskSpecification: specification,
+    taskSpecificationSignature: specificationSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-restart',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+  assert.equal(draft.proof.passed, 1);
+  assert.equal(lib.validateInstallationProposal(draft, Date.now(), {
+    founderPublicKey: createPublicKey(pem(founder))
+  }).valid, true);
+
+  const storePath = join(directory, 'store-v5');
+  const store = await lib.openInstitution(storePath, pem(founder));
+  await store.commit(draft, sign(
+    null,
+    Buffer.from(lib.approvalPayload(draft)),
+    founder.privateKey
+  ).toString('base64url'));
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-candidate-task-v5', input: 17, output: 896 };
+  const receipt = sign(null, Buffer.from(lib.executionReceiptPayload(use)), executor.privateKey).toString('base64url');
+  const workerPath = new URL('./reuse-worker.mjs', import.meta.url).pathname;
+  const child = spawnSync(process.execPath, [
+    workerPath, storePath, pem(founder), JSON.stringify(use), receipt
+  ], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const snapshot = JSON.parse(child.stdout.trim());
+  assert.equal(snapshot.sequence, 2);
+  assert.equal(snapshot.capabilities[draft.id].strategy, 'candidate-program-v5');
+  assert.equal(snapshot.capabilities[draft.id].uses, 1);
+  assert.deepEqual(snapshot.capabilities[draft.id].taskSpecification, specification);
+  assert.equal(snapshot.capabilities[draft.id].taskSpecificationSignature, specificationSignature);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, draft.program);
+  assert.equal(snapshot.capabilities[draft.id].implementationHash, draft.implementationHash);
+
+  const reopened = await lib.openInstitution(storePath, pem(founder));
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.deepEqual(reopened.snapshot().capabilities[draft.id].taskSpecification, specification);
+  assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
+}));
+
+test('candidate-program-v5 rejects an untrusted or changed task spec even when INSTALL is Founder-signed', () => withTemp(async directory => {
+  const founder = pair();
+  const attacker = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const specification = callerDefinedTaskSpecification();
+  const store = await lib.openInstitution(join(directory, 'store-v5-signature'), pem(founder));
+  const issuedAt = Date.now();
+
+  const attackerSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
+    attacker.privateKey
+  ).toString('base64url');
+  const untrusted = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-untrusted',
+    strategy: 'candidate-program-v5',
+    program: callerDefinedTaskProgram(),
+    taskSpecification: specification,
+    taskSpecificationSignature: attackerSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-untrusted',
+    issuedAt,
+    expiresAt: issuedAt + 60_000,
+    maxUses: 1
+  });
+  const founderApproval = sign(null, Buffer.from(lib.approvalPayload(untrusted)), founder.privateKey).toString('base64url');
+  await assert.rejects(() => store.commit(untrusted, founderApproval), /CANDIDATE_TASK_SPEC_SIGNATURE_INVALID/);
+  assert.equal(store.snapshot().sequence, 0);
+
+  const trustedSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
+    founder.privateKey
+  ).toString('base64url');
+  const changedSpecification = structuredClone(specification);
+  changedSpecification.targetCoefficients = ['-4', '2', '3'];
+  const changed = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-changed-spec',
+    strategy: 'candidate-program-v5',
+    program: callerDefinedTaskProgram(),
+    taskSpecification: changedSpecification,
+    taskSpecificationSignature: trustedSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-changed',
+    issuedAt,
+    expiresAt: issuedAt + 60_000,
+    maxUses: 1
+  });
+  const changedApproval = sign(null, Buffer.from(lib.approvalPayload(changed)), founder.privateKey).toString('base64url');
+  await assert.rejects(() => store.commit(changed, changedApproval), /CANDIDATE_TASK_SPEC_SIGNATURE_INVALID/);
   assert.equal(store.snapshot().sequence, 0);
 }));

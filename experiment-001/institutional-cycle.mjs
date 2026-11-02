@@ -5,7 +5,15 @@ import { createHash, createPublicKey, randomUUID, verify as verifySignature } fr
 import { TextDecoder } from 'node:util';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { publishAtomicLock } from './atomic-lock.mjs';
-import { candidateProgramHash, evaluateCandidateProgram, validateCandidateProgram, proveCandidateSquareProgram, proveCandidateQuadraticProgram } from './candidate-program.mjs';
+import {
+  candidateProgramHash,
+  evaluateCandidateProgram,
+  validateCandidateProgram,
+  validateCandidateTaskSpecification,
+  proveCandidateSquareProgram,
+  proveCandidateQuadraticProgram,
+  proveCandidateTaskProgram
+} from './candidate-program.mjs';
 
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT = 1_000_000;
@@ -63,7 +71,7 @@ const initial = () => ({ version: 2, sequence: 0, previous: 'GENESIS', records: 
 
 function square(n) { return n * n; }
 function double(n) { return n * 2; }
-const CANDIDATE_PROGRAM_STRATEGIES = new Set(['candidate-program-v1', 'candidate-program-v2', 'candidate-program-v3', 'candidate-program-v4']);
+const CANDIDATE_PROGRAM_STRATEGIES = new Set(['candidate-program-v1', 'candidate-program-v2', 'candidate-program-v3', 'candidate-program-v4', 'candidate-program-v5']);
 
 function implementationFor(strategy, program = undefined) {
   if (strategy === 'square') return square;
@@ -87,11 +95,11 @@ const LEGACY_IMPLEMENTATION_HASHES = Object.freeze({
   square: 'a44644e2cb5f1e34cf0aac616d43631c4778a19585cb634128f9d4fbfe9d947d',
   double: '8bb1c5c30f449235d3934518681a3f5a4453b17efbff8d9aa01b1e09803ab436'
 });
-export function implementationHash(strategy, program = undefined) {
+export function implementationHash(strategy, program = undefined, taskSpecification = undefined) {
   if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) {
-    return candidateProgramHash(program, strategy.slice('candidate-program-'.length));
+    return candidateProgramHash(program, strategy.slice('candidate-program-'.length), taskSpecification);
   }
-  if (program !== undefined || !implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
+  if (program !== undefined || taskSpecification !== undefined || !implementationFor(strategy)) throw new Error('UNKNOWN_STRATEGY');
   return hashBytes(Buffer.from(IMPLEMENTATION_IDENTITIES[strategy]));
 }
 export function legacyImplementationHash(strategy) {
@@ -119,8 +127,8 @@ const candidateProgramV2Cases = Object.freeze([
   { n: 999_983, out: 999_966_000_289 },
   { n: 1_000_000, out: 1_000_000_000_000 }
 ]);
-function challengeWithHash(strategy, hashFor, program = undefined) {
-  if (strategy === 'candidate-program-v3' || strategy === 'candidate-program-v4') {
+function challengeWithHash(strategy, hashFor, program = undefined, taskSpecification = undefined) {
+  if (strategy === 'candidate-program-v3' || strategy === 'candidate-program-v4' || strategy === 'candidate-program-v5') {
     let implementation;
     try { implementation = implementationFor(strategy, program); }
     catch { implementation = null; }
@@ -128,16 +136,26 @@ function challengeWithHash(strategy, hashFor, program = undefined) {
       return { total: 1, passed: 0, failed: ['CANDIDATE_PROGRAM_INVALID'], implementationHash: null, certificate: null };
     }
     let implementationHashValue;
-    try { implementationHashValue = hashFor(strategy, program); }
+    try { implementationHashValue = hashFor(strategy, program, taskSpecification); }
     catch {
       return { total: 1, passed: 0, failed: ['CANDIDATE_PROGRAM_INVALID'], implementationHash: null, certificate: null };
     }
     try {
       const certificate = strategy === 'candidate-program-v3'
         ? proveCandidateSquareProgram(program)
-        : proveCandidateQuadraticProgram(program);
-      const passed = strategy === 'candidate-program-v3' ? certificate.matchesSquare : certificate.matchesTarget;
-      const failure = strategy === 'candidate-program-v3' ? 'POLYNOMIAL_NOT_SQUARE' : 'POLYNOMIAL_NOT_TARGET';
+        : strategy === 'candidate-program-v4'
+          ? proveCandidateQuadraticProgram(program)
+          : proveCandidateTaskProgram(program, taskSpecification);
+      const passed = strategy === 'candidate-program-v3'
+        ? certificate.matchesSquare
+        : strategy === 'candidate-program-v4'
+          ? certificate.matchesTarget
+          : certificate.matchesTask;
+      const failure = strategy === 'candidate-program-v3'
+        ? 'POLYNOMIAL_NOT_SQUARE'
+        : strategy === 'candidate-program-v4'
+          ? 'POLYNOMIAL_NOT_TARGET'
+          : 'POLYNOMIAL_NOT_TASK';
       return {
         total: 1,
         passed: passed ? 1 : 0,
@@ -166,20 +184,46 @@ function challengeWithHash(strategy, hashFor, program = undefined) {
   }).map(testCase => testCase.n);
   return { total: challengeCases.length, passed: challengeCases.length - failed.length, failed, implementationHash: implementation ? hashFor(strategy, program) : null };
 }
-export function challenge(strategy, program = undefined) { return challengeWithHash(strategy, implementationHash, program); }
+export function challenge(strategy, program = undefined, taskSpecification = undefined) {
+  return challengeWithHash(strategy, implementationHash, program, taskSpecification);
+}
 function legacyChallenge(strategy) { return challengeWithHash(strategy, legacyImplementationHash); }
 export function competition() {
   return ['double', 'square'].map(strategy => ({ strategy, result: challenge(strategy) }));
 }
 
-export function makeInstallationProposal({ id = 'square-v1', strategy = 'square', program = undefined, executorPublicKeyPem, nonce = randomUUID(), issuedAt = Date.now(), expiresAt = issuedAt + 60 * 60 * 1000, maxUses = 3 } = {}) {
+export function makeInstallationProposal({
+  id = 'square-v1',
+  strategy = 'square',
+  program = undefined,
+  taskSpecification = undefined,
+  taskSpecificationSignature = undefined,
+  executorPublicKeyPem,
+  nonce = randomUUID(),
+  issuedAt = Date.now(),
+  expiresAt = issuedAt + 60 * 60 * 1000,
+  maxUses = 3
+} = {}) {
   if (typeof executorPublicKeyPem !== 'string' || !executorPublicKeyPem.includes('BEGIN PUBLIC KEY')) throw new Error('EXECUTOR_PUBLIC_KEY_REQUIRED');
   let normalizedProgram;
   if (CANDIDATE_PROGRAM_STRATEGIES.has(strategy)) normalizedProgram = validateCandidateProgram(program);
   else if (program !== undefined) throw new Error('PROGRAM_NOT_ALLOWED_FOR_STRATEGY');
-  const proof = challenge(strategy, normalizedProgram);
+
+  let normalizedTaskSpecification;
+  if (strategy === 'candidate-program-v5') {
+    normalizedTaskSpecification = validateCandidateTaskSpecification(taskSpecification);
+    if (typeof taskSpecificationSignature !== 'string') throw new Error('CANDIDATE_TASK_SPEC_SIGNATURE_REQUIRED');
+  } else if (taskSpecification !== undefined || taskSpecificationSignature !== undefined) {
+    throw new Error('CANDIDATE_TASK_SPEC_NOT_ALLOWED');
+  }
+
+  const proof = challenge(strategy, normalizedProgram, normalizedTaskSpecification);
   const proposal = { kind: 'INSTALL', id, strategy, executorPublicKeyPem, proof, implementationHash: proof.implementationHash, nonce, issuedAt, expiresAt, maxUses };
   if (normalizedProgram !== undefined) proposal.program = normalizedProgram;
+  if (strategy === 'candidate-program-v5') {
+    proposal.taskSpecification = normalizedTaskSpecification;
+    proposal.taskSpecificationSignature = taskSpecificationSignature;
+  }
   return proposal;
 }
 
@@ -193,6 +237,12 @@ export function publicKeyFingerprint(publicKeyPem) {
 
 export function approvalPayload(decision) {
   return canonical({ domain: 'NGL_FOUNDER_INSTALL_APPROVAL_V1', decision });
+}
+export function candidateTaskSpecificationPayload(taskSpecification) {
+  return canonical({
+    domain: 'NGL_FOUNDER_CANDIDATE_TASK_SPECIFICATION_V1',
+    taskSpecification: validateCandidateTaskSpecification(taskSpecification)
+  });
 }
 export function executionReceiptPayload(decision) {
   return canonical({ domain: 'NGL_CAPABILITY_REUSE_RECEIPT_V1', decision });
@@ -216,19 +266,35 @@ function exactKeys(object, expected) {
   return expected.every(key => Object.hasOwn(object, key));
 }
 
-export function validateInstallationProposal(decision, now = Date.now(), { allowLegacy = false } = {}) {
+export function validateInstallationProposal(decision, now = Date.now(), { allowLegacy = false, founderPublicKey = null } = {}) {
   const reject = reason => ({ valid: false, reason });
   const baseKeys = ['kind', 'id', 'strategy', 'executorPublicKeyPem', 'proof', 'implementationHash', 'nonce', 'issuedAt', 'expiresAt', 'maxUses'];
-  const hasBaseSchema = exactKeys(decision, baseKeys);
-  const hasProgramSchema = exactKeys(decision, [...baseKeys, 'program']);
-  if (!hasBaseSchema && !hasProgramSchema) return reject('INSTALL_SCHEMA_INVALID');
+  const isCandidate = CANDIDATE_PROGRAM_STRATEGIES.has(decision?.strategy);
+  const isTaskSpecification = decision?.strategy === 'candidate-program-v5';
+  const expectedKeys = isTaskSpecification
+    ? [...baseKeys, 'program', 'taskSpecification', 'taskSpecificationSignature']
+    : isCandidate ? [...baseKeys, 'program'] : baseKeys;
+  if (!exactKeys(decision, expectedKeys)) return reject('INSTALL_SCHEMA_INVALID');
   if (decision.kind !== 'INSTALL' || typeof decision.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(decision.id)) return reject('INSTALL_ID_INVALID');
-  const hasProgram = Object.hasOwn(decision, 'program');
-  if (CANDIDATE_PROGRAM_STRATEGIES.has(decision.strategy) !== hasProgram) return reject('INSTALL_SCHEMA_INVALID');
+  if (isCandidate !== Object.hasOwn(decision, 'program') ||
+      isTaskSpecification !== Object.hasOwn(decision, 'taskSpecification') ||
+      isTaskSpecification !== Object.hasOwn(decision, 'taskSpecificationSignature')) return reject('INSTALL_SCHEMA_INVALID');
+
   let implementation;
   try { implementation = implementationFor(decision.strategy, decision.program); }
   catch { return reject('CANDIDATE_PROGRAM_INVALID'); }
   if (!implementation) return reject('UNKNOWN_STRATEGY');
+
+  let normalizedTaskSpecification;
+  if (isTaskSpecification) {
+    try { normalizedTaskSpecification = validateCandidateTaskSpecification(decision.taskSpecification); }
+    catch { return reject('CANDIDATE_TASK_SPEC_INVALID'); }
+    if (!founderPublicKey ||
+        !verifyDetached(founderPublicKey, candidateTaskSpecificationPayload(normalizedTaskSpecification), decision.taskSpecificationSignature)) {
+      return reject('CANDIDATE_TASK_SPEC_SIGNATURE_INVALID');
+    }
+  }
+
   let executorKey;
   try { executorKey = createPublicKey(decision.executorPublicKeyPem); }
   catch { return reject('EXECUTOR_PUBLIC_KEY_INVALID'); }
@@ -236,7 +302,8 @@ export function validateInstallationProposal(decision, now = Date.now(), { allow
   if (typeof decision.nonce !== 'string' || !NONCE_PATTERN.test(decision.nonce)) return reject('INSTALL_NONCE_INVALID');
   if (!Number.isSafeInteger(decision.issuedAt) || !Number.isSafeInteger(decision.expiresAt) || decision.issuedAt > now || now >= decision.expiresAt || decision.expiresAt <= decision.issuedAt || decision.expiresAt - decision.issuedAt > MAX_GRANT_MS) return reject('INSTALL_TIME_INVALID');
   if (!Number.isSafeInteger(decision.maxUses) || decision.maxUses < 1 || decision.maxUses > MAX_USES) return reject('INSTALL_USE_BOUND_INVALID');
-  const proof = challenge(decision.strategy, decision.program);
+
+  const proof = challenge(decision.strategy, decision.program, normalizedTaskSpecification);
   if (decision.implementationHash === proof.implementationHash && canonical(decision.proof) === canonical(proof) && proof.passed === proof.total) {
     return { valid: true, reason: null };
   }
@@ -248,7 +315,6 @@ export function validateInstallationProposal(decision, now = Date.now(), { allow
   }
   return reject('INSTALL_PROOF_INVALID');
 }
-
 function verifyDetached(publicKey, payload, signature) {
   if (typeof signature !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(signature)) return false;
   const bytes = Buffer.from(signature, 'base64url');
@@ -276,7 +342,7 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
 
   if (decision.kind === 'INSTALL') {
     if (!verifyApproval(publicKey, decision, record.signature)) throw new Error('UNAUTHORIZED');
-    const validation = validateInstallationProposal(decision, record.timestamp, { allowLegacy });
+    const validation = validateInstallationProposal(decision, record.timestamp, { allowLegacy, founderPublicKey: publicKey });
     if (!validation.valid) throw new Error(validation.reason);
     if (Object.hasOwn(state.capabilities, decision.id)) throw new Error('ALREADY_INSTALLED');
     if (state.installationNonces.includes(decision.nonce)) throw new Error('INSTALL_NONCE_REUSED');
@@ -294,6 +360,10 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
       executorPublicKeyPem: decision.executorPublicKeyPem
     };
     if (CANDIDATE_PROGRAM_STRATEGIES.has(decision.strategy)) capability.program = validateCandidateProgram(decision.program);
+    if (decision.strategy === 'candidate-program-v5') {
+      capability.taskSpecification = validateCandidateTaskSpecification(decision.taskSpecification);
+      capability.taskSpecificationSignature = decision.taskSpecificationSignature;
+    }
     state.capabilities[decision.id] = capability;
     state.installationNonces.push(decision.nonce);
   } else if (decision.kind === 'REUSE') {
@@ -307,7 +377,11 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
     if (record.timestamp < capability.issuedAt || record.timestamp >= capability.expiresAt) throw new Error('GRANT_EXPIRED');
     if (!NONCE_PATTERN.test(decision.nonce || '') || state.used.includes(decision.nonce)) throw new Error('REPLAY');
     if (capability.uses >= capability.maxUses) throw new Error('GRANT_USE_LIMIT_REACHED');
-    const expectedImplementationHash = implementationHash(capability.strategy, capability.program);
+    if (capability.strategy === 'candidate-program-v5' &&
+        !verifyDetached(publicKey, candidateTaskSpecificationPayload(capability.taskSpecification), capability.taskSpecificationSignature)) {
+      throw new Error('CANDIDATE_TASK_SPEC_SIGNATURE_INVALID');
+    }
+    const expectedImplementationHash = implementationHash(capability.strategy, capability.program, capability.taskSpecification);
     const legacyMatch = !CANDIDATE_PROGRAM_STRATEGIES.has(capability.strategy) && capability.implementationHash === legacyImplementationHash(capability.strategy);
     if (capability.implementationHash !== expectedImplementationHash && !legacyMatch) throw new Error('IMPLEMENTATION_HASH_MISMATCH');
     if (!Number.isSafeInteger(decision.input) || Math.abs(decision.input) > MAX_INPUT) throw new Error('INPUT_OUT_OF_BOUNDS');

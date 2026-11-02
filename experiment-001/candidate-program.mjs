@@ -36,6 +36,34 @@ function dataObject(value, expectedKeys) {
   return result;
 }
 
+function dataArray(value) {
+  let length;
+  let prototype;
+  let keys;
+  try {
+    if (!Array.isArray(value)) invalid();
+    prototype = Object.getPrototypeOf(value);
+    keys = Reflect.ownKeys(value);
+    const descriptor = Object.getOwnPropertyDescriptor(value, 'length');
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) invalid();
+    length = descriptor.value;
+  } catch {
+    invalid();
+  }
+  if (prototype !== Array.prototype || !Number.isSafeInteger(length) || length < 0 ||
+      keys.length !== length + 1 || !keys.includes('length') ||
+      keys.some(key => key !== 'length' &&
+        (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) invalid();
+
+  const result = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) invalid();
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
 /**
  * Validate and freeze a small arithmetic AST. This is data interpretation, not
  * JavaScript evaluation: programs cannot import, loop, access the host, or call code.
@@ -113,10 +141,12 @@ export function evaluateCandidateProgram(program, input) {
   return result;
 }
 
-export function candidateProgramHash(program, version = 'v1') {
-  if (version !== 'v1' && version !== 'v2' && version !== 'v3' && version !== 'v4') throw new Error('CANDIDATE_PROGRAM_VERSION_INVALID');
+export function candidateProgramHash(program, version = 'v1', taskSpecification = undefined) {
+  if (!['v1', 'v2', 'v3', 'v4', 'v5'].includes(version)) throw new Error('CANDIDATE_PROGRAM_VERSION_INVALID');
   const normalized = validateCandidateProgram(program);
-  const identity = 'ngl-experiment-001:candidate-program:' + version + '\n' + JSON.stringify(normalized);
+  let identity = 'ngl-experiment-001:candidate-program:' + version + '\n' + JSON.stringify(normalized);
+  if (version === 'v5') identity += '\n' + candidateTaskSpecificationDigest(taskSpecification);
+  else if (taskSpecification !== undefined) throw new Error('CANDIDATE_TASK_SPEC_NOT_ALLOWED');
   return createHash('sha256').update(identity).digest('hex');
 }
 
@@ -158,6 +188,67 @@ const PROOF_LIMITS = Object.freeze({
   maxCoefficientBits: MAX_PROOF_COEFFICIENT_BITS,
   maxSafeInteger: Number.MAX_SAFE_INTEGER
 });
+
+export function validateCandidateTaskSpecification(specification) {
+  try {
+    const value = dataObject(specification, [
+      'schema', 'id', 'inputMin', 'inputMax', 'proofMethod', 'limits', 'targetCoefficients'
+    ]);
+    if (value.schema !== 'ngl.candidate-task-spec.v1' ||
+        typeof value.id !== 'string' ||
+        !/^ngl\.experiment-001\.task:[a-z0-9][a-z0-9._-]{0,63}:v1$/.test(value.id) ||
+        value.inputMin !== -MAX_INPUT ||
+        value.inputMax !== MAX_INPUT ||
+        value.proofMethod !== 'exact-integer-polynomial-normal-form') {
+      throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+    }
+
+    const limits = dataObject(value.limits, Object.keys(PROOF_LIMITS));
+    if (Object.entries(PROOF_LIMITS).some(([key, expected]) => limits[key] !== expected)) {
+      throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+    }
+
+    const rawCoefficients = dataArray(value.targetCoefficients);
+    if (rawCoefficients.length < 1 || rawCoefficients.length > MAX_PROOF_DEGREE + 1) {
+      throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+    }
+    const coefficients = rawCoefficients.map(coefficient => {
+      if (typeof coefficient !== 'string' || coefficient.length > 1234 ||
+          !/^(0|-?[1-9]\d*)$/.test(coefficient)) {
+        throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+      }
+      const parsed = BigInt(coefficient);
+      if (coefficientBitLength(parsed) > MAX_PROOF_COEFFICIENT_BITS) {
+        throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+      }
+      return parsed;
+    });
+    if (coefficients.length > 1 && coefficients.at(-1) === 0n) {
+      throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+    }
+    boundedPolynomialMagnitude(coefficients);
+
+    return Object.freeze({
+      schema: value.schema,
+      id: value.id,
+      inputMin: value.inputMin,
+      inputMax: value.inputMax,
+      proofMethod: value.proofMethod,
+      limits: Object.freeze({ ...PROOF_LIMITS }),
+      targetCoefficients: Object.freeze(rawCoefficients.slice())
+    });
+  } catch (error) {
+    if (error?.message === 'CANDIDATE_TASK_SPEC_INVALID') throw error;
+    throw new Error('CANDIDATE_TASK_SPEC_INVALID');
+  }
+}
+
+export function candidateTaskSpecificationDigest(specification) {
+  const normalized = validateCandidateTaskSpecification(specification);
+  const identity = 'ngl-experiment-001:candidate-task-spec:v1\n' + JSON.stringify(normalized);
+  return createHash('sha256').update(identity).digest('hex');
+}
+
 const QUADRATIC_TARGET = Object.freeze({
   id: 'ngl.experiment-001.target:quadratic-2x2-minus-3x-plus-7:v1',
   coefficients: Object.freeze([7n, -3n, 2n])
@@ -262,5 +353,30 @@ export function proveCandidateQuadraticProgram(program) {
     targetCoefficients: Object.freeze(QUADRATIC_TARGET.coefficients.map(value => value.toString())),
     maxIntermediateAbsoluteBound: maximumIntermediateBound.toString(),
     matchesTarget: matchesPolynomial(coefficients, QUADRATIC_TARGET.coefficients)
+  });
+}
+
+
+/**
+ * Prove exact equivalence to a separately Founder-signed task specification.
+ * The target, input interval, proof method, and resource limits are normalized
+ * and content-addressed; the candidate program cannot choose its own oracle.
+ */
+export function proveCandidateTaskProgram(program, taskSpecification) {
+  const specification = validateCandidateTaskSpecification(taskSpecification);
+  const target = specification.targetCoefficients.map(value => BigInt(value));
+  const { coefficients, maximumIntermediateBound } = analyzeCandidatePolynomial(program);
+  return Object.freeze({
+    schema: 'ngl.candidate-program-proof.v3',
+    taskSpecificationId: specification.id,
+    taskSpecificationDigest: candidateTaskSpecificationDigest(specification),
+    method: specification.proofMethod,
+    inputMin: specification.inputMin,
+    inputMax: specification.inputMax,
+    limits: Object.freeze({ ...PROOF_LIMITS }),
+    coefficients: Object.freeze(coefficients.map(value => value.toString())),
+    targetCoefficients: Object.freeze(target.map(value => value.toString())),
+    maxIntermediateAbsoluteBound: maximumIntermediateBound.toString(),
+    matchesTask: matchesPolynomial(coefficients, target)
   });
 }
