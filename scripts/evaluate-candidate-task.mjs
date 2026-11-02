@@ -167,7 +167,10 @@ function evaluateTarget(specification, input) {
 }
 
 function evaluateOne(verified, input) {
-  const output = evaluateCandidateProgram(verified.program, input);
+  const candidateOutput = evaluateCandidateProgram(verified.program, input);
+  // JSON.stringify serializes -0 as 0. Normalize at the report boundary so
+  // the serialized report replays under the same strict numeric comparison.
+  const output = Object.is(candidateOutput, -0) ? 0 : candidateOutput;
   const expectedOutput = evaluateTarget(verified.specification, input);
   if (!Number.isSafeInteger(output) || BigInt(output) !== expectedOutput) {
     fail('CANDIDATE_EVALUATION_MISMATCH');
