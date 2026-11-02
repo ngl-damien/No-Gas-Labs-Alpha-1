@@ -193,7 +193,7 @@ function verifyReportAuthority(authority) {
 
 function makeVerificationReceipt(verified, normalizedReport, evaluationCount, resultDigest = null) {
   const reportDigest = createHash('sha256')
-    .update('ngl.candidate-program-evaluation-report:v1\\n')
+    .update('ngl.candidate-program-evaluation-report:v1\n')
     .update(JSON.stringify(normalizedReport))
     .digest('hex');
   return {
@@ -294,7 +294,7 @@ function verifyEvaluationReport(verified, report) {
       authority: authorityBoundary()
     };
     const resultDigest = createHash('sha256')
-      .update('ngl.candidate-program-evaluation-range:v1\\n')
+      .update('ngl.candidate-program-evaluation-range:v1\n')
       .update(JSON.stringify(unsignedReport))
       .digest('hex');
     if (report.resultDigest !== resultDigest) fail('EVALUATION_REPORT_DIGEST_MISMATCH');
