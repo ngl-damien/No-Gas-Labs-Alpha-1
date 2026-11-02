@@ -10,7 +10,8 @@ import {
   candidateTaskSpecificationDigest,
   evaluateCandidateProgram,
   validateCandidateProgram,
-  validateCandidateTaskSpecification
+  validateCandidateTaskSpecification,
+  synthesizeCandidateTaskProgram
 } from './candidate-program.mjs';
 
 const squareProgram = () => ({
@@ -339,7 +340,7 @@ test('signed candidate program is challenged, persisted, and reused by a fresh p
   const snapshot = JSON.parse(child.stdout.trim());
   assert.equal(snapshot.sequence, 2);
   assert.equal(snapshot.capabilities[draft.id].uses, 1);
-  assert.deepEqual(snapshot.capabilities[draft.id].program, draft.program);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, synthesized.program);
 
   const reopened = await lib.openInstitution(storePath, pem(founder));
   assert.equal(reopened.snapshot().sequence, 2);
@@ -787,6 +788,7 @@ test('signed candidate-program-v5 INSTALL persists its trusted task spec across 
   const executor = pair();
   const lib = await loadPinned(founder);
   const specification = callerDefinedTaskSpecification();
+  const synthesized = lib.synthesizeCandidateTaskProgram(specification);
   const specificationSignature = sign(
     null,
     Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
@@ -796,7 +798,7 @@ test('signed candidate-program-v5 INSTALL persists its trusted task spec across 
   const draft = lib.makeInstallationProposal({
     id: 'candidate-task-v5-restart',
     strategy: 'candidate-program-v5',
-    program: callerDefinedTaskProgram(),
+    program: synthesized.program,
     taskSpecification: specification,
     taskSpecificationSignature: specificationSignature,
     executorPublicKeyPem: pem(executor),
@@ -1082,3 +1084,29 @@ test('candidate task IDs remain immutable across signed installations while iden
   assert.deepEqual(reopened.snapshot().capabilities[first.id].taskSpecification, specification);
   assert.deepEqual(reopened.snapshot().capabilities[second.id].taskSpecification, specification);
 }));
+
+
+test('candidate task synthesis builds exact bounded Horner programs including safe large constants', () => {
+  const specification = callerDefinedTaskSpecification();
+  const synthesized = synthesizeCandidateTaskProgram(specification);
+  assert.deepEqual(synthesized.proof.coefficients, ['-5', '2', '3']);
+  assert.deepEqual(synthesized.proof.targetCoefficients, ['-5', '2', '3']);
+  assert.equal(synthesized.proof.matchesTask, true);
+
+  for (const input of [-1_000_000, -17, 0, 17, 1_000_000]) {
+    assert.equal(
+      evaluateCandidateProgram(synthesized.program, input),
+      3 * input * input + 2 * input - 5
+    );
+  }
+
+  const largeConstantSpecification = {
+    ...specification,
+    id: 'ngl.experiment-001.task:max-safe-constant:v1',
+    targetCoefficients: ['9007199254740991']
+  };
+  const largeConstant = synthesizeCandidateTaskProgram(largeConstantSpecification);
+  assert.equal(largeConstant.proof.matchesTask, true);
+  assert.equal(largeConstant.proof.maxIntermediateAbsoluteBound, '9007199254740991');
+  assert.equal(evaluateCandidateProgram(largeConstant.program, 0), Number.MAX_SAFE_INTEGER);
+});
