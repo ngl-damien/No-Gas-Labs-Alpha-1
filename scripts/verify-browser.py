@@ -812,6 +812,177 @@ def adversary_challenge_handoff(browser,url,out):
         context.close()
 
 
+
+def research_challenge_review(browser,url,out):
+    errors=[]
+    witness_context=browser.new_context(
+        viewport={'width':390,'height':844},
+        is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True
+    )
+    founder_context=browser.new_context(
+        viewport={'width':390,'height':844},
+        is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True
+    )
+    def skill_count(page,skill_id):
+        close_sheet(page)
+        page.locator('#character-button').click()
+        card=page.locator(f'#sheet [data-skill-id="{skill_id}"]')
+        expect(card).to_be_visible()
+        match=re.search(r'(\\d+) recorded',card.inner_text())
+        assert match,card.inner_text()
+        close_sheet(page)
+        return int(match.group(1))
+    try:
+        witness_page=witness_context.new_page()
+        founder_page=founder_context.new_page()
+        for page in [witness_page,founder_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url)
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        witness_state=witness_context.request.get(url+'api/state').json()
+        assert witness_state['viewer']['role']=='witness'
+
+        proposal_response=witness_context.request.post(url+'api/action',data={
+            'type':'propose-moonshot',
+            'title':'Decision Chamber review browser fixture',
+            'hypothesis':'The stated observation repeats under the stated conditions.',
+            'falsifier':'A controlled repeat fails to reproduce the observation.',
+            'evidenceNeeded':'Retained procedure and control settings.',
+            'requestId':'browser-challenge-review-proposal-001'
+        })
+        assert proposal_response.status==200,proposal_response.text()
+        proposal=proposal_response.json()['result']
+        report_response=witness_context.request.post(url+'api/action',data={
+            'type':'report-experiment',
+            'moonshotId':proposal['moonshotId'],
+            'procedure':'Repeat the stated comparison.',
+            'observation':'The control settings were not retained with this attempt.',
+            'reportedOutcome':'inconclusive',
+            'evidenceCreationId':None,
+            'evidenceVersion':None,
+            'requestId':'browser-challenge-review-report-001'
+        })
+        assert report_response.status==200,report_response.text()
+        report=report_response.json()['result']
+
+        founder_page.locator('#login-button').click()
+        founder_page.locator('#founder-key').fill(KEY)
+        founder_page.locator('#verify-founder').click()
+        founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        founder_state=founder_context.request.get(url+'api/state').json()
+        assert founder_state['viewer']['role']=='founder'
+        challenge_response=founder_context.request.post(url+'api/action',data={
+            'type':'challenge-experiment-report',
+            'reportId':report['reportId'],
+            'challengeType':'methodology',
+            'challengeText':'The report omits control settings required to reproduce the comparison.',
+            'evidenceCreationId':None,
+            'evidenceVersion':None,
+            'requestId':'browser-challenge-review-challenge-001'
+        })
+        assert challenge_response.status==200,challenge_response.text()
+        challenge=challenge_response.json()['result']
+        challenge_id=challenge['challengeId']
+
+        before_world=founder_context.request.get(url+'api/state').json()['world']
+        report_event=next(event for event in before_world['events'] if event.get('reportId')==report['reportId'])
+        challenge_event=next(event for event in before_world['events'] if event.get('challengeId')==challenge_id)
+        assert report_event['actor']['id']==witness_state['viewer']['id']
+        assert challenge_event['actor']['id']==founder_state['viewer']['id']
+        decisions_before=founder_context.request.get(url+'api/decisions').json()
+        character_xp_before=character_xp_components(founder_page)
+        deliberator_before=skill_count(founder_page,'deliberator')
+
+        forbidden=witness_context.request.post(url+'api/action',data={
+            'type':'review-experiment-challenge',
+            'reportId':report['reportId'],
+            'challengeId':challenge_id,
+            'disposition':'investigate',
+            'rationale':'This Witness request must be rejected.',
+            'requestId':'browser-challenge-review-witness-forbidden'
+        })
+        assert forbidden.status==403,forbidden.text()
+        assert forbidden.json()['error']['code']=='FORBIDDEN'
+
+        close_sheet(witness_page)
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        witness_card=witness_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(witness_card).to_be_visible()
+        expect(witness_card).to_have_attribute('data-review-status','pending')
+        expect(witness_card).to_contain_text('Founder-only next-step controls are withheld in Witness view.')
+        expect(witness_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+
+        close_sheet(founder_page)
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        founder_card=founder_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(founder_card).to_be_visible()
+        expect(founder_card).to_have_attribute('data-review-status','pending')
+        disposition=founder_card.locator('[data-challenge-review-disposition]')
+        rationale=founder_card.locator('[data-challenge-review-rationale]')
+        disposition.select_option('investigate')
+        rationale.fill('Repeat the comparison while retaining the exact control settings.')
+        founder_card.get_by_role('button',name='Record game-level next step',exact=True).click()
+        expect(founder_card).to_have_attribute('data-review-status','reviewed',timeout=30000)
+        expect(founder_card).to_contain_text('REVIEWED · GAME-LEVEL NEXT STEP · Investigate next')
+        expect(founder_card).to_contain_text('Reviewer account matches the challenge author')
+        expect(founder_card).to_contain_text('Account IDs are service attribution, not proof of distinct humans')
+        expect(founder_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+
+        after_state=founder_context.request.get(url+'api/state').json()
+        after_world=after_state['world']
+        review_events=[event for event in after_world['events'] if event.get('challengeId')==challenge_id and event['type']=='experiment-challenge-reviewed']
+        assert len(review_events)==1
+        review_event=review_events[0]
+        assert review_event['actor']['id']==founder_state['viewer']['id'] and review_event['actor']['role']=='founder'
+        assert review_event['sourceEventIds']==[report_event['id'],challenge_event['id']]
+        assert review_event['disposition']=='investigate'
+        assert review_event['rationale']=='Repeat the comparison while retaining the exact control settings.'
+        assert 'outcome' not in review_event and 'status' not in review_event and 'verdict' not in review_event
+        assert after_world['revision']==before_world['revision']+1
+        assert len(after_world['events'])==len(before_world['events'])+1
+        assert after_world['xp']==before_world['xp']
+        decisions_after=founder_context.request.get(url+'api/decisions').json()
+        assert decisions_after['revision']==decisions_before['revision'],'a game-level disposition must not mutate the canonical Founder Gate'
+        character_xp_after=character_xp_components(founder_page)
+        deliberator_after=skill_count(founder_page,'deliberator')
+        assert character_xp_after==character_xp_before,'the disposition is not an XP-bearing activity'
+        assert deliberator_after==deliberator_before+1,'only the retained Founder disposition increments Deliberator activity'
+
+        close_sheet(witness_page)
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        refreshed_witness_card=witness_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(refreshed_witness_card).to_have_attribute('data-review-status','reviewed')
+        expect(refreshed_witness_card).to_contain_text('Investigate next')
+        expect(refreshed_witness_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+        assert not errors,errors
+        founder_page.screenshot(path=str(out/'decision-chamber-research-review.png'))
+        return {
+            'journey':'decision-chamber-research-review',
+            'passed':True,
+            'sessions':2,
+            'witnessReviewRejected':True,
+            'witnessQueue':'read-only',
+            'founderDisposition':'investigate',
+            'reportAndChallengeEventIdsBound':review_event['sourceEventIds']==[report_event['id'],challenge_event['id']],
+            'challengeRemainsVisible':True,
+            'sameAccountConflictDisclosed':True,
+            'canonicalDecisionRevisionUnchanged':True,
+            'worldXpNeutral':True,
+            'characterXpNeutral':True,
+            'deliberatorDelta':deliberator_after-deliberator_before,
+            'errors':errors
+        }
+    finally:
+        witness_context.close()
+        founder_context.close()
+
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
@@ -2001,6 +2172,7 @@ def main():
                     record(town_square_social(browser,url,out))
                     record(player_guild_membership(browser,url,out))
                     record(commons_message_quest(browser,url,out))
+                    record(research_challenge_review(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
