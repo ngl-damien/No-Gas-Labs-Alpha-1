@@ -365,7 +365,7 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
       `Rationale: ${text(event?.rationale) || "not recorded"}`,
       `Source events: ${sourceEventIds.length ? sourceEventIds.join(" → ") : "not recorded"}`,
     ].join(" · ");
-    entry.warning = "The underlying challenge remains in history. This game-level next step is separate from the canonical Founder Gate; recorded account/role attribution does not replace independent evidence or required human authorization.";
+    entry.warning = "The underlying challenge remains in history. This game-level next step is separate from the canonical Founder Gate; recorded account/role attribution does not prove a distinct human and does not replace independent evidence or required human authorization.";
   } else if (type === "collaborator-response-recorded") {
     const roleNames = {
       archivist: "Hostile Archivist",
