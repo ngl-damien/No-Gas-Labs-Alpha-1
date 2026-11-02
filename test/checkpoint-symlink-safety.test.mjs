@@ -219,8 +219,8 @@ test('preflight rejects an in-place trusted-file rewrite after the initial snaps
   const root = await fixture();
   const checkpointPath = 'docs/operations/LATEST_CHECKPOINT.md';
   const checkpoint = join(root, checkpointPath);
-  const originalText = '# Latest Durable Checkpoint\\nOriginal checkpoint.\\n';
-  const decoyText = '# Latest Durable Checkpoint\\nTampered checkpoint.\\n';
+  const originalText = '# Latest Durable Checkpoint\nOriginal checkpoint.\n';
+  const decoyText = '# Latest Durable Checkpoint\nTampered checkpoint.\n';
   const originalBytes = Buffer.from(originalText, 'utf8');
   const decoyBytes = Buffer.from(decoyText, 'utf8');
   const started = join(root, 'in-place-rewrite-started');
@@ -258,7 +258,7 @@ test('preflight rejects an in-place trusted-file rewrite after the initial snaps
       "  return originalStat.call(this, candidate, ...args);",
       "};",
       "syncBuiltinESMExports();"
-    ].join('\\n');
+    ].join('\n');
     await writeFile(hookPath, hook);
 
     const child = spawnSync(process.execPath, [
