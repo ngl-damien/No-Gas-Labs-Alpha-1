@@ -500,3 +500,23 @@ No merge, release, deployment, workflow dispatch, branch deletion, spending, ext
 4. Keep the ngl-mesh full integration blocked until PR #1's `verify_bridge.py` compile list includes PR #3's helpers and the operator-supplied RAE archive/APK/report are available.
 
 No merge, release, deployment, spending, external publication, key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+---
+
+## Run 28 continuity update — 2026-11-02 19:43 UTC
+
+This clean main-based checkpoint proposal was last fully refreshed through Run 17. The fuller Run 18–28 history is maintained on the separate PR #283 checkpoint branch; that branch is based on the preflight-target lineage, not main, and remains unmerged. This entry keeps the main-based proposal from handing off stale status while the branches are reconciled.
+
+- **Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; unchanged.
+- **Latest detailed checkpoint:** PR #283, branch `fix/preflight-trusted-path-race-20261102`, commit `93e3c0fdfa6878238fb194aa3109daf8ed7129ac`, file `docs/operations/LATEST_CHECKPOINT.md`. Its new checkpoint commit's Verify and Browser are pending at this update; Genesis `41514323502` passed. The immediately preceding code/checkpoint head `7731f6b` had Verify `41506200045`, Genesis `41506200114`, and Browser `41506200047` all successful (12/12).
+- **Independent verifier:** PR #279 head `a56d795efcb787cd8fd9bf4a8b230275c07cae6b` adds escaped-equivalent duplicate-key regressions for synthesis receipts and evaluation reports. Verify `41513712635` passed with hosted preflight ready, 92 target entries, zero warnings/failures, Node 24 tests, Python inspector, dedicated Python verifier, package build, and institutional exercise all exit 0. Genesis `41513712577` passed. Browser `41513712801` was still in progress; no pass is claimed.
+- **MMORPG follow-up:** Worker B PR #287 head `97779199d2a32eb6fbbc431a116cad9566f57a8e` has its original Browser failure `41502096127`. Child PR #288 head `8bf8044ec41a2502e4175220136e27352f627cf3` repairs the viewport-width argument and passed Verify `41504389218`, Genesis `41504389079`, and Browser `41504389054` (19/19). This is a child proposal, not integrated main capability or physical Android acceptance.
+- **Preflight integration:** PR #286 head `e7f58df55a3f44ac44f5d7653678503879eaf611` passed Verify `41485034330`, Genesis `41485034363`, and Browser `41485034329` (18/18). Its 73-target game stack is a separate proposed branch.
+- **Founder authority:** PR #16 is closed/unmerged and is an Experiment 001 prototype; PR #18 is the merged Experiment 001 transplant. The final #16 patch does not contain the alleged self-signing `demonstrate()` flow. Main `game/server.mjs` still has local Founder-key generation when no explicit key is supplied; PR #251's explicit-key guard is proposed on a branch 63 commits ahead / 2 behind main and must not be transplanted blindly. Main `src/authority/decision.js` still has a helper accepting caller-supplied `verification?.valid`; the live server does not call that helper. PR #274/#275 remain unmerged proposals; real Founder identity and key custody are not established.
+- **Linked repository:** AI-BI root instructions and its three continuity files were read, but its required `init_node.sh` bootstrap/install/build/test sequence could not run because both registered Desktop Commander devices were offline. No linked repository was modified.
+
+### Next action
+
+Reconcile this main-based canonical-checkpoint proposal with the newer #283 checkpoint/preflight lineage and the 73-target #284–#288 game stack. Preserve the full current checkpoint history, ensure the hosted preflight target set matches the branch's actual source tree, and rerun Verify/Genesis/Browser on the exact combined head before any integration decision. Keep Founder-key/trust-root work separate until Damien-controlled custody and canonical live decision context are established.
+
+**Authority:** this is a checkpoint update only. No merge, release, deployment, spending, external publication, credential/permission change, key operation, or Founder decision occurred.
