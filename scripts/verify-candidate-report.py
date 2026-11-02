@@ -277,6 +277,10 @@ def parse_json(source, label):
         fail(label + "_JSON_INVALID")
 
     def parse_integer_token(token):
+        # JSON.parse preserves the sign of the integer token -0. Python's
+        # int("-0") would erase it, so retain negative zero as a float.
+        if token == "-0":
+            return -0.0
         try:
             return int(token)
         except ValueError:
@@ -330,6 +334,10 @@ def exact_int(value):
         and value.is_integer()
         and abs(value) <= MAX_SAFE_INTEGER
     )
+
+
+def is_negative_zero(value):
+    return type(value) is float and value == 0.0 and math.copysign(1.0, value) < 0.0
 
 
 def coefficient(value):
@@ -620,6 +628,8 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
         expected = expected_row(program, target, input_value)
         if not exact_int(report["output"]) or not isinstance(report["expectedOutput"], str):
             fail("EVALUATION_REPORT_MISMATCH")
+        if is_negative_zero(report["input"]) or is_negative_zero(report["output"]):
+            fail("EVALUATION_REPORT_MISMATCH")
         actual = {"input": report["input"], "output": report["output"], "expectedOutput": report["expectedOutput"]}
         if actual != expected:
             fail("EVALUATION_REPORT_MISMATCH")
@@ -657,6 +667,8 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
             require_exact_keys(row, {"input", "output", "expectedOutput"}, "EVALUATION_REPORT_INVALID")
             if not exact_int(row["input"]) or not exact_int(row["output"]) or not isinstance(row["expectedOutput"], str):
                 fail("EVALUATION_REPORT_INVALID")
+            if is_negative_zero(row["input"]) or is_negative_zero(row["output"]):
+                fail("EVALUATION_REPORT_MISMATCH")
             expected = expected_row(program, target, start + index)
             if row != expected:
                 if row.get("input") != start + index:
