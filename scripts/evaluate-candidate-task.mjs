@@ -167,6 +167,6 @@ async function main() {
 }
 
 main().catch(error => {
-  process.stderr.write(`${error?.message || 'CANDIDATE_EVALUATION_FAILED'}\\n`);
+  process.stderr.write((error?.message || 'CANDIDATE_EVALUATION_FAILED') + '\n');
   process.exitCode = 1;
 });
