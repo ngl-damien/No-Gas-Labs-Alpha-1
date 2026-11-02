@@ -548,17 +548,11 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         for field, arguments in scenarios:
             report_path, _ = self.make_report("negative-zero-range-" + field, arguments)
             source = report_path.read_text(encoding="utf-8")
-            pattern = re.compile(
-                r'("' + re.escape(field) + r'"\\s*:\\s*)0(?=\\s*[,}])'
-            )
             for spelling in ("-0", "-0.0"):
                 with self.subTest(field=field, spelling=spelling):
-                    mutated, count = pattern.subn(
-                        lambda match: match.group(1) + spelling,
-                        source,
-                        count=1,
-                    )
-                    self.assertEqual(count, 1)
+                    needle = f'"{field}": 0'
+                    self.assertIn(needle, source)
+                    mutated = source.replace(needle, f'"{field}": {spelling}', 1)
                     negative_zero_report = self.directory / (
                         "negative-zero-range-" + field + "-" + spelling.replace(".", "dot") + ".json"
                     )
