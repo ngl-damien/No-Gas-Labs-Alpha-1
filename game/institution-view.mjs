@@ -1,5 +1,6 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { isStrictTimestamp } from "./timestamps.mjs";
+import { CHALLENGE_REVIEW_DISPOSITIONS } from './research-records.mjs';
 import { projectCollaboratorPackets } from "./collaborator-contracts.mjs";
 import { createAdversaryChallengeDraft } from "./collaborator-response.mjs";
 import { projectCollaboratorResponseWorldObjects } from "./collaborator-world-objects.mjs";
@@ -477,3 +478,194 @@ export function renderInstitution(container,projects,gate,{
   if(projection.omittedDecisionCount)container.append(el('p',`${projection.omittedDecisionCount} older decision record(s) remain in the service and are not shown in this bounded view.`));
  }
 }
+
+/**
+ * Decision Chamber view for source-bound experiment challenges.
+ * A disposition is a Founder-authored game-level next step, never a truth
+ * verdict, canonical Founder Gate decision, independent-human review, or XP.
+ */
+export function renderResearchEncounterQueue(container, queue, {
+ founder = false,
+ stale = false,
+ unavailable = false,
+ onReview
+} = {}) {
+ const paragraph = (message, className = '') => {
+  const item = el('p', message);
+  if (className) item.className = className;
+  return item;
+ };
+ container.append(el('h3', 'RESEARCH CHALLENGE ENCOUNTERS'));
+ container.append(paragraph(
+  'Source-linked Contradiction encounters. Reports remain self-reported, challenges remain dissent, and a Founder disposition records only a next step. This queue is separate from the canonical Founder Gate.'
+ ));
+ if (unavailable || !queue || typeof queue !== 'object') {
+  warning(container, 'The shared world snapshot is unavailable or malformed. No research queue or empty-state claim is inferred.');
+  return;
+ }
+ const challengeCount = Number.isSafeInteger(queue.challengeCount) && queue.challengeCount >= 0
+  ? queue.challengeCount : 0;
+ const pendingCount = Number.isSafeInteger(queue.pendingCount) && queue.pendingCount >= 0
+  ? queue.pendingCount : 0;
+ const reviewedCount = Number.isSafeInteger(queue.reviewedCount) && queue.reviewedCount >= 0
+  ? queue.reviewedCount : 0;
+ const visible = Array.isArray(queue.challenges) ? queue.challenges : [];
+ container.append(paragraph(
+  challengeCount + ' retained challenge' + (challengeCount === 1 ? '' : 's') +
+  ' · ' + pendingCount + ' pending · ' + reviewedCount + ' reviewed',
+  'form-help'
+ ));
+ if (Number.isSafeInteger(queue.omittedChallengeCount) && queue.omittedChallengeCount > 0) {
+  container.append(paragraph(
+   'Showing ' + visible.length + ' of ' + challengeCount + ' retained encounters. ' +
+   queue.omittedChallengeCount + ' older encounter(s) remain in the Chronicle.',
+   'form-help'
+  ));
+ }
+ if (Number.isSafeInteger(queue.unlinkedReviewCount) && queue.unlinkedReviewCount > 0) {
+  warning(container, queue.unlinkedReviewCount +
+   ' retained review record(s) do not bind to one exact report/challenge pair. They remain in history and are not treated as dispositions.');
+ }
+ if (Number.isSafeInteger(queue.unlinkedCount) && queue.unlinkedCount > 0) {
+  warning(container, queue.unlinkedCount +
+   ' encounter(s) have unlinked or ambiguous review history. No replacement disposition is offered.');
+ }
+ if (challengeCount === 0) {
+  container.append(paragraph(
+   'No source-linked experiment challenges are waiting. New dissent becomes an encounter only when it binds to a retained report from another actor.',
+   'empty-note'
+  ));
+ }
+ for (const challenge of visible) {
+  if (!challenge || typeof challenge.challengeId !== 'string' || !challenge.challengeId) continue;
+  const card = el('article');
+  card.className = 'field-card';
+  card.tabIndex = -1;
+  card.dataset.researchChallengeId = challenge.challengeId;
+  card.dataset.reviewStatus = typeof challenge.reviewStatus === 'string' ? challenge.reviewStatus : 'unavailable';
+  card.append(el('h3', typeof challenge.proposalTitle === 'string' && challenge.proposalTitle
+   ? challenge.proposalTitle : 'Untitled moonshot'));
+  card.append(paragraph(
+   'CONTRADICTION ENCOUNTER · ' +
+   (typeof challenge.challengeType === 'string' ? challenge.challengeType.toUpperCase() : 'UNCLASSIFIED') +
+   ' · ' + card.dataset.reviewStatus.toUpperCase(),
+   'eyebrow'
+  ));
+  if (challenge.targetReport && typeof challenge.targetReport === 'object') {
+   const report = challenge.targetReport;
+   card.append(paragraph(
+    'Report ' + (report.reportId || 'unidentified') + ' · account ' +
+    (report.actorId || 'unidentified') + ' (' + (report.actorRole || 'unknown role') + ') · ' +
+    'self-reported ' + (report.reportedOutcome || 'unclassified') + ' · evidence ' +
+    (report.evidenceStatus || 'not assessed'),
+    'form-help'
+   ));
+   if (typeof report.procedure === 'string') card.append(paragraph('Procedure: ' + report.procedure));
+   if (typeof report.observation === 'string') card.append(paragraph('Observation: ' + report.observation));
+  } else {
+   warning(card, 'The linked report summary is unavailable. No review control is offered.');
+  }
+  card.append(paragraph('Challenge: ' + (typeof challenge.challengeText === 'string' ? challenge.challengeText : 'No challenge text retained.')));
+  card.append(paragraph(
+   'Challenge event ' + (challenge.eventId || 'unidentified') + ' · account ' +
+   (challenge.actorId || 'unidentified') + ' (' + (challenge.actorRole || 'unknown role') + ') · ' +
+   (challenge.at || 'time unavailable'),
+   'form-help'
+  ));
+  if (challenge.evidenceStatus && challenge.evidenceStatus !== 'not-applicable') {
+   card.append(paragraph('Challenge evidence: ' + challenge.evidenceStatus, 'form-help'));
+  }
+  if (challenge.reviewStatus === 'reviewed' && challenge.review) {
+   const review = challenge.review;
+   const disposition = CHALLENGE_REVIEW_DISPOSITIONS.find(item => item.value === review.disposition);
+   card.append(paragraph(
+    'REVIEWED · GAME-LEVEL NEXT STEP · ' + (disposition?.label || review.disposition || 'Unclassified'),
+    'pill'
+   ));
+   card.append(paragraph('Rationale: ' + (review.rationale || 'No rationale retained.')));
+   if (review.reviewerSameAsReport) {
+    warning(card, 'Reviewer account matches the report author. This is not an independent review.');
+   }
+   if (review.reviewerSameAsChallenge) {
+    warning(card, 'Reviewer account matches the challenge author. This is not an independent review.');
+   }
+   const sourceIds = Array.isArray(review.sourceEventIds) ? review.sourceEventIds : [];
+   card.append(paragraph(
+    'Review event ' + (review.eventId || 'unidentified') + ' · reviewer account ' +
+    (review.actorId || 'unidentified') + ' · source events ' + sourceIds.join(' → '),
+    'form-help'
+   ));
+   card.append(paragraph(
+    'Account IDs are service attribution, not proof of distinct humans. This disposition does not resolve the claim, establish truth, approve institutional work, or erase dissent.',
+    'form-help'
+   ));
+  } else if (challenge.reviewStatus === 'unlinked' || challenge.reviewStatus === 'ambiguous') {
+   warning(card, challenge.reviewStatus === 'ambiguous'
+    ? 'Multiple review records target this challenge. The disposition is ambiguous; no replacement action is offered.'
+    : 'A retained review record does not bind to this exact report/challenge pair. It remains in history but is not treated as a disposition.');
+   card.append(paragraph('Preserve the contradiction and inspect the exact source events in the Chronicle.', 'form-help'));
+  } else if (challenge.reviewStatus === 'pending') {
+   if (stale || unavailable) {
+    warning(card, 'The current world snapshot is stale or unavailable. Reconnect and refresh before recording a next step.');
+   } else if (founder && typeof onReview === 'function' && challenge.targetReport) {
+    const form = el('form');
+    form.className = 'field-card';
+    form.dataset.challengeReviewForm = challenge.challengeId;
+    const disposition = el('select');
+    disposition.id = 'challenge-review-disposition-' + challenge.challengeId;
+    disposition.dataset.challengeReviewDisposition = challenge.challengeId;
+    disposition.required = true;
+    const placeholder = el('option', 'Choose a next step');
+    placeholder.value = '';
+    disposition.append(placeholder);
+    for (const item of CHALLENGE_REVIEW_DISPOSITIONS) {
+     const option = el('option', item.label);
+     option.value = item.value;
+     disposition.append(option);
+    }
+    const rationale = el('textarea');
+    rationale.id = 'challenge-review-rationale-' + challenge.challengeId;
+    rationale.dataset.challengeReviewRationale = challenge.challengeId;
+    rationale.rows = 3;
+    rationale.maxLength = 1000;
+    rationale.required = true;
+    rationale.placeholder = 'What evidence or next action should be pursued?';
+    const dispositionLabel = el('label', 'Founder next step');
+    dispositionLabel.htmlFor = disposition.id;
+    const rationaleLabel = el('label', 'Rationale · 1000 characters maximum');
+    rationaleLabel.htmlFor = rationale.id;
+    const help = paragraph(
+     'This records a Founder-authenticated game-level next step only. It is not a truth verdict, proof of independent human review, canonical Founder Gate decision, or XP reward.',
+     'form-help'
+    );
+    const submit = el('button', 'Record game-level next step');
+    submit.type = 'submit';
+    submit.className = 'primary-button';
+    submit.dataset.challengeReviewSubmit = challenge.challengeId;
+    form.append(dispositionLabel, disposition, rationaleLabel, rationale, help, submit);
+    form.onsubmit = event => {
+     event.preventDefault();
+     if (submit.disabled) return false;
+     const selected = disposition.value;
+     const text = typeof rationale.value === 'string' ? rationale.value.trim() : '';
+     if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === selected) || !text) {
+      if (!selected) disposition.focus?.();
+      else rationale.focus?.();
+      return false;
+     }
+     submit.disabled = true;
+     return Promise.resolve(onReview(challenge, selected, text))
+      .catch(() => {})
+      .finally(() => { submit.disabled = false; });
+    };
+    card.append(form);
+   } else {
+    card.append(paragraph('Founder-only next-step controls are withheld in Witness view.', 'form-help'));
+   }
+  } else {
+   warning(card, 'The review status is unavailable. No action is offered.');
+  }
+  container.append(card);
+ }
+}
+

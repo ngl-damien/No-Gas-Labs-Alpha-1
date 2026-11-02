@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, projectDecisionDocket, selectDecisionDocketProjection, encodeDecisionDocketCache, decodeDecisionDocketCache } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestTrailProjection, getExpeditionDocket, getResearchEncounterReviewQueue, projectDecisionDocket, selectDecisionDocketProjection, encodeDecisionDocketCache, decodeDecisionDocketCache } from '../game/quests.mjs';
 import { COLLABORATOR_ROLES, compactCollaboratorSourceRecord, projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import { createHash } from 'node:crypto';
@@ -1555,3 +1555,93 @@ test('Decision Docket local echo cache is bounded, public-only, actor-bound, and
   assert.equal(decodeDecisionDocketCache(JSON.stringify(malformed)), null,
     'the cached visible subset is revalidated instead of trusted as an arbitrary local object');
 });
+
+test('Decision Chamber queue links each immutable Founder next step to the exact report and challenge', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  const report = world.events.find(event => event.type === 'experiment-reported');
+  const challenge = {
+    id: 'challenge-event-1',
+    type: 'experiment-challenged',
+    challengeId: 'challenge-1',
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not retain the control settings needed for reproduction.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  };
+  world.events.push(challenge);
+  world.revision = world.events.length;
+  const beforeProjection = structuredClone(world);
+  const pending = getResearchEncounterReviewQueue(world);
+  assert.equal(pending.challengeCount, 1);
+  assert.equal(pending.pendingCount, 1);
+  assert.equal(pending.reviewedCount, 0);
+  assert.equal(pending.challenges[0].challengeId, 'challenge-1');
+  assert.equal(pending.challenges[0].reviewStatus, 'pending');
+  assert.equal(pending.challenges[0].targetReport.reportId, 'report-1');
+  assert.equal(pending.challenges[0].targetReport.actorId, witness.id);
+  assert.equal(pending.challenges[0].targetReport.reportedOutcome, 'failed');
+  assert.equal(pending.challenges[0].review, null);
+  const openObjective = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-review-research-encounters');
+  assert.deepEqual([openObjective.target, openObjective.progress, openObjective.complete], [1, 0, false]);
+  assert.deepEqual(openObjective.action, { type: 'location', id: 'decision_chamber' });
+  assert.deepEqual(world, beforeProjection, 'opening the queue and quest trail is a read-only projection');
+
+  const review = {
+    id: 'review-event-1',
+    type: 'experiment-challenge-reviewed',
+    reviewId: 'review-1',
+    reportId: report.reportId,
+    challengeId: challenge.challengeId,
+    moonshotId: report.moonshotId,
+    disposition: 'investigate',
+    rationale: 'Repeat the comparison while retaining the exact control settings.',
+    sourceEventIds: [report.id, challenge.id],
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z'
+  };
+  world.events.push(review);
+  world.revision = world.events.length;
+  const reviewed = getResearchEncounterReviewQueue(world);
+  assert.equal(reviewed.pendingCount, 0);
+  assert.equal(reviewed.reviewedCount, 1);
+  assert.equal(reviewed.challenges[0].reviewStatus, 'reviewed');
+  assert.equal(reviewed.challenges[0].review.disposition, 'investigate');
+  assert.equal(reviewed.challenges[0].review.reviewerSameAsReport, false);
+  assert.equal(reviewed.challenges[0].review.reviewerSameAsChallenge, true,
+    'same account attribution is disclosed rather than described as independent review');
+  assert.deepEqual(reviewed.challenges[0].review.sourceEventIds, [report.id, challenge.id]);
+  const completedObjective = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-review-research-encounters');
+  assert.deepEqual([completedObjective.target, completedObjective.progress, completedObjective.complete], [1, 1, true]);
+  assert.deepEqual(completedObjective.evidence.map(item => item.id), ['review-event-1']);
+
+  const mismatched = structuredClone(world);
+  mismatched.events.at(-1).sourceEventIds = ['another-report-event', challenge.id];
+  const unlinked = getResearchEncounterReviewQueue(mismatched);
+  assert.equal(unlinked.challenges[0].reviewStatus, 'unlinked');
+  assert.equal(unlinked.challenges[0].review, null);
+  assert.equal(unlinked.unlinkedCount, 1);
+  assert.equal(unlinked.unlinkedReviewCount, 1);
+  assert.equal(getQuestTrail(mismatched, founder)
+    .find(item => item.id === 'founder-review-research-encounters').progress, 0,
+  'a review with mismatched source IDs cannot complete the Founder objective');
+
+  const duplicate = structuredClone(world);
+  duplicate.events.push({
+    ...structuredClone(review),
+    id: 'review-event-duplicate',
+    reviewId: 'review-duplicate',
+    at: '2026-10-28T17:06:00.000Z'
+  });
+  duplicate.revision = duplicate.events.length;
+  const ambiguous = getResearchEncounterReviewQueue(duplicate);
+  assert.equal(ambiguous.challenges[0].reviewStatus, 'ambiguous');
+  assert.equal(ambiguous.challenges[0].review, null);
+  assert.equal(ambiguous.unlinkedReviewCount, 2);
+});
+

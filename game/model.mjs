@@ -1,5 +1,6 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
+import {projectResearchRecords,CHALLENGE_REVIEW_DISPOSITIONS} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
@@ -21,7 +22,7 @@ function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
-  if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair or publish.',403);
+  if(['draft','publish','repair','moderate-message','review-experiment-challenge'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can perform this action.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
   const world=clone(original),at=date(now);const previousAt=Date.parse(original?.updatedAt);if(!isStrictTimestamp(original?.updatedAt)||!Number.isFinite(previousAt)||Date.parse(at)<previousAt)fail('INVALID_CHRONOLOGY','Action time cannot precede the current world update time.',409);let result={};const requestMeta=requestId===undefined?null:{requestId,actionFingerprint};const recordEvent=(type,detail)=>event(world,type,who,at,detail,requestMeta?{...requestMeta,actionResult:result}:undefined);
   const creation=()=>{const c=world.creations.find(c=>c.id===action.creationId);if(!c)fail('NOT_FOUND','Creation not found.',404);if(action.version!==undefined&&action.version!==c.version&&!c.versions.some(v=>v.version===action.version))fail('STALE_VERSION','That published version does not exist.',409);return c;};
@@ -171,6 +172,38 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const challengeId=uid('experiment-challenge');
       result={challengeId};
       recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
+      break;
+    }
+    case 'review-experiment-challenge': {
+      const reportId = text(action.reportId, 128, 'Experiment report ID');
+      const challengeId = text(action.challengeId, 128, 'Experiment challenge ID');
+      if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === action.disposition)) {
+        fail('INVALID_CHALLENGE_REVIEW_DISPOSITION', 'Choose a bounded Founder disposition.');
+      }
+      const rationale = text(action.rationale, 1000, 'Disposition rationale');
+      if (world.events.some(candidate => candidate?.type === 'experiment-challenge-reviewed' && candidate.challengeId === challengeId)) {
+        fail('CHALLENGE_ALREADY_REVIEWED', 'This challenge already has an immutable disposition. Preserve the prior review; new evidence requires a new challenge.', 409);
+      }
+      const records = projectResearchRecords(world.events, world.creations);
+      const report = records.find(record => record.type === 'experiment-reported' &&
+        record.reportId === reportId && record._projection?.proposalStatus === 'linked');
+      const challenge = records.find(record => record.type === 'experiment-challenged' &&
+        record.challengeId === challengeId && record._projection?.proposalStatus === 'linked' &&
+        record._projection?.targetReportStatus === 'linked');
+      if (!report || !challenge) {
+        fail('CHALLENGE_REVIEW_TARGET_UNAVAILABLE', 'A uniquely retained report and its earlier distinct-actor challenge are required.', 409);
+      }
+      if (challenge.reportId !== reportId || challenge.moonshotId !== report.moonshotId ||
+          challenge._projection?.targetReport?.id !== report.id) {
+        fail('CHALLENGE_REVIEW_TARGET_MISMATCH', 'The selected challenge does not resolve to the exact retained report.', 409);
+      }
+      const reviewId = uid('challenge-review');
+      result = { reviewId };
+      recordEvent('experiment-challenge-reviewed', {
+        reviewId, reportId, challengeId, moonshotId: report.moonshotId,
+        disposition: action.disposition, rationale,
+        sourceEventIds: [report.id, challenge.id]
+      });
       break;
     }
     case 'record-collaborator-response':{
@@ -363,7 +396,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','experiment-challenge-reviewed':'reviewId','collaborator-response-recorded':'responseId,validationStatus','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='experiment-challenge-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency experiment challenge review result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
   const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
@@ -421,7 +454,7 @@ export async function validateWorld(raw) {
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Malformed moonshot source reference.');
     }
   }
-  const reportIds=new Set(),experimentReports=new Map(),challengeIds=new Set();
+  const reportIds=new Set(),experimentReports=new Map(),challengeIds=new Set(),experimentChallenges=new Map();
   const allowedReportedOutcomes=new Set(['supports','contradicts','inconclusive','failed']);
   const allowedExperimentKeys=new Set(['id','type','actor','at','semantics','reportId','moonshotId','procedure','observation','reportedOutcome','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='experiment-reported'){
@@ -455,6 +488,7 @@ export async function validateWorld(raw) {
     unique(e.challengeId);
     if(challengeIds.has(e.challengeId)||typeof e.challengeId!=='string'||!e.challengeId||typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||!challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000)invalid('Malformed or repeated experiment challenge.');
     challengeIds.add(e.challengeId);
+    experimentChallenges.set(e.challengeId,{event:e,index});
     const report=experimentReports.get(e.reportId),reportIndex=report?eventPositions.get(report):-1;
     if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||report.actor.id===e.actor.id||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
@@ -468,6 +502,29 @@ export async function validateWorld(raw) {
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
     }
+  }
+
+  const allowedChallengeReviewKeys=new Set(['id','type','actor','at','semantics','reviewId','reportId','challengeId','moonshotId','disposition','rationale','sourceEventIds','requestId','actionFingerprint','actionResult']);
+  const reviewedChallengeIds=new Set();
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];if(e.type!=='experiment-challenge-reviewed')continue;
+    if(Object.keys(e).some(key=>!allowedChallengeReviewKeys.has(key)))invalid('Experiment challenge review contains unsupported canonical fields.');
+    unique(e.reviewId);
+    if(typeof e.reviewId!=='string'||!e.reviewId||typeof e.reportId!=='string'||!e.reportId||
+       typeof e.challengeId!=='string'||!e.challengeId||typeof e.moonshotId!=='string'||!e.moonshotId||
+       !CHALLENGE_REVIEW_DISPOSITIONS.some(item=>item.value===e.disposition)||typeof e.rationale!=='string'||
+       !e.rationale.trim()||Array.from(e.rationale).length>1000||e.actor.role!=='founder')invalid('Malformed or unauthorized experiment challenge review.');
+    if(reviewedChallengeIds.has(e.challengeId))invalid('An experiment challenge may receive only one retained Founder disposition.');
+    reviewedChallengeIds.add(e.challengeId);
+    const report=experimentReports.get(e.reportId);
+    const challengeEntry=experimentChallenges.get(e.challengeId);
+    const challenge=challengeEntry?.event;
+    const reportIndex=report?eventPositions.get(report):-1;
+    if(!report||!challenge||reportIndex<0||reportIndex>=index||challengeEntry.index>=index||
+       report.moonshotId!==e.moonshotId||challenge.reportId!==e.reportId||challenge.moonshotId!==e.moonshotId||
+       Date.parse(report.at)>Date.parse(e.at)||Date.parse(challenge.at)>Date.parse(e.at))invalid('Experiment challenge review must target one earlier retained report and its exact earlier challenge.');
+    if(!Array.isArray(e.sourceEventIds)||e.sourceEventIds.length!==2||
+       e.sourceEventIds[0]!==report.id||e.sourceEventIds[1]!==challenge.id)invalid('Experiment challenge review must bind the exact report and challenge source events in order.');
   }
   const allowedStudyKeys=new Set(['id','type','actor','at','semantics','studyId','creationId','version','question','attempt','nextCheck','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='study'){

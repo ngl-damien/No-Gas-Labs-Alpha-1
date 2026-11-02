@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createGameServer } from '../game/server.mjs';
+import { createGameServer, validatePayload } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
+import { getResearchEncounterReviewQueue } from '../game/quests.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -999,9 +1000,81 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(selfChallenge.response.status, 409, JSON.stringify(selfChallenge.body));
   assert.equal(selfChallenge.body.error.code, 'SELF_CHALLENGE');
 
+  const reviewAction = {
+    type: 'review-experiment-challenge',
+    reportId: report.body.result.reportId,
+    challengeId: first.body.result.challengeId,
+    disposition: 'investigate',
+    rationale: 'Repeat the comparison while retaining the exact control settings.',
+    requestId: 'experiment-challenge-review-001'
+  };
+  const forbiddenReview = await witness.request('/api/action', {
+    ...reviewAction,
+    requestId: 'experiment-challenge-review-witness-001'
+  });
+  assert.equal(forbiddenReview.response.status, 403, JSON.stringify(forbiddenReview.body));
+  assert.equal(forbiddenReview.body.error.code, 'FORBIDDEN');
+
+  const beforeReview = await founder.request('/api/state');
+  assert.equal(beforeReview.body.viewer.id, 'damien');
+  assert.equal(beforeReview.body.viewer.role, 'founder');
+  const { requestId: diagnosticRequestId, ...diagnosticAction } = reviewAction;
+  const diagnosticActor = beforeReview.body.viewer;
+  const diagnosticFingerprint = artifactReceipt(canonicalStringify({
+    actor: { id: diagnosticActor.id, role: diagnosticActor.role },
+    action: diagnosticAction
+  })).digest;
+  const diagnosticOutcome = await applyAction(
+    beforeReview.body.world,
+    diagnosticAction,
+    diagnosticActor,
+    { requestId: diagnosticRequestId, actionFingerprint: diagnosticFingerprint }
+  );
+  const diagnosticPublications = beforeReview.body.world.creations.flatMap(creation => [
+    ...creation.versions,
+    creation
+  ]);
+  const acceptedWorks = beforeReview.body.institution.kernel.accepted;
+  const diagnosticBindings = diagnosticPublications.map(publication => {
+    const accepted = acceptedWorks.find(work =>
+      work.subject.id === publication.id && work.subject.version === publication.version
+    );
+    assert.ok(accepted, 'each retained publication must have its matching accepted preservation work');
+    return {
+      creationId: publication.id,
+      version: publication.version,
+      digest: publication.receipt.digest,
+      size: publication.receipt.size,
+      workId: accepted.workId
+    };
+  });
+  const diagnosticArtifacts = Object.fromEntries(diagnosticPublications.map(publication => [
+    publication.receipt.digest,
+    Buffer.from(publication.html, 'utf8').toString('base64')
+  ]));
+  await validatePayload({
+    world: diagnosticOutcome.world,
+    institutionalEvents: beforeReview.body.institution.kernel.events,
+    artifacts: diagnosticArtifacts,
+    publicationBindings: diagnosticBindings
+  });
+
+  const founderReview = await founder.request('/api/action', reviewAction);
+  assert.equal(founderReview.response.status, 200, JSON.stringify(founderReview.body));
+  assert.equal(founderReview.body.idempotentReplay, false);
+  assert.ok(founderReview.body.result.reviewId);
+
+  const duplicateReview = await founder.request('/api/action', {
+    ...reviewAction,
+    requestId: 'experiment-challenge-review-second-001'
+  });
+  assert.equal(duplicateReview.response.status, 409, JSON.stringify(duplicateReview.body));
+  assert.equal(duplicateReview.body.error.code, 'CHALLENGE_ALREADY_REVIEWED');
+
   const state = await founder.request('/api/state');
   const challenges = state.body.world.events.filter(event => event.type === 'experiment-challenged');
   const reports = state.body.world.events.filter(event => event.type === 'experiment-reported');
+  const reviews = state.body.world.events.filter(event => event.type === 'experiment-challenge-reviewed');
   assert.equal(challenges.length, 1);
   assert.equal(reports.length, 1);
   assert.equal(challenges[0].reportId, reports[0].reportId);
@@ -1012,6 +1085,17 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   assert.equal(challenges[0].status, undefined);
   assert.equal(reports[0].outcome, undefined);
   assert.equal(reports[0].status, undefined);
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].actor.role, 'founder');
+  assert.equal(reviews[0].disposition, 'investigate');
+  assert.deepEqual(reviews[0].sourceEventIds, [reports[0].id, challenges[0].id]);
+  assert.equal(reviews[0].outcome, undefined);
+  assert.equal(reviews[0].status, undefined);
+  const reviewQueue = getResearchEncounterReviewQueue(state.body.world);
+  assert.equal(reviewQueue.reviewedCount, 1);
+  assert.equal(reviewQueue.challenges[0].reviewStatus, 'reviewed');
+  assert.equal(reviewQueue.challenges[0].review.reviewerSameAsChallenge, true,
+    'the same Founder account may record a next step, but the projection discloses that it is not independent review');
   assert.equal(state.body.world.xp, published.world.xp);
 
   // An uncertain client response can be retried after a process restart without
@@ -1038,11 +1122,23 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   const replayBody = await replay.json();
   assert.equal(replayBody.idempotentReplay, true);
   assert.equal(replayBody.result.challengeId, first.body.result.challengeId);
+  const reviewReplay = await fetch(origin + '/api/action', {
+    method: 'POST',
+    headers: { cookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify(reviewAction)
+  });
+  assert.equal(reviewReplay.status, 200);
+  const reviewReplayBody = await reviewReplay.json();
+  assert.equal(reviewReplayBody.idempotentReplay, true);
+  assert.equal(reviewReplayBody.result.reviewId, founderReview.body.result.reviewId);
   const restartedState = await (await fetch(origin + '/api/state', { headers: { cookie } })).json();
   const afterRestart = restartedState.world.events.filter(event => event.type === 'experiment-challenged');
+  const reviewsAfterRestart = restartedState.world.events.filter(event => event.type === 'experiment-challenge-reviewed');
   assert.equal(afterRestart.length, 1);
   assert.equal(afterRestart[0].evidenceCreationId, published.result.creationId);
   assert.equal(afterRestart[0].evidenceVersion, 1);
+  assert.equal(reviewsAfterRestart.length, 1);
+  assert.deepEqual(reviewsAfterRestart[0].sourceEventIds, [reports[0].id, challenges[0].id]);
   await restarted.closeGame();
   restarted = null;
 });

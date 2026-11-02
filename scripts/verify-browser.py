@@ -65,6 +65,7 @@ def armor_bearer_steps(page):
 
 
 def character_xp_components(page):
+    close_sheet(page)
     page.locator('#character-button').click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
     result=character_xp_from_open_sheet(page)
@@ -90,6 +91,27 @@ def draft(page,kind,title):
     if page.locator('#creation-title').count():page.locator('#creation-title').fill(title)
     page.locator('#draft-button').click()
     page.locator('#publish-button').wait_for()
+
+
+def move_with_touch_pad(page,selector,duration_ms=450):
+    button=page.locator(selector)
+    expect(button).to_be_visible()
+    bounds=button.bounding_box()
+    assert bounds and bounds['width']>=44 and bounds['height']>=44, f'Movement pad target is too small: {bounds}'
+    session=page.context.new_cdp_session(page)
+    try:
+        session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[{'id':1,'x':bounds['x']+bounds['width']/2,'y':bounds['y']+bounds['height']/2,'radiusX':2,'radiusY':2,'force':1}]})
+        page.wait_for_timeout(duration_ms)
+        session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+    finally:
+        session.detach()
+    page.wait_for_function("()=>{const raw=localStorage.getItem('ngl.common-ground.player-position.v1');if(!raw)return false;const position=JSON.parse(raw);return position.schema==='ngl.player-position.v1'&&position.y>680}")
+    position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert abs(position['x']-180)<1, f'Touch D-pad changed the wrong axis: {position}'
+    assert position['y']>680, f'Touch D-pad did not persist southward movement: {position}'
+    assert page.locator('#creation-count').inner_text()=='0', 'Walking must not create a publication'
+    assert page.locator('#xp-count').inner_text()=='0', 'Walking must not manufacture XP'
+    return position
 
 
 def basic(page,url,out,label):
@@ -122,7 +144,10 @@ def basic(page,url,out,label):
     expect(page.locator('#creation-count')).to_have_text('0')
     expect(page.locator('#xp-count')).to_have_text('0')
     close_sheet(page)
-    page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
+    if label=='phone':
+        move_with_touch_pad(page,'#movement-pad button[data-dy="1"]')
+    else:
+        page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
     draft(page,'comic','The real comic lives here')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
@@ -235,6 +260,11 @@ def phone_toolbar_layout(browser,url,width):
             box=target.bounding_box()
             assert box and box['width']>=44 and box['height']>=44, f'Control {index} is too small to tap at {width}px: {box}'
             assert box['x']>=0 and box['x']+box['width']<=width, f'Control {index} is clipped at {width}px: {box}'
+        pad=page.locator('#movement-pad button[data-dy="1"]')
+        expect(pad).to_be_visible()
+        pad_bounds=pad.bounding_box()
+        assert pad_bounds and pad_bounds['width']>=44 and pad_bounds['height']>=44, f'D-pad target is too small at {width}px: {pad_bounds}'
+        assert pad_bounds['x']>=0 and pad_bounds['x']+pad_bounds['width']<=width, f'D-pad target is clipped at {width}px: {pad_bounds}'
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), f'Horizontal overflow at {width}px'
         character=page.locator('#character-button')
         expect(character.locator('.character-status')).to_have_text(re.compile(r'^Armor \d+/\d+$'))
@@ -243,7 +273,7 @@ def phone_toolbar_layout(browser,url,width):
         expect(page.locator('#sheet')).to_contain_text('Questkeeper')
         expect(page.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
         close_sheet(page)
-        return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44}
+        return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44,'dpad_target':{'width':round(pad_bounds['width'],1),'height':round(pad_bounds['height'],1)}}
     finally:
         context.close()
 
@@ -811,6 +841,184 @@ def adversary_challenge_handoff(browser,url,out):
     finally:
         context.close()
 
+
+
+def research_challenge_review(browser,url,out):
+    errors=[]
+    witness_context=browser.new_context(
+        viewport={'width':390,'height':844},
+        is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True
+    )
+    founder_context=browser.new_context(
+        viewport={'width':390,'height':844},
+        is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True
+    )
+    def skill_count(page,skill_id):
+        close_sheet(page)
+        page.locator('#character-button').click()
+        card=page.locator(f'#sheet [data-skill-id="{skill_id}"]')
+        expect(card).to_be_visible()
+        match=re.search(r'(\d+) recorded',card.inner_text())
+        assert match,card.inner_text()
+        close_sheet(page)
+        return int(match.group(1))
+    try:
+        witness_page=witness_context.new_page()
+        founder_page=founder_context.new_page()
+        for page in [witness_page,founder_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url)
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        witness_state=witness_context.request.get(url+'api/state').json()
+        assert witness_state['viewer']['role']=='witness'
+
+        proposal_response=witness_context.request.post(url+'api/action',data={
+            'type':'propose-moonshot',
+            'title':'Decision Chamber review browser fixture',
+            'hypothesis':'The stated observation repeats under the stated conditions.',
+            'falsifier':'A controlled repeat fails to reproduce the observation.',
+            'evidenceNeeded':'Retained procedure and control settings.',
+            'requestId':'browser-challenge-review-proposal-001'
+        })
+        assert proposal_response.status==200,proposal_response.text()
+        proposal=proposal_response.json()['result']
+        report_response=witness_context.request.post(url+'api/action',data={
+            'type':'report-experiment',
+            'moonshotId':proposal['moonshotId'],
+            'procedure':'Repeat the stated comparison.',
+            'observation':'The control settings were not retained with this attempt.',
+            'reportedOutcome':'inconclusive',
+            'evidenceCreationId':None,
+            'evidenceVersion':None,
+            'requestId':'browser-challenge-review-report-001'
+        })
+        assert report_response.status==200,report_response.text()
+        report=report_response.json()['result']
+
+        founder_page.locator('#login-button').click()
+        founder_page.locator('#founder-key').fill(KEY)
+        founder_page.locator('#verify-founder').click()
+        founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        founder_state=founder_context.request.get(url+'api/state').json()
+        assert founder_state['viewer']['role']=='founder'
+        challenge_response=founder_context.request.post(url+'api/action',data={
+            'type':'challenge-experiment-report',
+            'reportId':report['reportId'],
+            'challengeType':'methodology',
+            'challengeText':'The report omits control settings required to reproduce the comparison.',
+            'evidenceCreationId':None,
+            'evidenceVersion':None,
+            'requestId':'browser-challenge-review-challenge-001'
+        })
+        assert challenge_response.status==200,challenge_response.text()
+        challenge=challenge_response.json()['result']
+        challenge_id=challenge['challengeId']
+
+        before_world=founder_context.request.get(url+'api/state').json()['world']
+        report_event=next(event for event in before_world['events'] if event.get('reportId')==report['reportId'])
+        challenge_event=next(event for event in before_world['events'] if event.get('challengeId')==challenge_id)
+        assert report_event['actor']['id']==witness_state['viewer']['id']
+        assert challenge_event['actor']['id']==founder_state['viewer']['id']
+        decisions_before=founder_context.request.get(url+'api/decisions').json()
+        character_xp_before=character_xp_components(founder_page)
+        deliberator_before=skill_count(founder_page,'deliberator')
+
+        forbidden=witness_context.request.post(url+'api/action',data={
+            'type':'review-experiment-challenge',
+            'reportId':report['reportId'],
+            'challengeId':challenge_id,
+            'disposition':'investigate',
+            'rationale':'This Witness request must be rejected.',
+            'requestId':'browser-challenge-review-witness-forbidden'
+        })
+        assert forbidden.status==403,forbidden.text()
+        assert forbidden.json()['error']['code']=='FORBIDDEN'
+
+        close_sheet(witness_page)
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        witness_card=witness_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(witness_card).to_be_visible()
+        expect(witness_card).to_have_attribute('data-review-status','pending')
+        expect(witness_card).to_contain_text('Founder-only next-step controls are withheld in Witness view.')
+        expect(witness_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+
+        close_sheet(founder_page)
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        founder_card=founder_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(founder_card).to_be_visible()
+        expect(founder_card).to_have_attribute('data-review-status','pending')
+        disposition=founder_card.locator('[data-challenge-review-disposition]')
+        rationale=founder_card.locator('[data-challenge-review-rationale]')
+        disposition.select_option('investigate')
+        rationale.fill('Repeat the comparison while retaining the exact control settings.')
+        founder_card.get_by_role('button',name='Record game-level next step',exact=True).click()
+        expect(founder_card).to_have_attribute('data-review-status','reviewed',timeout=30000)
+        expect(founder_card).to_contain_text('REVIEWED · GAME-LEVEL NEXT STEP · Investigate next')
+        expect(founder_card).to_contain_text('Reviewer account matches the challenge author')
+        expect(founder_card).to_contain_text('Account IDs are service attribution, not proof of distinct humans')
+        expect(founder_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+
+        after_state=founder_context.request.get(url+'api/state').json()
+        after_world=after_state['world']
+        review_events=[event for event in after_world['events'] if event.get('challengeId')==challenge_id and event['type']=='experiment-challenge-reviewed']
+        assert len(review_events)==1
+        review_event=review_events[0]
+        assert review_event['actor']['id']==founder_state['viewer']['id'] and review_event['actor']['role']=='founder'
+        assert review_event['sourceEventIds']==[report_event['id'],challenge_event['id']]
+        assert review_event['disposition']=='investigate'
+        assert review_event['rationale']=='Repeat the comparison while retaining the exact control settings.'
+        assert 'outcome' not in review_event and 'status' not in review_event and 'verdict' not in review_event
+        assert after_world['revision']==before_world['revision']+1
+        assert len(after_world['events'])==len(before_world['events'])+1
+        assert after_world['xp']==before_world['xp']
+        decisions_after=founder_context.request.get(url+'api/decisions').json()
+        assert decisions_after['revision']==decisions_before['revision'],'a game-level disposition must not mutate the canonical Founder Gate'
+        character_xp_after=character_xp_components(founder_page)
+        deliberator_after=skill_count(founder_page,'deliberator')
+        assert character_xp_after==character_xp_before,'the disposition is not an XP-bearing activity'
+        assert deliberator_after==deliberator_before+1,'only the retained Founder disposition increments Deliberator activity'
+
+        close_sheet(witness_page)
+        witness_page.locator('#places-button').click()
+        witness_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        witness_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        refreshed_witness_card=witness_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(refreshed_witness_card).to_have_attribute('data-review-status','reviewed')
+        expect(refreshed_witness_card).to_contain_text('Investigate next')
+        expect(refreshed_witness_card.locator('[data-challenge-review-submit]')).to_have_count(0)
+        assert not errors,errors
+        close_sheet(founder_page)
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        final_founder_card=founder_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(final_founder_card).to_have_attribute('data-review-status','reviewed')
+        expect(final_founder_card).to_contain_text('Investigate next')
+        founder_page.screenshot(path=str(out/'decision-chamber-research-review.png'))
+        return {
+            'journey':'decision-chamber-research-review',
+            'passed':True,
+            'sessions':2,
+            'witnessReviewRejected':True,
+            'witnessQueue':'read-only',
+            'founderDisposition':'investigate',
+            'reportAndChallengeEventIdsBound':review_event['sourceEventIds']==[report_event['id'],challenge_event['id']],
+            'challengeRemainsVisible':True,
+            'sameAccountConflictDisclosed':True,
+            'canonicalDecisionRevisionUnchanged':True,
+            'worldXpNeutral':True,
+            'characterXpNeutral':True,
+            'deliberatorDelta':deliberator_after-deliberator_before,
+            'errors':errors
+        }
+    finally:
+        witness_context.close()
+        founder_context.close()
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
@@ -1705,7 +1913,7 @@ def player_guild_membership(browser,url,out):
 
 
 def commons_message_quest(browser,url,out):
-    """A real two-player mobile quest, projected only from each actor's retained post."""
+    """A shared mobile quest loop with pinned routes, lost-response retry and actor-bound progression."""
     errors=[]
     speaker_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
     other_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
@@ -1751,6 +1959,9 @@ def commons_message_quest(browser,url,out):
             expect(objective).to_be_visible()
             expect(objective).to_contain_text('OPEN')
             expect(objective).to_contain_text('0/1')
+            expect(page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+            expect(page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+            expect(page.locator('#world')).to_have_attribute('data-quest-selection','next')
 
         after_boards=speaker_context.request.get(url+'api/state').json()['world']
         assert (after_boards['revision'],len(after_boards['events']),after_boards['xp'])==(
@@ -1768,12 +1979,70 @@ def commons_message_quest(browser,url,out):
 
         message_text='A retained Commons message completes my Speaker quest.'
         speaker_page.locator('#places-button').click()
-        speaker_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
-        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        speaker_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        speaker_objective=speaker_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-commons-message"]')
+        speaker_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'",timeout=30000)
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-commons-message')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','selected')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','commons')
+        expect(other_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(other_page.locator('#world')).to_have_attribute('data-quest-selection','next')
+        route_state=speaker_context.request.get(url+'api/state').json()['world']
+        assert (route_state['revision'],len(route_state['events']),route_state['xp'])==(
+            baseline_revision,baseline_event_count,baseline_xp
+        ),'Selecting a route must not create canonical progress or XP'
+        action_payloads=[]
+        lost_response={'injected':False,'status':None}
+        def capture_message_action(request):
+            if request.method!='POST' or not request.url.endswith('/api/action') or not request.post_data:
+                return
+            try:
+                payload=json.loads(request.post_data)
+            except (TypeError,ValueError):
+                return
+            if payload.get('type')=='post-message' and payload.get('text')==message_text:
+                action_payloads.append(request.post_data)
+        def drop_first_action_response(route):
+            if not lost_response['injected']:
+                response=route.fetch()
+                lost_response['status']=response.status
+                lost_response['injected']=True
+                route.abort()
+            else:
+                route.continue_()
+        speaker_page.on('request',capture_message_action)
+        speaker_page.route('**/api/action',drop_first_action_response)
         speaker_page.locator('#commons-message').fill(message_text)
+        speaker_page.locator('#commons-post-message').click()
+        expect(speaker_page.locator('#toast')).to_contain_text('The shared world is unreachable',timeout=10000)
+        assert lost_response['injected'] and lost_response['status']==200,'The first server-accepted response must be deliberately lost'
+        pending_after_loss=speaker_page.evaluate(
+            "()=>JSON.parse(localStorage.getItem('ngl.common-ground.pending-shared-action.v1')||'null')"
+        )
+        assert pending_after_loss and pending_after_loss.get('actorId')==speaker_actor['id']
+        assert pending_after_loss.get('actorRole')=='witness'
+        assert pending_after_loss.get('action',{}).get('type')=='post-message'
+        assert pending_after_loss.get('action',{}).get('text')==message_text
+        assert pending_after_loss.get('requestId'),'The client must preserve the exact retry identity after response loss'
+        assert speaker_page.locator('#commons-message').input_value()==message_text,'The uncertain message must remain available for exact retry'
+        first_delivery_state=speaker_context.request.get(url+'api/state').json()
+        assert first_delivery_state['world']['revision']==baseline_revision+1
+        assert first_delivery_state['world']['xp']==baseline_xp
+        assert sum(
+            event.get('type')=='message-posted' and event.get('actor',{}).get('id')==speaker_actor['id']
+            for event in first_delivery_state['world']['events']
+        )==1,'The server accepted one event before the response was lost'
         speaker_page.locator('#commons-post-message').click()
         own_message=speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)
         expect(own_message).to_be_visible()
+        speaker_page.wait_for_function(
+            "()=>localStorage.getItem('ngl.common-ground.pending-shared-action.v1')===null",
+            timeout=10000
+        )
+        speaker_page.unroute('**/api/action',drop_first_action_response)
+        speaker_page.remove_listener('request',capture_message_action)
 
         posted_state=speaker_context.request.get(url+'api/state').json()
         assert posted_state['world']['revision']==baseline_revision+1
@@ -1790,6 +2059,30 @@ def commons_message_quest(browser,url,out):
             event.get('type')=='message-posted' and event.get('messageId')==retained['messageId']
             for event in posted_state['world']['events']
         )==1,'The retained message ID must be unique in the public world projection'
+        assert len(action_payloads)==2,'The lost response and exact client retry must issue two identifiable requests'
+        assert action_payloads[0]==action_payloads[1],'The retry must reuse the byte-identical action body and request ID'
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','next')
+        replay=speaker_page.evaluate(
+            """async body=>{
+                const response=await fetch('/api/action',{
+                    method:'POST',
+                    credentials:'same-origin',
+                    headers:{'content-type':'application/json'},
+                    body
+                });
+                return {status:response.status,body:await response.json()};
+            }""",
+            action_payloads[0]
+        )
+        assert replay['status']==200,repr(replay)
+        assert replay['body'].get('idempotentReplay') is True,repr(replay)
+        assert replay['body']['result']['messageId']==retained['messageId']
+        replayed_state=speaker_context.request.get(url+'api/state').json()['world']
+        assert (replayed_state['revision'],len(replayed_state['events']),replayed_state['xp'])==(
+            posted_state['world']['revision'],len(posted_state['world']['events']),posted_state['world']['xp']
+        ),'An exact request retry must not append a second event or reward'
 
         # The other session sees the shared post, but its own actor-bound objective stays open.
         other_page.locator('#places-button').click()
@@ -1844,8 +2137,24 @@ def commons_message_quest(browser,url,out):
             timeout=30000
         )
         expect(speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)).to_be_visible()
+        speaker_page.locator('#sheet-close').click()
+        speaker_page.locator('#places-button').click()
+        speaker_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'",timeout=30000)
+        next_objective=speaker_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-map-grounds"]')
+        expect(next_objective).to_be_visible()
+        expect(next_objective).to_contain_text('OPEN')
+        expect(next_objective).to_contain_text('0/4')
+        next_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
+        expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','selected')
+        selected_hud_objective=speaker_page.locator('#quest-trail [data-objective-id="witness-map-grounds"]')
+        expect(selected_hud_objective).to_have_attribute('aria-current','step')
+        expect(selected_hud_objective).to_contain_text('ROUTE SELECTED · NAVIGATION ONLY')
         final_state=speaker_context.request.get(url+'api/state').json()
-        assert final_state['world']['revision']==baseline_revision+1,'Reading and routing to the satchel object must not append world events'
+        assert final_state['world']['revision']==baseline_revision+1,'Reading, replaying and selecting the next route must not append world events'
+        assert len(final_state['world']['events'])==baseline_event_count+1
         assert final_state['world']['xp']==baseline_xp
         assert not errors,errors
         speaker_page.screenshot(path=str(out/'commons-message-quest.png'))
@@ -1854,12 +2163,18 @@ def commons_message_quest(browser,url,out):
             'passed':True,
             'sessions':2,
             'messageEvents':1,
+            'duplicateReplay':'idempotent-no-extra-event',
+            'lostResponseRecovery':'same-request-id-one-event',
             'actorScoped':True,
             'speakerCount':speaker_after['skills']['speaker'],
             'questkeeperDelta':speaker_after['skills']['questkeeper']-speaker_before['skills']['questkeeper'],
             'characterXpNeutral':True,
             'worldXp':baseline_xp,
             'satchelRoute':'The Commons',
+            'nextObjective':'witness-map-grounds · 0/4',
+            'nextRoute':'The Relay',
+            'routeSelection':'navigation-only',
+            'routeSelectionNoWorldMutation':True,
             'errors':errors
         }
     finally:
@@ -1894,6 +2209,7 @@ def main():
                     record(town_square_social(browser,url,out))
                     record(player_guild_membership(browser,url,out))
                     record(commons_message_quest(browser,url,out))
+                    record(research_challenge_review(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
