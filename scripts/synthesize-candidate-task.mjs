@@ -14,7 +14,7 @@ const MAX_TASK_SPEC_JSON_DEPTH = 16;
 async function main() {
   const args = process.argv.slice(2);
   if (args.length !== 1) {
-    process.stderr.write('Usage: node scripts/synthesize-candidate-task.mjs <task-spec.json>\\n');
+    process.stderr.write('Usage: node scripts/synthesize-candidate-task.mjs <task-spec.json>\n');
     process.exitCode = 2;
     return;
   }
@@ -51,10 +51,10 @@ async function main() {
       signaturesCreated: false
     },
     instruction: 'Review the generated AST and exact proof. This command does not verify or sign a task specification, read a Founder key, install a capability, or execute the program.'
-  }, null, 2) + '\\n');
+  }, null, 2) + '\n');
 }
 
 main().catch(error => {
-  process.stderr.write(`${error?.message || 'CANDIDATE_SYNTHESIS_FAILED'}\\n`);
+  process.stderr.write(`${error?.message || 'CANDIDATE_SYNTHESIS_FAILED'}\n`);
   process.exitCode = 1;
 });
