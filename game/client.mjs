@@ -439,7 +439,7 @@ function render(){
   if(selectedQuestObjectiveId&&(!selectedObjective||selectedObjective.complete||!selectedObjective.action)){selectedQuestObjectiveId=null;selectedObjective=null;}
   const routeObjective=selectedObjective||nextObjective;
   const mapAction=routeObjective?.action||null;
-  view.setQuestAction(mapAction,routeObjective?.title||quest.title,routeObjective?.id||null,Boolean(selectedObjective));
+  view.setQuestAction(mapAction,selectedObjective?.title||quest.title,routeObjective?.id||null,Boolean(selectedObjective));
   $('quest-title').textContent=quest.title;
   $('quest-copy').textContent=quest.copy;
   $('quest-button').textContent=quest.button;
