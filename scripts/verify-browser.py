@@ -677,10 +677,137 @@ def adversary_challenge_handoff(browser,url,out):
         character_button_label=page.locator('#character-button').get_attribute('aria-label')
         assert character_button_label and '25 character XP' in character_button_label, character_button_label
         close_sheet(page)
+        challenge_character_xp=character_xp_components(page)
+        assert challenge_character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {challenge_character_xp}'
+        # Exercise the Polymath Academy as the tutor's in-world home. Walking
+        # there can discover one guide; both archived responses count as
+        # attributed activity, including the rejected attempt, not as truth.
+        # Opening the resulting folios is read-only and never certifies mastery.
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        tutor=page.locator('[data-collaborator-role="tutor"]')
+        expect(tutor).to_be_visible()
+        tutor.locator('details.collaborator-packet summary').click()
+        tutor_prompt=tutor.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        tutor_payload=json.loads(tutor_prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        proposal_event=next(event for event in author_world['events'] if event.get('type')=='moonshot-proposed')
+        assert tutor_payload['role']=='tutor' and tutor_payload['authority']=='advisory-only'
+        assert tutor_payload['targetMoonshotId']==proposal_event['moonshotId']
+        assert tutor_payload['inputRefs']==[proposal_event['id']]
+        assert all(tutor_payload[key] is False for key in ('mayWriteCanonicalState','mayGrantAuthority','mayAwardProgress','mayCertifyTruthOrExecution'))
+
+        valid_tutor_response={
+            'concepts':['Falsifiable hypotheses'],
+            'prerequisites':['Retained observations'],
+            'explanation':'A falsifier is an observation that would contradict the hypothesis under its stated conditions.',
+            'questions':['What observation would count against this claim?'],
+            'answerKey':['A reproducible counterexample under the stated conditions.'],
+            'whatRemainsUnproven':['This response is not evidence that an experiment ran.']
+        }
+        valid_tutor_text=json.dumps(valid_tutor_response)
+        tutor_response_details=tutor.locator('details.collaborator-response')
+        tutor_response_details.locator('summary').click()
+        tutor_response_field=tutor_response_details.locator('textarea[aria-label$="response JSON"]')
+        tutor_response_field.fill(valid_tutor_text)
+        tutor.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(tutor.locator('[data-collaborator-response-status="tutor"]')).to_contain_text('STRUCTURE VALID')
+        before_valid_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        tutor.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(tutor.locator('[data-collaborator-response-status="tutor"]')).to_contain_text('ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY')
+        after_valid_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert after_valid_archive['revision']==before_valid_archive['revision']+1
+        assert after_valid_archive['events'][:-1]==before_valid_archive['events']
+        valid_tutor_event=after_valid_archive['events'][-1]
+        assert valid_tutor_event['type']=='collaborator-response-recorded' and valid_tutor_event['role']=='tutor'
+        assert valid_tutor_event['validationStatus']=='valid-for-human-review' and valid_tutor_event['responseText']==valid_tutor_text
+        assert valid_tutor_event['actor']['id']==reviewer_id and after_valid_archive['xp']==0
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        tutor=page.locator('[data-collaborator-role="tutor"]')
+        tutor.locator('details.collaborator-response summary').click()
+        tutor_response_field=tutor.locator('textarea[aria-label$="response JSON"]')
+        tutor_response_field.fill('{}')
+        tutor.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(tutor.locator('[data-collaborator-response-status="tutor"]')).to_contain_text('RESPONSE_SCHEMA_OR_SCOPE_INVALID')
+        before_rejected_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        tutor.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(tutor.locator('[data-collaborator-response-status="tutor"]')).to_contain_text('ARCHIVED · REJECTED RESPONSE PRESERVED')
+        after_rejected_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert after_rejected_archive['revision']==before_rejected_archive['revision']+1
+        assert after_rejected_archive['events'][:-1]==before_rejected_archive['events']
+        rejected_tutor_event=after_rejected_archive['events'][-1]
+        assert rejected_tutor_event['type']=='collaborator-response-recorded' and rejected_tutor_event['role']=='tutor'
+        assert rejected_tutor_event['validationStatus']=='rejected'
+        assert rejected_tutor_event['validationReason']=='RESPONSE_SCHEMA_OR_SCOPE_INVALID' and rejected_tutor_event['responseText']=='{}'
+        assert after_rejected_archive['xp']==0
+
+        challenged_event_ids={event['id'] for event in challenged_world['events']}
+        academy_activity_events=[event for event in after_rejected_archive['events'] if event['id'] not in challenged_event_ids]
+        academy_discoveries=[event for event in academy_activity_events if event.get('type')=='discover' and event.get('locationId') in {'relay','river','overlook','ruins'}]
+        academy_responses=[event for event in academy_activity_events if event.get('type')=='collaborator-response-recorded']
+        assert len(academy_activity_events)==3, f'Walking to the tutor and archiving two responses should retain three new activity events, got {[event.get("type") for event in academy_activity_events]}'
+        assert len(academy_discoveries)==1, 'The walk to the tutor should retain one guide discovery'
+        assert len(academy_responses)==2, 'Both valid and rejected tutor replies should remain retained activity'
+        assert [event['validationStatus'] for event in academy_responses]==['valid-for-human-review','rejected']
+        assert all(event['actor']['id']==reviewer_id and event['actor']['role']=='founder' for event in academy_activity_events)
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        tutor_folios=page.locator('#sheet-content [data-academy-tutor-response]')
+        expect(tutor_folios).to_have_count(2)
+        shelf_ids=tutor_folios.evaluate_all('(cards)=>cards.map(card=>card.getAttribute("data-academy-tutor-response"))')
+        assert shelf_ids==[rejected_tutor_event['responseId'],valid_tutor_event['responseId']], 'The Academy shelf must show newest tutor folios first and exclude other collaborator roles'
+        valid_tutor_card=page.locator('[data-academy-tutor-response="'+valid_tutor_event['responseId']+'"]')
+        rejected_tutor_card=page.locator('[data-academy-tutor-response="'+rejected_tutor_event['responseId']+'"]')
+        expect(valid_tutor_card).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+        expect(valid_tutor_card).to_contain_text('founder '+reviewer_id)
+        expect(valid_tutor_card).to_contain_text(proposal_event['id'])
+        expect(rejected_tutor_card).to_contain_text('REJECTED · PRESERVED')
+        shelf_state=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        page.screenshot(path=str(out/'academy-tutor-folios.png'))
+        close_sheet(page)
+        academy_activity_xp=character_xp_components(page)
+        assert academy_activity_xp==(challenge_character_xp[0]+75,challenge_character_xp[1],challenge_character_xp[2]+75), f'One guide discovery and two archived responses should add 75 quest XP without publication XP, got {academy_activity_xp}'
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        valid_tutor_card=page.locator('[data-academy-tutor-response="'+valid_tutor_event['responseId']+'"]')
+        valid_tutor_card.get_by_role('button',name='Inspect exact retained tutor folio →',exact=True).click()
+        page.wait_for_function("(id)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&Array.from(sheet.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id&&card===document.activeElement)}",arg=valid_tutor_event['responseId'])
+        valid_archive_card=page.locator('[data-collaborator-response-id="'+valid_tutor_event['responseId']+'"]')
+        expect(valid_archive_card).to_contain_text('Polymath Tutor · STRUCTURE VALID · HUMAN REVIEW ONLY')
+        valid_archive_card.locator('details.collaborator-response summary').click()
+        expect(valid_archive_card.locator('textarea[aria-label="Archived collaborator response"]')).to_have_value(valid_tutor_text)
+        assert valid_archive_card.get_attribute('data-response-validation-status')=='valid-for-human-review'
+        valid_read_state=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        assert valid_read_state==shelf_state, 'Opening the valid tutor folio must not append an event, revision or XP'
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Polymath Tutor',exact=True).click()
+        page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        rejected_tutor_card=page.locator('[data-academy-tutor-response="'+rejected_tutor_event['responseId']+'"]')
+        rejected_tutor_card.get_by_role('button',name='Inspect exact retained tutor folio →',exact=True).click()
+        page.wait_for_function("(id)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&Array.from(sheet.querySelectorAll('[data-collaborator-response-id]')).some(card=>card.getAttribute('data-collaborator-response-id')===id&&card===document.activeElement)}",arg=rejected_tutor_event['responseId'])
+        rejected_archive_card=page.locator('[data-collaborator-response-id="'+rejected_tutor_event['responseId']+'"]')
+        expect(rejected_archive_card).to_contain_text('Polymath Tutor · REJECTED · PRESERVED')
+        assert rejected_archive_card.get_attribute('data-response-validation-status')=='rejected'
+        rejected_archive_card.locator('details.collaborator-response summary').click()
+        expect(rejected_archive_card.locator('textarea[aria-label="Archived collaborator response"]')).to_have_value('{}')
+        rejected_read_state=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        assert rejected_read_state==shelf_state, 'Opening the rejected tutor folio must preserve history without changing progress'
+        assert page.locator('#xp-count').text_content()=='0'
+        close_sheet(page)
         character_xp=character_xp_components(page)
-        assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        assert character_xp==academy_activity_xp, f'Opening valid and rejected tutor folios must not change character XP, got {academy_activity_xp} then {character_xp}'
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'academyActivityEvents':len(academy_activity_events),'academyQuestXpEarned':academy_activity_xp[2]-challenge_character_xp[2],'worldXp':0,'academyTutorFolios':2,'academyRejectedFolios':1,'academyNewestFirst':True,'academyExactArchiveNavigation':True,'academyInspectionReadOnly':True,'academyInspectionXpUnchanged':character_xp==academy_activity_xp,'boundedTutorPacket':True,'errors':errors}
     finally:
         context.close()
 
