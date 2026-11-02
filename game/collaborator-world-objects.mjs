@@ -321,3 +321,23 @@ export function projectCollaboratorResponseWorldObjects(world) {
     });
   }));
 }
+
+/**
+ * Select the Academy's own retained tutor folios from the sealed collaborator
+ * projection. Rejected replies remain visible as preserved attempts; no reply
+ * is promoted into mastery, evidence, or canonical progress.
+ */
+export function selectAcademyTutorFolios(world, candidateProjection = null, limit = 8) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_MAP_RESPONSE_OBJECTS) {
+    throw new RangeError('Academy tutor folio limit is outside the supported bound');
+  }
+  const projection = isCollaboratorResponseProjection(candidateProjection, world)
+    ? candidateProjection
+    : projectCollaboratorResponseWorldObjects(world);
+  const tutorFolios = projection.filter(object => object.roleId === 'tutor');
+  const visible = tutorFolios.slice(-limit).reverse();
+  return Object.freeze({
+    items: Object.freeze(visible),
+    omittedCount: Math.max(0, tutorFolios.length - visible.length)
+  });
+}
