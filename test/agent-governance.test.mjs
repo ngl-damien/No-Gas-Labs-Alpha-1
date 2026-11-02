@@ -6,7 +6,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES, receiptDescriptorRootForPlatform } from '../scripts/validate-agent-governance.mjs';
+
+test('receipt descriptor paths use procfs only on Linux and fall back elsewhere', () => {
+  assert.equal(receiptDescriptorRootForPlatform('linux'), '/proc/self/fd');
+  for (const platform of ['darwin', 'win32', 'freebsd', 'openbsd', 'sunos']) {
+    assert.equal(receiptDescriptorRootForPlatform(platform), null, platform);
+  }
+});
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');

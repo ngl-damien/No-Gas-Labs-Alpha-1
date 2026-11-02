@@ -85,13 +85,13 @@ jobs:
             --path test/game-player-position.test.mjs \
             --path test/institution-record-preflight-contract.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
-            --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
+            --receipt ".runtime/agent-preflight-android-${GITHUB_RUN_ID}.json"
       - name: Preserve portable preflight receipt
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ngl-agent-preflight-${{ github.run_id }}
-          path: agent-preflight-android-${{ github.run_id }}.json
+          path: .runtime/agent-preflight-android-${{ github.run_id }}.json
           if-no-files-found: warn
       - uses: actions/setup-java@v4
         with:

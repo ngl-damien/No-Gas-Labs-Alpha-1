@@ -24,10 +24,15 @@ function sameResolvedPath(expected, actual) {
     : expectedPath === actualPath;
 }
 
+export function receiptDescriptorRootForPlatform(platform) {
+  // Linux procfs exposes directory descriptors as traversable paths. Darwin's
+  // /dev/fd entries are not a reliable child-path namespace for mkdir/open, so
+  // use the existing guarded realpath/lstat fallback there and on other hosts.
+  return platform === 'linux' ? '/proc/self/fd' : null;
+}
+
 function receiptDescriptorRoot() {
-  if (process.platform === 'linux') return '/proc/self/fd';
-  if (process.platform === 'win32') return null;
-  return '/dev/fd';
+  return receiptDescriptorRootForPlatform(process.platform);
 }
 
 async function writeReceiptPathFallback(rootPath, receiptPath, content) {
