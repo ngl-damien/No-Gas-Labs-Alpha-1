@@ -66,3 +66,16 @@ This demonstrates reuse of the exact proof mechanism for one additional fixed ta
 The task specification has its own domain-separated Ed25519 signature (`NGL_FOUNDER_CANDIDATE_TASK_SPECIFICATION_V1`) under the same configured Founder public key already pinned at module startup. The INSTALL decision still has its separate `NGL_FOUNDER_INSTALL_APPROVAL_V1` signature. The v5 implementation hash binds both the normalized candidate AST and the task-specification digest. The ledger persists the specification and its signature, rechecks the signature during replay and every REUSE, and rejects a second specification that reuses an installed task ID with different content. A changed target must receive a new explicit task version ID (for example `:v2`); the old version remains immutable.
 
 This is a new bounded authoring capability, not an independent trust root: both signatures use the same configured key. No real Founder key, identity, private-key custody, external signer, production service, or independent AI discovery is established. The tests use ephemeral keys. The feature proves only exact polynomial equivalence inside this deliberately narrow language and declared input domain; it is not a general theorem prover or arbitrary program runner.
+
+
+## Deterministic task-program synthesis
+
+`scripts/synthesize-candidate-task.mjs` converts a validated v1 task specification into a bounded Horner-form candidate AST:
+
+```sh
+npm run candidate:synthesize -- ./task-spec.json
+```
+
+The synthesizer builds the polynomial from ascending canonical integer coefficients, decomposes safe-integer constants into base-1,000,000 AST operations, validates the depth/node/runtime bounds, and recomputes the exact BigInt polynomial certificate before returning. The CLI reads a bounded regular file and rejects duplicate JSON keys. It has no private-key access and makes no ledger changes.
+
+The output is a **candidate**, not an approval or installation. The task specification still requires its separate Founder signature, and the INSTALL proposal still requires its own detached signature under the configured trust pin. Both signatures use the same key; this is not an independent trust root. The synthesizer is deterministic polynomial compilation, not AI discovery, arbitrary code generation, a general theorem prover, or execution of a newly installed capability.
