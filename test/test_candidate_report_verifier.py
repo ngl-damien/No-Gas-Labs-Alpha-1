@@ -490,6 +490,20 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
             self.assertTrue(swapped, "the parent must be replaced after its directory descriptor is opened")
             self.assertEqual(source, "inside", "the opened parent descriptor must not be redirected through the replacement symlink")
 
+    def test_excessively_deep_synthesis_receipt_has_same_error_in_both_verifiers(self):
+        report_path, _ = self.make_report("deep-receipt", ["17"])
+        deep_receipt = self.directory / "deep-synthesis-receipt.json"
+        deep_receipt.write_text("[" * 10_000 + "0" + "]" * 10_000, encoding="utf-8")
+
+        node = self.run_node(EVALUATOR, [str(deep_receipt), "17"])
+        independent = self.run_verifier(report_path, deep_receipt)
+        self.assertEqual(node.returncode, 1)
+        self.assertIn("SYNTHESIS_RECEIPT_JSON_TOO_DEEP", node.stderr)
+        self.assertEqual(node.stdout, "")
+        self.assertEqual(independent.returncode, 1)
+        self.assertIn("SYNTHESIS_RECEIPT_JSON_TOO_DEEP", independent.stderr)
+        self.assertEqual(independent.stdout, "")
+
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
         source = self.receipt_path.read_text(encoding="utf-8")
