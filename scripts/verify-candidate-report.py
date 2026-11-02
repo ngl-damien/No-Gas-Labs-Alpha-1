@@ -5,6 +5,7 @@ This is a separate Python implementation of the bounded AST and exact integer
 polynomial checks. It does not verify signatures, establish Founder identity,
 install capabilities, or mutate institutional state.
 """
+import errno
 import hashlib
 import json
 import os
@@ -144,7 +145,7 @@ def read_bounded_regular_file(path, limit, label):
     except VerificationError:
         raise
     except OSError as error:
-        if error.errno in (getattr(os, "ELOOP", -1),):
+        if error.errno == errno.ELOOP:
             fail(label + "_NOT_REGULAR")
         fail(label + "_READ_FAILED")
     finally:
@@ -478,6 +479,8 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
         require_exact_keys(report, keys, "EVALUATION_REPORT_INVALID")
         input_value = validate_input(report["input"], specification, "EVALUATION_REPORT_INPUT_INVALID")
         expected = expected_row(program, target, input_value)
+        if not exact_int(report["output"]) or not isinstance(report["expectedOutput"], str):
+            fail("EVALUATION_REPORT_MISMATCH")
         actual = {"input": report["input"], "output": report["output"], "expectedOutput": report["expectedOutput"]}
         if actual != expected:
             fail("EVALUATION_REPORT_MISMATCH")
@@ -513,6 +516,8 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
         evaluations = []
         for index, row in enumerate(rows):
             require_exact_keys(row, {"input", "output", "expectedOutput"}, "EVALUATION_REPORT_INVALID")
+            if not exact_int(row["input"]) or not exact_int(row["output"]) or not isinstance(row["expectedOutput"], str):
+                fail("EVALUATION_REPORT_INVALID")
             expected = expected_row(program, target, start + index)
             if row != expected:
                 if row.get("input") != start + index:
