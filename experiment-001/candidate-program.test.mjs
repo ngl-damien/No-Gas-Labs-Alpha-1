@@ -340,7 +340,7 @@ test('signed candidate program is challenged, persisted, and reused by a fresh p
   const snapshot = JSON.parse(child.stdout.trim());
   assert.equal(snapshot.sequence, 2);
   assert.equal(snapshot.capabilities[draft.id].uses, 1);
-  assert.deepEqual(snapshot.capabilities[draft.id].program, synthesized.program);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, draft.program);
 
   const reopened = await lib.openInstitution(storePath, pem(founder));
   assert.equal(reopened.snapshot().sequence, 2);
@@ -788,7 +788,7 @@ test('signed candidate-program-v5 INSTALL persists its trusted task spec across 
   const executor = pair();
   const lib = await loadPinned(founder);
   const specification = callerDefinedTaskSpecification();
-  const synthesized = lib.synthesizeCandidateTaskProgram(specification);
+  const synthesized = synthesizeCandidateTaskProgram(specification);
   const specificationSignature = sign(
     null,
     Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
