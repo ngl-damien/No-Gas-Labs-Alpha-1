@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -182,6 +183,36 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(rejected.returncode, 1)
         self.assertIn("EVALUATION_REPORT_FILE_TOO_LARGE", rejected.stderr)
         self.assertEqual(rejected.stdout, "")
+
+    def test_rejects_non_regular_invalid_utf8_and_excessively_deep_report_files(self):
+        directory_report = self.directory / "report-directory"
+        directory_report.mkdir()
+        directory_result = self.run_verifier(directory_report)
+        self.assertEqual(directory_result.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_NOT_REGULAR", directory_result.stderr)
+        self.assertEqual(directory_result.stdout, "")
+
+        invalid_utf8 = self.directory / "invalid-utf8.json"
+        invalid_utf8.write_bytes(b"\\xff")
+        invalid_result = self.run_verifier(invalid_utf8)
+        self.assertEqual(invalid_result.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_INVALID_UTF8", invalid_result.stderr)
+        self.assertEqual(invalid_result.stdout, "")
+
+        deep_report = self.directory / "deep-report.json"
+        deep_report.write_text("[" * 17 + "0" + "]" * 17, encoding="utf-8")
+        deep_result = self.run_verifier(deep_report)
+        self.assertEqual(deep_result.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_JSON_TOO_DEEP", deep_result.stderr)
+        self.assertEqual(deep_result.stdout, "")
+
+        if hasattr(os, "mkfifo"):
+            fifo_report = self.directory / "fifo-report.json"
+            os.mkfifo(fifo_report)
+            fifo_result = self.run_verifier(fifo_report)
+            self.assertEqual(fifo_result.returncode, 1)
+            self.assertIn("EVALUATION_REPORT_NOT_REGULAR", fifo_result.stderr)
+            self.assertEqual(fifo_result.stdout, "")
 
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
