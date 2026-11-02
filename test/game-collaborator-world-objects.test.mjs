@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from '../game/collaborator-world-objects.mjs';
+import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection, selectAcademyTutorFolios } from '../game/collaborator-world-objects.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { findRoute, WorldView } from '../game/world-view.mjs';
 
@@ -74,6 +74,43 @@ function responseEvent({
 function worldWith(response, { revision = 2, events = [proposal, response] } = {}) {
   return { id: 'world-1', revision, creations: [], events };
 }
+
+test('the Polymath Academy shelf selects only retained tutor folios and preserves rejected attempts', () => {
+  const tutor = responseEvent({ eventId: 'tutor-event', responseId: 'tutor-response' });
+  const synthesizer = responseEvent({
+    eventId: 'synth-event', responseId: 'synth-response', role: 'synthesizer',
+    at: '2026-10-30T05:02:00.000Z', snapshotRevision: 2,
+    priorEvents: [proposal, tutor]
+  });
+  const world = worldWith(null, { revision: 3, events: [proposal, tutor, synthesizer] });
+  const before = structuredClone(world);
+  const projection = projectCollaboratorResponseWorldObjects(world);
+  const shelf = selectAcademyTutorFolios(world, projection);
+  assert.equal(shelf.items.length, 1);
+  assert.equal(shelf.items[0].responseId, 'tutor-response');
+  assert.equal(shelf.items[0].roleId, 'tutor');
+  assert.equal(shelf.items[0].validationStatus, 'valid-for-human-review');
+  assert.equal(shelf.omittedCount, 0);
+  assert.deepEqual(world, before, 'the Academy shelf is a read-only projection');
+
+  const rejected = responseEvent({
+    eventId: 'tutor-rejected-event', responseId: 'tutor-rejected',
+    at: '2026-10-30T05:03:00.000Z', snapshotRevision: 3,
+    priorEvents: [proposal, tutor, synthesizer],
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    responseText: '{}'
+  });
+  const withRejected = worldWith(null, {
+    revision: 4, events: [proposal, tutor, synthesizer, rejected]
+  });
+  const rejectedShelf = selectAcademyTutorFolios(withRejected);
+  assert.deepEqual(rejectedShelf.items.map(item => [item.responseId, item.validationStatus]), [
+    ['tutor-rejected', 'rejected'], ['tutor-response', 'valid-for-human-review']
+  ]);
+  assert.equal(rejectedShelf.omittedCount, 0);
+  assert.throws(() => selectAcademyTutorFolios(withRejected, null, 25), RangeError);
+});
 
 test('a source-bound collaborator response becomes a navigable Relay folio', () => {
   const world = worldWith(responseEvent());
