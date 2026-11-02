@@ -25,6 +25,7 @@ const stages = [];
 for (const [name, bin, args, cwd] of [
   ['tests', process.execPath, ['--test', '--test-reporter=tap'], ROOT],
   ['python-inspector', 'python3', ['-m', 'unittest', '-v', 'test_engine.py'], join(ROOT, 'experiments/AOTA-FEATHERSTONIAN-ENGINE')],
+  ['candidate-report-verifier', 'python3', ['test/test_candidate_report_verifier.py'], ROOT],
   ['package', process.execPath, ['scripts/build-game.mjs'], ROOT],
   ['institutional-exercise', process.execPath, ['scripts/meteor-demo.mjs', '--out', join(out, 'exercise')], ROOT]
 ]) {
@@ -75,12 +76,13 @@ for (const [name, bin, args, cwd] of [
 const report = {
   schema: 'ngl.verification-run.v1',
   observedAt: new Date().toISOString(),
-  passed: stages.length === 4 && stages.every(stage => stage.exitCode === 0),
+  passed: stages.length === 5 && stages.every(stage => stage.exitCode === 0),
   stages,
   wallMs: performance.now() - started,
   limitations: [
     'Browser acceptance is an additional check: python3 scripts/verify-browser.py.',
     'These local results do not establish external publication, provider execution or independent human review.'
+    'The independent candidate report verifier checks bounded offline receipts; it does not verify signatures or Founder identity.'
   ]
 };
 await writeFile(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
