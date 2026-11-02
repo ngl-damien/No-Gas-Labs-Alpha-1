@@ -640,6 +640,49 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertNotIn("EVALUATION_REPORT_JSON_INVALID", python_report.stderr)
         self.assertEqual(python_report.stdout, "")
 
+    def test_instruction_length_matches_node_utf16_code_unit_limit(self):
+        report_path, _ = self.make_report("instruction-length", ["17"])
+        scenarios = (
+            ("ascii-boundary", "a" * 512, True),
+            ("ascii-over-boundary", "a" * 513, False),
+            ("astral-boundary", "😀" * 256, True),
+            ("astral-over-boundary", "😀" * 257, False),
+            ("mixed-astral-boundary", "😀" * 255 + "a" * 2, True),
+            ("mixed-astral-over-boundary", "😀" * 255 + "a" * 3, False),
+        )
+
+        for name, instruction, accepted in scenarios:
+            with self.subTest(name=name):
+                altered = json.loads(json.dumps(self.receipt))
+                altered["instruction"] = instruction
+                receipt_path = self.directory / (name + "-receipt.json")
+                receipt_path.write_text(
+                    json.dumps(altered, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+                node = self.run_node(
+                    EVALUATOR,
+                    ["--verify-report", str(receipt_path), str(report_path)],
+                )
+                independent = self.run_verifier(report_path, receipt_path)
+
+                if accepted:
+                    self.assertEqual(node.returncode, 0, node.stderr)
+                    self.assertEqual(independent.returncode, 0, independent.stderr)
+                    node_result = json.loads(node.stdout)
+                    python_result = json.loads(independent.stdout)
+                    self.assertEqual(python_result["implementationHash"], node_result["implementationHash"])
+                    self.assertEqual(python_result["reportDigest"], node_result["reportDigest"])
+                    self.assertEqual(python_result["resultDigest"], node_result["resultDigest"])
+                else:
+                    self.assertEqual(node.returncode, 1)
+                    self.assertEqual(node.stderr.strip(), "SYNTHESIS_RECEIPT_INVALID")
+                    self.assertEqual(node.stdout, "")
+                    self.assertEqual(independent.returncode, 1)
+                    self.assertEqual(independent.stderr.strip(), "SYNTHESIS_RECEIPT_INVALID")
+                    self.assertEqual(independent.stdout, "")
+
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
         source = self.receipt_path.read_text(encoding="utf-8")
