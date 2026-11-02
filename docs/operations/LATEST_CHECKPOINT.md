@@ -979,3 +979,59 @@ At pre-repair head `eecd09de632e36680f50ba0ba4f24d14cc321d61`, Verify [414763905
 6. Retry the AI-BI bootstrap only when an authorized Desktop Commander device is online; keep ngl-mesh read-only until its root instructions are available.
 
 **Authority:** no merge, release, deployment, spending, external publication, credential/permission change, key operation, branch deletion, or Founder decision occurred. No uninterrupted between-run execution is claimed.
+
+---
+
+## Run 26 — 2026-11-02 UTC — align independent Python JSON error precedence with Node
+
+**Worker:** Worker A — Repository Stutter-Step / institutional reliability and independent capability verification.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f` (unchanged).  
+**Implementation PR:** #279, `experiment/candidate-report-independent-verifier-20261102`, draft/open/unmerged.  
+**Current code head:** `d2f9623bc74f8d9d3daf142673b1dab563063e56`.  
+**Stack:** PR #279 is based on PR #278 head `48f78445deffccc6dbec3bab3ae7e063e09c17a5`; #278 is based on PR #276 head `e88711fb68eb6290ade044905d529caec4588dc4`. This is proposed work, not mainline capability.
+
+### Rehydrate and coordination
+
+- Read root `AGENTS.md` alone, then the complete shared scheduler protocol alone, on the active #279 and #283 branches. Root blob `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the current checkpoint, MMORPG completion contract, and ledger on the main-based #283 checkpoint stack. The ledger still records G0–G9 as NOT ASSESSED; no game gate was changed.
+- The prescribed local preflight and Node 24 execution were unavailable: both registered Desktop Commander devices are offline. This is not a local pass. Hosted exact-head CI is the available execution evidence.
+- Worker B's latest automation run `1e8f4aa9-750c-8327-944e-10dd56731a16` was still recorded in progress at the latest peek; its last completed result is stale (2026-11-02 02:27 UTC). PR #285 remains draft/open at `7705c7559e15319b8e003f0440dc002d441e25f6`; its diff changes only the checkpoint and MMORPG ledger, not runtime source. PR #286 remains a separate game-stack child at `e7f58df55a3f44ac44f5d7653678503879eaf611`, with its own Verify/Genesis/Browser workflows successful and 18/18 browser journeys. These results are not mainline integration or physical Android-device acceptance.
+- PR #268's candidate-program-v5 signer path is already present at `de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee`; its three exact-head workflows (Verify `41378129579`, Genesis `41378129560`, Browser `41378129573`) are successful. Source/tests cover separate task-spec and INSTALL signatures, pinned fingerprint checks, and ephemeral-key end-to-end operation. No real key is present. No duplicate signer implementation was started.
+- Linked repositories: `ngl-mesh` root `AGENTS.md` returned 404; inspection stopped. `no-gas-labs-governance` root instructions require `./init_repo.sh`; no device is available to run it, so inspection stopped after the entry file. For `AI-BI-Intelligence-node-gate`, root instructions and PROGRESS/SELF-EVAL/NEXT-DIRECTIVE were read; main's `init_node.sh` is mode `100644`, while open PR #5 proposes mode `100755` plus fail-fast setup. On PR #5 head `5c2837174ae4cfb5e5816c6c26484cc60ed47b5f`, CI run `41403632291` passed (Node 18/20 tests and audit); Org CI `41403632592` failed before creating jobs. Termux bootstrap/build/device verification remains unobserved. No linked repository was modified.
+
+### Cycle 1 — reproduce the Node/Python structural-error mismatch
+
+- Re-read `src/strict-json.mjs` and `scripts/verify-candidate-report.py` on PR #279. Node performs a lexical depth/duplicate-key preflight before JSON.parse. Python previously relied on `object_pairs_hook` and checked depth only after parsing.
+- A 17-level nested object containing a duplicate key therefore produced `SYNTHESIS_RECEIPT_JSON_TOO_DEEP` in Node but `SYNTHESIS_RECEIPT_DUPLICATE_JSON_KEY` in Python. The same structural precedence issue applied to evaluation reports. This was a stable error-contract mismatch, even though both implementations rejected the input.
+- Test-first commit `4371f3e3403160f5cbf6011cfa3c09592c69422f` added the receipt/report regression. Verify `41494122821` failed as expected: Node reported the depth error; Python reported the duplicate-key error. The failure is retained as evidence, not counted as a pass.
+- Commit `2dca6ab94215962384b5221f9ade19aec8a3167a` added the complementary duplicate-key-before-later-malformed-JSON regression for both receipt and report paths.
+
+### Cycle 2 — implement and repair the independent lexical preflight
+
+- Commit `04fffaea10d4984dfac741c48b8a95b22bdcc052` added a Python lexical scanner mirroring Node's structural preflight. Its first hosted Verify `41494345877` failed because the scanner's backslash/whitespace literals were over-escaped; valid JSON was rejected. This implementation failure is preserved.
+- Commit `d2f9623bc74f8d9d3daf142673b1dab563063e56` corrected the scanner's whitespace, string-escape, and primitive-delimiter handling. It now checks maximum JSON depth before descending, decodes object-key tokens before duplicate comparison, and preserves Node's error precedence. The existing post-parse duplicate hook remains as defense in depth.
+- The independent verifier regression file now contains 22 test methods, including both receipt and evaluation-report paths for the new precedence cases.
+
+### Exact-head hosted evidence — `d2f9623bc74f8d9d3daf142673b1dab563063e56`
+
+- Verify [41494597192](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41494597192): **success**. Hosted preflight reported empty warnings/failures; Node 24 test suite, Python inspector, independent candidate-report verifier, game package build, and institutional exercise all exited 0. The independent verifier stage exited 0.
+- Genesis Evidence Invariant [41494597259](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41494597259): **success**.
+- Browser Acceptance [41494597193](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41494597193): **in progress at checkpoint creation**. The `playable-world` job had completed setup/build and remained in the desktop/mobile/shared-world/recovery journey step. Do not count a browser pass until this exact-head run completes.
+- No local Node 24 tests, local portable preflight, physical Android test, or production execution is claimed.
+
+### Founder authorization recheck
+
+- PR #16 remains closed/unmerged; PR #18 is the merged replacement. The final PR #16 patch still does not reproduce the alleged self-signing `demonstrate()` implementation. Do not recreate that superseded defect.
+- Main's `src/authority/decision.js` still contains a caller-supplied `verification.valid` helper path, but its inspected direct caller is a test; the live server uses `src/institution/decisions.mjs`. Main's `game/server.mjs` still has a local key-generation path. Explicit-key startup and sealed/context-bound verifier proposals remain separate, unmerged branches. Canonical live decision-context mapping and Damien-controlled trust-root/key custody remain unresolved.
+- No Founder key was generated, read, enrolled, rotated, exported, or changed. No authorization was signed.
+
+### Next ranked actions
+
+1. Inspect Browser Acceptance `41494597193` on exact head `d2f9623`; preserve its final result and artifact or diagnose the actual failure without transferring older-head results.
+2. If the code remains green, document the Python/Node structural-error contract in the verifier guide and re-run exact-head checks for any resulting commit.
+3. Reconcile the main-based #248 → #259 → #283 checkpoint/preflight stack with the game #284 → #285 → #286 73-path stack. Preserve all target paths and test the combined tree; do not merge or rebase without authorization.
+4. Keep the v5 signer and independent report verifier as separate, unsigned/read-only or explicitly signed operator capabilities. Do not infer a trust root from a self-selected fingerprint.
+5. Revisit the live Decision Gate only with canonical context mapping and Damien-controlled trust-root/custody input.
+6. Retry AI-BI and governance bootstraps only when an authorized Desktop Commander device is online; keep ngl-mesh read-only until its root instructions are available.
+
+**Authority:** no merge, release, deployment, spending, external publication, credential/permission change, branch deletion, Founder key operation, production service call, or Founder decision occurred. No uninterrupted between-run execution is claimed.
