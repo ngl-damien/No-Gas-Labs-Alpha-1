@@ -152,6 +152,9 @@ test('offline evaluator supports single-input and bounded range usage forms', ()
   const incompleteRange = run(evaluateScript, ['unused.json', '--range', '0']);
   assert.equal(incompleteRange.status, 2);
   assert.match(incompleteRange.stderr, /--range <start> <end>/);
+  const incompleteVerification = run(evaluateScript, ['--verify-report', 'unused.json']);
+  assert.equal(incompleteVerification.status, 2);
+  assert.match(incompleteVerification.stderr, /--verify-report <synthesis-receipt\.json> <evaluation-report\.json>/);
 });
 
 test('offline range evaluation checks every inclusive input and is byte-for-byte reproducible', async t => {
@@ -276,6 +279,16 @@ test('offline report verifier rejects altered rows, task context, authority clai
       name: 'altered result digest',
       code: 'EVALUATION_REPORT_DIGEST_MISMATCH',
       mutate(value) { value.resultDigest = '0'.repeat(64); }
+    },
+    {
+      name: 'noncontiguous row',
+      code: 'EVALUATION_REPORT_RANGE_INVALID',
+      mutate(value) { value.evaluations[1].input += 1; }
+    },
+    {
+      name: 'unexpected report field',
+      code: 'EVALUATION_REPORT_INVALID',
+      mutate(value) { value.untrustedFounderApproval = true; }
     }
   ];
 
@@ -305,5 +318,16 @@ test('offline report verifier rejects duplicate JSON keys before replay', async 
   const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /EVALUATION_REPORT_DUPLICATE_JSON_KEY/);
+  assert.equal(result.stdout, '');
+});
+
+
+test('offline report verifier rejects oversized reports before JSON parsing', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const reportPath = join(directory, 'oversized-evaluation-report.json');
+  await writeFile(reportPath, ' '.repeat(2 * 1024 * 1024 + 1), { mode: 0o600 });
+  const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /EVALUATION_REPORT_FILE_TOO_LARGE/);
   assert.equal(result.stdout, '');
 });
