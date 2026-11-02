@@ -328,7 +328,7 @@ test('Founder challenge dispositions bind immutable source events without granti
     'a next-step disposition is not an XP-bearing experiment outcome'
   );
   assert.equal(after.skills.find(skill => skill.id === 'deliberator').count, 1);
-  assert.equal(after.fieldSatchel.filter(item => item.kind === 'challenge-review').length, 1);
+  assert.equal(after.fieldSatchel.filter(item => item.id === 'challenge-review').length, 1);
   assert.deepEqual(
     after.fieldSatchel.find(item => item.kind === 'challenge-review').action,
     { type: 'location', id: 'decision_chamber' }
