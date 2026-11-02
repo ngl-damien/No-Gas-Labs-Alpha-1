@@ -1148,3 +1148,31 @@ test("an untrusted non-Founder actor label is never presented as a Founder-role 
   assert.match(entry.summary, /service attribution, not proof of a distinct human/);
   assert.match(entry.warning, /separate from the canonical Founder Gate/);
 });
+
+
+test("Chronicle keeps the exact Decision Chamber follow-up reference while preserving self-reported status", () => {
+  const world = fixture().world;
+  world.events.push({
+    id: "follow-up-report-event",
+    type: "experiment-reported",
+    reportId: "follow-up-report",
+    moonshotId: "moonshot-follow-up",
+    actor: { id: "witness-1", name: "Witness", role: "witness" },
+    at: "2026-10-26T10:08:00.000Z",
+    procedure: "Repeat the stated comparison with retained controls.",
+    observation: "The second attempt failed to reproduce the first.",
+    reportedOutcome: "failed",
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    followUpReviewId: "challenge-review-42"
+  });
+  world.revision = world.events.length;
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:follow-up-report-event");
+  assert.ok(entry);
+  assert.equal(entry.followUpReviewId, 'challenge-review-42');
+  assert.match(entry.detail, /Follow-up of Decision Chamber review: challenge-review-42/);
+  assert.match(entry.summary, /not independently observed, adjudicated, or accepted as a result/i);
+  assert.match(entry.warning, /No retained artifact version is linked/i);
+  assert.doesNotMatch(entry.summary, /verified|approved|authorized/i);
+});

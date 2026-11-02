@@ -1645,3 +1645,183 @@ test('Decision Chamber queue links each immutable Founder next step to the exact
   assert.equal(ambiguous.unlinkedReviewCount, 2);
 });
 
+
+
+function researchFollowUpQuestWorld({
+  disposition = 'request-evidence',
+  followed = false,
+  followUpEvidence = true,
+  followUpReviewId = 'review-1',
+  duplicateFollowUp = false,
+  backdatedFollowUp = false,
+  mismatchedMoonshot = false,
+  secondReview = false
+} = {}) {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const artifact = {
+    id: 'follow-up-evidence', kind: 'observatory', title: 'Retained control settings',
+    version: 1, publishedAt, receipt: { digest: 'b'.repeat(64), size: 24 }, versions: []
+  };
+  const publication = {
+    id: 'follow-up-publication', type: 'publish', creationId: artifact.id,
+    version: 1, at: publishedAt, actor: founder
+  };
+  const proposal = {
+    id: 'follow-up-proposal', type: 'moonshot-proposed', moonshotId: 'moon-1',
+    actor: founder, at: '2026-10-28T17:01:00.000Z', title: 'Repeat the control comparison',
+    hypothesis: 'The observation repeats under the stated controls.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'Retained procedure and exact observation.'
+  };
+  const report = {
+    id: 'follow-up-source-report-event', type: 'experiment-reported', reportId: 'report-1',
+    moonshotId: 'moon-1', actor: witness, at: '2026-10-28T17:02:00.000Z',
+    procedure: 'Repeat the stated comparison.', observation: 'The controls were not retained.',
+    reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+  };
+  const challenge = {
+    id: 'follow-up-challenge-event', type: 'experiment-challenged', challengeId: 'challenge-1',
+    reportId: 'report-1', moonshotId: 'moon-1', actor: founder,
+    at: '2026-10-28T17:03:00.000Z', challengeType: 'missing-evidence',
+    challengeText: 'The report omits the control settings needed for reproduction.',
+    evidenceCreationId: null, evidenceVersion: null
+  };
+  const review = {
+    id: 'follow-up-review-event', type: 'experiment-challenge-reviewed', reviewId: 'review-1',
+    reportId: 'report-1', challengeId: 'challenge-1', moonshotId: 'moon-1',
+    actor: founder, at: '2026-10-28T17:04:00.000Z', disposition,
+    rationale: 'Repeat the comparison and preserve the exact control settings.',
+    sourceEventIds: [report.id, challenge.id]
+  };
+  const events = [publication, proposal, report, challenge, review];
+  if (secondReview) {
+    const secondReport = {
+      id: 'follow-up-source-report-event-2', type: 'experiment-reported', reportId: 'report-2',
+      moonshotId: 'moon-1', actor: witness, at: '2026-10-28T17:04:30.000Z',
+      procedure: 'Repeat the second bounded comparison.', observation: 'A second attempt remains inconclusive.',
+      reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+    };
+    const secondChallenge = {
+      id: 'follow-up-challenge-event-2', type: 'experiment-challenged', challengeId: 'challenge-2',
+      reportId: 'report-2', moonshotId: 'moon-1', actor: founder,
+      at: '2026-10-28T17:04:45.000Z', challengeType: 'methodology',
+      challengeText: 'The second report still needs a reproducible control.',
+      evidenceCreationId: null, evidenceVersion: null
+    };
+    const secondDisposition = {
+      id: 'follow-up-review-event-2', type: 'experiment-challenge-reviewed', reviewId: 'review-2',
+      reportId: 'report-2', challengeId: 'challenge-2', moonshotId: 'moon-1',
+      actor: founder, at: '2026-10-28T17:05:00.000Z', disposition: 'investigate',
+      rationale: 'Run a separate repeat with the control retained.',
+      sourceEventIds: [secondReport.id, secondChallenge.id]
+    };
+    events.push(secondReport, secondChallenge, secondDisposition);
+  }
+  if (mismatchedMoonshot) {
+    events.push({
+      id: 'follow-up-second-proposal', type: 'moonshot-proposed', moonshotId: 'moon-2',
+      actor: founder, at: '2026-10-28T17:05:30.000Z', title: 'A different bounded question',
+      hypothesis: 'A separate effect appears under its own conditions.',
+      falsifier: 'The separate effect is absent.',
+      evidenceNeeded: 'A separate retained observation.'
+    });
+  }
+  if (followed) {
+    const followUp = {
+      id: 'follow-up-report-event', type: 'experiment-reported', reportId: 'follow-up-report',
+      moonshotId: mismatchedMoonshot ? 'moon-2' : 'moon-1', actor: witness,
+      at: backdatedFollowUp ? '2026-10-28T17:03:30.000Z' : '2026-10-28T17:06:00.000Z',
+      procedure: 'Repeat the comparison with the retained controls.',
+      observation: 'The follow-up remains inconclusive; the failure is preserved.',
+      reportedOutcome: 'inconclusive',
+      evidenceCreationId: followUpEvidence ? artifact.id : null,
+      evidenceVersion: followUpEvidence ? 1 : null,
+      followUpReviewId
+    };
+    events.push(followUp);
+    if (duplicateFollowUp) events.push({
+      ...followUp,
+      id: 'follow-up-report-event-duplicate',
+      reportId: 'follow-up-report-duplicate',
+      at: '2026-10-28T17:07:00.000Z'
+    });
+  }
+  return {
+    id: 'research-follow-up-world',
+    revision: events.length,
+    creations: [artifact],
+    events,
+    discoveries: [],
+    contributions: [],
+    reports: []
+  };
+}
+
+test('Founder and Witness share one repeatable follow-up objective without sharing actor XP', () => {
+  const pending = researchFollowUpQuestWorld();
+  const founderObjective = getQuestTrail(pending, founder).find(item => item.id === 'research-follow-up');
+  const witnessObjective = getQuestTrail(pending, witness).find(item => item.id === 'research-follow-up');
+  assert.ok(founderObjective);
+  assert.ok(witnessObjective);
+  assert.equal(founderObjective.target, 1);
+  assert.equal(founderObjective.progress, 0);
+  assert.equal(founderObjective.complete, false);
+  assert.deepEqual(founderObjective.action, {
+    type: 'location',
+    id: 'moonshot_field',
+    reviewId: 'review-1',
+    moonshotId: 'moon-1'
+  });
+  assert.deepEqual(witnessObjective.action, founderObjective.action);
+  assert.equal(witnessObjective.progress, founderObjective.progress);
+  assert.match(witnessObjective.interpretation, /self-reported activity/i);
+
+  const completed = researchFollowUpQuestWorld({ followed: true });
+  for (const actor of [founder, witness]) {
+    const objective = getQuestTrail(completed, actor).find(item => item.id === 'research-follow-up');
+    assert.equal(objective.target, 1);
+    assert.equal(objective.progress, 1);
+    assert.equal(objective.complete, true);
+    assert.equal(objective.action, null);
+    assert.equal(objective.evidence[0].followUpReviewId, 'review-1');
+  }
+});
+
+test('repeatable follow-up target expands for each actionable disposition and preserves the next pending review', () => {
+  const world = researchFollowUpQuestWorld({ secondReview: true, followed: true });
+  const objective = getQuestTrail(world, witness).find(item => item.id === 'research-follow-up');
+  assert.equal(objective.target, 2);
+  assert.equal(objective.progress, 1);
+  assert.equal(objective.complete, false);
+  assert.equal(objective.action.reviewId, 'review-2');
+  assert.equal(objective.action.moonshotId, 'moon-1');
+});
+
+test('follow-up projection fails closed for missing, backdated, mismatched, duplicate and evidence-deficient links', () => {
+  const cases = [
+    ['unknown review', researchFollowUpQuestWorld({ followed: true, followUpReviewId: 'missing-review' })],
+    ['backdated report', researchFollowUpQuestWorld({ followed: true, backdatedFollowUp: true })],
+    ['different Moonshot', researchFollowUpQuestWorld({ followed: true, mismatchedMoonshot: true })],
+    ['duplicate reference', researchFollowUpQuestWorld({ followed: true, duplicateFollowUp: true })],
+    ['missing requested artifact', researchFollowUpQuestWorld({ followed: true, followUpEvidence: false })]
+  ];
+  for (const [label, world] of cases) {
+    const objective = getQuestTrail(world, witness).find(item => item.id === 'research-follow-up');
+    assert.ok(objective, label);
+    assert.equal(objective.progress, 0, label);
+    assert.equal(objective.complete, false, label);
+    if (label === 'unknown review') {
+      assert.equal(objective.action.reviewId, 'review-1', label);
+      assert.equal(objective.blockedReason, null, label);
+    } else {
+      assert.equal(objective.action, null, label);
+      assert.match(objective.blockedReason, /ambiguous|invalid/i, label);
+    }
+  }
+});
+
+test('non-actionable Founder dispositions do not create a follow-up quest', () => {
+  const world = researchFollowUpQuestWorld({ disposition: 'defer' });
+  assert.equal(getQuestTrail(world, founder).some(item => item.id === 'research-follow-up'), false);
+  assert.equal(getQuestTrail(world, witness).some(item => item.id === 'research-follow-up'), false);
+});

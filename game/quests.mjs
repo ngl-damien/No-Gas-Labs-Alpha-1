@@ -437,6 +437,16 @@ function researchActivityAction(event, activityId) {
   };
 }
 
+function researchFollowUpAction(review) {
+  if (!safeResearchId(review?.reviewId) || !safeResearchId(review?.moonshotId)) return null;
+  return {
+    type: 'location',
+    id: 'moonshot_field',
+    reviewId: review.reviewId,
+    moonshotId: review.moonshotId
+  };
+}
+
 function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
@@ -457,6 +467,7 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(typeof event.followUpReviewId === 'string' ? { followUpReviewId: event.followUpReviewId } : {}),
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
         validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
@@ -1414,12 +1425,61 @@ export function getQuestTrail(world, viewer, options = null) {
     record._projection?.proposalStatus === 'linked' &&
     record._projection?.targetReportStatus === 'linked'
   );
-  const validChallengeReviewRecords = researchRecords.filter(record =>
+  const allValidChallengeReviewRecords = researchRecords.filter(record =>
     record.type === 'experiment-challenge-reviewed' &&
     record._projection?.proposalStatus === 'linked' &&
-    record._projection?.targetChallengeStatus === 'linked' &&
+    record._projection?.targetChallengeStatus === 'linked'
+  );
+  const validChallengeReviewRecords = allValidChallengeReviewRecords.filter(record =>
     record.actor?.id === actorId && record.actor?.role === actorRole
   );
+  const actionableChallengeReviews = allValidChallengeReviewRecords.filter(record =>
+    ['investigate', 'request-evidence'].includes(record.disposition)
+  );
+  const followUpReferenceCounts = new Map();
+  for (const event of events) {
+    if (event?.type === 'experiment-reported' && typeof event.followUpReviewId === 'string') {
+      followUpReferenceCounts.set(event.followUpReviewId, (followUpReferenceCounts.get(event.followUpReviewId) || 0) + 1);
+    }
+  }
+  const originalEventById = new Map(events.filter(event => typeof event?.id === 'string').map(event => [event.id, event]));
+  const researchRecordByEventId = new Map(researchRecords.filter(record => typeof record?.id === 'string').map(record => [record.id, record]));
+  const actionableReviewById = new Map(actionableChallengeReviews.map(review => [review.reviewId, review]));
+  const validFollowUpReports = allExperimentReports.filter(report => {
+    const review = actionableReviewById.get(report.followUpReviewId);
+    const reviewEvent = review ? originalEventById.get(review.id) : null;
+    const reviewIndex = reviewEvent ? eventPositionByReference.get(reviewEvent) : -1;
+    const reportIndex = eventPositionByReference.get(report);
+    const researchRecord = researchRecordByEventId.get(report.id);
+    if (!review || followUpReferenceCounts.get(review.reviewId) !== 1 ||
+        review.moonshotId !== report.moonshotId || !Number.isInteger(reviewIndex) ||
+        !Number.isInteger(reportIndex) || reviewIndex >= reportIndex ||
+        !isStrictTimestamp(review.at) || !isStrictTimestamp(report.at) ||
+        Date.parse(review.at) >= Date.parse(report.at) ||
+        researchRecord?._projection?.proposalStatus !== 'linked') return false;
+    const hasEvidence = typeof report.evidenceCreationId === 'string' && report.evidenceCreationId.length > 0 &&
+      Number.isSafeInteger(report.evidenceVersion) && report.evidenceVersion > 0;
+    if (hasEvidence && researchRecord?._projection?.evidenceStatus !== 'linked') return false;
+    return review.disposition !== 'request-evidence' ||
+      (hasEvidence && researchRecord?._projection?.evidenceStatus === 'linked');
+  });
+  const completedFollowUpReviewIds = new Set(validFollowUpReports.map(report => report.followUpReviewId));
+  const pendingFollowUpReview = actionableChallengeReviews
+    .filter(review => !completedFollowUpReviewIds.has(review.reviewId))
+    .sort((left, right) => {
+      const leftEvent = originalEventById.get(left.id), rightEvent = originalEventById.get(right.id);
+      return (eventPositionByReference.get(leftEvent) ?? Number.MAX_SAFE_INTEGER) -
+        (eventPositionByReference.get(rightEvent) ?? Number.MAX_SAFE_INTEGER);
+    })[0] || null;
+  const pendingFollowUpReferenceCount = pendingFollowUpReview
+    ? (followUpReferenceCounts.get(pendingFollowUpReview.reviewId) || 0) : 0;
+  const followUpBlockedReason = !pendingFollowUpReview ? null :
+    pendingFollowUpReferenceCount > 0
+      ? 'A retained follow-up reference is ambiguous or invalid; inspect the Chronicle before repeating it.' :
+      pendingFollowUpReview.disposition === 'request-evidence' && availablePlaceEvents.length === 0
+        ? 'The Founder requested a retained artifact; publish or preserve an exact version before reporting the follow-up.' : null;
+  const followUpAction = pendingFollowUpReview && !followUpBlockedReason
+    ? researchFollowUpAction(pendingFollowUpReview) : null;
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
@@ -1579,6 +1639,12 @@ export function getQuestTrail(world, viewer, options = null) {
         null,
         'One immutable game-level next-step disposition per retained challenge. This is not a truth verdict, proof of independent review, institutional approval, or permission to erase dissent.'
       )] : []),
+      ...(actionableChallengeReviews.length ? [trailMilestone(
+        'research-follow-up', 'Follow up on each actionable Decision Chamber disposition', actionableChallengeReviews.length,
+        validFollowUpReports.map(event => event.id), validFollowUpReports,
+        followUpAction, followUpBlockedReason,
+        'One later report per actionable Founder disposition. Progress is shared with Founder and Witness; the report remains self-reported activity, not independent verification, approval, truth, authority or world XP.'
+      )] : []),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
         !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
@@ -1688,6 +1754,12 @@ export function getQuestTrail(world, viewer, options = null) {
       !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can enter a Contradiction encounter.' : null,
       'One encounter per actor and report. A challenge preserves dissent; it does not adjudicate the report.'
     ),
+    ...(actionableChallengeReviews.length ? [trailMilestone(
+      'research-follow-up', 'Follow up on each actionable Decision Chamber disposition', actionableChallengeReviews.length,
+      validFollowUpReports.map(event => event.id), validFollowUpReports,
+      followUpAction, followUpBlockedReason,
+      'One later report per actionable Founder disposition. Progress is shared with Founder and Witness; the report remains self-reported activity, not independent verification, approval, truth, authority or world XP.'
+    )] : []),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
       !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,

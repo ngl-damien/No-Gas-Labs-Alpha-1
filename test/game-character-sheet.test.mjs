@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from '../game/character-sheet.mjs';
+import {createWorld,applyAction} from '../game/model.mjs';
 import {getActiveQuest,getQuestTrail} from '../game/quests.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCollaboratorResponseWorldObjects} from '../game/collaborator-world-objects.mjs';
@@ -1480,4 +1481,80 @@ test('Commons messages become retained satchel objects and Speaker activity with
   assert.ok(witnessItem);
   assert.equal(witnessItem.summary, hiddenText,
     'the Witness satchel keeps the retained object but respects the redacted public text');
+});
+
+
+test('shared research follow-up progression awards XP and Experimenter activity only to its reporting actor', async () => {
+  let world = createWorld({ now: t1 });
+  const draft = await applyAction(world, {
+    type: 'draft', kind: 'observatory', title: 'Control settings', intent: 'Retain the exact comparison settings.'
+  }, founder, { now: t1 });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: t2 });
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Repeat the control comparison',
+    hypothesis: 'The observation repeats under the stated controls.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'A retained procedure and exact observation.'
+  }, witness, { now: t3 });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Run the stated comparison.',
+    observation: 'The controls were not retained.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: t4 });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The control settings are missing from the first attempt.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founder, { now: t5 });
+  const review = await applyAction(challenge.world, {
+    type: 'review-experiment-challenge',
+    reportId: report.result.reportId,
+    challengeId: challenge.result.challengeId,
+    disposition: 'request-evidence',
+    rationale: 'Repeat the comparison with the exact control settings retained.'
+  }, founder, { now: t6 });
+  const beforeWitness = projectCharacter(review.world, witness);
+  const beforeFounder = projectCharacter(review.world, founder);
+  const worldXp = review.world.xp;
+  const followed = await applyAction(review.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat with the exact retained control settings.',
+    observation: 'The follow-up did not reproduce the first result.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1,
+    followUpReviewId: review.result.reviewId
+  }, witness, { now: t7 });
+  const event = followed.world.events.at(-1);
+  const afterWitness = projectCharacter(followed.world, witness);
+  const afterFounder = projectCharacter(followed.world, founder);
+  assert.equal(followed.world.xp, worldXp);
+  assert.equal(afterWitness.questXp - beforeWitness.questXp, 25);
+  assert.equal(afterFounder.questXp - beforeFounder.questXp, 0);
+  assert.equal(afterWitness.worldXp, beforeWitness.worldXp);
+  assert.equal(afterFounder.worldXp, beforeFounder.worldXp);
+  assert.equal(afterWitness.skills.find(skill => skill.id === 'experimenter').count,
+    beforeWitness.skills.find(skill => skill.id === 'experimenter').count + 1);
+  assert.equal(afterFounder.skills.find(skill => skill.id === 'experimenter').count,
+    beforeFounder.skills.find(skill => skill.id === 'experimenter').count);
+  const witnessObjective = getQuestTrail(followed.world, witness).find(item => item.id === 'research-follow-up');
+  const founderObjective = getQuestTrail(followed.world, founder).find(item => item.id === 'research-follow-up');
+  assert.equal(witnessObjective.complete, true);
+  assert.equal(founderObjective.complete, true);
+  assert.equal(witnessObjective.progress, founderObjective.progress);
+  const item = afterWitness.fieldSatchel.find(entry => entry.eventId === event.id);
+  assert.equal(item.followUpReviewId, review.result.reviewId);
+  assert.match(item.summary, new RegExp(review.result.reviewId));
+  assert.equal(afterFounder.fieldSatchel.some(entry => entry.eventId === event.id), false);
 });

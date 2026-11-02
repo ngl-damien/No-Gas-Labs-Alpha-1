@@ -1020,6 +1020,187 @@ def research_challenge_review(browser,url,out):
         witness_context.close()
         founder_context.close()
 
+
+def research_follow_up_loop(browser,url,out):
+    errors=[]
+    witness_context=browser.new_context(
+        viewport={'width':390,'height':844},is_mobile=True,has_touch=True,
+        reduced_motion='reduce',accept_downloads=True
+    )
+    founder_context=browser.new_context(
+        viewport={'width':390,'height':844},is_mobile=True,has_touch=True,
+        reduced_motion='reduce',accept_downloads=True
+    )
+    try:
+        witness_page=witness_context.new_page()
+        founder_page=founder_context.new_page()
+        for page in [witness_page,founder_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url)
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        witness_state=witness_context.request.get(url+'api/state').json()
+        assert witness_state['viewer']['role']=='witness'
+        existing_actionable_reviews=[
+            event for event in witness_state['world']['events']
+            if event.get('type')=='experiment-challenge-reviewed'
+            and event.get('disposition') in ('investigate','request-evidence')
+        ]
+        assert not existing_actionable_reviews, 'The follow-up journey requires an isolated world with no pre-existing actionable disposition'
+
+        founder_page.locator('#login-button').click()
+        founder_page.locator('#founder-key').fill(KEY)
+        founder_page.locator('#verify-founder').click()
+        founder_page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        founder_state=founder_context.request.get(url+'api/state').json()
+        assert founder_state['viewer']['role']=='founder'
+
+        decisions_before=founder_context.request.get(url+'api/decisions').json()
+        draft=founder_context.request.post(url+'api/action',data={
+            'type':'draft','kind':'observatory','title':'Retained follow-up controls',
+            'intent':'Preserve the exact control settings needed for a repeat.'
+        })
+        assert draft.status==200,draft.text()
+        draft_id=draft.json()['result']['draftId']
+        publication=founder_context.request.post(url+'api/action',data={
+            'type':'publish','draftId':draft_id,'expectedVersion':0
+        })
+        assert publication.status==200,publication.text()
+        creation_id=publication.json()['result']['creationId']
+
+        proposal_response=witness_context.request.post(url+'api/action',data={
+            'type':'propose-moonshot',
+            'title':'Can the control comparison be reproduced?',
+            'hypothesis':'The observation repeats under the stated controls.',
+            'falsifier':'A controlled repeat fails to reproduce it.',
+            'evidenceNeeded':'Retained procedure and exact observation.'
+        })
+        assert proposal_response.status==200,proposal_response.text()
+        proposal=proposal_response.json()['result']
+        report_response=witness_context.request.post(url+'api/action',data={
+            'type':'report-experiment','moonshotId':proposal['moonshotId'],
+            'procedure':'Repeat the stated comparison.',
+            'observation':'The control settings were not retained.',
+            'reportedOutcome':'inconclusive',
+            'evidenceCreationId':None,'evidenceVersion':None
+        })
+        assert report_response.status==200,report_response.text()
+        report=report_response.json()['result']
+        challenge_response=founder_context.request.post(url+'api/action',data={
+            'type':'challenge-experiment-report','reportId':report['reportId'],
+            'challengeType':'missing-evidence',
+            'challengeText':'The report omits the control settings needed for reproduction.',
+            'evidenceCreationId':None,'evidenceVersion':None
+        })
+        assert challenge_response.status==200,challenge_response.text()
+        challenge=challenge_response.json()['result']
+
+        review_response=founder_context.request.post(url+'api/action',data={
+            'type':'review-experiment-challenge',
+            'reportId':report['reportId'],'challengeId':challenge['challengeId'],
+            'disposition':'request-evidence',
+            'rationale':'Repeat the comparison and preserve the exact control settings.'
+        })
+        assert review_response.status==200,review_response.text()
+        review=review_response.json()['result']
+        review_state=founder_context.request.get(url+'api/state').json()
+        before_world=review_state['world']
+        before_witness_xp=character_xp_components(witness_page)
+        before_founder_xp=character_xp_components(founder_page)
+        before_world_xp=before_world['xp']
+        assert type(before_world_xp) is int and before_world_xp>=0
+        assert founder_context.request.get(url+'api/decisions').json()['revision']==decisions_before['revision']
+
+        for page in [witness_page,founder_page]:
+            objective=page.locator('#quest-trail [data-objective-id="research-follow-up"]')
+            expect(objective).to_be_visible()
+            expect(objective).to_contain_text('0/1')
+            expect(objective).to_contain_text('OPEN')
+
+        close_sheet(witness_page)
+        objective=witness_page.locator('#quest-trail [data-objective-id="research-follow-up"]')
+        objective.get_by_role('button',name='Go do this →',exact=True).click()
+        context_card=witness_page.locator(f'#sheet-content [data-follow-up-review-context="{review["reviewId"]}"]')
+        expect(context_card).to_be_visible()
+        expect(context_card).to_contain_text('Request more evidence')
+        expect(context_card).to_contain_text(report['reportId'])
+        expect(context_card).to_contain_text(challenge['challengeId'])
+        expect(context_card).to_contain_text('Repeat the comparison and preserve the exact control settings.')
+        follow_up_form=witness_page.locator(f'#sheet-content form[data-follow-up-review-id="{review["reviewId"]}"]')
+        expect(follow_up_form).to_be_visible()
+        expect(follow_up_form).to_have_attribute('data-follow-up-disposition','request-evidence')
+        expect(witness_page.locator('#sheet-kicker')).to_contain_text('MOONSHOT FIELD')
+        submit=witness_page.locator('#report-experiment')
+        expect(submit).to_be_disabled()
+        witness_page.locator('#experiment-procedure').fill('Repeat with the exact retained control settings.')
+        witness_page.locator('#experiment-observation').fill('The follow-up failed to reproduce the first observation; the failure is retained.')
+        witness_page.locator('#experiment-outcome').select_option('failed')
+        witness_page.locator('#experiment-evidence-source').select_option(value=creation_id)
+        expect(witness_page.locator('#experiment-evidence-version')).to_have_value('1')
+        expect(submit).to_be_enabled()
+        submit.click()
+        follow_up_card=witness_page.locator('#sheet-content [data-research-activity-id]').filter(has_text=f'Follow-up of Decision Chamber review {review["reviewId"]}')
+        expect(follow_up_card).to_have_count(1,timeout=15000)
+
+        witness_state_after=witness_context.request.get(url+'api/state').json()
+        founder_state_after=founder_context.request.get(url+'api/state').json()
+        follow_up_events=[event for event in witness_state_after['world']['events'] if event.get('followUpReviewId')==review['reviewId']]
+        assert len(follow_up_events)==1, f"Expected one follow-up event for {review['reviewId']}; found {len(follow_up_events)}"
+        follow_up=follow_up_events[0]
+        assert follow_up['actor']['id']==witness_state['viewer']['id']
+        assert follow_up['moonshotId']==proposal['moonshotId']
+        assert follow_up['evidenceCreationId']==creation_id and follow_up['evidenceVersion']==1
+        assert 'outcome' not in follow_up and 'status' not in follow_up and 'verdict' not in follow_up
+        assert 'approval' not in follow_up and 'authority' not in follow_up
+        assert witness_state_after['world']['xp']==before_world_xp
+        decisions_after=founder_context.request.get(url+'api/decisions').json()
+        assert decisions_after['revision']==decisions_before['revision']
+
+        for page in [witness_page,founder_page]:
+            objective=page.locator('#quest-trail [data-objective-id="research-follow-up"]')
+            expect(objective).to_contain_text('RECORDED')
+            expect(objective).to_contain_text('1/1')
+            expect(objective.get_by_role('button',name='Go do this →',exact=True)).to_have_count(0)
+
+        follow_up_card=witness_page.locator(f'[data-research-activity-id="{follow_up["reportId"]}"]')
+        expect(follow_up_card).to_be_visible()
+        expect(follow_up_card).to_contain_text('Follow-up of Decision Chamber review '+review['reviewId'])
+        review_card=witness_page.locator(f'[data-research-review-id="{review["reviewId"]}"]')
+        expect(review_card).to_be_visible()
+        expect(review_card).to_contain_text('Follow-up report retained')
+        assert any(event.get('challengeId')==challenge['challengeId'] for event in founder_state_after['world']['events'])
+        assert any(event.get('reviewId')==review['reviewId'] for event in founder_state_after['world']['events'])
+
+        after_witness_xp=character_xp_components(witness_page)
+        after_founder_xp=character_xp_components(founder_page)
+        assert after_witness_xp[0]-before_witness_xp[0]==25
+        assert after_witness_xp[2]-before_witness_xp[2]==25
+        assert after_founder_xp==before_founder_xp
+        witness_page.locator('#character-button').click()
+        expect(witness_page.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(witness_page.locator('#sheet')).to_contain_text('Follow-up of Decision Chamber review '+review['reviewId'])
+        assert not errors,errors
+        witness_page.screenshot(path=str(out/'research-follow-up-loop.png'))
+        return {
+            'journey':'research-follow-up-loop',
+            'passed':True,
+            'isolatedServer':True,
+            'sessions':2,
+            'founderDisposition':'request-evidence',
+            'followUpReviewId':review['reviewId'],
+            'exactRetainedArtifactVersion':f'{creation_id}:1',
+            'sharedQuestProgress':'1/1',
+            'reportingActorQuestXpDelta':after_witness_xp[2]-before_witness_xp[2],
+            'otherActorXpDelta':after_founder_xp[0]-before_founder_xp[0],
+            'worldXpNeutral':witness_state_after['world']['xp']==before_world['xp'],
+            'canonicalDecisionRevisionUnchanged':decisions_after['revision']==decisions_before['revision'],
+            'dissentPreserved':True,
+            'errors':errors
+        }
+    finally:
+        witness_context.close()
+        founder_context.close()
+
 def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
@@ -2210,7 +2391,13 @@ def main():
                     record(player_guild_membership(browser,url,out))
                     record(commons_message_quest(browser,url,out))
                     record(research_challenge_review(browser,url,out))
-                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
+                    with tempfile.TemporaryDirectory(prefix='ngl-browser-follow-up-') as follow_up_data:
+                        follow_up_process,follow_up_url=launch_server(follow_up_data)
+                        try:
+                            record(research_follow_up_loop(browser,follow_up_url,out))
+                        finally:
+                            stop_server(follow_up_process)
+                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,out))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
                         page=context.new_page()

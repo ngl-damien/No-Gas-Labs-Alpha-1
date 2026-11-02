@@ -370,6 +370,9 @@ function followQuestAction(action,objectiveId=null){
   }
   if(!action||typeof action.type!=='string')return;
   if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}
+  if(action.type==='location'&&action.id==='moonshot_field'&&typeof action.reviewId==='string'&&typeof action.moonshotId==='string'){
+    openResearchFollowUp(action.reviewId,action.moonshotId);return;
+  }
   if(action.type==='research-object'&&typeof action.id==='string'&&typeof action.moonshotId==='string'){
     const object=(Array.isArray(view.researchObjects)?view.researchObjects:[]).find(item=>item.id===action.id&&item.moonshotId===action.moonshotId);
     followResearchTarget(object,()=>openMoonshotField(action.moonshotId),'research-object');return;
@@ -385,7 +388,7 @@ function followQuestAction(action,objectiveId=null){
   if(action.type==='location'&&(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','commons'].includes(action.id)||GUILD_NPCS.some(npc=>npc.id===action.id))){closeSheet();view.goTo(action.id);return}
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
-function renderQuestTrail(milestones,list=$('quest-trail'),objectiveAttribute='data-objective-id',selectedObjectiveId=null){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const selected=!item.complete&&item.id===selectedObjectiveId;const rowAttributes={class:'quest-step '+(item.complete?'is-recorded':'is-open')+(selected?' is-selected':''),[objectiveAttribute]:item.id};if(selected){rowAttributes['aria-current']='step';rowAttributes['data-quest-selection']='selected'}const row=node('li',rowAttributes);row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(selected)row.append(node('small',{class:'quest-selection',text:'ROUTE SELECTED · NAVIGATION ONLY'}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action,item.id),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.validationReason?'reason '+evidence.validationReason:null,evidence.validationMismatch?'recorded '+(evidence.recordedValidationStatus||'unknown')+' · rechecked '+(evidence.recomputedValidationStatus||'unknown'):null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
+function renderQuestTrail(milestones,list=$('quest-trail'),objectiveAttribute='data-objective-id',selectedObjectiveId=null){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const selected=!item.complete&&item.id===selectedObjectiveId;const rowAttributes={class:'quest-step '+(item.complete?'is-recorded':'is-open')+(selected?' is-selected':''),[objectiveAttribute]:item.id};if(selected){rowAttributes['aria-current']='step';rowAttributes['data-quest-selection']='selected'}const row=node('li',rowAttributes);row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(selected)row.append(node('small',{class:'quest-selection',text:'ROUTE SELECTED · NAVIGATION ONLY'}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action,item.id),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.followUpReviewId?'Decision Chamber review '+evidence.followUpReviewId:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.validationReason?'reason '+evidence.validationReason:null,evidence.validationMismatch?'recorded '+(evidence.recordedValidationStatus||'unknown')+' · rechecked '+(evidence.recomputedValidationStatus||'unknown'):null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
 const proposalObject=evidence.type==='moonshot-proposed'?view.researchObjects.find(object=>object.eventId===evidence.id):null;
 if(proposalObject){
  entry.append(button('Inspect moonshot proposal →',()=>followResearchTarget(proposalObject,()=>openMoonshotField(proposalObject.moonshotId),'research-object'),{class:'text-button quest-evidence-open quest-evidence-world-object'}));
@@ -1656,10 +1659,66 @@ function openStudyReview(note){
     }finally{submit.disabled=false;}
   });
 }
-function openExperimentReport(proposal){
+function openResearchFollowUp(reviewId,moonshotId){
+  const reviews=projectResearchRecords(world.events,world.creations).filter(record=>
+    record.type==='experiment-challenge-reviewed'&&record.reviewId===reviewId&&
+    record.moonshotId===moonshotId&&record._projection?.proposalStatus==='linked'&&
+    record._projection?.targetChallengeStatus==='linked'&&
+    ['investigate','request-evidence'].includes(record.disposition)
+  );
+  const proposals=(Array.isArray(world.events)?world.events:[]).filter(event=>
+    event?.type==='moonshot-proposed'&&event.moonshotId===moonshotId
+  );
+  if(reviews.length!==1||proposals.length!==1){
+    toast('The exact actionable Founder disposition is no longer uniquely available. Inspect the retained Chronicle before retrying.');
+    return;
+  }
+  const existing=(Array.isArray(world.events)?world.events:[]).filter(event=>
+    event?.type==='experiment-reported'&&event.followUpReviewId===reviewId
+  );
+  if(existing.length){
+    toast('This disposition already has a retained follow-up reference; no second report was created.');
+    openMoonshotField(moonshotId,existing.length===1?existing[0].reportId:null);
+    return;
+  }
+  closeSheet();
+  view.goTo('moonshot_field');
+  openExperimentReport(proposals[0],reviews[0]);
+}
+function openExperimentReport(proposal,followUpReview=null){
+  let reviewRecord=null;
+  if(followUpReview){
+    const matches=projectResearchRecords(world.events,world.creations).filter(record=>
+      record.type==='experiment-challenge-reviewed'&&record.reviewId===followUpReview.reviewId&&
+      record.moonshotId===proposal?.moonshotId&&record._projection?.proposalStatus==='linked'&&
+      record._projection?.targetChallengeStatus==='linked'&&
+      ['investigate','request-evidence'].includes(record.disposition)
+    );
+    if(matches.length!==1){
+      toast('The exact actionable Founder disposition is unavailable; no report was opened.');
+      return;
+    }
+    reviewRecord=matches[0];
+  }
+  const requiresEvidence=reviewRecord?.disposition==='request-evidence';
+  const sourceChallenge=reviewRecord?(Array.isArray(world.events)?world.events:[]).find(event=>event?.type==='experiment-challenged'&&event.challengeId===reviewRecord.challengeId):null;
+  const sourceReport=reviewRecord?(Array.isArray(world.events)?world.events:[]).find(event=>event?.type==='experiment-reported'&&event.reportId===reviewRecord.reportId):null;
   const content=showSheet('Record an attempt.','MOONSHOT FIELD · EXPERIMENT REPORT');
   content.append(paragraph('Retain what was tried and what was observed. The outcome is your report, not an adjudication. Failed attempts and contradictions stay visible. A linked artifact identifies retained bytes only; this form does not verify execution, truth, or success.'));
-  const form=node('form',{class:'field-card'},[]);
+  if(reviewRecord)content.append(node('article',{class:'field-card','data-follow-up-review-context':reviewRecord.reviewId},[
+    node('h3',{text:'Follow-up · '+(requiresEvidence?'Request more evidence':'Investigate next')}),
+    node('span',{class:'pill',text:'GAME-LEVEL NEXT STEP · NOT A VERDICT'}),
+    paragraph('Decision Chamber review '+reviewRecord.reviewId+' · report '+reviewRecord.reportId+' · challenge '+reviewRecord.challengeId),
+    paragraph('Founder rationale: '+reviewRecord.rationale),
+    paragraph(sourceChallenge?.actor?.id===reviewRecord.actor?.id
+      ? 'Reviewer and challenger are the same account; this is not independent review.'
+      : 'Reviewer account differs from challenger; distinct human identity is not established.'),
+    paragraph(sourceReport?.actor?.id===reviewRecord.actor?.id
+      ? 'Reviewer and reporter are the same account; this is not independent review.'
+      : 'Reviewer account differs from reporter; distinct human identity is not established.'),
+    paragraph(requiresEvidence?'This disposition requires one exact retained, published artifact version.':'This disposition requests another attempt; an artifact link is optional.')
+  ]));
+  const form=node('form',{class:'field-card',...(reviewRecord?{'data-follow-up-review-id':reviewRecord.reviewId,'data-follow-up-disposition':reviewRecord.disposition}:{})},[]);
   const procedure=node('textarea',{id:'experiment-procedure',maxlength:'1000',rows:'3',placeholder:'What procedure or method did you actually try?',required:'required'});
   const observation=node('textarea',{id:'experiment-observation',maxlength:'1000',rows:'3',placeholder:'What did you observe, including failures or contradictions?',required:'required'});
   const outcome=node('select',{id:'experiment-outcome',required:'required'},[
@@ -1690,35 +1749,44 @@ function openExperimentReport(proposal){
     evidenceVersion.value=String(creation.version);
     evidenceVersion.disabled=false;
   };
-  evidenceSource.onchange=syncEvidenceVersions;
-  syncEvidenceVersions();
+  evidenceSource.required=requiresEvidence;
+  evidenceVersion.required=requiresEvidence;
   const submit=node('button',{id:'report-experiment',class:'primary-button',type:'submit',text:'Retain experiment report'});
+  const syncSubmit=()=>{submit.disabled=requiresEvidence&&(!evidenceSource.value||!evidenceVersion.value||evidenceVersion.disabled);};
+  evidenceSource.onchange=()=>{syncEvidenceVersions();syncSubmit();};
+  syncEvidenceVersions();
+  syncSubmit();
   form.append(
     field('Procedure','experiment-procedure',procedure),
     field('Observed result or failure','experiment-observation',observation),
     field('Reported outcome · not adjudicated','experiment-outcome',outcome),
-    field('Optional retained evidence artifact','experiment-evidence-source',evidenceSource),
-    field('Evidence version','experiment-evidence-version',evidenceVersion),
-    paragraph('This creates an attributed report event only. It can earn 25 quest-activity XP if its unique event matches an objective; it does not mark the hypothesis true or false.','form-help'),
+    field(requiresEvidence?'Required retained evidence artifact':'Optional retained evidence artifact','experiment-evidence-source',evidenceSource),
+    field(requiresEvidence?'Required exact evidence version':'Evidence version','experiment-evidence-version',evidenceVersion),
+    paragraph(reviewRecord?'This report will append one follow-up link to the exact Founder disposition. It remains self-reported activity, not a truth verdict, approval, authorization, or independent verification.':'This creates an attributed report event only. It can earn 25 quest-activity XP if its unique event matches an objective; it does not mark the hypothesis true or false.','form-help'),
     node('div',{class:'button-row'},[submit])
   );
+  if(requiresEvidence&&!world.creations.length){
+    content.append(paragraph('No published artifact is available. The follow-up cannot be submitted until an exact retained version exists.','evidence-warning'));
+    content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
+  }
   content.append(form);
   form.onsubmit=guarded(async event=>{
     event.preventDefault();
     submit.disabled=true;
     try{
       const selected=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===evidenceSource.value);
-      await act({
+      const result=await act({
         type:'report-experiment',
         moonshotId:proposal.moonshotId,
         procedure:procedure.value.trim(),
         observation:observation.value.trim(),
         reportedOutcome:outcome.value,
         evidenceCreationId:selected?.id??null,
-        evidenceVersion:selected?Number(evidenceVersion.value):null
+        evidenceVersion:selected?Number(evidenceVersion.value):null,
+        ...(reviewRecord?{followUpReviewId:reviewRecord.reviewId}:{})
       });
       toast('Experiment report retained · self-reported · not adjudicated · quest XP is activity-only, not outcome credit.');
-      openMoonshotField();
+      openMoonshotField(proposal.moonshotId,result.reportId);
     }finally{submit.disabled=false;}
   });
 }
@@ -1790,6 +1858,11 @@ function openExperimentChallenge(report, initialChallengeText='', initialChallen
 }
 function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
+  const reviewQueue=getResearchEncounterReviewQueue(world);
+  const reviewByChallengeId=new Map((Array.isArray(reviewQueue.challenges)?reviewQueue.challenges:[])
+    .filter(item=>item?.review?.reviewId).map(item=>[item.challengeId,item.review]));
+  const followUpObjective=getQuestTrail(world,viewer).find(item=>item.id==='research-follow-up');
+  const validFollowUpEventIds=new Set((followUpObjective?.evidence||[]).map(item=>item.id));
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
   const form=node('form',{class:'field-card'},[]);
   const title=node('input',{id:'moonshot-title',maxlength:'80',placeholder:'A concise question to investigate',autocomplete:'off'});
@@ -1879,6 +1952,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         paragraph('Reported outcome: '+(report.reportedOutcome||'not supplied')),
         paragraph('Submitted by '+(report.actor?.name||report.actor?.id||'unknown actor')+' · '+(report.at||'time unavailable'),'form-help')
       ]);
+      if(typeof report.followUpReviewId==='string')reportCard.append(paragraph('Follow-up of Decision Chamber review '+report.followUpReviewId+' · self-reported; not a verdict or approval.','form-help'));
       if(report.reportId===focusActivityId||report.id===focusActivityId)focusedActivity=reportCard;
       const evidenceCreation=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===report.evidenceCreationId);
       const evidenceExists=evidenceCreation&&Number.isInteger(report.evidenceVersion)&&
@@ -1890,7 +1964,9 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         if(report.actor?.id===viewer.id&&report.actor?.role===viewer.role){
           if((Array.isArray(world.creations)?world.creations:[]).some(creation=>creation&&typeof creation.id==='string'&&creation.id)){
             reportCard.append(paragraph('Reports are append-only. A follow-up creates a new attempt; this record stays unchanged.','form-help'));
-            reportCard.append(button('Record a linked follow-up attempt →',()=>openExperimentReport(proposal),{class:'list-button'}));
+            if(typeof report.followUpReviewId==='string'){
+            reportCard.append(paragraph('This report already follows Decision Chamber review '+report.followUpReviewId+'. Another review is required before a new disposition-linked follow-up.','form-help'));
+          }else reportCard.append(button('Record a linked follow-up attempt →',()=>openExperimentReport(proposal),{class:'list-button'}));
           }else{
             reportCard.append(paragraph('No published artifact is available yet. Preserve one before recording a linked follow-up attempt.','form-help'));
             reportCard.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
@@ -1913,6 +1989,33 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
           else challengeCard.append(paragraph('The linked challenge-evidence version is unavailable in this snapshot.','evidence-warning'));
         }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
         reportCard.append(challengeCard);
+        const review=reviewByChallengeId.get(challenge.challengeId);
+        if(review){
+          const linkedReports=reports.filter(candidate=>candidate.followUpReviewId===review.reviewId);
+          const followUps=linkedReports.filter(candidate=>validFollowUpEventIds.has(candidate.id));
+          const reviewCard=node('div',{class:'field-card','data-research-review-id':review.reviewId},[
+            node('h4',{text:'Decision Chamber next step'}),
+            node('span',{class:'pill',text:'GAME-LEVEL NEXT STEP · NOT A VERDICT'}),
+            paragraph('Disposition: '+String(review.disposition||'unknown').replaceAll('-',' ')),
+            paragraph('Founder rationale: '+(review.rationale||'not recorded')),
+            paragraph(review.reviewerSameAsChallenge
+              ? 'Reviewer and challenger are the same account; this is not independent review.'
+              : 'Reviewer account differs from challenger; distinct human identity is not established.','form-help'),
+            paragraph(review.reviewerSameAsReport
+              ? 'Reviewer and reporter are the same account; this is not independent review.'
+              : 'Reviewer account differs from reporter; distinct human identity is not established.','form-help'),
+            paragraph('Review '+review.reviewId+' · source report '+review.reportId+' · challenge '+review.challengeId,'form-help')
+          ]);
+          if(followUps.length===1&&linkedReports.length===1){
+            reviewCard.append(paragraph('Follow-up report retained · self-reported · '+followUps[0].reportId,'form-help'));
+            reviewCard.append(button('Inspect follow-up attempt →',()=>openMoonshotField(proposal.moonshotId,followUps[0].reportId),{class:'list-button'}));
+          }else if(linkedReports.length>0){
+            reviewCard.append(paragraph('A follow-up reference is ambiguous or invalid. No progress is inferred; inspect the Chronicle before retrying.','evidence-warning'));
+          }else if(['investigate','request-evidence'].includes(review.disposition)){
+            reviewCard.append(button('Record this follow-up →',()=>openResearchFollowUp(review.reviewId,proposal.moonshotId),{class:'list-button'}));
+          }else reviewCard.append(paragraph('This disposition does not request another experiment attempt.','form-help'));
+          reportCard.append(reviewCard);
+        }
       }
       if(report.actor?.id!==viewer.id){
         const challengedByViewer=challenges.some(event=>event.actor?.id===viewer.id&&event.actor?.role===viewer.role);

@@ -9,9 +9,9 @@ import {projectCharacter} from '../game/character-sheet.mjs';
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
 const now='2026-10-17T12:00:00.000Z';
-async function publish(world, kind='loom') {
-  const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},founder,{now});
-  return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now});
+async function publish(world, kind='loom', actor=founder) {
+  const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},actor,{now});
+  return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},actor,{now});
 }
 test('private drafts stay private; immutable publication has verified bytes and game-only XP',async()=>{
   const original=createWorld({id:'test-world',now});
@@ -368,3 +368,178 @@ test('Founder challenge dispositions bind immutable source events without granti
   await assert.rejects(validateWorld(tampered));
 });
 
+
+
+async function reviewedMoonshot(disposition = 'request-evidence', founderActor = founder) {
+  const published = await publish(createWorld({ now }), 'observatory', founderActor);
+  const proposal = await applyAction(published.world, {
+    type: 'propose-moonshot',
+    title: 'Can the control comparison be repeated?',
+    hypothesis: 'The observation repeats under the stated controls.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'A retained procedure and exact observation.'
+  }, witness, { now: '2026-10-17T12:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The control settings were not retained.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, witness, { now: '2026-10-17T12:00:02.000Z' });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report does not retain the control settings needed for reproduction.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  }, founderActor, { now: '2026-10-17T12:00:03.000Z' });
+  const reviewed = await applyAction(challenge.world, {
+    type: 'review-experiment-challenge',
+    reportId: report.result.reportId,
+    challengeId: challenge.result.challengeId,
+    disposition,
+    rationale: 'Repeat the comparison and preserve the requested source version.'
+  }, founderActor, { now: '2026-10-17T12:00:04.000Z' });
+  return {
+    founder: founderActor,
+    world: reviewed.world,
+    moonshotId: proposal.result.moonshotId,
+    reviewId: reviewed.result.reviewId,
+    creationId: published.result.creationId
+  };
+}
+
+test('an actionable Founder disposition accepts one later source-linked follow-up without certifying its claim', async () => {
+  const serverFounder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const source = await reviewedMoonshot('request-evidence', serverFounder);
+  const beforeWitness = projectCharacter(source.world, witness);
+  const beforeFounder = projectCharacter(source.world, source.founder);
+  const beforeWorldXp = source.world.xp;
+  const followed = await applyAction(source.world, {
+    type: 'report-experiment',
+    moonshotId: source.moonshotId,
+    procedure: 'Repeat the comparison with the retained control settings.',
+    observation: 'The second attempt remained inconclusive; the record is preserved for further review.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: source.creationId,
+    evidenceVersion: 1,
+    followUpReviewId: source.reviewId
+  }, witness, { now: '2026-10-17T12:00:05.000Z' });
+  const event = followed.world.events.at(-1);
+  assert.equal(event.type, 'experiment-reported');
+  assert.equal(event.followUpReviewId, source.reviewId);
+  assert.equal(event.actor.id, witness.id);
+  assert.equal(event.outcome, undefined);
+  assert.equal(event.status, undefined);
+  assert.equal(followed.world.xp, beforeWorldXp, 'a report cannot mint institutional world XP');
+  const afterWitness = projectCharacter(followed.world, witness);
+  const afterFounder = projectCharacter(followed.world, source.founder);
+  assert.equal(afterWitness.questXp - beforeWitness.questXp, 25, 'only the reporting actor receives report-activity XP');
+  assert.equal(afterFounder.questXp - beforeFounder.questXp, 0, 'the other actor receives no XP for a shared report');
+  assert.equal(afterWitness.worldXp, beforeWitness.worldXp);
+  assert.equal(afterFounder.worldXp, beforeFounder.worldXp);
+  const satchel = afterWitness.fieldSatchel.find(item => item.eventId === event.id);
+  assert.equal(satchel.followUpReviewId, source.reviewId);
+  assert.match(satchel.summary, new RegExp(source.reviewId));
+  const record = projectResearchRecords(followed.world.events, followed.world.creations)
+    .find(item => item.id === event.id);
+  assert.equal(record._projection.proposalStatus, 'linked');
+  assert.equal(record._projection.evidenceStatus, 'linked');
+  assert.equal(await validateWorld(followed.world).then(() => true), true);
+  // This model-only fixture has no matching kernel publication envelope; the server integration test validates persisted payloads.
+});
+
+test('follow-up references reject unknown, mismatched, backdated, duplicate and non-actionable dispositions', async () => {
+  const source = await reviewedMoonshot('investigate');
+  const baseAction = {
+    type: 'report-experiment',
+    moonshotId: source.moonshotId,
+    procedure: 'Repeat the bounded comparison.',
+    observation: 'The next attempt did not resolve the contradiction.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    followUpReviewId: source.reviewId
+  };
+  await assert.rejects(
+    applyAction(source.world, { ...baseAction, followUpReviewId: 'missing-review' }, witness, {
+      now: '2026-10-17T12:00:05.000Z'
+    }),
+    error => error.code === 'FOLLOW_UP_REVIEW_UNAVAILABLE' && error.status === 409
+  );
+
+  const secondProposal = await applyAction(source.world, {
+    type: 'propose-moonshot',
+    title: 'A different question',
+    hypothesis: 'A second bounded effect occurs.',
+    falsifier: 'The second effect is absent under its stated condition.',
+    evidenceNeeded: 'A separate retained observation.'
+  }, witness, { now: '2026-10-17T12:00:05.000Z' });
+  await assert.rejects(
+    applyAction(secondProposal.world, { ...baseAction, moonshotId: secondProposal.result.moonshotId }, witness, {
+      now: '2026-10-17T12:00:06.000Z'
+    }),
+    error => error.code === 'FOLLOW_UP_REVIEW_MISMATCH' && error.status === 409
+  );
+
+  await assert.rejects(
+    applyAction(source.world, baseAction, witness, { now: '2026-10-17T12:00:03.500Z' }),
+    error => error.code === 'INVALID_CHRONOLOGY' && error.status === 409
+  );
+
+  const first = await applyAction(source.world, baseAction, witness, { now: '2026-10-17T12:00:05.000Z' });
+  await assert.rejects(
+    applyAction(first.world, baseAction, witness, { now: '2026-10-17T12:00:06.000Z' }),
+    error => error.code === 'FOLLOW_UP_ALREADY_RECORDED' && error.status === 409
+  );
+
+  const deferred = await reviewedMoonshot('defer');
+  await assert.rejects(
+    applyAction(deferred.world, { ...baseAction, moonshotId: deferred.moonshotId, followUpReviewId: deferred.reviewId }, witness, {
+      now: '2026-10-17T12:00:05.000Z'
+    }),
+    error => error.code === 'FOLLOW_UP_REVIEW_NOT_ACTIONABLE' && error.status === 409
+  );
+
+  const requested = await reviewedMoonshot('request-evidence');
+  await assert.rejects(
+    applyAction(requested.world, { ...baseAction, moonshotId: requested.moonshotId, followUpReviewId: requested.reviewId }, witness, {
+      now: '2026-10-17T12:00:05.000Z'
+    }),
+    error => error.code === 'FOLLOW_UP_EVIDENCE_REQUIRED' && error.status === 409
+  );
+});
+
+test('stored follow-up history rejects backdated and duplicate review references', async () => {
+  const source = await reviewedMoonshot('request-evidence');
+  const followed = await applyAction(source.world, {
+    type: 'report-experiment',
+    moonshotId: source.moonshotId,
+    procedure: 'Repeat with the retained control settings.',
+    observation: 'The second attempt failed to reproduce the first.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: source.creationId,
+    evidenceVersion: 1,
+    followUpReviewId: source.reviewId
+  }, witness, { now: '2026-10-17T12:00:05.000Z' });
+
+  const backdated = structuredClone(followed.world);
+  backdated.events.at(-1).at = '2026-10-17T12:00:03.500Z';
+  backdated.updatedAt = backdated.events.at(-1).at;
+  await assert.rejects(validateWorld(backdated));
+
+  const duplicated = structuredClone(followed.world);
+  const original = duplicated.events.at(-1);
+  duplicated.events.push({
+    ...structuredClone(original),
+    id: 'event-follow-up-duplicate',
+    reportId: 'experiment-report-duplicate',
+    at: '2026-10-17T12:00:06.000Z'
+  });
+  duplicated.revision = duplicated.events.length;
+  duplicated.updatedAt = duplicated.events.at(-1).at;
+  await assert.rejects(validateWorld(duplicated));
+});

@@ -47,7 +47,7 @@ const actionFields = {
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'unequip-field-item': ['type', 'slotId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
-  'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'followUpReviewId', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'review-experiment-challenge': ['type', 'reportId', 'challengeId', 'disposition', 'rationale', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
@@ -108,6 +108,7 @@ function preflightAction(input) {
       break;
     case 'report-experiment': {
       requiredId(input.moonshotId, 'Moonshot ID');
+      if (input.followUpReviewId !== undefined) requiredId(input.followUpReviewId, 'Founder review ID');
       preflightText(input.procedure, 1000, 'Procedure', { required: true });
       preflightText(input.observation, 1000, 'Observation', { required: true });
       if (!['supports', 'contradicts', 'inconclusive', 'failed'].includes(input.reportedOutcome)) fail('INVALID_OUTCOME', 'Choose a bounded self-reported outcome.');
@@ -230,7 +231,7 @@ function validateHistory(world) {
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-reviewed': ['reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), reviewedChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
+  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), reviewedChallengeIds = new Set(), challengeReviewById = new Map(), followUpReviewIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
@@ -251,7 +252,7 @@ function validateHistory(world) {
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
-    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])];
+    const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : []), ...(event.type === 'experiment-reported' ? ['followUpReviewId'] : [])];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const eventAt = Date.parse(event.at);
@@ -326,6 +327,24 @@ function validateHistory(world) {
           (hasEvidenceId && !(publishedByVersion.get(historyKey(event.evidenceCreationId, event.evidenceVersion)) || []).some(p => Date.parse(p.publishedAt) <= Date.parse(event.at)))) {
         throw new Error('Stored experiment evidence reference is invalid');
       }
+      if (Object.hasOwn(event, 'followUpReviewId')) {
+        const review = challengeReviewById.get(event.followUpReviewId);
+        const reviewIndex = review ? eventPositions.get(review) : -1;
+        if (typeof event.followUpReviewId !== 'string' || !event.followUpReviewId.trim() || !review ||
+            reviewIndex < 0 || reviewIndex >= eventPositions.get(event) || review.moonshotId !== event.moonshotId ||
+            !['investigate', 'request-evidence'].includes(review.disposition) || Date.parse(review.at) >= eventAt ||
+            followUpReviewIds.has(event.followUpReviewId)) {
+          throw new Error('Stored experiment follow-up must bind one unique earlier actionable Founder disposition for the same Moonshot');
+        }
+        followUpReviewIds.add(event.followUpReviewId);
+        if (review.disposition === 'request-evidence') {
+          const publications = publicationEventsByVersion.get(historyKey(event.evidenceCreationId, event.evidenceVersion)) || [];
+          if (!hasEvidenceId || publications.length !== 1 || eventPositions.get(publications[0]) >= eventPositions.get(event) ||
+              Date.parse(publications[0].at) > eventAt) {
+            throw new Error('A request-evidence follow-up must link one exact retained publication that predates the report');
+          }
+        }
+      }
     }
     if (event.type === 'experiment-challenged') {
       const report = experimentReports.get(event.reportId);
@@ -368,6 +387,7 @@ function validateHistory(world) {
       if (Date.parse(report.at) > Date.parse(challenge.event.at) || Date.parse(challenge.event.at) > Date.parse(event.at)) throw new Error('Stored research challenge disposition timestamps are out of order');
       if (reviewedChallengeIds.has(event.challengeId)) throw new Error('A research challenge may receive only one immutable disposition');
       reviewedChallengeIds.add(event.challengeId);
+      challengeReviewById.set(event.reviewId, event);
     }
     if (event.type === 'collaborator-response-recorded') {
       const index = eventPositions.get(event);

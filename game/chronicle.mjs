@@ -327,6 +327,10 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
       `Observation: ${text(event?.observation) || "not recorded"}`,
       `Reported outcome: ${reported}`,
     ].join(" · ");
+    if (typeof event?.followUpReviewId === "string" && event.followUpReviewId.trim()) {
+      entry.followUpReviewId = event.followUpReviewId;
+      entry.detail += ` · Follow-up of Decision Chamber review: ${event.followUpReviewId}`;
+    }
     if (!event?.evidenceCreationId) {
       entry.warning = "No retained artifact version is linked; this attributed report is not independently supported evidence.";
     } else if (!target) {
