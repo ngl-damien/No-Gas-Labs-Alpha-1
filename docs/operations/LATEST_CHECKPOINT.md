@@ -1168,3 +1168,54 @@ Freshly parsed the actual `agent:preflight:ci` command in the PR #283 and PR #28
 - Worker B handoff [PR #287 comment 6587042886](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/287#issuecomment-6587042886) records that the active game branch already contains the explicit Founder-key startup guard, while current main still auto-generates a local key. Preserve that guard and its tests in the game lineage; do not transplant the older #251 server snapshot independently.
 
 **Current status:** all three workflows passed on #279 code/test head `a56d795`, #283 checkpoint head `93e3c0f`, and #248 checkpoint head `bf38f35`. The new #279 documentation head `3bf6d996` remains unverified until its own Verify and Browser runs complete. Main remains unchanged.
+
+## Run 29 — 2026-11-02 — Darwin receipt fallback and Android workflow recovery
+
+### Repository baseline and instruction compliance
+- Re-read root `AGENTS.md` and the complete canonical shared hourly scheduler protocol on the active branch before the fresh baseline.
+- The portable local preflight could not be executed: both registered Desktop Commander devices were offline. Manual GitHub/source/CI inspection followed; no local test pass is claimed.
+- No nested `scripts/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, or `docs/operations/AGENTS.md` exists on this branch.
+
+### Darwin receipt-path defect and repair
+- PR #289 exact parent head: `52c890d59392f7abc9b30e0297bd23e6e07a3b33`.
+- Android Alpha-1 run [41516388987](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41516388987) failed in Portable repository preflight while writing `.runtime/agent-preflight-android-41516388987.json`: `cannot write receipt (ENOENT)`. The job did not reach Android SDK setup, Gradle, APK assembly, or emulator instrumentation.
+- Source inspection found the validator selecting `/dev/fd` on Darwin and attempting descriptor-path child creation. The platform policy now uses pinned `/proc/self/fd` paths only on Linux; Darwin and other hosts use the existing guarded realpath/lstat fallback and emit the documented weaker-race warning.
+- PR #290 is a draft child of #289, head `b06b1251ff5806fe44762cf0f0f44315211a7517`:
+  - `56fbb298a177e2502c93d4653ea078a5ccdb2a03` changes the platform selection.
+  - `b06b1251ff5806fe44762cf0f0f44315211a7517` adds the Linux/Darwin/Windows/BSD/SunOS selection regression.
+  - Verify [41517579452](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517579452): passed.
+  - Genesis [41517579632](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517579632): passed.
+  - Android [41517579520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517579520): the macOS preflight step passed; Android SDK and Gradle setup passed; APK assembly was in progress at checkpoint time. Emulator instrumentation is not yet verified.
+  - Browser [41517579454](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517579454): build passed; browser journeys were still running.
+- The same correction is carried into this main-based PR #283 stack:
+  - `0b684d56b5c0213a407ebe58b7bfa39bceaa55da` platform selection.
+  - `4382bd59d8ee169f38dce064d18a22a230b99710` regression test.
+  - Verify [41517893613](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517893613): passed.
+  - Genesis [41517892811](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517892811): passed.
+  - Browser [41517892825](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41517892825): still running at checkpoint time; no pass is claimed.
+- PR #289's original parent Verify [41516389194](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41516389194) and Genesis [41516388946](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41516388946) passed; its Browser [41516388982](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41516388982) later passed 16/16. Its Android failure is superseded by the child preflight repair, not by a merged change.
+
+### Independent candidate-verifier recheck
+- PR #279 head `3bf6d99671fcccc7a034455eb15d71eb4c00a780` was rechecked. Verify [41515027617](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41515027617), Genesis [41515027597](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41515027597), and Browser [41515027619](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41515027619) all passed. Browser logs record 16 passing journeys; artifact [13174439115](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41515027619/artifacts/13174439115) is 5,420,049 bytes with ZIP SHA-256 `8f630af9a354f62606e33f27eb95c536be9dac62053ba74e963395df1caf03bd`. This resolves the stale Run 28 note that the documentation follow-on head was unverified.
+
+### Founder authorization re-audit
+- PR #16 remains closed/unmerged; PR #18 remains merged. The final PR #16 patch and current main contain the detached Ed25519 approval/fingerprint path; the alleged final-patch `demonstrate()` self-signing flow is not present and must not be recreated as a current defect.
+- Main `game/server.mjs` still permits local `founder.key` generation when no explicit key is supplied. PR #265 proposes an explicit-key guard but remains draft/unmerged on a divergent 281-commit game stack; do not transplant that entire stack without ancestry reconciliation.
+- Main `src/authority/decision.js` still has an `authorizationEvent()` helper trusting caller-supplied `verification.valid`; its inspected direct caller remains a test. The live server uses `src/institution/decisions.mjs` behind authenticated Founder sessions. No live-route exploit was demonstrated.
+- No Founder key was generated, enrolled, rotated, exported, or changed.
+
+### Linked-repository boundary
+- AI-BI-Intelligence-node-gate: root instructions and `PROGRESS.md`, `SELF-EVAL.md`, `NEXT-DIRECTIVE.md` were read. PR #5 remains draft/open; its CI [41403632291](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632291) passed its Node 18/20 matrix and security audit, while org CI [41403632592](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632592) failed before creating jobs. The required real Termux bootstrap was not run because no authorized device is online; Android parity remains unverified.
+- No linked repository was modified.
+
+### Next prioritized steps
+1. Recheck exact-head Android run #41517579520 and Browser run #41517579454 on PR #290; require APK assembly and actual emulator instrumentation before claiming Android acceptance.
+2. Recheck PR #283 Browser run #41517892825; do not transfer earlier-head results.
+3. Reconcile the main-based #248 → #259 → #283 stack with the game #284 → #285 → #286 → #287 → #288 → #289 → #290 stack. Preserve the 73-target game manifest and the Darwin fallback; no blind transplant.
+4. Reconcile the explicit-key startup guard from #251/#265 with the current server lineage; keep Founder identity and private-key custody unresolved until Damien-controlled provisioning exists.
+5. Resume AI-BI Termux bootstrap only on an authorized real Termux device; do not substitute Linux CI for device evidence.
+
+### Authority and evidence boundary
+- Main remained unchanged at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.
+- PRs #283 and #290 remain draft/open/unmerged. No merge, release, deployment, spending, external publication, credential/key/permission change, destructive action, or Founder decision occurred.
+- Hosted CI evidence is distinguished from local execution and physical Android acceptance. No uninterrupted execution between hourly runs is claimed.
