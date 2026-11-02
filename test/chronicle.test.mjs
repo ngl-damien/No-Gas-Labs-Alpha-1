@@ -1086,10 +1086,13 @@ test("Founder research next steps become review-marked Decision Chamber world ob
 
   assert.equal(review.eventType, "experiment-challenge-reviewed");
   assert.equal(review.category, "DECISION CHAMBER · GAME-LEVEL NEXT STEP");
-  assert.match(review.title, /Founder next step recorded · Request more evidence/);
+  assert.match(review.title, /Founder-role next step recorded · Request more evidence/);
+  assert.match(review.detail, /Review: challenge-review-1/);
+  assert.match(review.detail, /Recorded role: founder/);
   assert.match(review.detail, /Report: report-v1/);
   assert.match(review.detail, /Challenge: challenge-v1/);
   assert.match(review.detail, /Source events: report-v1 → challenge-v1/);
+  assert.match(review.summary, /service attribution, not proof of a distinct human/);
   assert.match(review.summary, /does not decide whether the report is true/);
   assert.match(review.warning, /separate from the canonical Founder Gate/);
 
@@ -1120,4 +1123,28 @@ test("Founder research next steps become review-marked Decision Chamber world ob
   assert.match(object.warning, /does not prove a distinct human/);
   assert.equal(institutionActivityCount("decision_chamber", world), 1);
   assert.deepEqual(world, before, "Chronicle, map and activity projections must remain read-only");
+});
+
+
+test("an untrusted non-Founder actor label is never presented as a Founder-role disposition", () => {
+  const { world } = fixture();
+  world.events.push({
+    id: "untrusted-review-v1",
+    type: "experiment-challenge-reviewed",
+    reviewId: "untrusted-review-1",
+    reportId: "report-v1",
+    challengeId: "challenge-v1",
+    moonshotId: "moonshot-1",
+    disposition: "investigate",
+    rationale: "This snapshot role is not an authority proof.",
+    sourceEventIds: ["report-v1", "challenge-v1"],
+    actor: { id: "witness-2", name: "Second Witness", role: "witness" },
+    at: "2026-10-26T10:10:00.000Z",
+  });
+
+  const entry = projectChronicle({ world }).entries.find(item => item.id === "world:untrusted-review-v1");
+  assert.match(entry.title, /^Research next step recorded/);
+  assert.doesNotMatch(entry.title, /Founder-role/);
+  assert.match(entry.summary, /service attribution, not proof of a distinct human/);
+  assert.match(entry.warning, /separate from the canonical Founder Gate/);
 });

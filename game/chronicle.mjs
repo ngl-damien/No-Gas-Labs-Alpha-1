@@ -348,20 +348,24 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
   } else if (type === "experiment-challenge-reviewed") {
     const disposition = CHALLENGE_REVIEW_DISPOSITIONS.find(item => item.value === event?.disposition);
     const dispositionLabel = disposition?.label || text(event?.disposition) || "unclassified";
+    const actorRole = text(event?.actor?.role);
+    const roleLabel = actorRole === "founder" ? "Founder-role next step" : "Research next step";
     const sourceEventIds = Array.isArray(event?.sourceEventIds)
       ? event.sourceEventIds.filter(value => typeof value === "string" && value.trim()).slice(0, 8)
       : [];
-    entry.title = `Founder next step recorded · ${dispositionLabel}`;
+    entry.title = `${roleLabel} recorded · ${dispositionLabel}`;
     entry.category = "DECISION CHAMBER · GAME-LEVEL NEXT STEP";
-    entry.summary = "A Founder-authenticated game-level disposition was retained for this research challenge. It records a next step only; it does not decide whether the report is true, prove independent review, approve institutional work, or authorize execution.";
+    entry.summary = "A game-level disposition was retained for this research challenge. The recorded actor role is service attribution, not proof of a distinct human. It records a next step only; it does not decide whether the report is true, prove independent review, approve institutional work, or authorize execution.";
     entry.detail = [
+      `Review: ${text(event?.reviewId) || "not identified"}`,
       `Report: ${text(event?.reportId) || "not identified"}`,
       `Challenge: ${text(event?.challengeId) || "not identified"}`,
+      `Recorded role: ${actorRole || "not recorded"}`,
       `Disposition: ${dispositionLabel}`,
       `Rationale: ${text(event?.rationale) || "not recorded"}`,
       `Source events: ${sourceEventIds.length ? sourceEventIds.join(" → ") : "not recorded"}`,
     ].join(" · ");
-    entry.warning = "The underlying challenge remains in history. This game-level next step is separate from the canonical Founder Gate; account attribution does not prove a distinct human or replace independent evidence and required human authorization.";
+    entry.warning = "The underlying challenge remains in history. This game-level next step is separate from the canonical Founder Gate; recorded account/role attribution does not replace independent evidence or required human authorization.";
   } else if (type === "collaborator-response-recorded") {
     const roleNames = {
       archivist: "Hostile Archivist",
