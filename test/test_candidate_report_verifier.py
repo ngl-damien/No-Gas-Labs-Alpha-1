@@ -504,6 +504,36 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertIn("SYNTHESIS_RECEIPT_JSON_TOO_DEEP", independent.stderr)
         self.assertEqual(independent.stdout, "")
 
+    def test_json_depth_errors_precede_nested_duplicate_key_errors_in_both_verifiers(self):
+        report_path, _ = self.make_report("depth-duplicate-precedence", ["17"])
+        deep_source = '{"duplicate": 1, "duplicate": 2}'
+        for _ in range(17):
+            deep_source = '{"nested": ' + deep_source + '}'
+        deep_path = self.directory / "deep-duplicate.json"
+        deep_path.write_text(deep_source, encoding="utf-8")
+
+        node_receipt = self.run_node(EVALUATOR, [str(deep_path), "17"])
+        python_receipt = self.run_verifier(report_path, deep_path)
+        self.assertEqual(node_receipt.returncode, 1)
+        self.assertEqual(node_receipt.stderr.strip(), "SYNTHESIS_RECEIPT_JSON_TOO_DEEP")
+        self.assertEqual(node_receipt.stdout, "")
+        self.assertEqual(python_receipt.returncode, 1)
+        self.assertEqual(python_receipt.stderr.strip(), "SYNTHESIS_RECEIPT_JSON_TOO_DEEP")
+        self.assertEqual(python_receipt.stdout, "")
+
+        node_report = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(self.receipt_path), str(deep_path)],
+        )
+        python_report = self.run_verifier(deep_path)
+        self.assertEqual(node_report.returncode, 1)
+        self.assertEqual(node_report.stderr.strip(), "EVALUATION_REPORT_JSON_TOO_DEEP")
+        self.assertEqual(node_report.stdout, "")
+        self.assertEqual(python_report.returncode, 1)
+        self.assertEqual(python_report.stderr.strip(), "EVALUATION_REPORT_JSON_TOO_DEEP")
+        self.assertEqual(python_report.stdout, "")
+
+
     def test_negative_zero_numeric_fields_match_node_deep_equality(self):
         scenarios = (
             ("single-input", ["0"], "input"),
