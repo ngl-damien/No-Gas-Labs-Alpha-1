@@ -211,3 +211,100 @@ test('preflight never fingerprints a trusted checkpoint from a transient real-di
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test('preflight blocks a transient final-file replacement after the trusted parent is pinned', {
+  skip: process.platform !== 'linux' ? 'descriptor-relative trusted reads require Linux procfs' : false
+}, async () => {
+  const root = await fixture();
+  const checkpointPath = 'docs/operations/LATEST_CHECKPOINT.md';
+  const checkpoint = join(root, checkpointPath);
+  const backup = join(root, 'docs/operations/LATEST_CHECKPOINT.original');
+  const decoy = join(root, 'docs/operations/LATEST_CHECKPOINT.decoy');
+  const originalBytes = Buffer.from('# Latest Durable Checkpoint\nOriginal checkpoint.\n');
+  const decoyBytes = Buffer.from('# Latest Durable Checkpoint\nDecoy checkpoint.\n');
+  try {
+    await writeFile(checkpoint, originalBytes);
+    await writeFile(decoy, decoyBytes);
+
+    const hookPath = join(root, 'preflight-final-file-swap.cjs');
+    await writeFile(hookPath, [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const originalStat = fs.promises.stat;",
+      "const originalOpen = fs.promises.open;",
+      "const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
+      "const checkpoint = path.join(root, 'docs', 'operations', 'LATEST_CHECKPOINT.md');",
+      "const backup = path.join(root, 'docs', 'operations', 'LATEST_CHECKPOINT.original');",
+      "const decoy = path.join(root, 'docs', 'operations', 'LATEST_CHECKPOINT.decoy');",
+      "let checkpointStats = 0;",
+      "let swapped = false;",
+      "let restored = false;",
+      "function restore() {",
+      "  if (!swapped || restored) return;",
+      "  if (fs.existsSync(checkpoint)) fs.renameSync(checkpoint, decoy);",
+      "  if (fs.existsSync(backup)) fs.renameSync(backup, checkpoint);",
+      "  restored = true;",
+      "  fs.writeFileSync(path.join(root, 'final-file-swap-restored'), 'yes');",
+      "}",
+      "process.on('exit', restore);",
+      "fs.promises.stat = async function(candidate, ...args) {",
+      "  if (path.resolve(String(candidate)) === checkpoint) {",
+      "    checkpointStats += 1;",
+      "    if (checkpointStats === 1 && !swapped) {",
+      "      fs.renameSync(checkpoint, backup);",
+      "      fs.renameSync(decoy, checkpoint);",
+      "      swapped = true;",
+      "      fs.writeFileSync(path.join(root, 'final-file-swap-started'), 'yes');",
+      "    }",
+      "    const metadata = await originalStat.call(this, candidate, ...args);",
+      "    if (checkpointStats === 3 && swapped && !restored) restore();",
+      "    return metadata;",
+      "  }",
+      "  return originalStat.call(this, candidate, ...args);",
+      "};",
+      "fs.promises.open = async function(candidate, ...args) {",
+      "  const handle = await originalOpen.call(this, candidate, ...args);",
+      "  if (swapped && path.basename(String(candidate)) === 'LATEST_CHECKPOINT.md') {",
+      "    fs.writeFileSync(path.join(root, 'final-file-swap-opened'), 'yes');",
+      "  }",
+      "  return handle;",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join('\n'));
+
+    const child = spawnSync(process.execPath, [
+      '--require', hookPath,
+      new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname,
+      '--root', root,
+      '--path', 'AGENTS.md',
+      '--checkpoint', checkpointPath
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: { ...process.env, NGL_PREFLIGHT_SWAP_ROOT: root }
+    });
+
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.equal(await readFile(join(root, 'final-file-swap-started'), 'utf8'), 'yes',
+      'the final checkpoint replacement must occur after parent pinning');
+    assert.equal(await readFile(join(root, 'final-file-swap-opened'), 'utf8'), 'yes',
+      'the descriptor-relative final-file open must occur while the decoy is installed');
+    assert.equal(await readFile(join(root, 'final-file-swap-restored'), 'utf8'), 'yes',
+      'the original checkpoint must be restored before the child exits');
+    const decoyHash = createHash('sha256').update(decoyBytes).digest('hex');
+    assert.ok(!result.files.some(file =>
+      file.path === checkpointPath && file.sha256 === decoyHash
+    ), 'decoy bytes must never be fingerprinted as the canonical checkpoint');
+    assert.ok(result.failures.some(item =>
+      item.path === checkpointPath && item.reason.includes('changed')
+    ), JSON.stringify(result.failures));
+    assert.equal(await readFile(checkpoint, 'utf8'), originalBytes.toString('utf8'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
