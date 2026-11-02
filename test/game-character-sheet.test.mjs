@@ -200,7 +200,7 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
-    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0], ['deliberator', 0],
     ['speaker', 0], ['questkeeper', 3], ['restorer', 0], ['armor-bearer', 3]
   ]);
   assert.deepEqual([record.xp, record.publicationXp, record.questXp], [150, 100, 50]);
