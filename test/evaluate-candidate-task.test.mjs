@@ -311,7 +311,7 @@ test('offline report verifier rejects duplicate JSON keys before replay', async 
   assert.equal(evaluated.status, 0, evaluated.stderr);
   const duplicate = evaluated.stdout.replace(
     '"schema": "ngl.candidate-program-evaluation-range.v1"',
-    '"schema": "untrusted",\\n  "schema": "ngl.candidate-program-evaluation-range.v1"'
+    '"schema": "untrusted",\n  "schema": "ngl.candidate-program-evaluation-range.v1"'
   );
   assert.notEqual(duplicate, evaluated.stdout, 'the fixture must actually contain the duplicate key');
   const reportPath = join(directory, 'duplicate-evaluation-report.json');
