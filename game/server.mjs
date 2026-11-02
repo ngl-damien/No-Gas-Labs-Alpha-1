@@ -5,6 +5,7 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { CHALLENGE_REVIEW_DISPOSITIONS } from './research-records.mjs';
 import {FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 import {COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,COMMONS_DISPOSITIONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT} from './social.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -48,6 +49,7 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'review-experiment-challenge': ['type', 'reportId', 'challengeId', 'disposition', 'rationale', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
   'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
@@ -154,6 +156,12 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'review-experiment-challenge':
+      requiredId(input.reportId, 'Experiment report ID');
+      requiredId(input.challengeId, 'Experiment challenge ID');
+      if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === input.disposition)) fail('INVALID_CHALLENGE_REVIEW_DISPOSITION', 'Choose a bounded Founder disposition.');
+      preflightText(input.rationale, 1000, 'Disposition rationale', { required: true });
+      break;
     case 'equip-field-item':
       if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
       if (!Object.hasOwn(input, 'sourceEventId') || !(input.sourceEventId === null || (typeof input.sourceEventId === 'string' && input.sourceEventId.length > 0 && input.sourceEventId.length <= 128 && input.sourceEventId.trim() === input.sourceEventId))) fail('INVALID_EQUIPMENT_SOURCE', 'Choose a retained source or null for automatic selection.');
@@ -219,10 +227,10 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-reviewed': ['reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
+  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), reviewedChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
@@ -247,7 +255,7 @@ function validateHistory(world) {
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const eventAt = Date.parse(event.at);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated', 'experiment-challenge-reviewed'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = eventAt;
     if (event.type === 'study') {
       if (typeof event.studyId !== 'string' || !event.studyId || studyIds.has(event.studyId) ||
@@ -341,6 +349,22 @@ function validateHistory(world) {
         }
       }
       challengeIds.add(event.challengeId);
+      experimentChallenges.set(event.challengeId, { event, index: eventPositions.get(event) });
+    }
+    if (event.type === 'experiment-challenge-reviewed') {
+      const report = experimentReports.get(event.reportId);
+      const challenge = experimentChallenges.get(event.challengeId);
+      const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
+      const reviewIndex = eventPositions.get(event);
+      if (Object.keys(event).some(key => !['id', 'type', 'actor', 'at', 'semantics', 'reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds', 'requestId', 'actionFingerprint', 'actionResult'].includes(key))) throw new Error('Stored research challenge disposition contains an unknown field');
+      unique(event.reviewId);
+      if (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId) throw new Error('Stored research challenge disposition requires the authenticated Founder');
+      if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === event.disposition) || typeof event.rationale !== 'string' || !event.rationale.trim() || Array.from(event.rationale).length > 1000) throw new Error('Stored research challenge disposition is malformed');
+      if (!report || !challenge || challenge.index >= reviewIndex || eventPositions.get(report) >= challenge.index || challenge.event.reportId !== event.reportId || challenge.event.moonshotId !== event.moonshotId || report.moonshotId !== event.moonshotId) throw new Error('Stored research challenge disposition target is missing, mismatched or out of order');
+      if (sourceIds.length !== 2 || sourceIds[0] !== report.id || sourceIds[1] !== challenge.event.id) throw new Error('Stored research challenge disposition must bind the exact report and challenge event IDs');
+      if (Date.parse(report.at) > Date.parse(challenge.event.at) || Date.parse(challenge.event.at) > Date.parse(event.at)) throw new Error('Stored research challenge disposition timestamps are out of order');
+      if (reviewedChallengeIds.has(event.challengeId)) throw new Error('A research challenge may receive only one immutable disposition');
+      reviewedChallengeIds.add(event.challengeId);
     }
     if (event.type === 'collaborator-response-recorded') {
       const index = eventPositions.get(event);
@@ -390,13 +414,14 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-reviewed': 'reviewId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
       if (event.type === 'moonshot-proposed' && result.moonshotId !== event.moonshotId) throw new Error('Stored idempotency moonshot result mismatch');
       if (event.type === 'experiment-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency experiment report result mismatch');
       if (event.type === 'experiment-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency experiment challenge result mismatch');
+      if (event.type === 'experiment-challenge-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency research disposition result mismatch');
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
