@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
-import { renderEvidenceArchive, renderInstitution, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts, hasDistinctChallengeActorId } from '../game/institution-view.mjs';
+import { renderEvidenceArchive, renderInstitution, renderResearchEncounterQueue, isInspectableWorldSnapshot, selectWorldSnapshot, projectAdversaryReviewDrafts, hasDistinctChallengeActorId } from '../game/institution-view.mjs';
 import { projectDecisionDocket } from '../game/quests.mjs';
 
 function element(tag) {
@@ -574,3 +574,127 @@ test('challenge handoff identity uses actor IDs rather than role labels', () => 
   assert.equal(hasDistinctChallengeActorId(null, 'founder-1'), false);
   assert.equal(hasDistinctChallengeActorId('witness-1', ''), false);
 });
+
+test('Decision Chamber exposes source-bound next steps only to a fresh Founder and preserves review conflicts', () => withDocument(() => {
+  const challenge = {
+    eventId: 'challenge-event-1',
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    proposalTitle: 'A bounded research question',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not retain the control settings needed for reproduction.',
+    at: '2026-10-28T17:04:00.000Z',
+    actorId: 'founder-1',
+    actorRole: 'founder',
+    evidenceStatus: 'not-applicable',
+    targetReport: {
+      eventId: 'report-event-1',
+      reportId: 'report-1',
+      at: '2026-10-28T17:03:00.000Z',
+      actorId: 'witness-1',
+      actorRole: 'witness',
+      procedure: 'Repeat the stated comparison.',
+      observation: 'The control settings were unavailable.',
+      reportedOutcome: 'inconclusive',
+      evidenceStatus: 'not-applicable'
+    },
+    reviewStatus: 'pending',
+    review: null
+  };
+  const queue = {
+    worldId: 'research-world',
+    worldRevision: 3,
+    challengeCount: 1,
+    pendingCount: 1,
+    reviewedCount: 0,
+    unlinkedCount: 0,
+    unlinkedReviewCount: 0,
+    omittedChallengeCount: 0,
+    challenges: [challenge]
+  };
+  const founderRoot = element('div');
+  let submitted = null;
+  renderResearchEncounterQueue(founderRoot, queue, {
+    founder: true,
+    onReview: (target, disposition, rationale) => {
+      submitted = { reportId: target.reportId, challengeId: target.challengeId, disposition, rationale };
+    }
+  });
+  const founderCard = walk(founderRoot).find(item => item.dataset?.researchChallengeId === 'challenge-1');
+  assert.ok(founderCard);
+  assert.equal(founderCard.dataset.reviewStatus, 'pending');
+  assert.match(textOf(founderCard), /self-reported inconclusive/);
+  assert.match(textOf(founderCard), /does not retain the control settings/);
+  assert.match(textOf(founderRoot), /separate from the canonical Founder Gate/);
+  const form = walk(founderCard).find(item => item.tagName === 'form');
+  assert.ok(form, 'a fresh authenticated Founder view exposes a bounded next-step form');
+  const disposition = walk(form).find(item => item.dataset?.challengeReviewDisposition === 'challenge-1');
+  const rationale = walk(form).find(item => item.dataset?.challengeReviewRationale === 'challenge-1');
+  const submit = walk(form).find(item => item.dataset?.challengeReviewSubmit === 'challenge-1');
+  assert.ok(disposition && rationale && submit);
+  assert.equal(disposition.required, true);
+  assert.equal(rationale.maxLength, 1000);
+  disposition.value = 'investigate';
+  rationale.value = 'Repeat the comparison while retaining the exact control settings.';
+  form.onsubmit({ preventDefault() {} });
+  assert.deepEqual(submitted, {
+    reportId: 'report-1',
+    challengeId: 'challenge-1',
+    disposition: 'investigate',
+    rationale: 'Repeat the comparison while retaining the exact control settings.'
+  });
+
+  const witnessRoot = element('div');
+  renderResearchEncounterQueue(witnessRoot, queue, { founder: false, onReview: () => assert.fail('Witness must not receive a review callback') });
+  const witnessCard = walk(witnessRoot).find(item => item.dataset?.researchChallengeId === 'challenge-1');
+  assert.ok(witnessCard);
+  assert.equal(walk(witnessCard).filter(item => item.dataset?.challengeReviewSubmit).length, 0);
+  assert.match(textOf(witnessCard), /Founder-only next-step controls are withheld in Witness view/);
+
+  const staleRoot = element('div');
+  renderResearchEncounterQueue(staleRoot, queue, { founder: true, stale: true, onReview: () => assert.fail('Stale snapshots must not submit') });
+  const staleCard = walk(staleRoot).find(item => item.dataset?.researchChallengeId === 'challenge-1');
+  assert.ok(staleCard);
+  assert.equal(walk(staleCard).filter(item => item.dataset?.challengeReviewSubmit).length, 0);
+  assert.match(textOf(staleCard), /snapshot is stale or unavailable/);
+
+  const reviewedQueue = structuredClone(queue);
+  reviewedQueue.pendingCount = 0;
+  reviewedQueue.reviewedCount = 1;
+  reviewedQueue.challenges[0].reviewStatus = 'reviewed';
+  reviewedQueue.challenges[0].review = {
+    eventId: 'review-event-1',
+    reviewId: 'review-1',
+    reportId: 'report-1',
+    challengeId: 'challenge-1',
+    disposition: 'investigate',
+    rationale: 'Repeat the comparison with retained settings.',
+    actorId: 'founder-1',
+    actorRole: 'founder',
+    reviewerSameAsReport: false,
+    reviewerSameAsChallenge: true,
+    sourceEventIds: ['report-event-1', 'challenge-event-1']
+  };
+  const reviewedRoot = element('div');
+  renderResearchEncounterQueue(reviewedRoot, reviewedQueue, { founder: true });
+  const reviewedCard = walk(reviewedRoot).find(item => item.dataset?.researchChallengeId === 'challenge-1');
+  assert.ok(reviewedCard);
+  assert.equal(walk(reviewedCard).filter(item => item.dataset?.challengeReviewSubmit).length, 0);
+  assert.match(textOf(reviewedCard), /REVIEWED · GAME-LEVEL NEXT STEP · Investigate next/);
+  assert.match(textOf(reviewedCard), /Reviewer account matches the challenge author/);
+  assert.match(textOf(reviewedCard), /Account IDs are service attribution, not proof of distinct humans/);
+  assert.match(textOf(reviewedCard), /source events report-event-1 → challenge-event-1/);
+
+  const unlinkedQueue = structuredClone(queue);
+  unlinkedQueue.unlinkedReviewCount = 1;
+  unlinkedQueue.unlinkedCount = 1;
+  unlinkedQueue.challenges[0].reviewStatus = 'unlinked';
+  const unlinkedRoot = element('div');
+  renderResearchEncounterQueue(unlinkedRoot, unlinkedQueue, { founder: true, onReview: () => assert.fail('Unlinked review history must not be overwritten') });
+  const unlinkedCard = walk(unlinkedRoot).find(item => item.dataset?.researchChallengeId === 'challenge-1');
+  assert.ok(unlinkedCard);
+  assert.equal(walk(unlinkedCard).filter(item => item.dataset?.challengeReviewSubmit).length, 0);
+  assert.match(textOf(unlinkedCard), /does not bind to this exact report\/challenge pair/);
+}));
+
