@@ -15,10 +15,10 @@ test('standalone supplies its own network-denying host policy without a server h
 test('runtime data nested beneath source roots never enters a public source archive',async()=>{const dir=await fixture();try{await mkdir(join(dir,'src/runtime'),{recursive:true});await writeFile(join(dir,'src/runtime/service.json'),'PRIVATE_NESTED_STATE_FIXTURE');await writeFile(join(dir,'src/saved-state.json'),'PRIVATE_CUSTOM_STATE_FIXTURE');const r=await buildGame({rootDir:dir}),entries=unzip(await readFile(r.zipPath));assert.ok(!entries.has('src/runtime/service.json'));assert.ok(!entries.has('src/saved-state.json'));assert.ok([...entries.values()].every(b=>!b.includes(Buffer.from('PRIVATE_NESTED_STATE_FIXTURE'))&&!b.includes(Buffer.from('PRIVATE_CUSTOM_STATE_FIXTURE'))));}finally{await rm(dir,{recursive:true,force:true});}});
 
 function serviceResponse(body, ok=true, status=ok?200:500){return {ok,status,body,clone(){return serviceResponse(body,ok,status);}};}
-async function serviceWorkerHarness({fetchImpl,openCache}){
+async function serviceWorkerHarness({fetchImpl,openCache,listCaches=async()=>[],deleteCache=async()=>true,claimClients=async()=>{}}){
   const handlers=new Map();
-  const self={location:{origin:'https://ngl.test'},clients:{claim:async()=>{}},addEventListener:(name,handler)=>handlers.set(name,handler)};
-  const caches={open:openCache,keys:async()=>[],delete:async()=>true};
+  const self={location:{origin:'https://ngl.test'},clients:{claim:claimClients},addEventListener:(name,handler)=>handlers.set(name,handler)};
+  const caches={open:openCache,keys:listCaches,delete:deleteCache};
   const source=await readFile(join(process.cwd(),'game/sw.js'),'utf8');
   runInNewContext(source,{self,caches,fetch:fetchImpl,URL,Response:{error:()=>({ok:false,body:'response-error'})}});
   return handlers;
@@ -29,6 +29,37 @@ async function serviceWorkerResponse(handler,request){
   return pending?await pending:null;
 }
 const shellRequest=(path,mode='no-cors')=>({method:'GET',url:'https://ngl.test'+path,mode});
+
+test('service worker activation claims clients when Cache Storage enumeration fails',async()=>{
+  let claims=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>{throw new Error('Cache Storage unavailable');},
+    claimClients:async()=>{claims+=1;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await activation;
+  assert.equal(claims,1);
+});
+
+test('service worker activation claims clients when obsolete-cache deletion fails',async()=>{
+  let claims=0;
+  const attempted=[];
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>['ngl-common-ground-shell-old','unrelated-cache','ngl-common-ground-shell-20261101-1'],
+    deleteCache:async name=>{attempted.push(name);throw new Error('cache deletion denied');},
+    claimClients:async()=>{claims+=1;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await activation;
+  assert.deepEqual(attempted,['ngl-common-ground-shell-old']);
+  assert.equal(claims,1);
+});
 
 test('successful navigation survives a cache quota failure instead of falling back to stale HTML',async()=>{
   const cache={
