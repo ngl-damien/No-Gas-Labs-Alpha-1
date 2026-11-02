@@ -51,6 +51,15 @@ SPEC_KEYS = {
 PROGRAM_BINARY = {"add", "subtract", "multiply", "min", "max"}
 PROGRAM_UNARY = {"negate", "abs"}
 
+DIRECTORY_FD_WALK_SUPPORTED = (
+    os.name == "posix"
+    and os.open in os.supports_dir_fd
+    and os.stat in os.supports_dir_fd
+    and os.stat in os.supports_follow_symlinks
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+
 
 class VerificationError(Exception):
     """A stable, machine-readable verification failure."""
@@ -87,14 +96,7 @@ def read_bounded_regular_file(path, limit, label):
     # POSIX directory descriptors pin every parent component. O_NOFOLLOW on
     # the final file alone is insufficient: a parent can become a symlink
     # between lstat(path_component) and open(full_path).
-    directory_fd_walk = (
-        os.name == "posix"
-        and os.open in os.supports_dir_fd
-        and os.stat in os.supports_dir_fd
-        and os.stat in os.supports_follow_symlinks
-        and hasattr(os, "O_DIRECTORY")
-        and hasattr(os, "O_NOFOLLOW")
-    )
+    directory_fd_walk = DIRECTORY_FD_WALK_SUPPORTED
     directory_descriptors = []
     directory_descriptor = None
     descriptor = None
