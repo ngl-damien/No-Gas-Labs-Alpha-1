@@ -340,6 +340,12 @@ def is_negative_zero(value):
     return type(value) is float and value == 0.0 and math.copysign(1.0, value) < 0.0
 
 
+def js_string_length(value):
+    # JavaScript String.length counts UTF-16 code units, not Python code points.
+    # A lone surrogate is one code unit; an astral scalar value is two.
+    return sum(2 if ord(character) > 0xFFFF else 1 for character in value)
+
+
 def node_deep_equal(actual, expected):
     """Compare parsed JSON values with ECMAScript Number/boolean semantics."""
     if type(actual) is bool or type(expected) is bool:
@@ -509,7 +515,7 @@ def verify_synthesis_receipt(receipt):
         or not isinstance(receipt["taskSpecificationDigest"], str)
         or not re.fullmatch(r"[a-f0-9]{64}", receipt["taskSpecificationDigest"])
         or not isinstance(receipt["instruction"], str)
-        or len(receipt["instruction"]) > 512
+        or js_string_length(receipt["instruction"]) > 512
     ):
         fail("SYNTHESIS_RECEIPT_INVALID")
 
