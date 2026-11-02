@@ -568,6 +568,7 @@ test('hosted preflight includes the capability, ledger lock, signer, and checkpo
   assert.ok(command.includes('--path scripts/evaluate-candidate-task.mjs'));
   assert.ok(command.includes('--path test/evaluate-candidate-task.test.mjs'));
   assert.equal(packageJson.scripts['candidate:evaluate'], 'node scripts/evaluate-candidate-task.mjs');
+  assert.equal(packageJson.scripts['candidate:verify'], 'node scripts/evaluate-candidate-task.mjs --verify-report');
   for (const path of [
     'experiment-001/institutional-cycle.test.mjs',
     'experiment-001/atomic-lock.mjs',

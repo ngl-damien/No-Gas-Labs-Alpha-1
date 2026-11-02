@@ -94,4 +94,13 @@ npm run candidate:evaluate -- ./candidate.json --range -32 32
 
 Range mode evaluates every integer in the requested interval, rejects reversed or out-of-domain ranges, and caps one invocation at 4,096 inputs. It emits each input/output comparison plus a deterministic SHA-256 result digest. The digest is an integrity checksum, not a signature or proof of who ran the command. The polynomial proof remains the exact all-domain mathematical claim; range rows are runtime cross-checks only.
 
+A saved single-input or range report can be replayed against its original synthesis receipt:
+
+```sh
+npm run candidate:evaluate -- ./candidate.json --range -32 32 > ./candidate-evaluation.json
+npm run candidate:verify -- ./candidate.json ./candidate-evaluation.json
+```
+
+The verifier checks the report schema and authority boundary, reopens and validates the synthesis receipt, recomputes every reported input/output pair, and verifies the range result digest. It emits a deterministic verification receipt. This is same-runtime replay plus an independent BigInt target recalculation, not a separate implementation, signature, proof of who ran the command, Founder approval, capability installation, or canonical-state mutation.
+
 This is an unsigned local evaluation only. It does not verify a task-specification signature or INSTALL approval, install or reuse a capability, read a Founder key, or change canonical state. A successful evaluation is not evidence of Founder authorization or real-world identity.

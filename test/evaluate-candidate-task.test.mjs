@@ -152,6 +152,9 @@ test('offline evaluator supports single-input and bounded range usage forms', ()
   const incompleteRange = run(evaluateScript, ['unused.json', '--range', '0']);
   assert.equal(incompleteRange.status, 2);
   assert.match(incompleteRange.stderr, /--range <start> <end>/);
+  const incompleteVerification = run(evaluateScript, ['--verify-report', 'unused.json']);
+  assert.equal(incompleteVerification.status, 2);
+  assert.match(incompleteVerification.stderr, /--verify-report <synthesis-receipt\.json> <evaluation-report\.json>/);
 });
 
 test('offline range evaluation checks every inclusive input and is byte-for-byte reproducible', async t => {
@@ -204,4 +207,128 @@ test('offline range evaluation accepts the exact 4096-input bound and rejects la
     assert.match(result.stderr, new RegExp(code), start + '..' + end);
     assert.equal(result.stdout, '');
   }
+});
+
+
+test('offline report verifier replays single and bounded-range reports with deterministic receipts', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const scenarios = [
+    { name: 'single', args: [receiptPath, '17'], reportSchema: 'ngl.candidate-program-evaluation.v1', count: 1 },
+    { name: 'range', args: [receiptPath, '--range', '-3', '3'], reportSchema: 'ngl.candidate-program-evaluation-range.v1', count: 7 }
+  ];
+
+  for (const scenario of scenarios) {
+    const evaluated = run(evaluateScript, scenario.args);
+    assert.equal(evaluated.status, 0, evaluated.stderr);
+    const report = JSON.parse(evaluated.stdout);
+    const reportPath = join(directory, scenario.name + '-evaluation-report.json');
+    await writeFile(reportPath, evaluated.stdout, { mode: 0o600 });
+
+    const args = ['--verify-report', receiptPath, reportPath];
+    const first = run(evaluateScript, args);
+    const second = run(evaluateScript, args);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(second.stdout, first.stdout, 'the same source receipt and report must yield identical verification bytes');
+
+    const verification = JSON.parse(first.stdout);
+    assert.equal(verification.schema, 'ngl.candidate-program-evaluation-verification.v1');
+    assert.equal(verification.reportSchema, scenario.reportSchema);
+    assert.equal(verification.taskSpecificationId, taskSpecification().id);
+    assert.equal(verification.evaluationCount, scenario.count);
+    assert.match(verification.reportDigest, /^[a-f0-9]{64}$/);
+    assert.equal(verification.resultDigest, scenario.name === 'range' ? report.resultDigest : null);
+    assert.equal(verification.verificationMethod, 'same-runtime-replay-plus-BigInt-target-check');
+    assert.equal(verification.verified, true);
+    assert.deepEqual(verification.authority, {
+      taskSpecificationSignatureVerified: false,
+      founderInstallApprovalVerified: false,
+      capabilityInstalled: false,
+      canonicalStateChanged: false
+    });
+  }
+});
+
+test('offline report verifier rejects altered rows, task context, authority claims, incomplete ranges, and digests', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const evaluated = run(evaluateScript, [receiptPath, '--range', '-3', '3']);
+  assert.equal(evaluated.status, 0, evaluated.stderr);
+  const original = JSON.parse(evaluated.stdout);
+  const cases = [
+    {
+      name: 'altered output',
+      code: 'EVALUATION_REPORT_MISMATCH',
+      mutate(value) { value.evaluations[0].output += 1; }
+    },
+    {
+      name: 'wrong task context',
+      code: 'EVALUATION_REPORT_CONTEXT_MISMATCH',
+      mutate(value) { value.taskSpecificationDigest = '0'.repeat(64); }
+    },
+    {
+      name: 'forged authority claim',
+      code: 'EVALUATION_REPORT_AUTHORITY_INVALID',
+      mutate(value) { value.authority.capabilityInstalled = true; }
+    },
+    {
+      name: 'incomplete range',
+      code: 'EVALUATION_REPORT_RANGE_INVALID',
+      mutate(value) { value.evaluations.pop(); }
+    },
+    {
+      name: 'altered result digest',
+      code: 'EVALUATION_REPORT_DIGEST_MISMATCH',
+      mutate(value) { value.resultDigest = '0'.repeat(64); }
+    },
+    {
+      name: 'noncontiguous row',
+      code: 'EVALUATION_REPORT_RANGE_INVALID',
+      mutate(value) { value.evaluations[1].input += 1; }
+    },
+    {
+      name: 'unexpected report field',
+      code: 'EVALUATION_REPORT_INVALID',
+      mutate(value) { value.untrustedFounderApproval = true; }
+    }
+  ];
+
+  for (let index = 0; index < cases.length; index += 1) {
+    const item = cases[index];
+    const altered = structuredClone(original);
+    item.mutate(altered);
+    const reportPath = join(directory, 'tampered-evaluation-' + index + '.json');
+    await writeFile(reportPath, JSON.stringify(altered), { mode: 0o600 });
+    const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
+    assert.equal(result.status, 1, item.name);
+    assert.match(result.stderr, new RegExp(item.code), item.name);
+    assert.equal(result.stdout, '', item.name);
+  }
+});
+
+test('offline report verifier rejects duplicate JSON keys before replay', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const evaluated = run(evaluateScript, [receiptPath, '--range', '-3', '3']);
+  assert.equal(evaluated.status, 0, evaluated.stderr);
+  const duplicate = evaluated.stdout.replace(
+    '"schema": "ngl.candidate-program-evaluation-range.v1"',
+    '"schema": "untrusted",\n  "schema": "ngl.candidate-program-evaluation-range.v1"'
+  );
+  assert.notEqual(duplicate, evaluated.stdout, 'the fixture must actually contain the duplicate key');
+  const reportPath = join(directory, 'duplicate-evaluation-report.json');
+  await writeFile(reportPath, duplicate, { mode: 0o600 });
+  const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /EVALUATION_REPORT_DUPLICATE_JSON_KEY/);
+  assert.equal(result.stdout, '');
+});
+
+
+test('offline report verifier rejects oversized reports before JSON parsing', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const reportPath = join(directory, 'oversized-evaluation-report.json');
+  await writeFile(reportPath, ' '.repeat(2 * 1024 * 1024 + 1), { mode: 0o600 });
+  const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /EVALUATION_REPORT_FILE_TOO_LARGE/);
+  assert.equal(result.stdout, '');
 });

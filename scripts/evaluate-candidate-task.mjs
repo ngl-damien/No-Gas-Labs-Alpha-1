@@ -16,6 +16,24 @@ import {
 const MAX_RECEIPT_BYTES = 64 * 1024;
 const MAX_RECEIPT_JSON_DEPTH = 16;
 const MAX_RANGE_EVALUATIONS = 4096;
+const MAX_EVALUATION_REPORT_BYTES = 2 * 1024 * 1024;
+const MAX_EVALUATION_REPORT_JSON_DEPTH = 16;
+const AUTHORITY_KEYS = [
+  'taskSpecificationSignatureVerified',
+  'founderInstallApprovalVerified',
+  'capabilityInstalled',
+  'canonicalStateChanged'
+];
+const SINGLE_EVALUATION_REPORT_KEYS = [
+  'schema', 'taskSpecificationId', 'taskSpecificationDigest', 'implementationHash',
+  'input', 'output', 'expectedOutput', 'proofVerified', 'evaluationMatchesTarget', 'authority'
+];
+const RANGE_EVALUATION_REPORT_KEYS = [
+  'schema', 'taskSpecificationId', 'taskSpecificationDigest', 'implementationHash',
+  'range', 'evaluationCount', 'evaluations', 'proofVerified', 'evaluationMatchesTarget',
+  'authority', 'resultDigest'
+];
+const EVALUATION_ROW_KEYS = ['input', 'output', 'expectedOutput'];
 const RECEIPT_KEYS = [
   'schema',
   'taskSpecificationDigest',
@@ -67,6 +85,24 @@ async function readReceipt(path) {
     return JSON.parse(source);
   } catch {
     fail('SYNTHESIS_RECEIPT_JSON_INVALID');
+  }
+}
+
+async function readEvaluationReport(path) {
+  let source;
+  try {
+    source = await readBoundedRegularFile(resolve(path), MAX_EVALUATION_REPORT_BYTES, 'EVALUATION_REPORT');
+  } catch (error) {
+    throw new Error(error.code || error.message || 'EVALUATION_REPORT_READ_FAILED');
+  }
+  assertNoDuplicateJsonObjectKeys(source, {
+    label: 'EVALUATION_REPORT',
+    maxDepth: MAX_EVALUATION_REPORT_JSON_DEPTH
+  });
+  try {
+    return JSON.parse(source);
+  } catch {
+    fail('EVALUATION_REPORT_JSON_INVALID');
   }
 }
 
@@ -148,21 +184,154 @@ function authorityBoundary() {
   };
 }
 
+function verifyReportAuthority(authority) {
+  requireExactKeys(authority, AUTHORITY_KEYS, 'EVALUATION_REPORT_INVALID');
+  if (AUTHORITY_KEYS.some(key => authority[key] !== false)) {
+    fail('EVALUATION_REPORT_AUTHORITY_INVALID');
+  }
+}
+
+function makeVerificationReceipt(verified, normalizedReport, evaluationCount, resultDigest = null) {
+  const reportDigest = createHash('sha256')
+    .update('ngl.candidate-program-evaluation-report:v1\n')
+    .update(JSON.stringify(normalizedReport))
+    .digest('hex');
+  return {
+    schema: 'ngl.candidate-program-evaluation-verification.v1',
+    reportSchema: normalizedReport.schema,
+    taskSpecificationId: verified.specification.id,
+    taskSpecificationDigest: verified.digest,
+    implementationHash: candidateProgramHash(verified.program, 'v5', verified.specification),
+    evaluationCount,
+    reportDigest,
+    resultDigest,
+    verificationMethod: 'same-runtime-replay-plus-BigInt-target-check',
+    verified: true,
+    authority: authorityBoundary()
+  };
+}
+
+function verifyEvaluationReport(verified, report) {
+  if (!report || typeof report !== 'object' || Array.isArray(report)) {
+    fail('EVALUATION_REPORT_INVALID');
+  }
+  const implementationHash = candidateProgramHash(verified.program, 'v5', verified.specification);
+  if (report.taskSpecificationId !== verified.specification.id ||
+      report.taskSpecificationDigest !== verified.digest ||
+      report.implementationHash !== implementationHash) {
+    fail('EVALUATION_REPORT_CONTEXT_MISMATCH');
+  }
+  if (report.proofVerified !== true || report.evaluationMatchesTarget !== true) {
+    fail('EVALUATION_REPORT_INVALID');
+  }
+  verifyReportAuthority(report.authority);
+
+  if (report.schema === 'ngl.candidate-program-evaluation.v1') {
+    requireExactKeys(report, SINGLE_EVALUATION_REPORT_KEYS, 'EVALUATION_REPORT_INVALID');
+    if (!Number.isSafeInteger(report.input)) fail('EVALUATION_REPORT_INPUT_INVALID');
+    let input;
+    try { input = parseInput(String(report.input), verified.specification); }
+    catch { fail('EVALUATION_REPORT_INPUT_INVALID'); }
+    const expected = evaluateOne(verified, input);
+    const actual = { input: report.input, output: report.output, expectedOutput: report.expectedOutput };
+    if (!isDeepStrictEqual(actual, expected)) fail('EVALUATION_REPORT_MISMATCH');
+    const normalizedReport = {
+      schema: 'ngl.candidate-program-evaluation.v1',
+      taskSpecificationId: verified.specification.id,
+      taskSpecificationDigest: verified.digest,
+      implementationHash,
+      ...expected,
+      proofVerified: true,
+      evaluationMatchesTarget: true,
+      authority: authorityBoundary()
+    };
+    return makeVerificationReceipt(verified, normalizedReport, 1);
+  }
+
+  if (report.schema === 'ngl.candidate-program-evaluation-range.v1') {
+    requireExactKeys(report, RANGE_EVALUATION_REPORT_KEYS, 'EVALUATION_REPORT_INVALID');
+    requireExactKeys(report.range, ['start', 'end'], 'EVALUATION_REPORT_RANGE_INVALID');
+    if (!Number.isSafeInteger(report.range.start) || !Number.isSafeInteger(report.range.end)) {
+      fail('EVALUATION_REPORT_RANGE_INVALID');
+    }
+    let start;
+    let end;
+    try {
+      start = parseInput(String(report.range.start), verified.specification);
+      end = parseInput(String(report.range.end), verified.specification);
+    } catch {
+      fail('EVALUATION_REPORT_RANGE_INVALID');
+    }
+    if (start > end) fail('EVALUATION_REPORT_RANGE_INVALID');
+    const count = end - start + 1;
+    if (count > MAX_RANGE_EVALUATIONS) fail('EVALUATION_REPORT_RANGE_TOO_LARGE');
+    if (report.evaluationCount !== count || !Array.isArray(report.evaluations) ||
+        report.evaluations.length !== count) {
+      fail('EVALUATION_REPORT_RANGE_INVALID');
+    }
+
+    const evaluations = [];
+    for (let index = 0; index < count; index += 1) {
+      const row = report.evaluations[index];
+      requireExactKeys(row, EVALUATION_ROW_KEYS, 'EVALUATION_REPORT_INVALID');
+      const input = start + index;
+      if (row.input !== input) fail('EVALUATION_REPORT_RANGE_INVALID');
+      const expected = evaluateOne(verified, input);
+      if (!isDeepStrictEqual(row, expected)) fail('EVALUATION_REPORT_MISMATCH');
+      evaluations.push(expected);
+    }
+
+    const unsignedReport = {
+      schema: 'ngl.candidate-program-evaluation-range.v1',
+      taskSpecificationId: verified.specification.id,
+      taskSpecificationDigest: verified.digest,
+      implementationHash,
+      range: { start, end },
+      evaluationCount: count,
+      evaluations,
+      proofVerified: true,
+      evaluationMatchesTarget: true,
+      authority: authorityBoundary()
+    };
+    const resultDigest = createHash('sha256')
+      .update('ngl.candidate-program-evaluation-range:v1\n')
+      .update(JSON.stringify(unsignedReport))
+      .digest('hex');
+    if (report.resultDigest !== resultDigest) fail('EVALUATION_REPORT_DIGEST_MISMATCH');
+    return makeVerificationReceipt(
+      verified,
+      { ...unsignedReport, resultDigest },
+      count,
+      resultDigest
+    );
+  }
+
+  fail('EVALUATION_REPORT_SCHEMA_UNSUPPORTED');
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  const singleInput = args.length === 2 && args[1] !== '--range';
+  const verifyReport = args.length === 3 && args[0] === '--verify-report';
+  const singleInput = args.length === 2 && args[0] !== '--verify-report' && args[1] !== '--range';
   const rangeInput = args.length === 4 && args[1] === '--range';
-  if (!singleInput && !rangeInput) {
+  if (!verifyReport && !singleInput && !rangeInput) {
     process.stderr.write(
       'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n' +
-      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\n'
+      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs --verify-report <synthesis-receipt.json> <evaluation-report.json>\n'
     );
     process.exitCode = 2;
     return;
   }
 
-  const receipt = await readReceipt(args[0]);
+  const receipt = await readReceipt(verifyReport ? args[1] : args[0]);
   const verified = verifySynthesisReceipt(receipt);
+  if (verifyReport) {
+    const report = await readEvaluationReport(args[2]);
+    const verification = verifyEvaluationReport(verified, report);
+    process.stdout.write(JSON.stringify(verification, null, 2) + '\n');
+    return;
+  }
   const implementationHash = candidateProgramHash(verified.program, 'v5', verified.specification);
 
   if (singleInput) {
