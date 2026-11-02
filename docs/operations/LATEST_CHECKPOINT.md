@@ -1256,3 +1256,53 @@ Freshly parsed the actual `agent:preflight:ci` command in the PR #283 and PR #28
 - PR #290 remains closed as superseded; its old-head Browser run passed 19/19, but its Android emulator run is not used as current-parent evidence.
 - Founder-key guard audit: PR #251 and #265 both contain the explicit-key/loopback-only generation guard and each has exact-head Verify, Genesis, and Browser success. Both branches are divergent from main; no third guard implementation was started. Main still has the old auto-generation path; integration remains the next safe action after ancestry reconciliation.
 - Main remains unchanged at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No merge, release, deployment, spending, external publication, credential/key/permission change, destructive action, or Founder decision occurred.
+
+
+## Run 30 — 2026-11-02 — negative-zero report replay, Android emulator gate, and branch-divergence recheck
+
+### Rehydrate and instruction boundary
+- Re-read root AGENTS.md alone and the complete canonical shared scheduler protocol alone on the active checkpoint branch. Observed blobs remain a4beeee1c0ec46faab28502957c0e53850b2855d and 9a26ee4c17d2462dd66e99e90d258eaa9bcab79f. docs/operations/AGENTS.md returned 404; no nested instructions were found for the checkpoint path.
+- The portable local preflight was not run in this session. Hosted Verify supplied the preflight receipt and tests; no local Node 24/Python execution or local receipt is claimed.
+- Rechecked the current checkpoint and the latest other-worker PR #289 exact head/results before selecting work.
+
+### Cycle 1 — candidate evaluation negative-zero round-trip defect
+
+- PR #279 branch experiment/candidate-report-independent-verifier-20261102 was re-inspected at head 3bf6d99671fcccc7a034455eb15d71eb4c00a780; its parent PR #278 owns the CLI-usage-guard ancestry. No competing open PR was found changing the same candidate-verifier test path outside this stack.
+- Added a test-first regression in test/test_candidate_report_verifier.py using a valid AST negate(const(0)), whose exact polynomial normal form is zero. It covers both single and range reports.
+- Test-first commit df39cbc699ced4a54071d72e9b3238ae3ff2f4a2; Verify [41523688948](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41523688948) failed in both new subcases with Node EVALUATION_REPORT_MISMATCH, while the independent Python verifier accepted the serialized report. The Node/Python suites and hosted preflight had passed before the dedicated verifier stage exposed the mismatch.
+- Source cause: JavaScript evaluates negate(0) as negative zero, but JSON.stringify emits ordinary zero. The report producer retained negative zero in its in-memory expected row, so its own strict isDeepStrictEqual replay rejected the serialized positive-zero report. Python's integer replay accepted it.
+- Fix commit 6029836d90819e61d311b82760d93b07829c7d88 changes scripts/evaluate-candidate-task.mjs to normalize negative zero to positive integer zero at the report boundary before constructing single/range reports. The regression now requires Node and Python to accept the generated reports and return matching report digests.
+- Exact-head Verify [41523855774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41523855774): success. Hosted preflight status ready, 95 declared target paths, zero warnings and failures; Node 24.22.1 tests exit 0; Python inspector exit 0; dedicated candidate-report-verifier suite (24 test methods) exit 0; game package build exit 0; institutional exercise exit 0; verification report passed true.
+- Exact-head Genesis Evidence Invariant [41523854286](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41523854286): success.
+- Exact-head Browser Acceptance [41523854191](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41523854191): in progress at checkpoint creation. Do not claim browser acceptance until this exact head completes.
+- PR #279 comment [6588335670](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/279#issuecomment-6588335670) preserves the test-first failure, fix, and exact-head results.
+
+### Cycle 2 — Worker B Android bridge review and emulator-gate diagnosis
+
+- Re-inspected Worker B PR #289 current head 9b8d3b15175faebe642e73f81e097c10a7165ca9, including NativeWorldFiles.java, MainActivity.java, MainActivityTest.java, the Android workflow, and applicable nested AGENTS.md paths (none found).
+- Current source now uses a one-thread ThreadPoolExecutor with an ArrayBlockingQueue, 64-KiB chunk cap, queued-plus-written 32-MiB accepted-byte budget, abort on late post-completion chunks, and exact /assets/game/index.html top-level document check. Instrumentation includes same-origin sibling rejection and bounded-queue pressure. Worker A did not edit Android files.
+- PR #289 exact-head Verify [41520291314](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291314), Genesis [41520291381](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291381), and Browser [41520291433](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291433) all passed.
+- Android Alpha-1 [41520291295](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291295) failed before instrumentation at Timeout waiting for emulator to boot. Its portable preflight, receipt upload, Java/Android/Gradle setup, and debug APK assembly passed. The always-run artifact step preserved APK [13177799534](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291295/artifacts/13177799534) (2,133,610 bytes) and preflight receipt artifact [13177181898](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41520291295/artifacts/13177181898). No instrumentation result exists on this head.
+- The immediately prior PR #289 head 5e30d983e0e0b7663e556e46930f93da8bc0d98e had Android run [41518194825](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41518194825) succeed through app connectedDebugAndroidTest; its emulator boot took 479,721 ms (about 8 minutes). Current failure is consistent with runner boot-time variance against the logged 600-second default, not an observed test assertion failure. Worker B received the exact diagnostic and a suggestion to set an explicit 900-second boot timeout or capture boot diagnostics in PR #289 comments [6588254537](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/289#issuecomment-6588254537) and [6588312163](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/289#issuecomment-6588312163). Keep Android acceptance open until current-head instrumentation passes.
+
+### Cycle 3 — challenge the proposed combined integration
+
+- Compared PR #279 head 6029836d90819e61d311b82760d93b07829c7d88 against PR #289 head 9b8d3b15175faebe642e73f81e097c10a7165ca9.
+- GitHub compare reports diverged, 169 commits ahead / 143 behind, merge base 7a915a95cc42b7db66cb7d38a61a0f2d626b8370, with 30 changed files in the comparison result. Shared/overlapping paths include package.json, scripts/verify.mjs, scripts/validate-agent-governance.mjs, test/agent-governance.test.mjs, game/sw.js, src/institution/recovery-files.mjs, scripts/approve-install.mjs, experiment-001/institutional-cycle.mjs, and related tests/docs.
+- The previously observed 95-path candidate manifest plus 73-path game manifest has a 97-path set union, but that arithmetic is not a safe merge plan. The source histories materially diverge and shared files require explicit reconciliation. No combined branch or blind transplant was created.
+- Handoff recorded on PR #286 comment [6588338361](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/286#issuecomment-6588338361): next integration work must compare each overlapping file against the common ancestor and resolve validator, verify runner, package targets/scripts, recovery, and institutional-cycle changes before a combined-tree preflight.
+
+### Founder authorization and linked repositories
+- Issue #17 remains open and still lists real Founder key custody/identity, adversarial concurrency, stale-lock/crash recovery, and live mutation-boundary integration as unresolved acceptance work.
+- PR #16 remains closed/unmerged and PR #18 remains the merged replacement. The final PR #16 patch does not contain the alleged demonstrate() self-signing flow; do not recreate it as a current defect.
+- No Founder key was generated, read, enrolled, exported, rotated, or changed. No trust root or Founder identity was inferred.
+- No linked repository was modified. AI-BI Termux bootstrap and governance bootstrap remain deferred until an authorized device is available; ngl-mesh remains read-only while its root instructions are unavailable.
+
+### Next ranked actions
+1. Recheck Browser Acceptance [41523854191](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41523854191) on exact PR #279 head 6029836; record its final result and artifact or inspect the actual failure.
+2. Reconcile PR #279 and PR #289 file-by-file from merge base 7a915a9; preserve the 97-path target union only after the corresponding source/dependency files coexist on one branch.
+3. Have Worker B resolve the Android emulator boot-time variance and obtain a current-head app connectedDebugAndroidTest result; do not transfer the older 5e30 pass.
+4. Keep Founder identity/custody and live canonical Decision Gate authorization separate from the superseded PR #16 allegation. Integrate only after canonical context and a Damien-controlled trust root are established.
+5. Resume linked-repository bootstraps only when required root instructions and authorized device access are available.
+
+Authority: no merge, release, deployment, spending, external publication, credential/key/permission change, destructive action, or Founder decision occurred. No uninterrupted execution between runs is claimed.
