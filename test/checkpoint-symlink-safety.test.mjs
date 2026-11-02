@@ -2,7 +2,7 @@ import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, rename } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, rename, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPreflight } from '../scripts/validate-agent-governance.mjs';
@@ -207,6 +207,91 @@ test('preflight never fingerprints a trusted checkpoint from a transient real-di
       ), JSON.stringify(result.failures));
     }
     assert.equal(await readFile(join(root, checkpointPath), 'utf8'), originalBytes.toString('utf8'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('preflight rejects an in-place trusted-file rewrite after the initial snapshot', {
+  skip: process.platform !== 'linux' ? 'descriptor-relative trusted reads require Linux procfs' : false
+}, async () => {
+  const root = await fixture();
+  const checkpointPath = 'docs/operations/LATEST_CHECKPOINT.md';
+  const checkpoint = join(root, checkpointPath);
+  const originalText = '# Latest Durable Checkpoint\\nOriginal checkpoint.\\n';
+  const decoyText = '# Latest Durable Checkpoint\\nTampered checkpoint.\\n';
+  const originalBytes = Buffer.from(originalText, 'utf8');
+  const decoyBytes = Buffer.from(decoyText, 'utf8');
+  const started = join(root, 'in-place-rewrite-started');
+  const restored = join(root, 'in-place-rewrite-restored');
+  try {
+    assert.equal(decoyBytes.length, originalBytes.length, 'the in-place rewrite must preserve file size');
+    await writeFile(checkpoint, originalBytes);
+    const before = await lstat(checkpoint, { bigint: true });
+
+    const hookPath = join(root, 'preflight-in-place-rewrite.cjs');
+    const hook = [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const originalStat = fs.promises.stat;",
+      "const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
+      "const checkpoint = path.join(root, 'docs', 'operations', 'LATEST_CHECKPOINT.md');",
+      "const originalBytes = Buffer.from(" + JSON.stringify(originalText) + ", 'utf8');",
+      "const decoyBytes = Buffer.from(" + JSON.stringify(decoyText) + ", 'utf8');",
+      "let rewritten = false;",
+      "let restored = false;",
+      "function restore() {",
+      "  if (!rewritten || restored) return;",
+      "  fs.writeFileSync(checkpoint, originalBytes);",
+      "  restored = true;",
+      "  fs.writeFileSync(path.join(root, 'in-place-rewrite-restored'), 'yes');",
+      "}",
+      "process.on('exit', restore);",
+      "fs.promises.stat = async function(candidate, ...args) {",
+      "  if (!rewritten && path.resolve(String(candidate)) === checkpoint) {",
+      "    fs.writeFileSync(checkpoint, decoyBytes);",
+      "    rewritten = true;",
+      "    fs.writeFileSync(path.join(root, 'in-place-rewrite-started'), 'yes');",
+      "  }",
+      "  return originalStat.call(this, candidate, ...args);",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join('\\n');
+    await writeFile(hookPath, hook);
+
+    const child = spawnSync(process.execPath, [
+      '--require', hookPath,
+      new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname,
+      '--root', root,
+      '--path', 'AGENTS.md',
+      '--checkpoint', checkpointPath
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: { ...process.env, NGL_PREFLIGHT_SWAP_ROOT: root }
+    });
+
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked', JSON.stringify(result));
+    assert.equal(await readFile(started, 'utf8'), 'yes', 'the same-inode rewrite must occur after the initial snapshot');
+    assert.equal(await readFile(restored, 'utf8'), 'yes', 'the original bytes must be restored before the child exits');
+    assert.ok(result.failures.some(item =>
+      item.path === checkpointPath && item.reason.includes('initial snapshot')
+    ), JSON.stringify(result.failures));
+    const decoyHash = createHash('sha256').update(decoyBytes).digest('hex');
+    assert.ok(!result.files.some(file =>
+      file.path === checkpointPath && file.sha256 === decoyHash
+    ), 'tampered bytes must never be fingerprinted as the canonical checkpoint');
+
+    const after = await lstat(checkpoint, { bigint: true });
+    assert.equal(after.dev, before.dev);
+    assert.equal(after.ino, before.ino, 'the same inode must be modified and restored');
+    assert.equal(after.size, before.size);
+    assert.equal(await readFile(checkpoint, 'utf8'), originalText);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
