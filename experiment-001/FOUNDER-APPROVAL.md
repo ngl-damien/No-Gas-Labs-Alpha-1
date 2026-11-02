@@ -38,3 +38,35 @@ The signer rejects malformed/expired proposals, unknown or invalid strategies, a
 ## Exact acceptance claim
 
 The tests can establish that review mode exposes the digest and decision fields without signing; signing requires an exact digest confirmation; the detached signature verifies against the canonical proposal; and mismatched pins, expired proposals and overly broad POSIX key-file permissions are rejected. They cannot establish real-world identity, safe production custody, independent human review, or successful capability installation.
+
+
+## Candidate task specifications (candidate-program-v5)
+
+A v5 INSTALL has two distinct signatures under the same configured Founder key: one signature authorizes the normalized task specification, and the existing INSTALL signature authorizes the exact capability proposal. The signatures use separate domains. This is not a second trust root and does not prove the human operator's identity.
+
+1. Prepare a JSON task specification using schema `ngl.candidate-task-spec.v1`, a versioned ID such as `ngl.experiment-001.task:quadratic-3x2-plus-2x-minus-5:v1`, the fixed input interval `[-1000000, 1000000]`, proof method `exact-integer-polynomial-normal-form`, the exact verifier limits, and ascending canonical decimal `targetCoefficients`.
+2. Inspect and normalize it without opening a key:
+
+```sh
+node scripts/approve-install.mjs --inspect-task-spec ./task-spec.json
+```
+
+3. Review the complete normalized specification and digest. On a trusted operator-controlled machine, sign only that exact digest:
+
+```sh
+NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-64-character-hex-fingerprint> \
+  node scripts/approve-install.mjs --confirm-task-spec <full-task-spec-digest> ./task-spec.json /secure/path/founder-private.pem > ./task-spec-signature.json
+```
+
+The receipt contains the task-specification digest, versioned task ID, key fingerprint, and detached signature. It is not an INSTALL approval.
+
+4. Put the exact normalized task specification and its signature in the v5 proposal. To inspect a v5 proposal, supply the independently provisioned public key whose fingerprint matches the trust pin:
+
+```sh
+NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-64-character-hex-fingerprint> \
+  node scripts/approve-install.mjs --inspect ./proposal.json /secure/path/founder-public.pem
+```
+
+5. Confirm the full proposal digest and sign the INSTALL as in the existing two-step flow. For v5, the signer derives the public key from the explicitly supplied private key and verifies the task-specification signature against that key before emitting the separate INSTALL signature.
+
+The CLI never creates, enrolls, rotates, exports, or stores a Founder key. Both signatures still depend on the same configured key and trust pin. A valid signature proves key possession only. Tests use ephemeral keys; no real Founder key or approval is present.

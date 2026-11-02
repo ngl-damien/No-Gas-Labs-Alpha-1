@@ -1271,3 +1271,37 @@ This follow-up records a cross-worker change that landed after the Run 32 candid
 - Worker A head `c3b48556ea258368e531147dc697e19218e6fe39` had exact-head Verify [41369412036](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369412036), Genesis [41369412086](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369412086), and Browser [41369412160](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369412160) all passed (16 browser journeys; artifact [13108672969](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41369412160/artifacts/13108672969)). This follow-up checkpoint commit requires its own exact-head CI; do not transfer those results to the new head.
 
 Next Worker A action remains: keep the candidate target trust contract, Founder server integration, and cross-worker ancestry reconciliation separate; do not edit Worker B's game paths or update Worker B's G6 ledger on their behalf.
+
+
+## Run 33 — 2026-11-02 — make candidate-program-v5 operable through the offline Founder signer
+
+**Worker:** Worker A — Repository Stutter-Step / institutional reliability and capability-acquisition evidence.  
+**Prior durable checkpoint:** Run 32 in this file.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Working PR:** #268, draft/open/unmerged; branch `experiment/candidate-program-acquisition-relay-stack-20261101`; pre-edit head `edef6e952cc06224872940ce4775ad29f24c0c42`.  
+**Other worker:** PR #269 latest observed head `f714cdfcbffbb81c3a971a2425de301e4f3a7181`; Worker B's G1 end-to-end playable-loop handoff remains comment 6566342219. The ledger keeps G1 NOT ASSESSED and G6 IN PROGRESS. No game paths were edited.
+
+### Rehydrate, observe, rank, and challenge
+
+- Re-read root `AGENTS.md` and the complete canonical scheduler protocol sequentially on this branch; their blob SHAs remain `a4beeee1c0ec46faab28502957c0e53850b2855d` and `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read this durable checkpoint and the MMORPG completion contract/ledger. The ledger remains a Worker B responsibility; no gate status was changed.
+- Local portable preflight and local Node execution were unavailable because both registered Desktop Commander devices were offline. The manual instruction sequence was followed; exact-head hosted CI is the available verification route.
+- Checked the current PR #268 head `edef6e952cc06224872940ce4775ad29f24c0c42`: Verify `41372196546`, Genesis `41372196535`, and Browser Acceptance `41372196507` all completed successfully. This is the exact pre-edit head, not evidence for this new change.
+- Re-read PR #269's latest branch and Worker B's handoffs. The G6 cache-resilience ledger correction is already present on `f714cdf`; it supersedes the earlier stale-row note. G1 remains NOT ASSESSED. No Worker B game implementation was duplicated.
+- Source-backed gap: `candidate-program-v5` requires a Founder public key to validate its task-specification signature. Existing `scripts/approve-install.mjs` called `validateInstallationProposal(decision)` without that key, so v5 proposals could not be inspected or approved through the existing operator CLI. There was also no two-step operator mode to sign a task specification, and the signer itself was absent from the hosted preflight target list.
+- Higher-risk alternatives were deliberately deferred: live server Decision Gate integration still lacks a canonical retained proposal/quest/output envelope and a separately established Founder trust-root/custody decision; #263/#264 and #267/#269 ancestry remains separate; Worker B owns G1/game source.
+
+### Selected implementation
+
+- Extend `scripts/approve-install.mjs` with `--inspect-task-spec` and `--confirm-task-spec`, each using the normalized candidate-task schema and full digest confirmation.
+- Keep task-spec and INSTALL signatures in separate Ed25519 domains. Both still use the same configured Founder key; no independent trust root or human identity proof is implied.
+- Require an independently pinned public-key file to inspect a v5 INSTALL proposal. During v5 INSTALL confirmation, derive the public key from the explicitly supplied private key and verify the task-spec signature before emitting the separate INSTALL signature.
+- Preserve the existing v1-v4 proposal validation/signing path. Reuse the bounded regular-file reader and strict duplicate-key/depth scanner. The CLI does not generate or persist keys.
+- Add ephemeral-key positive and negative CLI regressions for task-spec review/signing, digest mismatch before key access, duplicate/noncanonical specs, pinned public-key verification, valid v5 INSTALL signing, and rejection of a task spec signed by another key.
+- Add `scripts/approve-install.mjs` to the hosted preflight manifest and its manifest regression. Update `experiment-001/FOUNDER-APPROVAL.md` with the v5 operator flow.
+
+### Verification boundary and next action
+
+The exact implementation commit is recorded in this PR after the tree update. Exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance are **pending at checkpoint creation**; do not claim they pass until their runs are inspected. Local tests and local preflight are not claimed. No real Founder key was read, created, enrolled, rotated, exported, or changed. No merge, release, deployment, spending, external publication, production service call, or Founder decision occurred.
+
+**Next:** inspect all three workflows on the new exact head; read the Verify logs for the hosted preflight receipt and Node suite; fix only attributable failures; then append the exact run IDs/results to the PR handoff. After verification, resume the live server decision-envelope mapping as a separate security task, without touching Worker B's game paths or reconciling stacked branches by merge.
