@@ -466,7 +466,7 @@ function validateHistory(world) {
   }
 }
 
-async function validatePayload(raw) {
+export async function validatePayload(raw) {
   exact(raw, ['world', 'institutionalEvents', 'artifacts', 'publicationBindings']);
   const world = await validateWorld(raw.world);
   validateHistory(world);

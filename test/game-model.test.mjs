@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import { validatePayload } from '../game/server.mjs';
+import { projectResearchRecords } from '../game/research-records.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {projectCharacter} from '../game/character-sheet.mjs';
 
@@ -310,7 +312,9 @@ test('Founder challenge dispositions bind immutable source events without granti
 
   const before = projectCharacter(challenge.world, founder);
   const reviewed = await applyAction(challenge.world, reviewAction, founder, {
-    now: '2026-10-17T12:00:03.000Z'
+    now: '2026-10-17T12:00:03.000Z',
+    requestId: 'challenge-review-model-001',
+    actionFingerprint: 'a'.repeat(64)
   });
   const reviewEvent = reviewed.world.events.at(-1);
   assert.equal(reviewEvent.type, 'experiment-challenge-reviewed');
@@ -318,6 +322,18 @@ test('Founder challenge dispositions bind immutable source events without granti
   assert.equal(reviewEvent.actor.role, 'founder');
   assert.deepEqual(reviewEvent.sourceEventIds, [reportEvent.id, challengeEvent.id]);
   assert.equal(reviewEvent.disposition, 'request-evidence');
+  const reviewProjection = projectResearchRecords(reviewed.world.events, reviewed.world.creations)
+    .find(record => record.type === 'experiment-challenge-reviewed');
+  assert.ok(reviewProjection, 'the retained review must remain in the research projection');
+  assert.equal(reviewProjection._projection.proposalStatus, 'linked', JSON.stringify(reviewProjection._projection));
+  assert.equal(reviewProjection._projection.targetChallengeStatus, 'linked', JSON.stringify(reviewProjection._projection));
+  assert.equal(reviewProjection.actor.id, founder.id);
+  await validatePayload({
+    world: reviewed.world,
+    institutionalEvents: [],
+    artifacts: {},
+    publicationBindings: []
+  });
   assert.equal(reviewEvent.outcome, undefined);
   assert.equal(reviewEvent.status, undefined);
   assert.equal(reviewed.world.xp, challenge.world.xp);
