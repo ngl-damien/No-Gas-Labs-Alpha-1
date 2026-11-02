@@ -565,6 +565,9 @@ test('hosted preflight includes the world-view source, offline signer, synthesiz
   assert.ok(command.includes('--path scripts/synthesize-candidate-task.mjs'));
   assert.ok(command.includes('--path test/synthesize-candidate-task.test.mjs'));
   assert.equal(packageJson.scripts['candidate:synthesize'], 'node scripts/synthesize-candidate-task.mjs');
+  assert.ok(command.includes('--path scripts/evaluate-candidate-task.mjs'));
+  assert.ok(command.includes('--path test/evaluate-candidate-task.test.mjs'));
+  assert.equal(packageJson.scripts['candidate:evaluate'], 'node scripts/evaluate-candidate-task.mjs');
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
