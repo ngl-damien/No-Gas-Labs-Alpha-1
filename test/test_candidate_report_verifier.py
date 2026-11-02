@@ -674,7 +674,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 receipt_path = self.directory / (name + "-receipt.json")
                 report_path = self.directory / (name + "-report.json")
                 specification_path.write_text(
-                    json.dumps(specification, indent=2) + "\\n",
+                    json.dumps(specification, indent=2) + "\n",
                     encoding="utf-8",
                 )
 
