@@ -175,6 +175,9 @@ export function projectCharacter(world, viewer, options = null) {
   // Resolve append positions once. Repeated indexOf scans made challenge and
   // study-review projections quadratic as the retained world grew.
   const positionByEvent = new Map(allEvents.map((event, index) => [event, index]));
+  // Research projections return detached records. Resolve their unique event IDs
+  // back to the retained world objects before using the identity-indexed timeline.
+  const eventById = new Map(allEvents.map(event => [event.id, event]));
   const events = mine(allEvents, viewer);
   const commonsMessages = projectCommonsMessages(world, viewer);
   const proposalCounts = new Map();
@@ -317,12 +320,15 @@ export function projectCharacter(world, viewer, options = null) {
     challengedReportIds.add(event.reportId);
     return true;
   });
-  const experimentChallengeReviews = projectResearchRecords(allEvents, rows(world?.creations)).filter(record =>
-    record.type === 'experiment-challenge-reviewed' &&
-    record._projection?.proposalStatus === 'linked' &&
-    record._projection?.targetChallengeStatus === 'linked' &&
-    record.actor?.id === viewer?.id && record.actor?.role === viewer?.role
-  );
+  const experimentChallengeReviews = projectResearchRecords(allEvents, rows(world?.creations))
+    .filter(record =>
+      record.type === 'experiment-challenge-reviewed' &&
+      record._projection?.proposalStatus === 'linked' &&
+      record._projection?.targetChallengeStatus === 'linked' &&
+      record.actor?.id === viewer?.id && record.actor?.role === viewer?.role
+    )
+    .map(record => eventById.get(record.id))
+    .filter(Boolean);
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const publishedStudyVersions = retainedPublishedVersionKeys;
@@ -497,7 +503,6 @@ export function projectCharacter(world, viewer, options = null) {
     if (creationsById.has(creation.id)) creationsById.set(creation.id, null);
     else creationsById.set(creation.id, creation);
   }
-  const eventById = new Map(allEvents.map(event => [event.id, event]));
   const satchelEntries = [];
   const compactText = value => typeof value === 'string'
     ? Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, 280).join('')
