@@ -316,9 +316,9 @@ async function main() {
   const rangeInput = args.length === 4 && args[1] === '--range';
   if (!verifyReport && !singleInput && !rangeInput) {
     process.stderr.write(
-      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\\n' +
-      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\\n' +
-      '   or: node scripts/evaluate-candidate-task.mjs --verify-report <synthesis-receipt.json> <evaluation-report.json>\\n'
+      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs --verify-report <synthesis-receipt.json> <evaluation-report.json>\n'
     );
     process.exitCode = 2;
     return;
@@ -329,7 +329,7 @@ async function main() {
   if (verifyReport) {
     const report = await readEvaluationReport(args[2]);
     const verification = verifyEvaluationReport(verified, report);
-    process.stdout.write(JSON.stringify(verification, null, 2) + '\\n');
+    process.stdout.write(JSON.stringify(verification, null, 2) + '\n');
     return;
   }
   const implementationHash = candidateProgramHash(verified.program, 'v5', verified.specification);
