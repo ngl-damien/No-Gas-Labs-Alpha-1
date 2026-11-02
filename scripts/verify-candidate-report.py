@@ -280,7 +280,11 @@ def parse_json(source, label):
         value = json.loads(source, object_pairs_hook=pairs, parse_constant=reject_constant)
     except VerificationError:
         raise
-    except (json.JSONDecodeError, RecursionError, ValueError):
+    except RecursionError:
+        # Match the Node lexical preflight's explicit maximum-depth failure
+        # even when Python's decoder reaches its own recursion ceiling first.
+        fail(label + "_JSON_TOO_DEEP")
+    except (json.JSONDecodeError, ValueError):
         fail(label + "_JSON_INVALID")
 
     stack = [(value, 0)]

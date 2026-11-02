@@ -277,12 +277,20 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertIn("EVALUATION_REPORT_INVALID_UTF8", invalid_result.stderr)
         self.assertEqual(invalid_result.stdout, "")
 
-        deep_report = self.directory / "deep-report.json"
-        deep_report.write_text("[" * 17 + "0" + "]" * 17, encoding="utf-8")
-        deep_result = self.run_verifier(deep_report)
-        self.assertEqual(deep_result.returncode, 1)
-        self.assertIn("EVALUATION_REPORT_JSON_TOO_DEEP", deep_result.stderr)
-        self.assertEqual(deep_result.stdout, "")
+        for depth in (17, 10_000):
+            deep_report = self.directory / ("deep-report-" + str(depth) + ".json")
+            deep_report.write_text("[" * depth + "0" + "]" * depth, encoding="utf-8")
+            node_result = self.run_node(
+                EVALUATOR,
+                ["--verify-report", str(self.receipt_path), str(deep_report)],
+            )
+            python_result = self.run_verifier(deep_report)
+            self.assertEqual(node_result.returncode, 1)
+            self.assertIn("EVALUATION_REPORT_JSON_TOO_DEEP", node_result.stderr)
+            self.assertEqual(node_result.stdout, "")
+            self.assertEqual(python_result.returncode, 1)
+            self.assertIn("EVALUATION_REPORT_JSON_TOO_DEEP", python_result.stderr)
+            self.assertEqual(python_result.stdout, "")
 
         if hasattr(os, "mkfifo"):
             fifo_report = self.directory / "fifo-report.json"
