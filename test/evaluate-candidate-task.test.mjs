@@ -155,6 +155,14 @@ test('offline evaluator supports single-input and bounded range usage forms', ()
   const incompleteVerification = run(evaluateScript, ['--verify-report', 'unused.json']);
   assert.equal(incompleteVerification.status, 2);
   assert.match(incompleteVerification.stderr, /--verify-report <synthesis-receipt\.json> <evaluation-report\.json>/);
+  for (const args of [
+    ['--range', '-3'],
+    ['unused.json', '--verify-report']
+  ]) {
+    const malformed = run(evaluateScript, args);
+    assert.equal(malformed.status, 2, args.join(' '));
+    assert.match(malformed.stderr, /Usage: node scripts\\/evaluate-candidate-task\\.mjs/, args.join(' '));
+  }
 });
 
 test('offline range evaluation checks every inclusive input and is byte-for-byte reproducible', async t => {
