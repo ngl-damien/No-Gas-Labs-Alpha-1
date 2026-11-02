@@ -278,6 +278,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
             (outside / "report.json").write_text("outside-secret", encoding="utf-8")
             moved = root / "reports-original"
             original_open = os.open
+            original_lstat = os.lstat
             swapped = False
 
             def swap_parent():
@@ -289,6 +290,12 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     self.skipTest("directory symlinks are unavailable: " + str(error))
                 swapped = True
 
+            def replace_after_parent_lstat(path):
+                metadata = original_lstat(path)
+                if Path(path) == parent.absolute() and not swapped:
+                    swap_parent()
+                return metadata
+
             def replace_before_open(path, flags, mode=0o777, *, dir_fd=None):
                 if not swapped and (
                     (path == "reports" and dir_fd is not None)
@@ -299,7 +306,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     return original_open(path, flags, mode)
                 return original_open(path, flags, mode, dir_fd=dir_fd)
 
-            with patch.object(module.os, "open", side_effect=replace_before_open):
+            with patch.object(module.os, "lstat", side_effect=replace_after_parent_lstat), patch.object(module.os, "open", side_effect=replace_before_open):
                 with self.assertRaises(module.VerificationError) as rejected:
                     module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
 
@@ -331,6 +338,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
             (outside / "report.json").write_text("outside-secret", encoding="utf-8")
             moved = root / "reports-original"
             original_open = os.open
+            original_lstat = os.lstat
             swapped = False
 
             def swap_parent():
@@ -341,6 +349,12 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 except OSError as error:
                     self.skipTest("directory symlinks are unavailable: " + str(error))
                 swapped = True
+
+            def replace_after_parent_lstat(path):
+                metadata = original_lstat(path)
+                if Path(path) == parent.absolute() and not swapped:
+                    swap_parent()
+                return metadata
 
             def replace_after_open(path, flags, mode=0o777, *, dir_fd=None):
                 if path == "reports" and dir_fd is not None and not swapped:
@@ -353,7 +367,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     return original_open(path, flags, mode)
                 return original_open(path, flags, mode, dir_fd=dir_fd)
 
-            with patch.object(module.os, "open", side_effect=replace_after_open):
+            with patch.object(module.os, "lstat", side_effect=replace_after_parent_lstat), patch.object(module.os, "open", side_effect=replace_after_open):
                 source = module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
 
             self.assertTrue(swapped, "the parent must be replaced after its directory descriptor is opened")
