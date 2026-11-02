@@ -868,3 +868,65 @@ No merge, release, deployment, workflow dispatch, spending, external publication
 5. Keep linked repositories read-only where root instructions or the canonical protocol cannot be read in the required order.
 
 **Limits and authority:** no local checkout, local preflight, or local test execution; exact-head hosted CI is the observed verification. No merge, release, deployment, spending, external publication, credential/permission change, key operation, destructive action, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+---
+
+## Run 23 — 2026-11-02 UTC — pin preflight receipt writes against parent-directory symlink replacement
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior durable checkpoint:** this file, blob f2d35a37fd9adb922c59104689ca38b6d51a65a5, on PR #283 branch.  
+**Main baseline:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f (unchanged at final inspection).  
+**Code branch / PR:** fix/preflight-trusted-path-race-20261102, PR #283, draft/open/unmerged.  
+**Code head before this checkpoint-only commit:** 44ad20629dbb443e4fcd3260cb673bc4956199a1.
+
+### Bootstrap and instruction provenance
+
+- Read main root AGENTS.md alone, then the complete canonical shared protocol alone, then main's declared durable checkpoint NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md.
+- Read the active branch root AGENTS.md alone, then its complete canonical shared protocol alone, then this branch's LATEST_CHECKPOINT.md.
+- Checked scripts/AGENTS.md and test/AGENTS.md on the active branch; both returned 404. No nested instructions applied to the changed paths.
+- The main branch still declares NGL_AGENT_BOOTSTRAP_CHECKPOINT_2026-10-30.md; the proposed PR #283 branch declares LATEST_CHECKPOINT.md. The latter is not yet integrated into main.
+- Connected desktop devices were offline. No local Node 24 preflight or tests were run; hosted CI is the only execution evidence recorded below.
+
+### Cycle 1 — reproduce a receipt-parent race
+
+- Reinspected the receipt writer in scripts/validate-agent-governance.mjs. It resolved and checked each receipt parent, then wrote through the checked pathname. A parent replaced with an external symlink after the directory check could redirect the final write.
+- Regression-only commit e714b365568fbc975387b5b9c6ca30ff22a40d20 injected that replacement after stat. Verify 41456998343 failed because the preflight subprocess exited 0 instead of blocking (the assertion observed 0 where 1 was required). Genesis 41456998340 succeeded; Browser Acceptance 41456998378 succeeded.
+- This established that the preflight did not fail closed under the injected parent swap. The first regression's final outside-file assertion was not reached on the failing run; do not overstate that run as direct file-content evidence.
+
+### Cycle 2 — pin the receipt directory and repair the test contract
+
+- Commit e0102b2dca0d955100dd5e6fb67163a0196d34c0 replaces the POSIX receipt writer with descriptor-relative directory traversal:
+  - Linux uses /proc/self/fd; other POSIX systems use /dev/fd.
+  - Opens the repository root and each receipt parent with O_DIRECTORY and O_NOFOLLOW.
+  - Compares opened directory identities with lstat snapshots before writing and revalidates after the write.
+  - Creates the final receipt with O_CREAT, O_EXCL, and O_NOFOLLOW, mode 0600; syncs the file; and removes it if post-write validation fails.
+  - Windows, where Node does not expose equivalent descriptor-relative traversal, retains a clearly warned best-effort path-based fallback. This fallback is not claimed to have the POSIX race guarantee.
+- The adversarial regression was changed to replace the parent immediately after its directory descriptor is opened, assert that the injected swap actually ran, require blocked status, and require no receipt at the external destination.
+- Exact-head Verify 41457828901 then failed only because the pre-existing static-symlink test required the old, overly specific error wording. The new parent-swap regression passed. Genesis 41457828842 succeeded; Browser 41457830265 was cancelled by the next push and is not counted as a pass.
+- Commit 44ad20629dbb443e4fcd3260cb673bc4956199a1 changed the static-symlink test to assert the stable contract: a receipt-path failure and no outside file, independent of whether the OS reports ELOOP or ENOTDIR.
+
+### Exact-head hosted verification — code head 44ad20629dbb443e4fcd3260cb673bc4956199a1
+
+- Verify 41457976256: SUCCESS. Hosted preflight status ready, warnings empty, failures empty. Node test command, Python inspector, game package build, and bounded institutional exercise all exited 0; verification report passed=true.
+- Genesis Evidence Invariant 41457976261: SUCCESS.
+- Browser Acceptance 41457976262: SUCCESS, 13/13 recorded journeys. Desktop, phone, institutional-location actions, two-session shared world, 320/360/412px toolbars, two one-button layouts, standalone file, exact-byte preservation, and shared restart all passed.
+- Browser artifact 13148067110, 5,291,917 bytes; ZIP SHA-256 d82c927d8aa85e5fb48febab03889ed466c945575f63238efaad915222f2237e.
+- These are exact-head hosted results for the proposed branch, not mainline integration. No local execution is claimed.
+
+### Cycle 3 — challenge the next priorities and cross-worker ancestry
+
+- PR #16 remains closed/unmerged; merged PR #18 supersedes it. The historical self-signing claim is not a current defect to recreate.
+- Main src/authority/decision.js still contains authorizationEvent() trusting caller-supplied verification.valid, but the inspected direct caller is a test; the live server uses src/institution/decisions.mjs behind authenticated Founder sessions and does not import that helper. PR #274/#275 remain helper/test proposals; PR #265 remains a separate explicit-key startup proposal. No Founder key was generated, read, enrolled, rotated, exported, or changed.
+- PR #279 current head 40fb07a972c88eb554c96842123989cabea60fb3 has Verify 41448607821, Genesis 41448607857, and Browser 41448607842 all successful. Its Python verifier and polynomial-shape/cross-runtime corpus are proposed offline capability, not installation authority or a trust root.
+- Worker B PR #284 current head 632cd11980862c659021d0f78874b4496c42ec45 has Verify 41444543286, Genesis 41444543563, and Browser 41444543382 all successful. It adds the institutional record projector and regression to its hosted preflight target manifest.
+- PR #283 is based on PR #259; PR #284 is based on PR #282. Their passing checks are separate branch evidence. The combined tree has not been tested, and no merge/rebase is inferred.
+- The linked repository ngl-damien/recursive-artifact-engine was located, but its root AGENTS.md returned 404. Per the mandatory entry contract, no protocol/source inspection or write was attempted there. No linked repository was modified.
+
+### Next ranked actions
+
+1. Recheck the checkpoint-updated PR #283 head's own Verify, Genesis, and Browser workflows; do not transfer the 44ad206 code-head results to the later checkpoint commit.
+2. Reconcile PR #283's receipt/path hardening with PR #284's projector target coverage and PR #279's independent-verifier targets. Preserve all applicable target paths and test the combined exact tree before integration; do not merge.
+3. Add explicit platform acceptance for the /dev/fd path and a Windows fallback test/documentation. The Linux hosted result does not establish macOS behavior; the Windows fallback remains best-effort and emits a warning.
+4. Continue candidate capability acquisition only where it adds an independently testable user capability beyond the already proposed Python verifier; keep signing, INSTALL, and canonical-state authority separate.
+5. Revisit the live Founder Decision Gate only with canonical proposal-context mapping and a Damien-controlled trust-root/custody decision. Do not recreate PR #16 or infer identity from a fingerprint.
+
+**Authority and limits:** no merge, release, deployment, spending, external publication, credential/permission change, key operation, destructive action, or Founder decision occurred. No linked repository was changed. No uninterrupted between-run execution is claimed.
