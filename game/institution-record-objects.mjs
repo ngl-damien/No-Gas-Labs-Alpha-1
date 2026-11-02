@@ -16,6 +16,7 @@ const WORLD_EVENT_LOCATIONS = Object.freeze({
   'moonshot-proposed': 'moonshot_field',
   'experiment-reported': 'moonshot_field',
   'experiment-challenged': 'evidence_archive',
+  'experiment-challenge-reviewed': 'decision_chamber',
   'collaborator-response-recorded': 'guild_hall',
   'guild-created': 'guild_hall',
   'guild-joined': 'guild_hall',
