@@ -11,7 +11,7 @@
 node scripts/approve-install.mjs --inspect ./proposal.json
 ```
 
-Review the full digest, capability ID, strategy, executor-key fingerprint, nonce, issue/expiry timestamps, use limit and challenge proof. This command validates the proposal and emits no signature.
+Review the full digest, capability ID, strategy, executor-key fingerprint, nonce, issue/expiry timestamps, use limit and challenge proof. For candidate-program proposals, the review output also displays the exact normalized program AST and its implementation hash; compare both with the task specification and proof before signing. For v5, inspect the separately signed task specification and confirm that its verified fingerprint is the independently provisioned trust pin. This command validates the proposal and emits no signature.
 
 3. On a trusted operator-controlled machine, provision the Founder Ed25519 private key in a regular file readable only by the operator (POSIX mode `0600`). Do not put it in the repository, an issue, a pull request, or a command-line argument. The key file must not be a symlink.
 4. Configure `NGL_FOUNDER_KEY_FINGERPRINT` independently from the proposal handler, using the already-established trust anchor for the Founder public key. The signer refuses to run if the configured SHA-256 fingerprint of DER SubjectPublicKeyInfo does not match the public key derived from the private key.
