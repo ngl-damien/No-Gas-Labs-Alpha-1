@@ -769,12 +769,12 @@ test('preflight rejects a transient parent symlink swap that resolves a trusted 
     const instructions = (await readFile(instructionsPath, 'utf8'))
       .replace('--checkpoint CHECKPOINT.md', '--checkpoint ' + checkpointPath);
     await writeFile(instructionsPath, instructions);
-    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\\nOriginal checkpoint.\\n');
+    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\nOriginal checkpoint.\n');
     await mkdir(join(root, 'docs/operations-decoy'));
-    const decoyBytes = Buffer.from('# Latest Durable Checkpoint\\nDecoy checkpoint.\\n');
+    const decoyBytes = Buffer.from('# Latest Durable Checkpoint\nDecoy checkpoint.\n');
     await writeFile(join(root, 'docs/operations-decoy/LATEST_CHECKPOINT.md'), decoyBytes);
     await mkdir(join(root, 'scripts'));
-    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\\n');
+    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\n');
 
     const hookPath = join(root, 'preflight-transient-parent-swap.cjs');
     await writeFile(hookPath, [
@@ -803,7 +803,7 @@ test('preflight rejects a transient parent symlink swap that resolves a trusted 
       "  }",
       "};",
       "syncBuiltinESMExports();"
-    ].join('\\n'));
+    ].join('\n'));
 
     const child = spawnSync(process.execPath, [
       '--require', hookPath,
