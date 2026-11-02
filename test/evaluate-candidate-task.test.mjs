@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -338,5 +338,30 @@ test('offline report verifier rejects oversized reports before JSON parsing', as
   const result = run(evaluateScript, ['--verify-report', receiptPath, reportPath]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /EVALUATION_REPORT_FILE_TOO_LARGE/);
+  assert.equal(result.stdout, '');
+});
+
+
+test('offline report verifier rejects symbolic-link report paths', async t => {
+  const { directory, receiptPath } = await fixture(t);
+  const evaluated = run(evaluateScript, [receiptPath, '17']);
+  assert.equal(evaluated.status, 0, evaluated.stderr);
+
+  const targetPath = join(directory, 'evaluation-report.json');
+  const linkPath = join(directory, 'evaluation-report-link.json');
+  await writeFile(targetPath, evaluated.stdout, { mode: 0o600 });
+  try {
+    await symlink(targetPath, linkPath);
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+      t.skip('the current Windows environment does not permit symbolic-link creation');
+      return;
+    }
+    throw error;
+  }
+
+  const result = run(evaluateScript, ['--verify-report', receiptPath, linkPath]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /EVALUATION_REPORT_NOT_REGULAR/);
   assert.equal(result.stdout, '');
 });
