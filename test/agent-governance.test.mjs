@@ -575,7 +575,7 @@ test('hosted preflight includes the capability, ledger lock, signer, and checkpo
   assert.equal(packageJson.scripts['candidate:verify:independent'], 'python3 scripts/verify-candidate-report.py');
   const verificationScript = await readFile(new URL('../scripts/verify.mjs', import.meta.url), 'utf8');
   assert.match(verificationScript, /candidate-report-verifier/);
-  assert.match(verificationScript, /stages\\.length === 5/);
+  assert.ok(verificationScript.includes('passed: stages.length === 5'));
   for (const path of [
     'experiment-001/institutional-cycle.test.mjs',
     'experiment-001/atomic-lock.mjs',
