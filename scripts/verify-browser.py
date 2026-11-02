@@ -1659,6 +1659,7 @@ def commons_message_quest(browser,url,out):
             baseline_revision,baseline_event_count,baseline_xp
         ),'Selecting a route must not create canonical progress or XP'
         action_payloads=[]
+        lost_response={'injected':False,'status':None}
         def capture_message_action(request):
             if request.method!='POST' or not request.url.endswith('/api/action') or not request.post_data:
                 return
@@ -1668,11 +1669,45 @@ def commons_message_quest(browser,url,out):
                 return
             if payload.get('type')=='post-message' and payload.get('text')==message_text:
                 action_payloads.append(request.post_data)
+        def drop_first_action_response(route):
+            if not lost_response['injected']:
+                response=route.fetch()
+                lost_response['status']=response.status
+                lost_response['injected']=True
+                route.abort()
+            else:
+                route.continue_()
         speaker_page.on('request',capture_message_action)
+        speaker_page.route('**/api/action',drop_first_action_response)
         speaker_page.locator('#commons-message').fill(message_text)
+        speaker_page.locator('#commons-post-message').click()
+        expect(speaker_page.locator('#toast')).to_contain_text('The shared world is unreachable',timeout=10000)
+        assert lost_response['injected'] and lost_response['status']==200,'The first server-accepted response must be deliberately lost'
+        pending_after_loss=speaker_page.evaluate(
+            "()=>JSON.parse(localStorage.getItem('ngl.common-ground.pending-shared-action.v1')||'null')"
+        )
+        assert pending_after_loss and pending_after_loss.get('actorId')==speaker_actor['id']
+        assert pending_after_loss.get('actorRole')=='witness'
+        assert pending_after_loss.get('action',{}).get('type')=='post-message'
+        assert pending_after_loss.get('action',{}).get('text')==message_text
+        assert pending_after_loss.get('requestId'),'The client must preserve the exact retry identity after response loss'
+        assert speaker_page.locator('#commons-message').input_value()==message_text,'The unsafely uncertain message must remain available for exact retry'
+        first_delivery_state=speaker_context.request.get(url+'api/state').json()
+        assert first_delivery_state['world']['revision']==baseline_revision+1
+        assert first_delivery_state['world']['xp']==baseline_xp
+        assert sum(
+            event.get('type')=='message-posted' and event.get('actor',{}).get('id')==speaker_actor['id']
+            for event in first_delivery_state['world']['events']
+        )==1,'The server accepted one event before the response was lost'
         speaker_page.locator('#commons-post-message').click()
         own_message=speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)
         expect(own_message).to_be_visible()
+        speaker_page.wait_for_function(
+            "()=>localStorage.getItem('ngl.common-ground.pending-shared-action.v1')===null",
+            timeout=10000
+        )
+        speaker_page.unroute('**/api/action',drop_first_action_response)
+        speaker_page.remove_listener('request',capture_message_action)
 
         posted_state=speaker_context.request.get(url+'api/state').json()
         assert posted_state['world']['revision']==baseline_revision+1
@@ -1689,7 +1724,8 @@ def commons_message_quest(browser,url,out):
             event.get('type')=='message-posted' and event.get('messageId')==retained['messageId']
             for event in posted_state['world']['events']
         )==1,'The retained message ID must be unique in the public world projection'
-        assert len(action_payloads)==1,'The visible post must issue one identifiable action request'
+        assert len(action_payloads)==2,'The lost response and exact client retry must issue two identifiable requests'
+        assert action_payloads[0]==action_payloads[1],'The retry must reuse the byte-identical action body and request ID'
         expect(speaker_page.locator('#world')).to_have_attribute('data-quest-objective-id','witness-map-grounds')
         expect(speaker_page.locator('#world')).to_have_attribute('data-quest-target-id','relay')
         expect(speaker_page.locator('#world')).to_have_attribute('data-quest-selection','next')
@@ -1793,6 +1829,7 @@ def commons_message_quest(browser,url,out):
             'sessions':2,
             'messageEvents':1,
             'duplicateReplay':'idempotent-no-extra-event',
+            'lostResponseRecovery':'same-request-id-one-event',
             'actorScoped':True,
             'speakerCount':speaker_after['skills']['speaker'],
             'questkeeperDelta':speaker_after['skills']['questkeeper']-speaker_before['skills']['questkeeper'],
