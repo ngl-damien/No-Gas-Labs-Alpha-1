@@ -81,7 +81,7 @@ const report = {
   wallMs: performance.now() - started,
   limitations: [
     'Browser acceptance is an additional check: python3 scripts/verify-browser.py.',
-    'These local results do not establish external publication, provider execution or independent human review.'
+    'These local results do not establish external publication, provider execution or independent human review.',
     'The independent candidate report verifier checks bounded offline receipts; it does not verify signatures or Founder identity.'
   ]
 };
