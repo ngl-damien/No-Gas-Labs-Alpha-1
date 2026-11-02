@@ -350,6 +350,8 @@ test('Founder challenge dispositions bind immutable source events without granti
   );
   assert.equal(after.skills.find(skill => skill.id === 'deliberator').count, 1);
   assert.equal(after.fieldSatchel.filter(item => item.kind === 'challenge-review').length, 1);
+  assert.equal(after.fieldSatchel.find(item => item.kind === 'challenge-review').eventId, reviewEvent.id);
+  assert.equal(projectCharacter(reviewed.world, witness).fieldSatchel.filter(item => item.kind === 'challenge-review').length, 0);
   assert.deepEqual(
     after.fieldSatchel.find(item => item.kind === 'challenge-review').action,
     { type: 'location', id: 'decision_chamber' }
