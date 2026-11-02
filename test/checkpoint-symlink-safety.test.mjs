@@ -287,9 +287,10 @@ test('preflight blocks a transient final-file replacement after the trusted pare
     });
 
     assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
-    assert.equal(child.status, 1, child.stderr);
+    assert.ok(child.status === 0 || child.status === 1, child.stderr);
     const result = JSON.parse(child.stdout);
-    assert.equal(result.status, 'blocked');
+    assert.equal(result.status, 'blocked', JSON.stringify(result));
+    assert.equal(child.status, 1, child.stderr);
     assert.equal(await readFile(join(root, 'final-file-swap-started'), 'utf8'), 'yes',
       'the final checkpoint replacement must occur after parent pinning');
     assert.equal(await readFile(join(root, 'final-file-swap-opened'), 'utf8'), 'yes',
