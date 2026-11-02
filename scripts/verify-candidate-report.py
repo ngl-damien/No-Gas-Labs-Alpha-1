@@ -340,6 +340,32 @@ def is_negative_zero(value):
     return type(value) is float and value == 0.0 and math.copysign(1.0, value) < 0.0
 
 
+def node_deep_equal(actual, expected):
+    """Compare parsed JSON values with ECMAScript Number/boolean semantics."""
+    if type(actual) is bool or type(expected) is bool:
+        return type(actual) is bool and type(expected) is bool and actual is expected
+
+    if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+        actual_negative_zero = is_negative_zero(actual)
+        expected_negative_zero = is_negative_zero(expected)
+        if actual_negative_zero or expected_negative_zero:
+            return actual_negative_zero and expected_negative_zero
+        return actual == expected
+
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return (
+            actual.keys() == expected.keys()
+            and all(node_deep_equal(actual[key], expected[key]) for key in expected)
+        )
+
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            node_deep_equal(left, right) for left, right in zip(actual, expected)
+        )
+
+    return type(actual) is type(expected) and actual == expected
+
+
 def coefficient(value):
     if not isinstance(value, str) or len(value) > 1235 or not re.fullmatch(r"(0|-?[1-9][0-9]*)", value):
         fail("SYNTHESIS_RECEIPT_INVALID")
@@ -507,7 +533,7 @@ def verify_synthesis_receipt(receipt):
         "maxIntermediateAbsoluteBound": str(maximum_bound),
         "matchesTask": coefficients == target,
     }
-    if proof["matchesTask"] is not True or receipt["proof"] != proof:
+    if proof["matchesTask"] is not True or not node_deep_equal(receipt["proof"], proof):
         fail("SYNTHESIS_PROOF_MISMATCH")
 
     trust = receipt["trust"]

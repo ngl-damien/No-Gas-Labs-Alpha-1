@@ -634,5 +634,26 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(usage.stdout, "")
 
 
+    def test_rejects_numeric_boolean_substitution_in_synthesis_proof(self):
+        report_path, _ = self.make_report("numeric-boolean-proof", ["17"])
+        altered = json.loads(json.dumps(self.receipt))
+        altered["proof"]["matchesTask"] = 1
+        path = self.directory / "numeric-boolean-proof-receipt.json"
+        path.write_text(json.dumps(altered), encoding="utf-8")
+
+        node = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(path), str(report_path)],
+        )
+        independent = self.run_verifier(report_path, path)
+
+        self.assertEqual(node.returncode, 1)
+        self.assertIn("SYNTHESIS_PROOF_MISMATCH", node.stderr)
+        self.assertEqual(node.stdout, "")
+        self.assertEqual(independent.returncode, 1)
+        self.assertIn("SYNTHESIS_PROOF_MISMATCH", independent.stderr)
+        self.assertEqual(independent.stdout, "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
