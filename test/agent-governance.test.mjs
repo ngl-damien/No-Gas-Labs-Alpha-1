@@ -556,11 +556,12 @@ test('preflight refuses receipt creation through an escaping directory symlink',
   }
 });
 
-test('hosted preflight includes the world-view source and canonical checkpoint', async () => {
+test('hosted preflight includes the world-view source, live decision Gate test, and canonical checkpoint', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.equal(typeof command, 'string');
   assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
+  assert.match(command, /--path test\/game-decisions\.test\.mjs(?:\s|--)/);
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
