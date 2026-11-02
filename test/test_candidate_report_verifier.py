@@ -234,12 +234,16 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
 
                 def replace_at_boundary(path):
                     nonlocal target_lstat_count, swapped
-                    metadata = original_lstat(path)
-                    if Path(path) == absolute_target:
+                    is_target = Path(path) == absolute_target
+                    if is_target:
                         target_lstat_count += 1
-                        if target_lstat_count == trigger_count and not swapped:
+                        if target_lstat_count == trigger_count and phase == "after-read" and not swapped:
                             os.replace(replacement, target)
                             swapped = True
+                    metadata = original_lstat(path)
+                    if is_target and target_lstat_count == trigger_count and phase == "before-open" and not swapped:
+                        os.replace(replacement, target)
+                        swapped = True
                     return metadata
 
                 with patch.object(module.os, "lstat", side_effect=replace_at_boundary):
