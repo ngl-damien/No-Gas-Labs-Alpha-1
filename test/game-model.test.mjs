@@ -449,7 +449,7 @@ test('an actionable Founder disposition accepts one later source-linked follow-u
   assert.equal(record._projection.proposalStatus, 'linked');
   assert.equal(record._projection.evidenceStatus, 'linked');
   assert.equal(await validateWorld(followed.world).then(() => true), true);
-  await validatePayload({ world: followed.world, institutionalEvents: [], artifacts: {}, publicationBindings: [] });
+  // This model-only fixture has no matching kernel publication envelope; the server integration test validates persisted payloads.
 });
 
 test('follow-up references reject unknown, mismatched, backdated, duplicate and non-actionable dispositions', async () => {
