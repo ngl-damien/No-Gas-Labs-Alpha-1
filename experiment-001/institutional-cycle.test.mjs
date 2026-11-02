@@ -250,8 +250,10 @@ test('directory-sync failure latches the live store and permits recovery only af
     "const prototype = Object.getPrototypeOf(probe);",
     "await probe.close();",
     "const originalSync = prototype.sync;",
+    "let directorySyncs = 0;",
     "let injected = false;",
-    "prototype.sync = async function (...args) { const stat = await this.stat(); if (!injected && stat.isDirectory()) { injected = true; const error = new Error('INJECTED_DIRECTORY_SYNC_FAILURE'); error.code = 'EIO'; throw error; } return originalSync.apply(this, args); };",
+    "let injectedAt = null;",
+    "prototype.sync = async function (...args) { const stat = await this.stat(); if (stat.isDirectory()) { directorySyncs += 1; if (directorySyncs === 2) { injected = true; injectedAt = directorySyncs; const error = new Error('INJECTED_DIRECTORY_SYNC_FAILURE'); error.code = 'EIO'; throw error; } } return originalSync.apply(this, args); };",
     "const lib = await import(" + JSON.stringify(moduleUrl) + " + '?fault=' + Date.now());",
     "const store = await lib.openInstitution(" + JSON.stringify(storePath) + ", publicPem);",
     "const proposal = lib.makeInstallationProposal({ executorPublicKeyPem: executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(), nonce: 'install-fsync-fail-0001', issuedAt: Date.now(), expiresAt: Date.now() + 60000, maxUses: 2 });",
@@ -267,8 +269,8 @@ test('directory-sync failure latches the live store and permits recovery only af
     "const recoveryReceipt = sign(null, Buffer.from(lib.executionReceiptPayload(recovery)), executor.privateKey).toString('base64url');",
     "let recoveryError = null; try { await reopened.commit(recovery, recoveryReceipt); } catch (error) { recoveryError = error.message; }",
     "const recoveredSequence = reopened.snapshot().sequence;",
-    "console.log(JSON.stringify({ firstError, snapshotError, secondError, reopenedSequence, recoveryError, recoveredSequence, injected }));",
-    "if (firstError !== 'COMMIT_DURABILITY_UNCERTAIN' || snapshotError !== 'COMMIT_DURABILITY_UNCERTAIN' || secondError !== 'COMMIT_DURABILITY_UNCERTAIN' || reopenedSequence !== 1 || recoveryError !== null || recoveredSequence !== 2 || !injected) process.exitCode = 1;"
+    "console.log(JSON.stringify({ firstError, snapshotError, secondError, reopenedSequence, recoveryError, recoveredSequence, injected, injectedAt, directorySyncs }));",
+    "if (firstError !== 'COMMIT_DURABILITY_UNCERTAIN' || snapshotError !== 'COMMIT_DURABILITY_UNCERTAIN' || secondError !== 'COMMIT_DURABILITY_UNCERTAIN' || reopenedSequence !== 1 || recoveryError !== null || recoveredSequence !== 2 || !injected || injectedAt !== 2 || directorySyncs !== 4) process.exitCode = 1;"
   ].join('\n');
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     encoding: 'utf8',
@@ -284,7 +286,9 @@ test('directory-sync failure latches the live store and permits recovery only af
     reopenedSequence: 1,
     recoveryError: null,
     recoveredSequence: 2,
-    injected: true
+    injected: true,
+    injectedAt: 2,
+    directorySyncs: 4
   });
 }));
 

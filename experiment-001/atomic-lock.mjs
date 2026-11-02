@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
 import { link, lstat, open, unlink } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 /**
  * Publish a complete private lock record without exposing a partially written
@@ -10,6 +12,12 @@ import { link, lstat, open, unlink } from 'node:fs/promises';
  * identity check. The release check remains best-effort, not atomic
  * compare-and-unlink.
  */
+async function syncDirectory(directory) {
+  const handle = await open(directory, fsConstants.O_RDONLY);
+  try { await handle.sync(); }
+  finally { await handle.close(); }
+}
+
 export async function publishAtomicLock(lockPath, contents) {
   if (typeof lockPath !== 'string' || !lockPath || typeof contents !== 'string' || !contents) {
     throw new TypeError('LOCK_PATH_AND_CONTENTS_REQUIRED');
@@ -41,6 +49,22 @@ export async function publishAtomicLock(lockPath, contents) {
     const current = await lstat(lockPath);
     if (current.isSymbolicLink() || !current.isFile() ||
         current.dev !== staged.dev || current.ino !== staged.ino) {
+      throw new Error('LEDGER_LOCK_OWNERSHIP_LOST');
+    }
+
+    try {
+      // The file contents are already synced; persist the hard-link directory
+      // entry before telling the caller that it owns a durable writer lease.
+      await syncDirectory(dirname(lockPath));
+    } catch (cause) {
+      const uncertain = new Error('LEDGER_LOCK_DURABILITY_UNCERTAIN', { cause });
+      uncertain.code = 'LEDGER_LOCK_DURABILITY_UNCERTAIN';
+      throw uncertain;
+    }
+
+    const durable = await lstat(lockPath);
+    if (durable.isSymbolicLink() || !durable.isFile() ||
+        durable.dev !== staged.dev || durable.ino !== staged.ino) {
       throw new Error('LEDGER_LOCK_OWNERSHIP_LOST');
     }
 
