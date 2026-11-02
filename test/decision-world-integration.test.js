@@ -232,3 +232,67 @@ test("world and quest projections fail closed without a host authorization verif
   assert.deepEqual(worldProjection.inventory, {});
   assert.deepEqual(worldProjection.world, {});
 });
+
+test("a self-pinned attacker decision is rejected by the host verifier and cannot authorize world state", () => {
+  const { quest, publicKeyJwk: trustedPublicKeyJwk, expectedFingerprint: trustedFingerprint } = fixture();
+  const proposal = proposeGuildAction({
+    quest_id: quest.quest_id,
+    proposal_id: "proposal-alpha",
+    actor: "guild",
+    summary: "Build the bounded collaboration bridge",
+    capability: "repository.write"
+  });
+  const payload = makeDecisionPayload({
+    proposal,
+    quest,
+    capabilities: ["repository.write"],
+    outputs: ["handoff-packet"],
+    acceptance: ["packet-review"],
+    expires_at: "2099-01-01T00:00:00.000Z",
+    audience
+  });
+
+  const attacker = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const attackerPublicKeyJwk = attacker.publicKey.export({ format: "jwk" });
+  const attackerFingerprint = createHash("sha256")
+    .update(attacker.publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex");
+  const canonical = value => Array.isArray(value)
+    ? "[" + value.map(canonical).join(",") + "]"
+    : value && typeof value === "object"
+      ? "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}"
+      : JSON.stringify(value);
+  const signed = {
+    payload_sha256: decisionDigest(payload),
+    key_fingerprint: attackerFingerprint,
+    signature: sign("sha256", Buffer.from(canonical(payload)), {
+      key: attacker.privateKey,
+      dsaEncoding: "ieee-p1363"
+    }).toString("base64url")
+  };
+  const selfPinnedVerification = verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: attackerPublicKeyJwk,
+    expected_fingerprint: attackerFingerprint,
+    expected_audience: audience
+  });
+  assert.equal(selfPinnedVerification.valid, true, "the low-level verifier only proves the supplied key's possession");
+  const forgedEvent = authorizationEvent({ signed, payload, verification: selfPinnedVerification });
+
+  const hostVerifier = createFounderAuthorizationVerifier({
+    public_key_jwk: trustedPublicKeyJwk,
+    expected_fingerprint: trustedFingerprint,
+    expected_audience: audience
+  });
+  assert.equal(hostVerifier(forgedEvent), false, "the host's independently pinned key must reject the attacker's key");
+  const questProjection = projectQuest(quest, [forgedEvent], { verifyAuthorization: hostVerifier });
+  assert.equal(questProjection.status, QUEST_STATUS.OPEN);
+  assert.equal(questProjection.authorized, false);
+  assert.deepEqual(questProjection.executions, []);
+  const worldProjection = projectWorld([forgedEvent], undefined, { verifyAuthorization: hostVerifier });
+  assert.equal(worldProjection.history.length, 1, "rejected claim remains visible in history");
+  assert.equal(worldProjection.xp, 0);
+  assert.deepEqual(worldProjection.inventory, {});
+  assert.deepEqual(worldProjection.world, {});
+});
