@@ -1041,6 +1041,12 @@ def research_follow_up_loop(browser,url,out):
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         witness_state=witness_context.request.get(url+'api/state').json()
         assert witness_state['viewer']['role']=='witness'
+        existing_actionable_reviews=[
+            event for event in witness_state['world']['events']
+            if event.get('type')=='experiment-challenge-reviewed'
+            and event.get('disposition') in ('investigate','request-evidence')
+        ]
+        assert not existing_actionable_reviews, 'The follow-up journey requires an isolated world with no pre-existing actionable disposition'
 
         founder_page.locator('#login-button').click()
         founder_page.locator('#founder-key').fill(KEY)
@@ -1176,6 +1182,7 @@ def research_follow_up_loop(browser,url,out):
         return {
             'journey':'research-follow-up-loop',
             'passed':True,
+            'isolatedServer':True,
             'sessions':2,
             'founderDisposition':'request-evidence',
             'followUpReviewId':review['reviewId'],
@@ -2382,8 +2389,13 @@ def main():
                     record(player_guild_membership(browser,url,out))
                     record(commons_message_quest(browser,url,out))
                     record(research_challenge_review(browser,url,out))
-                    record(research_follow_up_loop(browser,url,out))
-                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
+                    with tempfile.TemporaryDirectory(prefix='ngl-browser-follow-up-') as follow_up_data:
+                        follow_up_process,follow_up_url=launch_server(follow_up_data)
+                        try:
+                            record(research_follow_up_loop(browser,follow_up_url,out))
+                        finally:
+                            stop_server(follow_up_process)
+                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,out))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
                         page=context.new_page()
