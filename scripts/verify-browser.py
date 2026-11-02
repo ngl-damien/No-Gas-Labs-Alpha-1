@@ -828,7 +828,7 @@ def research_challenge_review(browser,url,out):
         page.locator('#character-button').click()
         card=page.locator(f'#sheet [data-skill-id="{skill_id}"]')
         expect(card).to_be_visible()
-        match=re.search(r'(\\d+) recorded',card.inner_text())
+        match=re.search(r'(\d+) recorded',card.inner_text())
         assert match,card.inner_text()
         close_sheet(page)
         return int(match.group(1))
@@ -962,6 +962,13 @@ def research_challenge_review(browser,url,out):
         expect(refreshed_witness_card).to_contain_text('Investigate next')
         expect(refreshed_witness_card.locator('[data-challenge-review-submit]')).to_have_count(0)
         assert not errors,errors
+        close_sheet(founder_page)
+        founder_page.locator('#places-button').click()
+        founder_page.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        founder_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'",timeout=30000)
+        final_founder_card=founder_page.locator(f'[data-research-challenge-id="{challenge_id}"]')
+        expect(final_founder_card).to_have_attribute('data-review-status','reviewed')
+        expect(final_founder_card).to_contain_text('Investigate next')
         founder_page.screenshot(path=str(out/'decision-chamber-research-review.png'))
         return {
             'journey':'decision-chamber-research-review',
