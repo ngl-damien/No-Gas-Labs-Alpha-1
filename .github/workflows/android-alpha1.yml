@@ -115,6 +115,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          # Cold boot consumed ~480s once; allow 15 minutes while retaining the 40-minute job cap.
+          emulator-boot-timeout: 900
           disable-animations: true
           script: |
             # Bypass verification only for ADB/ADT/USB test installs; keep the

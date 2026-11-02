@@ -9,10 +9,10 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
   assert.ok(start >= 0 && end > start, 'the Android emulator journey step must remain present');
 
   const emulatorStep = source.slice(start, end);
-  assert.match(emulatorStep, /^\\s{10}emulator-boot-timeout:\\s*900\\s*$/m,
+  assert.match(emulatorStep, /^\s{10}emulator-boot-timeout:\s*900\s*$/m,
     'allow a 15-minute cold boot on the observed slow macOS Intel runner');
-  assert.match(source, /^\\s{4}timeout-minutes:\\s*40\\s*$/m,
+  assert.match(source, /^\s{4}timeout-minutes:\s*40\s*$/m,
     'retain the bounded 40-minute job ceiling');
-  assert.equal((source.match(/test\\/android-workflow\\.test\\.mjs/g) ?? []).length, 3,
+  assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
     'the regression must be in both workflow path filters and the Android preflight');
 });
