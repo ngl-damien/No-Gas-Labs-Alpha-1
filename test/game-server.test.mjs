@@ -1705,3 +1705,169 @@ test('network-bound CLI refuses to mint a Founder credential without explicit co
   assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
   await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
 });
+
+
+test('shared server binds one later request-evidence follow-up to a Founder review and replays it idempotently', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const published = await publish(founder, 'Exact follow-up evidence');
+  const witness = f.client();
+  const witnessState = await witness.request('/api/state');
+  assert.equal(witnessState.body.viewer.role, 'witness');
+
+  const proposal = await witness.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Can the control comparison be reproduced?',
+    hypothesis: 'The observation repeats under the stated controls.',
+    falsifier: 'A controlled repeat fails to reproduce it.',
+    evidenceNeeded: 'Retained procedure and exact observation.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const report = await witness.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The control settings were not retained.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  const challenge = await founder.request('/api/action', {
+    type: 'challenge-experiment-report',
+    reportId: report.body.result.reportId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The report omits the control settings needed for reproduction.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  assert.equal(challenge.response.status, 200, JSON.stringify(challenge.body));
+  const review = await founder.request('/api/action', {
+    type: 'review-experiment-challenge',
+    reportId: report.body.result.reportId,
+    challengeId: challenge.body.result.challengeId,
+    disposition: 'request-evidence',
+    rationale: 'Repeat the comparison and preserve the exact control settings.'
+  });
+  assert.equal(review.response.status, 200, JSON.stringify(review.body));
+  const reviewId = review.body.result.reviewId;
+
+  const followUpBase = {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat with the retained control settings.',
+    observation: 'The second attempt remains inconclusive; the failure is preserved.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: published.result.creationId,
+    evidenceVersion: 1,
+    followUpReviewId: reviewId
+  };
+  const missingEvidence = await witness.request('/api/action', {
+    ...followUpBase, evidenceCreationId: null, evidenceVersion: null
+  });
+  assert.equal(missingEvidence.response.status, 409);
+  assert.equal(missingEvidence.body.error.code, 'FOLLOW_UP_EVIDENCE_REQUIRED');
+
+  const secondProposal = await witness.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'A different question',
+    hypothesis: 'A separate effect appears under its own conditions.',
+    falsifier: 'The separate effect is absent.',
+    evidenceNeeded: 'A separate retained observation.'
+  });
+  assert.equal(secondProposal.response.status, 200, JSON.stringify(secondProposal.body));
+  const mismatched = await witness.request('/api/action', {
+    ...followUpBase, moonshotId: secondProposal.body.result.moonshotId
+  });
+  assert.equal(mismatched.response.status, 409);
+  assert.equal(mismatched.body.error.code, 'FOLLOW_UP_REVIEW_MISMATCH');
+
+  const deferredReport = await witness.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Run a separate attempt.',
+    observation: 'The separate attempt remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  assert.equal(deferredReport.response.status, 200, JSON.stringify(deferredReport.body));
+  const deferredChallenge = await founder.request('/api/action', {
+    type: 'challenge-experiment-report',
+    reportId: deferredReport.body.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The second attempt still lacks a retained method.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  assert.equal(deferredChallenge.response.status, 200, JSON.stringify(deferredChallenge.body));
+  const deferredReview = await founder.request('/api/action', {
+    type: 'review-experiment-challenge',
+    reportId: deferredReport.body.result.reportId,
+    challengeId: deferredChallenge.body.result.challengeId,
+    disposition: 'defer',
+    rationale: 'Preserve the dissent but do not request another attempt yet.'
+  });
+  assert.equal(deferredReview.response.status, 200, JSON.stringify(deferredReview.body));
+  const nonActionable = await witness.request('/api/action', {
+    ...followUpBase, followUpReviewId: deferredReview.body.result.reviewId
+  });
+  assert.equal(nonActionable.response.status, 409);
+  assert.equal(nonActionable.body.error.code, 'FOLLOW_UP_REVIEW_NOT_ACTIONABLE');
+
+  const before = await founder.request('/api/state');
+  const action = { ...followUpBase, requestId: 'research-follow-up-server-001' };
+  const first = await witness.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  assert.equal(first.body.world.xp, before.body.world.xp);
+  const reportId = first.body.result.reportId;
+  const revision = first.body.world.revision;
+  const replay = await witness.request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.reportId, reportId);
+  assert.equal(replay.body.world.revision, revision);
+  const duplicate = await witness.request('/api/action', {
+    ...followUpBase, requestId: 'research-follow-up-server-duplicate'
+  });
+  assert.equal(duplicate.response.status, 409);
+  assert.equal(duplicate.body.error.code, 'FOLLOW_UP_ALREADY_RECORDED');
+
+  const after = await founder.request('/api/state');
+  const linked = after.body.world.events.filter(event => event.followUpReviewId === reviewId);
+  assert.equal(linked.length, 1);
+  assert.equal(linked[0].reportId, reportId);
+  assert.equal(linked[0].actor.id, witnessState.body.viewer.id);
+  assert.equal(linked[0].evidenceCreationId, published.result.creationId);
+  assert.equal(linked[0].evidenceVersion, 1);
+  assert.equal(after.body.world.xp, before.body.world.xp,
+    'the follow-up is character activity, not institutional publication XP');
+
+  const backdated = structuredClone(after.body.world);
+  const backdatedEvent = backdated.events.find(event => event.reportId === reportId);
+  backdatedEvent.at = new Date(Date.parse(review.body.world.events.at(-1).at) - 1000).toISOString();
+  backdated.updatedAt = backdatedEvent.at;
+  await assert.rejects(validatePayload({
+    world: backdated, institutionalEvents: [], artifacts: {}, publicationBindings: []
+  }));
+
+  const duplicated = structuredClone(after.body.world);
+  const original = duplicated.events.find(event => event.reportId === reportId);
+  const duplicateEvent = {
+    ...structuredClone(original),
+    id: 'duplicate-follow-up-event',
+    reportId: 'duplicate-follow-up-report',
+    at: new Date(Date.parse(original.at) + 1000).toISOString()
+  };
+  delete duplicateEvent.requestId;
+  delete duplicateEvent.actionFingerprint;
+  delete duplicateEvent.actionResult;
+  duplicated.events.push(duplicateEvent);
+  duplicated.revision = duplicated.events.length;
+  duplicated.updatedAt = duplicateEvent.at;
+  await assert.rejects(validatePayload({
+    world: duplicated, institutionalEvents: [], artifacts: {}, publicationBindings: []
+  }));
+});

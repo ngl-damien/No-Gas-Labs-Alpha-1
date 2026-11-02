@@ -126,6 +126,22 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const moonshotId=text(action.moonshotId,128,'Moonshot ID');
       const proposals=world.events.filter(e=>e.type==='moonshot-proposed'&&e.moonshotId===moonshotId);
       if(proposals.length!==1||!isStrictTimestamp(proposals[0].at)||Date.parse(proposals[0].at)>Date.parse(at))fail('NOT_FOUND','A unique earlier retained moonshot proposal is required before reporting an attempt.',404);
+      let followUpReview=null;
+      const followUpReviewId=Object.hasOwn(action,'followUpReviewId')
+        ? text(action.followUpReviewId,128,'Founder review ID') : null;
+      if(followUpReviewId){
+        const reviewMatches=world.events.filter(e=>e.type==='experiment-challenge-reviewed'&&e.reviewId===followUpReviewId);
+        const projectedReviews=projectResearchRecords(world.events,world.creations).filter(record=>
+          record.type==='experiment-challenge-reviewed'&&record.reviewId===followUpReviewId&&
+          record._projection?.proposalStatus==='linked'&&record._projection?.targetChallengeStatus==='linked'
+        );
+        if(reviewMatches.length!==1||projectedReviews.length!==1)fail('FOLLOW_UP_REVIEW_UNAVAILABLE','A unique, source-linked Founder disposition is required for this follow-up.',409);
+        followUpReview=reviewMatches[0];
+        if(followUpReview.moonshotId!==moonshotId)fail('FOLLOW_UP_REVIEW_MISMATCH','The selected Founder disposition belongs to a different Moonshot.',409);
+        if(!['investigate','request-evidence'].includes(followUpReview.disposition))fail('FOLLOW_UP_REVIEW_NOT_ACTIONABLE','This disposition does not request another experiment attempt.',409);
+        if(!isStrictTimestamp(followUpReview.at)||Date.parse(followUpReview.at)>=Date.parse(at))fail('INVALID_CHRONOLOGY','A follow-up report must be later than its Founder disposition.',409);
+        if(world.events.some(e=>e.type==='experiment-reported'&&e.followUpReviewId===followUpReviewId))fail('FOLLOW_UP_ALREADY_RECORDED','This Founder disposition already has a retained follow-up report.',409);
+      }
       const procedure=text(action.procedure,1000,'Procedure');
       const observation=text(action.observation,1000,'Observation');
       const reportedOutcome=action.reportedOutcome;
@@ -142,9 +158,14 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That evidence version is not retained at the report time.',409);
         evidenceCreationId=source.id;evidenceVersion=action.evidenceVersion;
       }
+      if(followUpReview?.disposition==='request-evidence'){
+        if(!hasEvidenceId)fail('FOLLOW_UP_EVIDENCE_REQUIRED','This Founder disposition requires an exact retained artifact version.',409);
+        const publications=world.events.filter(e=>e.type==='publish'&&e.creationId===evidenceCreationId&&e.version===evidenceVersion);
+        if(publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)>Date.parse(at))fail('FOLLOW_UP_EVIDENCE_UNAVAILABLE','The requested evidence must be one uniquely retained, earlier published version.',409);
+      }
       const reportId=uid('experiment-report');
       result={reportId};
-      recordEvent('experiment-reported',{reportId,moonshotId,procedure,observation,reportedOutcome,evidenceCreationId,evidenceVersion});
+      recordEvent('experiment-reported',{reportId,moonshotId,procedure,observation,reportedOutcome,evidenceCreationId,evidenceVersion,...(followUpReviewId?{followUpReviewId}:{})});
       break;
     }
     case 'challenge-experiment-report':{
@@ -456,7 +477,7 @@ export async function validateWorld(raw) {
   }
   const reportIds=new Set(),experimentReports=new Map(),challengeIds=new Set(),experimentChallenges=new Map();
   const allowedReportedOutcomes=new Set(['supports','contradicts','inconclusive','failed']);
-  const allowedExperimentKeys=new Set(['id','type','actor','at','semantics','reportId','moonshotId','procedure','observation','reportedOutcome','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
+  const allowedExperimentKeys=new Set(['id','type','actor','at','semantics','reportId','moonshotId','procedure','observation','reportedOutcome','evidenceCreationId','evidenceVersion','followUpReviewId','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='experiment-reported'){
     if(Object.keys(e).some(key=>!allowedExperimentKeys.has(key)))invalid('Experiment report contains unsupported canonical fields.');
     unique(e.reportId);
@@ -466,7 +487,7 @@ export async function validateWorld(raw) {
     if(typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||
        typeof e.procedure!=='string'||!e.procedure.trim()||Array.from(e.procedure).length>1000||
        typeof e.observation!=='string'||!e.observation.trim()||Array.from(e.observation).length>1000||
-       !allowedReportedOutcomes.has(e.reportedOutcome))invalid('Malformed experiment report.');
+       !allowedReportedOutcomes.has(e.reportedOutcome)||(Object.hasOwn(e,'followUpReviewId')&&(typeof e.followUpReviewId!=='string'||!e.followUpReviewId.trim())))invalid('Malformed experiment report.');
     const reportIndex=eventPositions.get(e);
     const proposals=(proposalsByMoonshot.get(e.moonshotId)||[]).filter(proposal=>proposal.index<reportIndex&&Date.parse(proposal.event.at)<=Date.parse(e.at));
     if(proposals.length!==1)invalid('Experiment report must reference one earlier retained moonshot proposal.');
@@ -505,7 +526,7 @@ export async function validateWorld(raw) {
   }
 
   const allowedChallengeReviewKeys=new Set(['id','type','actor','at','semantics','reviewId','reportId','challengeId','moonshotId','disposition','rationale','sourceEventIds','requestId','actionFingerprint','actionResult']);
-  const reviewedChallengeIds=new Set();
+  const reviewedChallengeIds=new Set(),challengeReviewById=new Map();
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='experiment-challenge-reviewed')continue;
     if(Object.keys(e).some(key=>!allowedChallengeReviewKeys.has(key)))invalid('Experiment challenge review contains unsupported canonical fields.');
@@ -525,6 +546,25 @@ export async function validateWorld(raw) {
        Date.parse(report.at)>Date.parse(e.at)||Date.parse(challenge.at)>Date.parse(e.at))invalid('Experiment challenge review must target one earlier retained report and its exact earlier challenge.');
     if(!Array.isArray(e.sourceEventIds)||e.sourceEventIds.length!==2||
        e.sourceEventIds[0]!==report.id||e.sourceEventIds[1]!==challenge.id)invalid('Experiment challenge review must bind the exact report and challenge source events in order.');
+    challengeReviewById.set(e.reviewId,e);
+  }
+  const followUpReviewIds=new Set();
+  for(let index=0;index<raw.events.length;index++){
+    const report=raw.events[index];
+    if(report.type!=='experiment-reported'||!Object.hasOwn(report,'followUpReviewId'))continue;
+    const review=challengeReviewById.get(report.followUpReviewId);
+    const reviewIndex=review?eventPositions.get(review):-1;
+    if(typeof report.followUpReviewId!=='string'||!report.followUpReviewId.trim()||!review||reviewIndex<0||reviewIndex>=index||
+       review.moonshotId!==report.moonshotId||!['investigate','request-evidence'].includes(review.disposition)||
+       !isStrictTimestamp(review.at)||Date.parse(review.at)>=Date.parse(report.at)||followUpReviewIds.has(report.followUpReviewId))
+      invalid('Experiment follow-up must bind one unique earlier actionable Founder disposition for the same Moonshot.');
+    followUpReviewIds.add(report.followUpReviewId);
+    if(review.disposition==='request-evidence'){
+      const publications=publicationsByVersion.get(historyKey(report.evidenceCreationId,report.evidenceVersion))||[];
+      if(typeof report.evidenceCreationId!=='string'||!Number.isSafeInteger(report.evidenceVersion)||report.evidenceVersion<1||
+         publications.length!==1||eventPositions.get(publications[0])>=index||Date.parse(publications[0].at)>Date.parse(report.at))
+        invalid('A request-evidence follow-up must link one exact retained publication that predates the report.');
+    }
   }
   const allowedStudyKeys=new Set(['id','type','actor','at','semantics','studyId','creationId','version','question','attempt','nextCheck','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='study'){

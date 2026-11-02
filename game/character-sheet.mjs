@@ -536,6 +536,7 @@ export function projectCharacter(world, viewer, options = null) {
         sourceCreationId: typeof metadata.sourceCreationId === 'string' ? metadata.sourceCreationId : null,
         sourceVersion: Number.isSafeInteger(metadata.sourceVersion) && metadata.sourceVersion > 0
           ? metadata.sourceVersion : null,
+        followUpReviewId: typeof metadata.followUpReviewId === 'string' ? metadata.followUpReviewId : null,
         locationId: typeof metadata.locationId === 'string' ? metadata.locationId : null,
         receipt,
         action: metadata.action && typeof metadata.action === 'object' && typeof metadata.action.type === 'string'
@@ -619,9 +620,11 @@ export function projectCharacter(world, viewer, options = null) {
     addFieldItem('experiment-report', event, null, {
       title: 'Experiment report · ' + event.reportedOutcome,
       status: 'self-reported · ' + event.reportedOutcome,
-      summary: 'Procedure: ' + event.procedure + ' · Observation: ' + event.observation,
+      summary: (typeof event.followUpReviewId === 'string' ? 'Follow-up of Decision Chamber review ' + event.followUpReviewId + ' · ' : '') +
+        'Procedure: ' + event.procedure + ' · Observation: ' + event.observation,
       sourceCreationId: event.evidenceCreationId,
       sourceVersion: event.evidenceVersion,
+      followUpReviewId: event.followUpReviewId,
       action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.reportId }
     });
   }
