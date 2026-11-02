@@ -556,7 +556,7 @@ test('preflight refuses receipt creation through an escaping directory symlink',
   }
 });
 
-test('hosted preflight includes the world-view source, offline signer, synthesizer, and canonical checkpoint', async () => {
+test('hosted preflight includes the capability, ledger lock, signer, and checkpoint paths', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.equal(typeof command, 'string');
@@ -568,6 +568,16 @@ test('hosted preflight includes the world-view source, offline signer, synthesiz
   assert.ok(command.includes('--path scripts/evaluate-candidate-task.mjs'));
   assert.ok(command.includes('--path test/evaluate-candidate-task.test.mjs'));
   assert.equal(packageJson.scripts['candidate:evaluate'], 'node scripts/evaluate-candidate-task.mjs');
+  for (const path of [
+    'experiment-001/institutional-cycle.test.mjs',
+    'experiment-001/atomic-lock.mjs',
+    'experiment-001/atomic-lock.test.mjs',
+    'experiment-001/approve-install.test.mjs',
+    'experiment-001/commit-worker.mjs',
+    'experiment-001/reuse-worker.mjs'
+  ]) {
+    assert.ok(command.includes(`--path ${path}`), `missing hosted preflight target: ${path}`);
+  }
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
