@@ -16,6 +16,13 @@ function sameFileSnapshot(left, right) {
   return left.dev === right.dev && left.ino === right.ino &&
     left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
+function sameResolvedPath(expected, actual) {
+  const expectedPath = resolve(expected);
+  const actualPath = resolve(actual);
+  return process.platform === 'win32'
+    ? expectedPath.toLowerCase() === actualPath.toLowerCase()
+    : expectedPath === actualPath;
+}
 
 function receiptDescriptorRoot() {
   if (process.platform === 'linux') return '/proc/self/fd';
@@ -250,6 +257,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
         return null;
       }
+      if (trustedPathSnapshot && !sameResolvedPath(absolutePath, actualPath)) {
+        failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during preflight inspection' });
+        return null;
+      }
       // Open the resolved file non-blocking and pin the descriptor before reading.
       // A FIFO/device must not hang a preflight, and a path replaced during the
       // realpath/open/read window must not make the receipt describe different bytes.
@@ -284,6 +295,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
           failures.push({ path: relativePath, reason: 'resolved path escapes repository root during open' });
           return null;
         }
+        if (trustedPathSnapshot && !sameResolvedPath(absolutePath, openedPath)) {
+          failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during open' });
+          return null;
+        }
         const openedPathMetadata = await stat(openedPath, { bigint: true });
         if (!sameFileSnapshot(openedMetadata, openedPathMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
@@ -299,6 +314,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         const finalPath = await realpath(absolutePath);
         if (!insideRoot(rootPath, finalPath)) {
           failures.push({ path: relativePath, reason: 'resolved path escapes repository root during read' });
+          return null;
+        }
+        if (trustedPathSnapshot && !sameResolvedPath(absolutePath, finalPath)) {
+          failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during read' });
           return null;
         }
         const finalPathMetadata = await stat(finalPath, { bigint: true });
