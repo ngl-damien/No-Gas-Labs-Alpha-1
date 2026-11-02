@@ -39,6 +39,11 @@ The Python implementation preserves the Node/ECMAScript JSON-number boundary in 
 These checks establish deterministic agreement for the covered JSON numeric cases; they do not broaden the candidate task's safe-integer domain or confer signing, installation, or canonical-state authority.
 
 
+## Cross-runtime string-length parity
+
+The synthesis receipt's `instruction` field is bounded to 512 JavaScript string-length units. JavaScript counts UTF-16 code units, while Python's built-in `len(str)` counts Unicode code points. The independent verifier now computes the UTF-16 code-unit count explicitly, so astral characters count as two units and lone surrogates count as one, matching the Node verifier. Differential regressions cover ASCII, astral, mixed, and lone-surrogate strings at and just beyond the 512-unit boundary.
+
+
 ## Polynomial-shape parity corpus
 
 The end-to-end Node/Python regression corpus now synthesizes, evaluates, and independently verifies zero and negative constants, a negative-slope linear polynomial, a sparse quadratic, coefficients that require bounded AST decomposition above the single-node constant limit, and a quadratic evaluated near the input-domain edge. For every case the tests compare the task digest, implementation hash, report digest, range-result digest, evaluation count, and authority-false result fields across both verifiers.
