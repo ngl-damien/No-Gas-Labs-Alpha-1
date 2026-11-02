@@ -548,7 +548,7 @@ test('preflight rejects an ancestor swapped after its own post-read check', {
       "fs.promises.lstat = async function(candidate, ...args) {",
       "  const metadata = await originalLstat.call(this, candidate, ...args);",
       "  const expected = path.join(process.env.NGL_PREFLIGHT_SWAP_ROOT, 'docs', 'operations');",
-      "  if (!swapped && path.resolve(String(candidate)) === expected && ++operationsChecks === 4) {",
+      "  if (!swapped && path.resolve(String(candidate)) === expected && ++operationsChecks === 5) {",
       "    const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
       "    const docs = path.join(root, 'docs');",
       "    fs.renameSync(docs, path.join(root, 'docs-original'));",
