@@ -569,6 +569,13 @@ test('hosted preflight includes the capability, ledger lock, signer, and checkpo
   assert.ok(command.includes('--path test/evaluate-candidate-task.test.mjs'));
   assert.equal(packageJson.scripts['candidate:evaluate'], 'node scripts/evaluate-candidate-task.mjs');
   assert.equal(packageJson.scripts['candidate:verify'], 'node scripts/evaluate-candidate-task.mjs --verify-report');
+  assert.ok(command.includes('--path scripts/verify-candidate-report.py'));
+  assert.ok(command.includes('--path test/test_candidate_report_verifier.py'));
+  assert.ok(command.includes('--path docs/operations/CANDIDATE_REPORT_INDEPENDENT_VERIFIER.md'));
+  assert.equal(packageJson.scripts['candidate:verify:independent'], 'python3 scripts/verify-candidate-report.py');
+  const verificationScript = await readFile(new URL('../scripts/verify.mjs', import.meta.url), 'utf8');
+  assert.match(verificationScript, /candidate-report-verifier/);
+  assert.match(verificationScript, /stages\\.length === 5/);
   for (const path of [
     'experiment-001/institutional-cycle.test.mjs',
     'experiment-001/atomic-lock.mjs',
