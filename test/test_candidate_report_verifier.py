@@ -649,6 +649,8 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
             ("astral-over-boundary", "😀" * 257, False),
             ("mixed-astral-boundary", "😀" * 255 + "a" * 2, True),
             ("mixed-astral-over-boundary", "😀" * 255 + "a" * 3, False),
+            ("lone-surrogate-boundary", chr(0xD800) * 512, True),
+            ("lone-surrogate-over-boundary", chr(0xD800) * 513, False),
         )
 
         for name, instruction, accepted in scenarios:
@@ -657,7 +659,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 altered["instruction"] = instruction
                 receipt_path = self.directory / (name + "-receipt.json")
                 receipt_path.write_text(
-                    json.dumps(altered, ensure_ascii=False),
+                    json.dumps(altered, ensure_ascii=True),
                     encoding="utf-8",
                 )
 
