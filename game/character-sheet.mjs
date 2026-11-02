@@ -1,11 +1,12 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords } from './research-records.mjs';
 import { getLocationAction, getQuestTrail, matchActivityRecords, isQuestTrailProjection } from './quests.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
 import { projectCommonsMessages } from './social.mjs';
 
 const NON_XP_QUEST_EVENT_TYPES = new Set([
-  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded', 'message-posted'
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded', 'message-posted',
+  'experiment-challenge-reviewed'
 ]);
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -316,6 +317,12 @@ export function projectCharacter(world, viewer, options = null) {
     challengedReportIds.add(event.reportId);
     return true;
   });
+  const experimentChallengeReviews = projectResearchRecords(allEvents, rows(world?.creations)).filter(record =>
+    record.type === 'experiment-challenge-reviewed' &&
+    record._projection?.proposalStatus === 'linked' &&
+    record._projection?.targetChallengeStatus === 'linked' &&
+    record.actor?.id === viewer?.id && record.actor?.role === viewer?.role
+  );
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const publishedStudyVersions = retainedPublishedVersionKeys;
@@ -449,6 +456,13 @@ export function projectCharacter(world, viewer, options = null) {
       count: experimentChallenges.length,
       record: 'retained challenges to another actor’s experiment reports',
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
+    },
+    {
+      id: 'deliberator',
+      label: 'Deliberator',
+      count: experimentChallengeReviews.length,
+      record: 'source-bound Founder dispositions of research challenges',
+      basis: 'Unique Founder-authored next-step dispositions bound to exact earlier report and challenge event IDs. This counts a recorded choice, not independent review, truth, correctness, or institutional authority.'
     },
     {
       id: 'speaker',
@@ -614,6 +628,14 @@ export function projectCharacter(world, viewer, options = null) {
       sourceCreationId: event.evidenceCreationId,
       sourceVersion: event.evidenceVersion,
       action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.challengeId }
+    });
+  }
+  for (const event of experimentChallengeReviews) {
+    addFieldItem('challenge-review', event, null, {
+      title: 'Founder disposition · ' + event.disposition,
+      status: 'game-level next-step choice · not a truth verdict',
+      summary: 'Challenge ' + event.challengeId + ' · ' + event.rationale,
+      action: { type: 'location', id: 'decision_chamber' }
     });
   }
   for (const event of commonsMessages) {
