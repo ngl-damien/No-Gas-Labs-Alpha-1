@@ -264,7 +264,112 @@ def read_bounded_regular_file(path, limit, label):
     except UnicodeDecodeError:
         fail(label + "_INVALID_UTF8")
 
+def preflight_json_structure(source, label):
+    """Mirror the Node lexical JSON preflight's depth/duplicate error order."""
+    index = 0
+
+    def fail_json(code):
+        fail(label + "_" + code)
+
+    def skip_whitespace():
+        nonlocal index
+        while index < len(source) and source[index] in " \\t\\r\\n":
+            index += 1
+
+    def read_string_token():
+        nonlocal index
+        if index >= len(source) or source[index] != '"':
+            fail_json("JSON_INVALID")
+        start = index
+        index += 1
+        while index < len(source):
+            character = source[index]
+            if character == "\\\\":
+                if index + 1 >= len(source):
+                    fail_json("JSON_INVALID")
+                index += 2
+                continue
+            index += 1
+            if character == '"':
+                return source[start:index]
+        fail_json("JSON_INVALID")
+
+    def parse_value(depth=0):
+        nonlocal index
+        if depth > MAX_JSON_DEPTH:
+            fail_json("JSON_TOO_DEEP")
+        skip_whitespace()
+        if index >= len(source):
+            fail_json("JSON_INVALID")
+
+        if source[index] == "{":
+            index += 1
+            skip_whitespace()
+            if index < len(source) and source[index] == "}":
+                index += 1
+                return
+            keys = set()
+            while index < len(source):
+                skip_whitespace()
+                token = read_string_token()
+                try:
+                    key = json.loads(token)
+                except (json.JSONDecodeError, ValueError):
+                    fail_json("JSON_INVALID")
+                if key in keys:
+                    fail_json("DUPLICATE_JSON_KEY")
+                keys.add(key)
+                skip_whitespace()
+                if index >= len(source) or source[index] != ":":
+                    fail_json("JSON_INVALID")
+                index += 1
+                parse_value(depth + 1)
+                skip_whitespace()
+                if index < len(source) and source[index] == ",":
+                    index += 1
+                    continue
+                if index < len(source) and source[index] == "}":
+                    index += 1
+                    return
+                fail_json("JSON_INVALID")
+            fail_json("JSON_INVALID")
+
+        if source[index] == "[":
+            index += 1
+            skip_whitespace()
+            if index < len(source) and source[index] == "]":
+                index += 1
+                return
+            while index < len(source):
+                parse_value(depth + 1)
+                skip_whitespace()
+                if index < len(source) and source[index] == ",":
+                    index += 1
+                    continue
+                if index < len(source) and source[index] == "]":
+                    index += 1
+                    return
+                fail_json("JSON_INVALID")
+            fail_json("JSON_INVALID")
+
+        if source[index] == '"':
+            read_string_token()
+            return
+
+        start = index
+        while index < len(source) and source[index] not in ",]} \\t\\r\\n":
+            index += 1
+        if index == start:
+            fail_json("JSON_INVALID")
+
+    parse_value()
+    skip_whitespace()
+    if index != len(source):
+        fail_json("JSON_INVALID")
+
+
 def parse_json(source, label):
+    preflight_json_structure(source, label)
     def pairs(items):
         result = {}
         for key, value in items:
