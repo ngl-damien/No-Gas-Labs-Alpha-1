@@ -1306,3 +1306,60 @@ Freshly parsed the actual `agent:preflight:ci` command in the PR #283 and PR #28
 5. Resume linked-repository bootstraps only when required root instructions and authorized device access are available.
 
 Authority: no merge, release, deployment, spending, external publication, credential/key/permission change, destructive action, or Founder decision occurred. No uninterrupted execution between runs is claimed.
+
+
+---
+
+## Run 31 — 2026-11-02 — pin trusted preflight reads against transient real-directory replacement
+
+**Worker:** Worker A — repository-wide reliability/security.  
+**Primary repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.  
+**Mainline boundary:** no merge or mainline change made. PR #291 is a draft child of Worker B's current PR #289 branch, not a mainline integration.
+
+### Fresh state and coordination
+
+- Re-read root \`AGENTS.md\`, the complete canonical shared protocol, the latest checkpoint, nested instructions for the touched paths, and Worker B's latest PR #289 Run 34 handoff.
+- No registered Desktop Commander device was online. The available container has Node 22.16.0, not the required Node 24; local portable preflight/test execution was unavailable. Hosted exact-head CI is the verification evidence.
+- PR #289 current code head at reinspection: \`440194ad4f8e7619bffc5b86b9eadf41c0492648\`. Its Verify and Genesis passed; Browser passed 19/19; Android emulator booted but instrumentation failed two WebView tests. Worker A's source-backed handoff is PR #289 comment [6589442466](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/289#issuecomment-6589442466).
+- Candidate verifier PR #279 is not a safe six-file transplant into #289: compare #279/#289 reports 426 commits ahead, 101 behind, and 72 changed files across a divergent dependency lineage. The target manifests also differ (95 vs 73; 97-path union). No blind merge or partial transplant was attempted.
+
+### Reproduced defect
+
+The trusted governance reader in \`scripts/validate-agent-governance.mjs\` revalidated lexical path snapshots around a path-based open. A transient replacement of \`docs/operations\` with a *real decoy directory* (not a symlink), held through stat/open/read and restored before the post-read \`lstat\` checks, caused the receipt to fingerprint decoy checkpoint bytes.
+
+- Test-first commit: \`4bdf8eed7e6ce9e7b8af4dd8fe7c84c1f1921089\`.
+- Temporary red-reproduction PR #292 was closed without merge after Verify [41532429838](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532429838) failed at the new assertion. Suite: 955 pass / 1 fail. The receipt's checkpoint SHA-256 equalled the decoy hash \`7872623e99efef22eacc4c7ea158aa9531e50175b4e0abec66ca3ab84ca777e1\`.
+
+### Repair
+
+Draft child PR [#291](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/291), branch \`fix/preflight-pinned-trusted-read-20261102\`:
+
+- Test-first commit: \`4bdf8eed7e6ce9e7b8af4dd8fe7c84c1f1921089\`.
+- Implementation commit: \`64f54a398e63aa1d86a1f51176715b730417008f\`.
+- On Linux, trusted reads now open the repository root and each parent directory with \`O_DIRECTORY|O_NOFOLLOW\`, compare opened parent identities against the initial path snapshots, then open the final file through \`/proc/self/fd/<dirfd>/...\`. Existing bounded reads, file-handle before/after metadata checks, and path snapshot revalidation remain.
+- Non-Linux platforms retain the guarded path-based fallback and now emit an explicit warning that parent-directory pinning is unavailable; this is not represented as equivalent protection.
+
+### Exact-head verification on \`64f54a398e63aa1d86a1f51176715b730417008f\`
+
+- Verify [41532580892](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532580892): **passed**. Hosted Node 24 tests, Python inspector, game build, and institutional exercise all exited 0. Linux preflight: 73 targets, zero warnings, zero failures.
+- Genesis Evidence Invariant [41532581076](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532581076): **passed**.
+- Browser Acceptance [41532581193](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532581193): **in progress at checkpoint capture**.
+- Android Alpha-1 [41532581039](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532581039): **in progress at checkpoint capture**. Its macOS preflight receipt artifact [13182188213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41532581039/artifacts/13182188213) is \`ready\` with zero failures and two explicit warnings (trusted-read and receipt-write parent-directory descriptor pinning unavailable on macOS). Worker B should consider running portable preflight in a separate Ubuntu job and passing the exact-commit receipt to the macOS emulator job.
+
+### Founder authority and linked-repository boundary
+
+- PR #16 remains closed/unmerged; its final patch contains Ed25519 verification but no \`demonstrate()\` or \`QUEST_AUTHORIZED\` flow. PR #18 is the merged replacement. Recreating the alleged final-PR #16 self-signing fix would be duplicate work.
+- Actual unresolved boundaries remain explicit Founder-key startup/custody, canonical context-bound live Decision Gate integration, and the isolated caller-supplied \`verification.valid\` helper (whose inspected direct caller is a test, not the live route). PRs #274/#275 and the explicit-key game lineage remain proposals; no key was generated, enrolled, exported, rotated, or changed.
+- \`no-gas-labs-governance\`: root instructions require \`./init_repo.sh\`; no authorized execution device was online, so inspection stopped before bootstrap.
+- \`AI-BI-Intelligence-node-gate\`: root instructions and all three continuity files were read; required \`init_node.sh\` bootstrap/build/device validation could not run, so inspection stopped.
+- \`ngl-mesh\`: root \`AGENTS.md\` returned 404; inspection stopped. No linked repository was modified.
+
+### Next ranked actions
+
+1. Recheck exact-head Browser and Android results on PR #291; do not claim Android acceptance unless instrumentation actually passes.
+2. Reconcile the Linux pinned-read change into the main-based preflight/checkpoint stack and the 73-target game stack by exact-file comparison; preserve the 97-path candidate/game union only when the full candidate dependency lineage is deliberately integrated.
+3. Have Worker B fix the two Android instrumentation failures and add the production-loopback CLI explicit-key regression; keep physical-device acceptance open.
+4. Continue Founder Gate work only with canonical decision-context mapping and a Damien-controlled trust root/custody decision.
+5. Resume linked-repository bootstraps only when their required authorized execution environment is available.
+
+No merge, release, deployment, spending, external publication, credential/permission change, destructive action, Founder decision, or uninterrupted between-run execution occurred.
