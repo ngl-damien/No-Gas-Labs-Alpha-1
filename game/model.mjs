@@ -512,7 +512,7 @@ export async function validateWorld(raw) {
     unique(e.reviewId);
     if(typeof e.reviewId!=='string'||!e.reviewId||typeof e.reportId!=='string'||!e.reportId||
        typeof e.challengeId!=='string'||!e.challengeId||typeof e.moonshotId!=='string'||!e.moonshotId||
-       !challengeReviewDispositions.has(e.disposition)||typeof e.rationale!=='string'||
+       !CHALLENGE_REVIEW_DISPOSITIONS.some(item=>item.value===e.disposition)||typeof e.rationale!=='string'||
        !e.rationale.trim()||Array.from(e.rationale).length>1000||e.actor.role!=='founder')invalid('Malformed or unauthorized experiment challenge review.');
     if(reviewedChallengeIds.has(e.challengeId))invalid('An experiment challenge may receive only one retained Founder disposition.');
     reviewedChallengeIds.add(e.challengeId);
