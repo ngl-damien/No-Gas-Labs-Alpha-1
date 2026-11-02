@@ -463,6 +463,11 @@ test('candidate-program-v5 proposal inspection verifies its task signature again
   assert.equal(receipt.proposalDigest, proposalDigest(proposal));
   assert.equal(receipt.proposal.taskSpecificationDigest, candidateTaskSpecificationDigest(specification));
   assert.equal(receipt.proposal.taskSpecificationVerifiedAgainstFingerprint, publicKeyFingerprint(founder.publicKeyPem));
+  assert.deepEqual(receipt.proposal.program, proposal.program,
+    'Founder review must expose the exact normalized candidate AST covered by the digest');
+  assert.equal(receipt.proposal.implementationHash, proposal.implementationHash,
+    'Founder review must expose the implementation identity covered by the digest');
+  assert.match(receipt.proposal.implementationHash, /^[a-f0-9]{64}$/);
 });
 
 test('candidate-program-v5 INSTALL confirmation verifies task signature before emitting approval', async t => {
