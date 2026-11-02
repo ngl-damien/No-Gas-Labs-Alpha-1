@@ -787,7 +787,7 @@ def adversary_challenge_handoff(browser,url,out):
         character_xp=character_xp_components(page)
         assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'academyTutorFolios':2,'academyRejectedFolios':1,'academyNewestFirst':True,'academyExactArchiveNavigation':True,'academyInspectionReadOnly':True,'boundedTutorPacket':True,'errors':errors}
     finally:
         context.close()
 
