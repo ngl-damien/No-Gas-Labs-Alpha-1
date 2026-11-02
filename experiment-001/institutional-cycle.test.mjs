@@ -253,7 +253,7 @@ test('directory-sync failure latches the live store and permits recovery only af
     "let directorySyncs = 0;",
     "let injected = false;",
     "let injectedAt = null;",
-    "prototype.sync = async function (...args) { const stat = await this.stat(); if (stat.isDirectory()) { directorySyncs += 1; if (directorySyncs === 2) { injected = true; injectedAt = directorySyncs; const error = new Error('INJECTED_DIRECTORY_SYNC_FAILURE'); error.code = 'EIO'; throw error; } } return originalSync.apply(this, args); };"
+    "prototype.sync = async function (...args) { const stat = await this.stat(); if (stat.isDirectory()) { directorySyncs += 1; if (directorySyncs === 2) { injected = true; injectedAt = directorySyncs; const error = new Error('INJECTED_DIRECTORY_SYNC_FAILURE'); error.code = 'EIO'; throw error; } } return originalSync.apply(this, args); };",
     "const lib = await import(" + JSON.stringify(moduleUrl) + " + '?fault=' + Date.now());",
     "const store = await lib.openInstitution(" + JSON.stringify(storePath) + ", publicPem);",
     "const proposal = lib.makeInstallationProposal({ executorPublicKeyPem: executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(), nonce: 'install-fsync-fail-0001', issuedAt: Date.now(), expiresAt: Date.now() + 60000, maxUses: 2 });",
