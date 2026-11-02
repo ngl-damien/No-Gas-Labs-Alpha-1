@@ -508,6 +508,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         scenarios = (
             ("single-input", ["0"], "input"),
             ("single-output", ["1"], "output"),
+            ("range-row-input", ["--range", "0", "2"], "input"),
             ("range-row-output", ["--range", "0", "2"], "output"),
         )
         for name, arguments, field in scenarios:
