@@ -25,3 +25,14 @@ Both verifiers are read-only. The Python result labels its method `python-stdlib
 Neither verifier validates the task-specification Ed25519 signature or INSTALL approval, proves Damien's real-world identity or private-key custody, installs/reuses a capability, invokes a provider, changes the Experiment 001 ledger, or mutates canonical institutional/game state. The task still requires its separate Founder task-specification signature and INSTALL approval before installation. The Python implementation is independent code, not an independent trust root, human reviewer, production security certification, or proof of general AI discovery.
 
 Bounds remain fixed by the candidate-program-v5 contract: AST depth 12, 63 nodes, polynomial degree 32, 4,096 coefficient bits, inputs in [-1,000,000, 1,000,000], at most 4,096 range evaluations, 64-KiB synthesis receipts, and 2-MiB evaluation reports.
+
+
+## Cross-runtime JSON numeric parity
+
+The Python implementation preserves the Node/ECMAScript JSON-number boundary in cases where the standard-library defaults differ:
+
+- A syntactically valid integer token longer than CPython's configured `int()` digit limit is converted to a binary64 float only when that limit rejects the integer conversion. The verifier then rejects the non-finite or out-of-safe-range value as a domain error, matching Node's `JSON.parse` behavior instead of misclassifying valid JSON as malformed. The regression lowers `PYTHONINTMAXSTRDIGITS` to 640 and checks 700-digit values in both synthesis receipts and evaluation reports.
+- JSON negative zero is preserved for both `-0` and `-0.0`. The Python verifier explicitly mirrors Node's deep strict comparison for single-report input/output values and range-row input/output values; those signed-zero fields are rejected with `EVALUATION_REPORT_MISMATCH` rather than being silently equated with positive zero by Python's ordinary numeric equality.
+- Existing decimal/exponent parity tests continue to require matching implementation, report, and result digests for integral values such as `17.0` and `17e0`.
+
+These checks establish deterministic agreement for the covered JSON numeric cases; they do not broaden the candidate task's safe-integer domain or confer signing, installation, or canonical-state authority.
