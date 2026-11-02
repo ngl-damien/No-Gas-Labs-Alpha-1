@@ -273,7 +273,7 @@ def preflight_json_structure(source, label):
 
     def skip_whitespace():
         nonlocal index
-        while index < len(source) and source[index] in " \\t\\r\\n":
+        while index < len(source) and source[index] in " \t\r\n":
             index += 1
 
     def read_string_token():
@@ -284,7 +284,7 @@ def preflight_json_structure(source, label):
         index += 1
         while index < len(source):
             character = source[index]
-            if character == "\\\\":
+            if character == "\\":
                 if index + 1 >= len(source):
                     fail_json("JSON_INVALID")
                 index += 2
@@ -357,7 +357,7 @@ def preflight_json_structure(source, label):
             return
 
         start = index
-        while index < len(source) and source[index] not in ",]} \\t\\r\\n":
+        while index < len(source) and source[index] not in ",]} \t\r\n":
             index += 1
         if index == start:
             fail_json("JSON_INVALID")
@@ -370,6 +370,7 @@ def preflight_json_structure(source, label):
 
 def parse_json(source, label):
     preflight_json_structure(source, label)
+
     def pairs(items):
         result = {}
         for key, value in items:
