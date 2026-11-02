@@ -196,7 +196,7 @@ export function validateCandidateTaskSpecification(specification) {
     ]);
     if (value.schema !== 'ngl.candidate-task-spec.v1' ||
         typeof value.id !== 'string' ||
-        !/^ngl\.experiment-001\.task:[a-z0-9][a-z0-9._-]{0,63}:v1$/.test(value.id) ||
+        !/^ngl\.experiment-001\.task:[a-z0-9][a-z0-9._-]{0,63}:v[1-9][0-9]{0,3}$/.test(value.id) ||
         value.inputMin !== -MAX_INPUT ||
         value.inputMax !== MAX_INPUT ||
         value.proofMethod !== 'exact-integer-polynomial-normal-form') {
@@ -213,7 +213,7 @@ export function validateCandidateTaskSpecification(specification) {
       throw new Error('CANDIDATE_TASK_SPEC_INVALID');
     }
     const coefficients = rawCoefficients.map(coefficient => {
-      if (typeof coefficient !== 'string' || coefficient.length > 1234 ||
+      if (typeof coefficient !== 'string' || coefficient.length > 1235 ||
           !/^(0|-?[1-9]\d*)$/.test(coefficient)) {
         throw new Error('CANDIDATE_TASK_SPEC_INVALID');
       }

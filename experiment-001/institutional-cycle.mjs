@@ -7,6 +7,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { publishAtomicLock } from './atomic-lock.mjs';
 import {
   candidateProgramHash,
+  candidateTaskSpecificationDigest,
   evaluateCandidateProgram,
   validateCandidateProgram,
   validateCandidateTaskSpecification,
@@ -345,6 +346,15 @@ function apply(state, record, publicKey, { allowLegacy = false } = {}) {
     const validation = validateInstallationProposal(decision, record.timestamp, { allowLegacy, founderPublicKey: publicKey });
     if (!validation.valid) throw new Error(validation.reason);
     if (Object.hasOwn(state.capabilities, decision.id)) throw new Error('ALREADY_INSTALLED');
+    if (decision.strategy === 'candidate-program-v5') {
+      const taskDigest = candidateTaskSpecificationDigest(decision.taskSpecification);
+      const conflictingTask = Object.values(state.capabilities).some(capability =>
+        capability.strategy === 'candidate-program-v5' &&
+        capability.taskSpecification?.id === decision.taskSpecification.id &&
+        candidateTaskSpecificationDigest(capability.taskSpecification) !== taskDigest
+      );
+      if (conflictingTask) throw new Error('CANDIDATE_TASK_SPEC_ID_CONFLICT');
+    }
     if (state.installationNonces.includes(decision.nonce)) throw new Error('INSTALL_NONCE_REUSED');
     const capability = {
       id: decision.id,

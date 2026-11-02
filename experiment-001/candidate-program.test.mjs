@@ -897,3 +897,93 @@ test('candidate-program-v5 rejects an untrusted or changed task spec even when I
   await assert.rejects(() => store.commit(changed, changedApproval), /CANDIDATE_TASK_SPEC_SIGNATURE_INVALID/);
   assert.equal(store.snapshot().sequence, 0);
 }));
+
+
+test('installed candidate task IDs cannot be rebound to new targets; a new version is allowed', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const store = await lib.openInstitution(join(directory, 'store-v5-task-id'), pem(founder));
+  const issuedAt = Date.now();
+  const originalSpecification = callerDefinedTaskSpecification();
+  const originalSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(originalSpecification)),
+    founder.privateKey
+  ).toString('base64url');
+  const original = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-original',
+    strategy: 'candidate-program-v5',
+    program: callerDefinedTaskProgram(),
+    taskSpecification: originalSpecification,
+    taskSpecificationSignature: originalSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-original',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+  await store.commit(original, sign(
+    null,
+    Buffer.from(lib.approvalPayload(original)),
+    founder.privateKey
+  ).toString('base64url'));
+
+  const changedSpecification = structuredClone(originalSpecification);
+  changedSpecification.targetCoefficients = ['-4', '2', '3'];
+  const changedProgram = structuredClone(callerDefinedTaskProgram());
+  changedProgram.right.value = -4;
+  const changedSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(changedSpecification)),
+    founder.privateKey
+  ).toString('base64url');
+  const conflicting = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-redefinition',
+    strategy: 'candidate-program-v5',
+    program: changedProgram,
+    taskSpecification: changedSpecification,
+    taskSpecificationSignature: changedSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-redefine',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+  assert.equal(conflicting.proof.passed, 1, 'the new candidate genuinely matches the changed signed target');
+  await assert.rejects(() => store.commit(conflicting, sign(
+    null,
+    Buffer.from(lib.approvalPayload(conflicting)),
+    founder.privateKey
+  ).toString('base64url')), /CANDIDATE_TASK_SPEC_ID_CONFLICT/);
+  assert.equal(store.snapshot().sequence, 1);
+
+  const versionedSpecification = {
+    ...changedSpecification,
+    id: changedSpecification.id.replace(':v1', ':v2')
+  };
+  const versionedSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(versionedSpecification)),
+    founder.privateKey
+  ).toString('base64url');
+  const versioned = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-version-two',
+    strategy: 'candidate-program-v5',
+    program: changedProgram,
+    taskSpecification: versionedSpecification,
+    taskSpecificationSignature: versionedSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-task-v5-version2',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+  await store.commit(versioned, sign(
+    null,
+    Buffer.from(lib.approvalPayload(versioned)),
+    founder.privateKey
+  ).toString('base64url'));
+  assert.equal(store.snapshot().sequence, 2);
+  assert.equal(store.snapshot().capabilities[versioned.id].taskSpecification.id, versionedSpecification.id);
+}));
