@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { institutionActivityCount } from "../game/world-view.mjs";
 import { projectInstitutionRecordWorldObjects, hasCompleteInstitutionKernelSnapshot } from "../game/institution-record-objects.mjs";
 import { projectDecisionDocket } from "../game/quests.mjs";
 import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
@@ -1047,4 +1048,76 @@ test('a forged accessor-backed Decision Docket projection is ignored without exe
   assert.equal(getterCalls, 0);
   assert.equal(projection.decisionDocketAvailable, false);
   assert.equal(projection.objects.length, 0);
+});
+
+
+test("Founder research next steps become review-marked Decision Chamber world objects without resolving dissent", () => {
+  const { world } = fixture();
+  world.events.push(
+    {
+      id: "challenge-v1",
+      type: "experiment-challenged",
+      reportId: "report-v1",
+      moonshotId: "moonshot-1",
+      challengeType: "methodology",
+      challengeText: "The report omits the control settings.",
+      actor: { id: "witness-2", name: "Second Witness", role: "witness" },
+      at: "2026-10-26T10:07:00.000Z",
+      evidenceCreationId: null,
+      evidenceVersion: null,
+    },
+    {
+      id: "challenge-review-v1",
+      type: "experiment-challenge-reviewed",
+      reviewId: "challenge-review-1",
+      reportId: "report-v1",
+      challengeId: "challenge-v1",
+      moonshotId: "moonshot-1",
+      disposition: "request-evidence",
+      rationale: "Retain the control settings before another attempt.",
+      sourceEventIds: ["report-v1", "challenge-v1"],
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:09:00.000Z",
+    },
+  );
+  const before = structuredClone(world);
+  const chronicle = projectChronicle({ world });
+  const review = chronicle.entries.find(entry => entry.id === "world:challenge-review-v1");
+
+  assert.equal(review.eventType, "experiment-challenge-reviewed");
+  assert.equal(review.category, "DECISION CHAMBER · GAME-LEVEL NEXT STEP");
+  assert.match(review.title, /Founder next step recorded · Request more evidence/);
+  assert.match(review.detail, /Report: report-v1/);
+  assert.match(review.detail, /Challenge: challenge-v1/);
+  assert.match(review.detail, /Source events: report-v1 → challenge-v1/);
+  assert.match(review.summary, /does not decide whether the report is true/);
+  assert.match(review.warning, /separate from the canonical Founder Gate/);
+
+  const institutionSummary = {
+    schema: "ngl.shared-institution-summary.v1",
+    kernel: {
+      schema: "ngl.institution.v1",
+      revision: 0,
+      eventCount: 0,
+      events: [],
+    },
+  };
+  const projection = projectInstitutionRecordWorldObjects({
+    world,
+    institutionSummary,
+    places: [{ id: "decision_chamber", name: "Decision Chamber", x: 780, y: 180 }],
+    isWalkable: () => true,
+    buildings: [],
+  });
+  const object = projection.objects.find(item => item.entryId === "world:challenge-review-v1");
+
+  assert.ok(object, "the retained disposition should become a world object");
+  assert.equal(object.eventId, "challenge-review-v1");
+  assert.equal(object.eventType, "experiment-challenge-reviewed");
+  assert.equal(object.locationId, "decision_chamber");
+  assert.equal(object.locationName, "Decision Chamber");
+  assert.equal(object.markerTone, "review");
+  assert.match(object.warning, /does not prove a distinct human/);
+  assert.equal(institutionActivityCount("decision_chamber", world), 1);
+  assert.deepEqual(world, before, "Chronicle, map and activity projections must remain read-only");
 });

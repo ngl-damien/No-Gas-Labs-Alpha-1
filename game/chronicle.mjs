@@ -1,4 +1,5 @@
 import { isCollaboratorResponseProjection, projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
+import { CHALLENGE_REVIEW_DISPOSITIONS } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -9,6 +10,7 @@ const PLACE_NAMES = Object.freeze({
   "town-square": "TownSquare",
   guild_hall: "Guild Hall",
   evidence_archive: "Evidence Archive",
+  decision_chamber: "Decision Chamber",
   academy: "Polymath Academy",
   moonshot_field: "Moonshot Field"
 });
@@ -343,6 +345,23 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
     } else if (target) {
       entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
     }
+  } else if (type === "experiment-challenge-reviewed") {
+    const disposition = CHALLENGE_REVIEW_DISPOSITIONS.find(item => item.value === event?.disposition);
+    const dispositionLabel = disposition?.label || text(event?.disposition) || "unclassified";
+    const sourceEventIds = Array.isArray(event?.sourceEventIds)
+      ? event.sourceEventIds.filter(value => typeof value === "string" && value.trim()).slice(0, 8)
+      : [];
+    entry.title = `Founder next step recorded · ${dispositionLabel}`;
+    entry.category = "DECISION CHAMBER · GAME-LEVEL NEXT STEP";
+    entry.summary = "A Founder-authenticated game-level disposition was retained for this research challenge. It records a next step only; it does not decide whether the report is true, prove independent review, approve institutional work, or authorize execution.";
+    entry.detail = [
+      `Report: ${text(event?.reportId) || "not identified"}`,
+      `Challenge: ${text(event?.challengeId) || "not identified"}`,
+      `Disposition: ${dispositionLabel}`,
+      `Rationale: ${text(event?.rationale) || "not recorded"}`,
+      `Source events: ${sourceEventIds.length ? sourceEventIds.join(" → ") : "not recorded"}`,
+    ].join(" · ");
+    entry.warning = "The underlying challenge remains in history. This game-level next step is separate from the canonical Founder Gate; account attribution does not prove a distinct human or replace independent evidence and required human authorization.";
   } else if (type === "collaborator-response-recorded") {
     const roleNames = {
       archivist: "Hostile Archivist",

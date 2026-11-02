@@ -49,7 +49,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
- decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
+ decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed','experiment-challenge-reviewed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
  'town-square':event=>['contribute','report','experiment-challenged','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  commons:event=>['message-posted','message-reported','message-moderated'].includes(event?.type),
