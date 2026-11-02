@@ -8,7 +8,7 @@ import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot,hasDistinctC
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
-import {projectCollaboratorResponseWorldObjects} from './collaborator-world-objects.mjs';
+import {projectCollaboratorResponseWorldObjects,selectAcademyTutorFolios} from './collaborator-world-objects.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,projectPlayerGuilds,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
@@ -1491,6 +1491,22 @@ function openAcademy(focusRoleId=null){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
   content.append(paragraph('Study published work and compare its claims with their retained sources. A study note records your question, your own explanation, and the next check. A unique study event can earn 25 quest-activity XP when it appears in the evidence-backed objective trail; it is not proof of correctness or mastery.'));
   appendCollaboratorContracts(content,world,['tutor'],'POLYMATH TUTOR · BOUNDED STUDY CONTRACT');
+  const tutorShelf=selectAcademyTutorFolios(world,view.collaboratorResponseObjects);
+  content.append(node('h3',{class:'section-title',text:'RETAINED TUTOR FOLIOS · SOURCE-BOUND STUDY AIDS'}));
+  content.append(paragraph('These are archived collaborator replies to bounded tutor packets. They are untrusted study material, not a teacher’s certification: check the cited source, preserve disagreement, and demonstrate your own retrieval practice. No folio grants mastery, XP, authority, or evidence that an experiment ran.','form-help'));
+  if(!tutorShelf.items.length)content.append(paragraph('No tutor response has been archived yet. Prepare the bounded tutor packet above, obtain a response outside the game, then explicitly archive it for review.','empty-note'));
+  if(tutorShelf.omittedCount)content.append(paragraph(tutorShelf.omittedCount+' older tutor folio(s) are omitted from this compact Academy shelf; the Evidence Archive retains the full addressable history.','form-help'));
+  for(const folio of tutorShelf.items){
+    const status=folio.validationStatus==='valid-for-human-review'?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED';
+    const card=node('article',{class:'field-card','data-academy-tutor-response':folio.responseId},[
+      node('h3',{text:folio.name+' · '+status}),
+      paragraph('Moonshot '+folio.moonshotId+' · '+folio.actorRole+' '+folio.actorId+' · '+folio.at,'attribution'),
+      paragraph('Source event references: '+folio.sourceEventIds.join(' · '),'form-help'),
+      ...(folio.validationMismatch?[paragraph('Stored validation label disagrees with the current bounded recheck. This folio remains rejected; inspect the exact bytes and history.','evidence-warning')]:[]),
+      button('Inspect exact retained tutor folio →',()=>openEvidenceArchive(folio.responseId),{class:'list-button'})
+    ]);
+    content.append(card);
+  }
   const works=[...(Array.isArray(world.creations)?world.creations:[])].reverse();
   if(!works.length){
     content.append(paragraph('No published study objects are available yet. The Founder can make the first artifact at the Forge.','empty-note'));
