@@ -4,9 +4,9 @@
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`  
 **Worker:** Worker B — Build NGL MMORPG / playable-world runtime  
 **Current main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f` (proposed game/Android stack remains unintegrated)  
-**Active proposal:** [PR #293](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/293), draft/open/unmerged  
-**Branch:** `game/android-acceptance-founder-cli-20261102`  
-**Code commit:** `df92fb4f1d385d430f169a1defd0ae5f945c70c8`, child of Worker A PR #291 head `64f54a398e63aa1d86a1f51176715b730417008f`, which is a child of Android PR #289 head `440194ad4f8e7619bffc5b86b9eadf41c0492648`.
+**Active proposal:** [PR #295](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/295), draft/open/unmerged  
+**Branch:** `android/instrumentation-diagnostics-20261102`  
+**Code commit:** `c641efdc6b7e8642aa0e4f042a66b7549b477c94`, child of Worker A PR #294 head `06a27ef9a2cacb2a48b1a95f72b479d0c708cf32`; PR #294 is based on PR #293 head `c55c5d79204b9cb4fbbc33768f043cb7531c8c86`.
 
 ## Cycle 1 — canonical checkpoint and hosted preflight repair
 
@@ -1103,3 +1103,53 @@ The native Android package is a mandatory G7 gate, and the current combined stac
 3. After Android acceptance is stable, return to the next unowned gameplay gate: a player-owned inventory/equipment transition with atomic ownership and event-derived provenance, or a deliberate non-combat encounter model without inferring Damien's combat preference.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder decision, key generation, or canonical game progress occurred.
+
+---
+
+## Run 35 — 2026-11-02 — Android instrumentation readiness and diagnostic capture
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; the Android/game stack remains proposed and unintegrated.  
+**Prior durable checkpoint:** `docs/operations/LATEST_CHECKPOINT.md` and the MMORPG ledger read from PR #293's branch at head `c55c5d79204b9cb4fbbc33768f043cb7531c8c86`; Run 34 recorded the prior Android and Founder-CLI work.  
+**Latest Worker A result inspected:** PR #294 `fix/preflight-final-component-snapshot-20261102`, exact head `06a27ef9a2cacb2a48b1a95f72b479d0c708cf32`, based on PR #293. Verify `41539375685`, Genesis Evidence Invariant `41539375767`, and Browser Acceptance `41539375823` passed; Android Alpha-1 `41539375672` failed. Worker A's change is limited to the trusted-file preflight reader and its regression test; this run does not edit those paths.
+
+### Fresh Android failure evidence
+
+The exact PR #294 Android run:
+- Emulator boot completed in 709,165 ms; hosted portable preflight and ADB verifier readback succeeded; debug APK assembly succeeded.
+- Instrumentation started six tests. Three failed before the process crashed after five tests:
+  - `nativeWorldExportAndImportRoundTripsEarnedProgress`: `Android document picker was not launched`.
+  - `nativeBridgeRejectsSameOriginSiblingDocuments`: the test expected the `loadDataWithBaseURL` base URL, but WebView exposed `data:text/html;charset=utf-8;base64,` as the active URL.
+  - `privateWorldWebViewStorageSurvivesActivityRecreation`: failure had no surfaced assertion in the Gradle log; cause remains unknown.
+- The only preserved artifact was debug APK [13185754490](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41539375672/artifacts/13185754490). No connected-test XML/report or logcat was uploaded, so the third failure could not be attributed.
+
+### Selected objective and implementation
+
+G7 is a mandatory Android-first delivery gate, and the current failure is a demonstrated blocker. The next safe action is to correct two test assumptions and preserve evidence from the still-unknown failure before changing Android runtime behavior.
+
+Draft PR #295: [test(android): diagnose and stabilize offline-world instrumentation](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/295), branch `android/instrumentation-diagnostics-20261102`, based on PR #294 exact head `06a27ef9a2cacb2a48b1a95f72b479d0c708cf32`.
+
+Code commit: `c641efdc6b7e8642aa0e4f042a66b7549b477c94`.
+
+Changed paths:
+- `.github/workflows/android-alpha1.yml`: when Gradle instrumentation fails, capture the last 20,000 logcat entries, Activity state, and WebView provider details before the emulator runner tears down the device; preserve connected HTML reports and XML results with an `if: always()` artifact step.
+- `android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java`: wait for `window.__nglNativeFileBridgeInstalled` before export and again after reload before import; assert that the actual sibling document URL is not the trusted game entry instead of assuming `WebView.getUrl()` returns the `loadDataWithBaseURL` base.
+- `test/android-workflow.test.mjs`: regression-check that diagnostics are captured inside emulator lifetime, Gradle's failure exit status is preserved, and reports are uploaded.
+
+No Android app runtime code, canonical event, XP, inventory, player authority, or world state changed. The test changes do not prove the document picker now launches; the exact-head emulator run must establish that.
+
+### Verification and limits
+
+- PR #294 is the baseline, not verification of PR #295.
+- PR #295 exact-head Verify, Genesis, Browser Acceptance, and Android Alpha-1 checks are pending at this checkpoint.
+- No local Node 24, Gradle, or portable preflight run was possible: both registered Desktop Commander devices were offline, and the container could not clone GitHub because DNS resolution failed. The manual instruction sequence and nested-path checks were completed; hosted preflight on the new exact head is required.
+- No physical supported Android device, declared device baseline, integrated-main acceptance, or Founder device acceptance is available.
+- No merge, release, deployment, spending, external publication, credential/permission change, or Founder acceptance occurred.
+
+### Next ranked actions
+
+1. Inspect all four exact-head PR #295 workflows and the hosted preflight receipt.
+2. If Android still fails, download the new diagnostics artifact and inspect the connected-test XML, logcat, Activity state, and WebView provider before changing runtime code.
+3. Once native acceptance is stable, resume the next unowned G4 capability: source-version-bound player-owned item claims with actor ownership, deterministic inventory projection, and no XP/authority side effects; keep player-to-player transfer as a separate G5 task.
+
