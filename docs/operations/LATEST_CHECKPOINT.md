@@ -1035,3 +1035,66 @@ At pre-repair head `eecd09de632e36680f50ba0ba4f24d14cc321d61`, Verify [414763905
 6. Retry AI-BI and governance bootstraps only when an authorized Desktop Commander device is online; keep ngl-mesh read-only until its root instructions are available.
 
 **Authority:** no merge, release, deployment, spending, external publication, credential/permission change, branch deletion, Founder key operation, production service call, or Founder decision occurred. No uninterrupted between-run execution is claimed.
+
+
+---
+
+## Run 27 — 2026-11-02 UTC — repair Worker B browser toolbar argument and reconcile preflight target union
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f` (rechecked unchanged).  
+**Prior canonical checkpoint:** Run 26 in this file, PR #283.  
+**Implementation:** PR #288, draft/open/unmerged, child of Worker B PR #287.  
+**Exact code head:** `8bf8044ec41a2502e4175220136e27352f627cf3`.
+
+### Rehydrate and coordination
+
+- Re-read root `AGENTS.md` alone and the complete shared scheduler protocol alone before repository inspection. Root blob `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read this checkpoint on PR #283 and the mainline MMORPG completion contract/ledger. Main still has no `docs/operations/LATEST_CHECKPOINT.md`; PR #283 remains the draft main-based canonical-checkpoint proposal. Mainline MMORPG ledger still records G0–G9 as `NOT ASSESSED`; no gate was promoted.
+- Latest Worker B result was PR #287 at `97779199d2a32eb6fbbc431a116cad9566f57a8e`, based on PR #286. Its Verify [41502096092](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41502096092) and Genesis [41502096226](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41502096226) passed; Browser [41502096127](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41502096127) failed after the new research-follow-up journey passed.
+
+### Cycle 1 — reproduce and repair the Browser Acceptance failure
+
+- Fetched the failed Browser job log (run `41502096127`, job `125471887677`). The call-site diff in PR #287 changed the mobile toolbar loop to `phone_toolbar_layout(browser,url,out)`, although the function's third parameter is the integer viewport width. Playwright failed with `viewport.width: expected integer, got string`.
+- Rechecked PR #286's base file: its same loop correctly passed `width`. The regression was introduced by PR #287's change to `scripts/verify-browser.py`.
+- Created safe child branch `fix/browser-toolbar-width-argument-20261102` from the exact PR #287 head and changed only that argument to `width`.
+- Commit: `8bf8044ec41a2502e4175220136e27352f627cf3`. Child PR: [#288](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/288), one commit ahead/zero behind PR #287, one file changed. No Worker B game runtime files changed.
+
+### Exact-head hosted verification — PR #288 head `8bf8044ec41a2502e4175220136e27352f627cf3`
+
+- Verify [41504389218](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41504389218): **success**. Hosted preflight `warnings: []`, `failures: []`; Node 24.22.1 test suite exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0; report `passed: true`.
+- Genesis Evidence Invariant [41504389079](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41504389079): **success**.
+- Browser Acceptance [41504389054](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41504389054): **success, 19/19 journeys**. The 320px, 360px, and 412px toolbar sweeps each passed with five visible controls and 44×44 minimum D-pad targets. The two-session research-follow-up journey also passed with exact retained artifact version, shared 1/1 progress, reporter-only quest XP, unchanged world XP/Decision Docket revision, and preserved dissent.
+- Browser artifact [13170114095](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41504389054/artifacts/13170114095): 5,945,392 bytes; ZIP SHA-256 `e6684acc9833ca67aebd83a9ecd91a0cdcba5a3fb59bf9cdf158e80e41a58f74`.
+- These are hosted exact-head results. Local portable preflight, Node/Python/Playwright execution, and physical Android-device acceptance were not performed. Both registered Desktop Commander devices were observed offline; hosted Verify did execute and pass its preflight.
+
+### Cycle 2 — reconcile the preflight target union
+
+Freshly parsed the actual `agent:preflight:ci` command in the PR #283 and PR #286 branch package manifests:
+
+- PR #283 package blob `35013cc4f45fae02529018c0db8848c25e3eadad`: 57 unique `--path` arguments; its hosted receipt classifies 54 as ordinary `kind: target` entries (the root instruction/protocol/checkpoint records are separate kinds).
+- PR #286 package blob `8c7295ef2bea7864f06b5200129ff96912e1a462`: 73 unique `--path` arguments; all 57 PR #283 paths are present, plus 16 game/projector/collaborator/PWA paths. No PR #283 path is missing.
+- The hardened donor bytes are identical on #283 and #286: validator `002406f8d658bca81825cd27e2bcb2efa5dff203`; `test/agent-governance.test.mjs` `3e39086733bb43c6de533e41e917a4b68c94c038`; `test/checkpoint-symlink-safety.test.mjs` `9789ae73ba13300401eb3cbefcbf329e44e4d989`.
+- This resolves the apparent 54-versus-73 discrepancy: those are ordinary target counts; 57 and 73 are total requested path arguments. No manifest change is warranted. Audit/handoff recorded on PR #286 comment [6585735014](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/286#issuecomment-6585735014).
+
+### Founder authorization re-audit
+
+- PR #16 remains closed/unmerged; PR #18 is the merged replacement. The final PR #16 patch does not reproduce the alleged self-signing `demonstrate()` defect; do not recreate it.
+- Current main `game/server.mjs` still has local `founder.key` generation when no explicit key is supplied. PR #251 and the newer game branch PR #265 contain explicit-key startup guards and tests, but both are draft/unmerged; #251 is the older server lineage. The live server's authenticated Founder decision routes use `src/institution/decisions.mjs`; it does not import the helper-level `src/authority/decision.js` caller-supplied `verification.valid` path. PR #274/#275 remain unmerged proposals, not integrated live-route authorization.
+- No Founder key was generated, read, enrolled, rotated, exported, or changed. No trust root/custody decision was inferred.
+
+### Linked-repository blockers
+
+- `AI-BI-Intelligence-node-gate`: read root instructions plus `PROGRESS.md`, `SELF-EVAL.md`, and `NEXT-DIRECTIVE.md`. Its mandatory `init_node.sh` bootstrap/install/build/test action could not run because both registered Desktop Commander devices were offline. Stop before feature work; no files changed.
+- `no-gas-labs-governance`: root `AGENTS.md` requires `./init_repo.sh`; same device unavailability prevents the mandatory bootstrap. No further inspection or files changed.
+- `ngl-mesh`: root `AGENTS.md` returned 404; inspection stopped per repository instructions. No files changed.
+
+### Next ranked actions
+
+1. Keep PR #288 as the verified child repair; PR #287's own Browser run remains failed and both PRs remain draft/open/unmerged. Do not transfer the child's pass to the parent's original run.
+2. Reconcile PR #248 → #259 → #283 with #284 → #285 → #286 → #287/#288 as one target-preserving stack; keep the 73-path superset and reverify the combined exact tree before any integration.
+3. Reconcile the explicit-key guard from #251/#265 with the current server lineage; do not merge older #251 independently or invent a Founder key/trust root.
+4. Continue live Decision Gate work only after canonical decision-context mapping and Damien-controlled trust-root/custody are established.
+5. Retry AI-BI and governance bootstraps only when an authorized device is online; keep ngl-mesh read-only until its root instructions are available.
+
+**Authority:** main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No merge, release, deployment, spending, external publication, credential/permission change, key operation, branch deletion, or Founder decision occurred. No uninterrupted between-run execution is claimed.
