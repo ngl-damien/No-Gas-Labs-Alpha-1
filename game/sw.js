@@ -73,10 +73,16 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(names
-      .filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
-      .map(name => caches.delete(name)));
+    // Removing obsolete shell caches is housekeeping, not an activation
+    // prerequisite. Storage denial/quota errors must not strand this worker.
+    try {
+      const names = await caches.keys();
+      await Promise.all(names
+        .filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+        .map(async name => {
+          try { await caches.delete(name); } catch {}
+        }));
+    } catch {}
     await self.clients.claim();
   })());
 });
