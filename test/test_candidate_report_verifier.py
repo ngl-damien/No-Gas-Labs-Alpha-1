@@ -655,6 +655,49 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(independent.stdout, "")
 
 
+    def test_range_row_type_errors_match_node_verifier(self):
+        report_path, original = self.make_report("range-row-type-parity", ["--range", "0", "1"])
+        cases = (
+            (
+                "boolean input",
+                "EVALUATION_REPORT_RANGE_INVALID",
+                lambda value: value["evaluations"][1].__setitem__("input", True),
+            ),
+            (
+                "boolean output",
+                "EVALUATION_REPORT_MISMATCH",
+                lambda value: value["evaluations"][0].__setitem__("output", False),
+            ),
+            (
+                "non-string expected output",
+                "EVALUATION_REPORT_MISMATCH",
+                lambda value: value["evaluations"][0].__setitem__("expectedOutput", -5),
+            ),
+            (
+                "negative-zero input",
+                "EVALUATION_REPORT_MISMATCH",
+                lambda value: value["evaluations"][0].__setitem__("input", -0.0),
+            ),
+        )
+        for index, (name, error_code, mutate) in enumerate(cases):
+            with self.subTest(name=name):
+                altered = json.loads(json.dumps(original))
+                mutate(altered)
+                path = self.directory / ("range-row-type-" + str(index) + ".json")
+                path.write_text(json.dumps(altered), encoding="utf-8")
+
+                node = self.run_node(
+                    EVALUATOR,
+                    ["--verify-report", str(self.receipt_path), str(path)],
+                )
+                independent = self.run_verifier(path)
+                self.assertEqual(node.returncode, 1)
+                self.assertEqual(independent.returncode, 1)
+                self.assertEqual(node.stderr.strip(), error_code)
+                self.assertEqual(independent.stderr.strip(), error_code)
+                self.assertEqual(node.stdout, "")
+                self.assertEqual(independent.stdout, "")
+
     def test_polynomial_shape_corpus_matches_node_and_independent_verifiers(self):
         corpus = (
             ("zero-constant", ["0"], ["--range", "-1", "1"], 3),

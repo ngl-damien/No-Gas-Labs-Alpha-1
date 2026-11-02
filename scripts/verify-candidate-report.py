@@ -691,14 +691,15 @@ def verify_report(specification, target, program, spec_digest, implementation_ha
         evaluations = []
         for index, row in enumerate(rows):
             require_exact_keys(row, {"input", "output", "expectedOutput"}, "EVALUATION_REPORT_INVALID")
-            if not exact_int(row["input"]) or not exact_int(row["output"]) or not isinstance(row["expectedOutput"], str):
-                fail("EVALUATION_REPORT_INVALID")
-            if is_negative_zero(row["input"]) or is_negative_zero(row["output"]):
-                fail("EVALUATION_REPORT_MISMATCH")
+            row_input = row["input"]
+            if (
+                isinstance(row_input, bool)
+                or not isinstance(row_input, (int, float))
+                or row_input != start + index
+            ):
+                fail("EVALUATION_REPORT_RANGE_INVALID")
             expected = expected_row(program, target, start + index)
-            if row != expected:
-                if row.get("input") != start + index:
-                    fail("EVALUATION_REPORT_RANGE_INVALID")
+            if not node_deep_equal(row, expected):
                 fail("EVALUATION_REPORT_MISMATCH")
             evaluations.append(expected)
         unsigned = {
