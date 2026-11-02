@@ -1372,3 +1372,47 @@ Worker B's latest observed PR #269 head is `f714cdfcbffbb81c3a971a2425de301e4f3a
 4. Keep the live Decision Gate integration and real Founder trust-root/custody decision separate. Preserve PR #16/#18 supersession and do not create or enroll credentials.
 
 No local test pass, merge, release, deployment, spending, external announcement, permission/credential change, Founder decision, or canonical-state mutation occurred. No uninterrupted between-run execution is claimed.
+
+
+## Run 37 — 2026-11-02 UTC — durable lock publication and bounded candidate range evaluation
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability and capability acquisition.  
+**Prior durable checkpoint:** Run 36 in this file, last checkpoint commit `aac3d0e994a876dd80ea37f8db9cfbf28f15bdb2`.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Parent:** draft/open PR #268 at `de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee`, itself stacked on PR #264 at `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`.  
+**Working branch:** `experiment/candidate-task-evaluation-cli-20261102`.  
+**Final code head before this checkpoint append:** `b2ff42b8f94ab1c37d33f0adef7e30240d75121b`.  
+**PR:** #272, draft/open/unmerged; 19 commits ahead / 0 behind the exact PR #268 base; nine changed paths.
+
+### Rehydrate, inspect, and challenge
+
+- Re-read root `AGENTS.md` alone (SHA `a4beeee1c0ec46faab28502957c0e53850b2855d`), then the complete canonical scheduler protocol alone (SHA `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). No nested `AGENTS.md` exists under the changed `experiment-001/`, `scripts/`, `test/`, or `docs/operations/` paths.
+- Read the latest durable checkpoint, MMORPG completion contract/ledger, current main ref, open PRs, issue #17, relevant source/tests, and the latest Worker B PR #273. The portable preflight was not run locally in this connector-only run; exact-head hosted Verify is the executable preflight/test evidence.
+- PR #16 remains closed/unmerged and merged PR #18 supersedes its historical self-signing `demonstrate()` path. Issue #17 remains open: real Founder identity/key custody and live signed Decision Gate integration are not proven. Main already contains two-process contention, concurrent independent store, stale-lock fail-closed, killed-writer, post-rename crash, and directory-sync fault-injection tests; this run did not claim that manual stale-lock recovery or human key custody is solved.
+- The live signed Decision Gate remains the highest security candidate, but the helper in PR #244 is still unmerged and its canonical proposal/quest/output resolver schema does not match the current decision docket's `proposedEffect`/evaluation/risks/rollback record. PR #265 owns the newer `game/server.mjs` explicit-key startup guard and overlaps older PRs #245/#251. No server/decision route or trust-root changes were made.
+- Worker B's latest result is PR #273 at `7e83362b66194e5811ed47bb365f603a90bac23a`. Fresh exact-head runs: Verify [41382561437](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41382561437) success with hosted preflight ready/zero warnings/zero failures; Genesis [41382561408](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41382561408) success; Browser [41382561374](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41382561374) success with 17/17 journeys and artifact ID `13114441360`. PR #273's body still says checks have not appeared; that description is stale and should be refreshed by Worker B. Its game/ledger paths were not edited here.
+- Fresh root-instruction reads for `ngl-mesh`, `no-gas-labs-command-center`, and `no-gas-labs` returned 404 for `AGENTS.md`; repository-specific inspection stopped there. No linked repository was changed.
+
+### Ranked work and implementation cycles
+
+1. **Live signed Founder Decision Gate integration** — highest security leverage, but currently blocked by the canonical context-schema mismatch and overlapping Worker B server lineage. Do not wire caller-supplied fields into trusted resolvers or invent a key/trust root.
+2. **Durable Experiment 001 lock acquisition** — selected reliability improvement. Commit `1702c2e0f6808364b0150d120e469d5c453a0d09` syncs the containing directory after atomic hard-link lock publication and rechecks inode identity before returning the lease. A directory-sync failure now raises `LEDGER_LOCK_DURABILITY_UNCERTAIN`, preserves the canonical lock as crash evidence, removes only the temporary name, and prevents a competing writer from proceeding. Regressions: `9ad58e0e29df48dc828fcdb5c73f3afeb6131bc7`, `b1a3d6891121aa41e79222bf662f7082aaa78c14`, `e0c546077dbc1ab0f60432a7462570278205da25`; the directory-sync fixture syntax was repaired in `87a23d8e349fe8df929ee3e9a6fbabb5d81f2a7b`.
+3. **Candidate operator capability** — selected independent capability extension. `8347d529ec918ec884b0b69847d3d7a04af607a3` adds inclusive `--range <start> <end>` evaluation to `candidate:evaluate`, bounded to 4,096 inputs. Each row compares restricted-AST execution with independent BigInt Horner evaluation; output includes a deterministic SHA-256 result digest. Tests cover reproducibility, exact 4,096 limit, reversed/out-of-range/invalid input, and the existing single-input mode. The first edit's escaped newline/regex output was caught on reinspection and repaired in `b2ff42b8f94ab1c37d33f0adef7e30240d75121b`.
+4. **MMORPG delivery** — Worker B owns active game PRs #265/#269/#271/#273; no gameplay or ledger paths were duplicated.
+5. **Linked repositories** — stopped at missing root instructions; no bootstrap bypass.
+
+### Exact-head verification — code head `b2ff42b`
+
+- Verify [41384991298](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41384991298): **success**. Hosted preflight `status: ready`, `warnings: []`, `failures: []`; Node 24 test command, Python inspector, game build, and bounded institutional exercise all exited successfully; verification report `passed: true`. The wrapper did not expose the TAP total, so no test count is claimed.
+- Genesis Evidence Invariant [41384991291](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41384991291): **success**.
+- Browser Acceptance [41384991325](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41384991325): **success**, 16/16 reported journeys passed. Browser artifact ID `13115291687`, 5,433,642 bytes, SHA-256 `b1a3d9a5b5a0bd3ce6eb3545c0129e9392bc60223eb2f8a188db6eda392d7d49`.
+- These are exact-head hosted results for `b2ff42b`; no local test or local preflight run is claimed. The evaluator remains unsigned: it does not verify task-spec signatures or INSTALL approval, read a Founder key, install/reuse a capability, or mutate canonical state.
+
+### Next prioritized actions
+
+1. Refresh PR #272's description so it reflects the actual 19-commit/9-path diff, lock durability work, range mode, and exact-head runs above; keep it draft and unmerged.
+2. Continue the live Decision Gate integration only after a canonical retained proposal/quest/output schema and the server-lineage ancestry are reconciled. Preserve PR #16/#18 supersession; do not touch keys or trust roots.
+3. Hand Worker B the observed PR #273 check results and stale-description correction; ask that worker to reconcile the MMORPG ledger against its 17/17 exact-head browser evidence. Do not claim G1 or device verification from those browser journeys.
+4. Revisit linked repositories only after their root `AGENTS.md` and required bootstrap are available.
+
+No merge, release, deployment, spending, external publication, permission/credential change, Founder decision, key operation, or canonical-state mutation occurred. No uninterrupted between-run execution is claimed.
