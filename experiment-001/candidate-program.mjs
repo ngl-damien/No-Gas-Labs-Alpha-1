@@ -114,7 +114,7 @@ export function evaluateCandidateProgram(program, input) {
 }
 
 export function candidateProgramHash(program, version = 'v1') {
-  if (version !== 'v1' && version !== 'v2' && version !== 'v3') throw new Error('CANDIDATE_PROGRAM_VERSION_INVALID');
+  if (version !== 'v1' && version !== 'v2' && version !== 'v3' && version !== 'v4') throw new Error('CANDIDATE_PROGRAM_VERSION_INVALID');
   const normalized = validateCandidateProgram(program);
   const identity = 'ngl-experiment-001:candidate-program:' + version + '\n' + JSON.stringify(normalized);
   return createHash('sha256').update(identity).digest('hex');
