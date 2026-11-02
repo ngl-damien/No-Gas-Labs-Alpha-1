@@ -93,6 +93,27 @@ def draft(page,kind,title):
     page.locator('#publish-button').wait_for()
 
 
+def move_with_touch_pad(page,selector,duration_ms=450):
+    button=page.locator(selector)
+    expect(button).to_be_visible()
+    bounds=button.bounding_box()
+    assert bounds and bounds['width']>=44 and bounds['height']>=44, f'Movement pad target is too small: {bounds}'
+    session=page.context.new_cdp_session(page)
+    try:
+        session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[{'id':1,'x':bounds['x']+bounds['width']/2,'y':bounds['y']+bounds['height']/2,'radiusX':2,'radiusY':2,'force':1}]})
+        page.wait_for_timeout(duration_ms)
+        session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+    finally:
+        session.detach()
+    page.wait_for_function("()=>{const raw=localStorage.getItem('ngl.common-ground.player-position.v1');if(!raw)return false;const position=JSON.parse(raw);return position.schema==='ngl.player-position.v1'&&position.y>680}")
+    position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert abs(position['x']-180)<1, f'Touch D-pad changed the wrong axis: {position}'
+    assert position['y']>680, f'Touch D-pad did not persist southward movement: {position}'
+    assert page.locator('#creation-count').inner_text()=='0', 'Walking must not create a publication'
+    assert page.locator('#xp-count').inner_text()=='0', 'Walking must not manufacture XP'
+    return position
+
+
 def basic(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
     page.goto(url,wait_until='networkidle')
@@ -123,7 +144,10 @@ def basic(page,url,out,label):
     expect(page.locator('#creation-count')).to_have_text('0')
     expect(page.locator('#xp-count')).to_have_text('0')
     close_sheet(page)
-    page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
+    if label=='phone':
+        move_with_touch_pad(page,'#movement-pad button[data-dy="1"]')
+    else:
+        page.keyboard.down('ArrowRight');page.wait_for_timeout(300);page.keyboard.up('ArrowRight')
     draft(page,'comic','The real comic lives here')
     page.locator('#preview-button').click()
     frame=page.frame_locator('#artifact-frame')
@@ -236,6 +260,11 @@ def phone_toolbar_layout(browser,url,width):
             box=target.bounding_box()
             assert box and box['width']>=44 and box['height']>=44, f'Control {index} is too small to tap at {width}px: {box}'
             assert box['x']>=0 and box['x']+box['width']<=width, f'Control {index} is clipped at {width}px: {box}'
+        pad=page.locator('#movement-pad button[data-dy="1"]')
+        expect(pad).to_be_visible()
+        pad_bounds=pad.bounding_box()
+        assert pad_bounds and pad_bounds['width']>=44 and pad_bounds['height']>=44, f'D-pad target is too small at {width}px: {pad_bounds}'
+        assert pad_bounds['x']>=0 and pad_bounds['x']+pad_bounds['width']<=width, f'D-pad target is clipped at {width}px: {pad_bounds}'
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), f'Horizontal overflow at {width}px'
         character=page.locator('#character-button')
         expect(character.locator('.character-status')).to_have_text(re.compile(r'^Armor \d+/\d+$'))
@@ -244,7 +273,7 @@ def phone_toolbar_layout(browser,url,width):
         expect(page.locator('#sheet')).to_contain_text('Questkeeper')
         expect(page.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
         close_sheet(page)
-        return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44}
+        return {'journey':f'phone-toolbar-{width}px','passed':True,'controls':5,'minimum_target':44,'dpad_target':{'width':round(pad_bounds['width'],1),'height':round(pad_bounds['height'],1)}}
     finally:
         context.close()
 
