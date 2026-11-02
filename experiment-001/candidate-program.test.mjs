@@ -987,3 +987,98 @@ test('installed candidate task IDs cannot be rebound to new targets; a new versi
   assert.equal(store.snapshot().sequence, 2);
   assert.equal(store.snapshot().capabilities[versioned.id].taskSpecification.id, versionedSpecification.id);
 }));
+
+
+test('candidate task IDs remain immutable across signed installations while identical specifications may be reused', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const specification = callerDefinedTaskSpecification();
+  const specificationSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(specification)),
+    founder.privateKey
+  ).toString('base64url');
+  const storePath = join(directory, 'store-task-id-immutability');
+  const store = await lib.openInstitution(storePath, pem(founder));
+
+  async function install(id, taskSpecification, program, taskSignature, nonce) {
+    const issuedAt = Date.now();
+    const proposal = lib.makeInstallationProposal({
+      id,
+      strategy: 'candidate-program-v5',
+      program,
+      taskSpecification,
+      taskSpecificationSignature: taskSignature,
+      executorPublicKeyPem: pem(executor),
+      nonce,
+      issuedAt,
+      expiresAt: issuedAt + 5 * 60_000,
+      maxUses: 1
+    });
+    const approval = sign(null, Buffer.from(lib.approvalPayload(proposal)), founder.privateKey).toString('base64url');
+    await store.commit(proposal, approval);
+    return proposal;
+  }
+
+  const first = await install(
+    'candidate-task-v5-id-first',
+    specification,
+    callerDefinedTaskProgram(),
+    specificationSignature,
+    'install-task-id-first-0001'
+  );
+  const second = await install(
+    'candidate-task-v5-id-second',
+    specification,
+    callerDefinedTaskProgram(),
+    specificationSignature,
+    'install-task-id-second-0001'
+  );
+
+  assert.equal(store.snapshot().sequence, 2);
+  assert.deepEqual(
+    store.snapshot().capabilities[first.id].taskSpecification,
+    store.snapshot().capabilities[second.id].taskSpecification,
+    'multiple capabilities may reference the same immutable task specification'
+  );
+
+  const changedSpecification = structuredClone(specification);
+  changedSpecification.targetCoefficients = ['-4', '2', '3'];
+  const changedProgram = callerDefinedTaskProgram();
+  changedProgram.right.value = -4;
+  const changedSignature = sign(
+    null,
+    Buffer.from(lib.candidateTaskSpecificationPayload(changedSpecification)),
+    founder.privateKey
+  ).toString('base64url');
+  const conflicting = lib.makeInstallationProposal({
+    id: 'candidate-task-v5-id-conflict',
+    strategy: 'candidate-program-v5',
+    program: changedProgram,
+    taskSpecification: changedSpecification,
+    taskSpecificationSignature: changedSignature,
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-task-id-conflict-01',
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + 5 * 60_000,
+    maxUses: 1
+  });
+  const conflictingApproval = sign(
+    null,
+    Buffer.from(lib.approvalPayload(conflicting)),
+    founder.privateKey
+  ).toString('base64url');
+
+  await assert.rejects(
+    () => store.commit(conflicting, conflictingApproval),
+    /CANDIDATE_TASK_SPEC_ID_CONFLICT/
+  );
+  assert.equal(store.snapshot().sequence, 2, 'a conflicting signed task ID must not advance the ledger');
+  assert.equal(Object.keys(store.snapshot().capabilities).length, 2);
+
+  const reopened = await lib.openInstitution(storePath, pem(founder));
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.deepEqual(reopened.snapshot().capabilities[first.id].taskSpecification, specification);
+  assert.deepEqual(reopened.snapshot().capabilities[second.id].taskSpecification, specification);
+}));
