@@ -2397,7 +2397,7 @@ def main():
                             record(research_follow_up_loop(browser,follow_up_url,out))
                         finally:
                             stop_server(follow_up_process)
-                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,out))
+                    for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
                         page=context.new_page()
