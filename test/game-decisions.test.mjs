@@ -7,7 +7,7 @@ import {createGameServer} from '../game/server.mjs';
 import {artifactReceipt} from '../src/institution/kernel.mjs';
 const key='explicitly-fake-decision-http-test-key';
 async function host(directory){const server=await createGameServer({dataDir:directory,founderKey:key});await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}`;return {server,url,client(){let cookie='';return {async request(path,value,headers={}){const response=await fetch(url+path,{method:value===undefined?'GET':'POST',headers:{cookie,...(value===undefined?{}:{'content-type':'application/json',origin:url}),...headers},...(value===undefined?{}:{body:JSON.stringify(value)})});if(response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];return {status:response.status,body:await response.json()};}}}};}
-test('HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay and recovers after restart',async()=>{
+test('HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay/forged verification and recovers after restart',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'ngl-decision-http-'));let h=await host(directory);
  try{
   const owner=h.client(),witness=h.client();
@@ -21,6 +21,14 @@ test('HTTP Founder Gate authenticates, redacts evidence, rejects CSRF/replay and
   assert.doesNotMatch(JSON.stringify((await witness.request('/api/decisions')).body),/PRIVATE_EVALUATION_FIXTURE|synthetic test policy/);
   const choice={decisionId:proposal.id,expectedRevision:1,requestId:'fixture-choice-1',action:'APPROVE'};
   assert.equal((await owner.request('/api/decisions/choose',choice,{origin:'https://unrelated.invalid'})).status,403);
+  const beforeForged=(await owner.request('/api/decisions')).body;
+  const forged=await owner.request('/api/decisions/choose',{...choice,verification:{valid:true}});
+  assert.equal(forged.status,400);
+  assert.equal(forged.body.error.code,'INVALID_DECISION');
+  const afterForged=(await owner.request('/api/decisions')).body;
+  assert.equal(afterForged.revision,beforeForged.revision);
+  assert.equal(afterForged.decisions[0].status,'PENDING');
+  assert.equal(afterForged.decisions[0].revision,beforeForged.decisions[0].revision);
   assert.equal((await witness.request('/api/decisions/choose',choice)).status,403);
   assert.equal((await owner.request('/api/decisions/choose',choice)).body.status,'APPROVED');
   assert.equal((await owner.request('/api/decisions/choose',choice)).body.status,'APPROVED');
