@@ -163,7 +163,7 @@ async function main() {
       capabilityInstalled: false,
       canonicalStateChanged: false
     }
-  }, null, 2) + '\\n');
+  }, null, 2) + '\n');
 }
 
 main().catch(error => {
