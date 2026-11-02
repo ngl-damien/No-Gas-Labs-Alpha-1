@@ -1356,7 +1356,7 @@ Worker B's latest observed PR #269 head is `f714cdfcbffbb81c3a971a2425de301e4f3a
 - `3e049666ea0020688680e75451e6edb0657832c1` adds `npm run candidate:evaluate` and includes both evaluator source and its regression in the hosted preflight target list.
 - `651971ef0887706a0fd59701430dd862846e20b1` extends `test/agent-governance.test.mjs` to require the evaluator script/test and package command in that manifest.
 - `4895a48c7c83953e178b78d3d6dea8f8ab7f7d9e` documents the inspect → synthesize → evaluate flow in `experiment-001/FOUNDER-APPROVAL.md`.
-- Compare against the exact PR #268 parent head reports 8 commits ahead / 0 behind. Changed paths are limited to `scripts/evaluate-candidate-task.mjs`, `test/evaluate-candidate-task.test.mjs`, `package.json`, `test/agent-governance.test.mjs`, and `experiment-001/FOUNDER-APPROVAL.md`. No game, server, key, permission, or workflow source was changed.
+- Compare against the exact PR #268 parent head reports 8 feature commits ahead / 0 behind before the checkpoint append. Feature paths are `scripts/evaluate-candidate-task.mjs`, `test/evaluate-candidate-task.test.mjs`, `package.json`, `test/agent-governance.test.mjs`, and `experiment-001/FOUNDER-APPROVAL.md`; this durable run record additionally changes `docs/operations/LATEST_CHECKPOINT.md`. No game, server, key, permission, or workflow source was changed.
 
 ### Verification boundary
 
