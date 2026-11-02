@@ -1098,3 +1098,63 @@ Freshly parsed the actual `agent:preflight:ci` command in the PR #283 and PR #28
 5. Retry AI-BI and governance bootstraps only when an authorized device is online; keep ngl-mesh read-only until its root instructions are available.
 
 **Authority:** main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No merge, release, deployment, spending, external publication, credential/permission change, key operation, branch deletion, or Founder decision occurred. No uninterrupted between-run execution is claimed.
+
+---
+
+## Run 28 — 2026-11-02 19:43 UTC — escaped JSON-key parity and current security/worker re-audit
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f` (PR #248 base; unchanged in this run).  
+**Prior checkpoint:** Run 27 in this file, commit `7731f6bae13d3140795ff002030788e9e3ebbf39`.  
+**Implementation:** PR #279, branch `experiment/candidate-report-independent-verifier-20261102`, exact new head `a56d795efcb787cd8fd9bf4a8b230275c07cae6b`.
+
+### Rehydrate and preflight boundary
+
+- Read root `AGENTS.md` alone, then the complete shared scheduler protocol alone on main, PR #248, PR #279, and PR #283; the observed root/protocol blobs were `a4beeee1c0ec46faab28502957c0e53850b2855d` and `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the current checkpoint, MMORPG completion contract and ledger, PR #283/#248 state, and Worker B's latest PR #287 result plus child PR #288 handoff. Nested `docs/AGENTS.md`, `docs/operations/AGENTS.md`, `scripts/AGENTS.md`, and `test/AGENTS.md` checks returned 404 on the applicable branches.
+- Portable local preflight and local Node 24/Python execution were unavailable: both registered Desktop Commander devices were offline. This is recorded as unavailable, not as a local pass. Hosted Verify ran the preflight and tests.
+- The MMORPG ledger still records G0–G9 as `NOT ASSESSED`; draft branch/browser evidence does not promote a gate or establish physical Android-device acceptance.
+
+### Cycle 1 — strengthen cross-runtime duplicate-key acceptance
+
+- Re-inspected PR #279's Node `src/strict-json.mjs` and Python `preflight_json_structure()` plus the existing 22-test Python verifier suite. Both implementations decode object-key tokens before duplicate comparison, but tests only covered identical raw spellings.
+- Added `test_escaped_equivalent_duplicate_keys_match_node_and_python` in `test/test_candidate_report_verifier.py` (blob `1bf6d34ec449a88a7107f6fbd1118e3f1e2574bc`). It tests two distinct lexical spellings of the same key: ASCII `schema` versus `\\u0073chema`, and literal `😀` versus escaped surrogate pair `\\ud83d\\ude00`.
+- The new test applies both encodings to synthesis receipts and evaluation reports. It requires the Node verifier and independent Python verifier to reject each with the same stable duplicate-key error and no stdout. Runtime verifier code was not changed.
+- Commit: `a56d795efcb787cd8fd9bf4a8b230275c07cae6b` (`test(experiment): cover escaped-equivalent duplicate JSON keys`).
+
+### Exact-head hosted evidence — PR #279 head `a56d795`
+
+- Verify [41513712635](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41513712635): **success**. Hosted preflight reported `status: ready`, 92 declared target entries, `warnings: []`, `failures: []`; Node 24.22.1 test suite exit 0; Python inspector exit 0; dedicated candidate-report verifier exit 0; package build exit 0; institutional exercise exit 0; report `passed: true`.
+- Genesis Evidence Invariant [41513712577](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41513712577): **success**.
+- Browser Acceptance [41513712801](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41513712801): **in progress at checkpoint creation**. Do not count a browser pass until this exact-head run completes.
+- Prior PR #279 head `d2f9623` had Verify, Genesis and Browser all successful; those earlier results are not transferred to the new head.
+- No local test, local preflight receipt, physical Android test, or production execution is claimed.
+
+### Cycle 2 — challenge Founder-authorization priorities against current source
+
+- Re-read the final PR #16 patch and PR #18. PR #16 is the Experiment 001 institutional-cycle proposal, closed/unmerged; PR #18 is its merged transplant. The final PR #16 patch does not contain the alleged `demonstrate()` self-signing Founder-auth flow. Do not recreate that unsupported historical defect.
+- Current main `game/server.mjs` blob `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` still creates a local `founder.key` when no explicit key is supplied. PR #251 head `3017ee1ead746fd90b7eebe1ff66842561e47799` contains an explicit-key startup guard and has successful exact-head Verify `41265153067`, Genesis `41265153140`, and Browser `41265153098` (12/12). However, #251 is stacked on #245; comparison to current main reports 63 commits ahead and 2 behind. Do not transplant its server snapshot blindly or claim main is fixed.
+- Current main `src/authority/decision.js` blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b` still has `authorizationEvent({ ..., verification })` trusting `verification?.valid`. Its inspected direct caller is a test; the live server's `src/institution/decisions.mjs` does not import that helper. PR #274 is helper-level sealed/context-bound hardening; PR #275 adds an HTTP regression at the live route. Both remain draft/unmerged and have successful exact-head Verify/Genesis/Browser runs, but neither establishes the live signed-decision integration, Founder identity, or private-key custody.
+- No Founder key was generated, read, enrolled, exported, rotated, or changed. No trust root or custody decision was inferred.
+
+### Cross-worker state
+
+- Worker B PR #287 head `97779199d2a32eb6fbbc431a116cad9566f57a8e` adds the repeatable Decision Chamber follow-up quest. Its Verify `41502096092` and Genesis `41502096226` passed; its original Browser run `41502096127` failed in the mobile toolbar helper.
+- Child PR #288 head `8bf8044ec41a2502e4175220136e27352f627cf3` changes only the browser harness argument and has exact-head Verify `41504389218`, Genesis `41504389079`, and Browser `41504389054` all successful; Browser passed 19/19. This is a verified child proposal, not an integrated parent/main result. No Worker B gameplay files were edited.
+- PR #283 head `7731f6b` has exact-head Verify `41506200045`, Genesis `41506200114`, and Browser `41506200047` successful (12/12). PR #286 head `e7f58df` has Verify `41485034330`, Genesis `41485034363`, and Browser `41485034329` successful (18/18). Both remain draft/unmerged.
+- PR #248 is the clean main-based canonical-checkpoint/preflight proposal at head `66d0e9c`; its Verify `41268424387`, Genesis `41268424405`, and Browser `41268424325` passed. Its checkpoint file is stale through Run 17, so it must be reconciled with this newer checkpoint history before any integration. Main still lacks `docs/operations/LATEST_CHECKPOINT.md`.
+
+### Linked-repository boundary
+
+- AI-BI-Intelligence-node-gate root `AGENTS.md` and its required `PROGRESS.md`, `SELF-EVAL.md`, and `NEXT-DIRECTIVE.md` were read. Its mandatory `init_node.sh` bootstrap/install/build/test sequence could not run because both registered Desktop Commander devices were offline; no feature work or writes were attempted there.
+- No linked repository was modified. The previously recorded ngl-mesh missing-root-instructions and governance bootstrap blockers were not reopened for source work in this run.
+
+### Next ranked actions
+
+1. Recheck Browser Acceptance `41513712801` on exact PR #279 head `a56d795`; if it passes, append the final result/artifact and update the verifier guide with escaped-key coverage, then rerun exact-head checks for the resulting commit.
+2. Reconcile the clean main-based PR #248 checkpoint branch with the newer Run 18–28 checkpoint history and the hardened preflight stack; preserve the 73-path game superset where the target tree actually contains those paths.
+3. Reconcile the explicit Founder-key guard from #251 with the current server lineage without duplicating active Worker B work or carrying its 63-commit dependency stack wholesale.
+4. Keep PR #274/#275 as proposals until the canonical Decision Docket context, live mutation boundary, and Damien-controlled trust-root/custody are established.
+5. Retry AI-BI and governance bootstrap only when an authorized device is online; keep ngl-mesh read-only until its root instructions are available.
+
+**Authority:** main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No merge, release, deployment, spending, external publication, credential/permission change, key operation, branch deletion, or Founder decision occurred. No uninterrupted between-run execution is claimed.
