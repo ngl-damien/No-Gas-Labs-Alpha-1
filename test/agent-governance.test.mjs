@@ -522,6 +522,73 @@ test('preflight rejects a trusted parent replaced by an in-repository symlink du
   }
 });
 
+
+test('preflight rejects an ancestor swapped after its own post-read check', {
+  skip: process.platform === 'win32' ? 'POSIX symlink replacement requires symlink privileges' : false
+}, async () => {
+  const root = await fixture();
+  try {
+    const checkpointPath = 'docs/operations/LATEST_CHECKPOINT.md';
+    const instructionsPath = join(root, 'AGENTS.md');
+    const instructions = (await readFile(instructionsPath, 'utf8'))
+      .replace('--checkpoint CHECKPOINT.md', '--checkpoint ' + checkpointPath);
+    await writeFile(instructionsPath, instructions);
+    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\nOriginal checkpoint.\n');
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\n');
+
+    const hookPath = join(root, 'preflight-parent-swap-after-check.cjs');
+    await writeFile(hookPath, [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const originalLstat = fs.promises.lstat;",
+      "let operationsChecks = 0;",
+      "let swapped = false;",
+      "fs.promises.lstat = async function(candidate, ...args) {",
+      "  const metadata = await originalLstat.call(this, candidate, ...args);",
+      "  const expected = path.join(process.env.NGL_PREFLIGHT_SWAP_ROOT, 'docs', 'operations');",
+      "  if (!swapped && path.resolve(String(candidate)) === expected && ++operationsChecks === 4) {",
+      "    const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
+      "    const docs = path.join(root, 'docs');",
+      "    fs.renameSync(docs, path.join(root, 'docs-original'));",
+      "    fs.symlinkSync('docs-original', docs, 'dir');",
+      "    swapped = true;",
+      "  }",
+      "  return metadata;",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join('\n'));
+
+    const child = spawnSync(process.execPath, [
+      '--require', hookPath,
+      new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname,
+      '--root', root,
+      '--path', 'scripts/worker.mjs',
+      '--checkpoint', checkpointPath
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        NGL_PREFLIGHT_SWAP_ROOT: root
+      }
+    });
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'docs' && item.reason.includes('symlink')
+    ));
+    assert.ok((await import('node:fs/promises')).lstat
+      ? (await (await import('node:fs/promises')).lstat(join(root, 'docs'))).isSymbolicLink()
+      : false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight refuses receipt creation through an escaping directory symlink', async () => {
   const root = await fixture();
   const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-outside-'));
