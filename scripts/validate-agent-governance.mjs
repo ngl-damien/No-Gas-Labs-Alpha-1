@@ -177,9 +177,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         }
         const finalPathMetadata = await stat(finalPath, { bigint: true });
         if (trustedPathSnapshot) {
-          // Recheck deepest components first so an ancestor replaced after its
-          // own check is still observed before this trusted path is accepted.
-          for (const snapshot of [...trustedPathSnapshot].reverse()) {
+          const matchesSnapshot = async snapshot => {
             let currentMetadata;
             try {
               currentMetadata = await lstat(resolve(rootPath, snapshot.component), { bigint: true });
@@ -188,14 +186,14 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
                 path: snapshot.component,
                 reason: trustedPathLabel + ' path changed during preflight inspection'
               });
-              return null;
+              return false;
             }
             if (currentMetadata.isSymbolicLink()) {
               failures.push({
                 path: snapshot.component,
                 reason: trustedPathLabel + ' path must not traverse a symlink'
               });
-              return null;
+              return false;
             }
             const currentType = currentMetadata.isFile() ? 'file' : currentMetadata.isDirectory() ? 'directory' : 'other';
             if (currentMetadata.dev !== snapshot.dev ||
@@ -205,8 +203,18 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
                 path: snapshot.component,
                 reason: trustedPathLabel + ' path changed during preflight inspection'
               });
-              return null;
+              return false;
             }
+            return true;
+          };
+          // Keep the forward pass for precise child-path diagnostics. Then
+          // recheck deepest-first so an ancestor swapped after its first check
+          // is still observed before this trusted path is accepted.
+          for (const snapshot of trustedPathSnapshot) {
+            if (!await matchesSnapshot(snapshot)) return null;
+          }
+          for (const snapshot of [...trustedPathSnapshot].reverse()) {
+            if (!await matchesSnapshot(snapshot)) return null;
           }
         }
         if (BigInt(readResult.total) !== openedMetadata.size ||
