@@ -35,6 +35,51 @@ function receiptDescriptorRoot() {
   return receiptDescriptorRootForPlatform(process.platform);
 }
 
+async function openTrustedParentPinned(rootPath, relativePath, snapshots, descriptorRoot) {
+  const directoryFlags = fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW;
+  const segments = relativePath.split('/');
+  let directoryHandle = await open(rootPath, directoryFlags);
+  let directoryDescriptorPath = descriptorRoot + '/' + directoryHandle.fd;
+
+  try {
+    const rootHandleMetadata = await directoryHandle.stat({ bigint: true });
+    const rootPathMetadata = await lstat(rootPath, { bigint: true });
+    if (rootPathMetadata.isSymbolicLink() || !rootPathMetadata.isDirectory() ||
+        rootPathMetadata.dev !== rootHandleMetadata.dev || rootPathMetadata.ino !== rootHandleMetadata.ino) {
+      throw new Error('trusted repository root changed during descriptor-relative open');
+    }
+
+    const prefix = [];
+    for (const segment of segments.slice(0, -1)) {
+      prefix.push(segment);
+      const nextHandle = await open(directoryDescriptorPath + '/' + segment, directoryFlags);
+      try {
+        const openedMetadata = await nextHandle.stat({ bigint: true });
+        const expected = snapshots.find(snapshot => snapshot.component === prefix.join('/'));
+        if (!expected || !openedMetadata.isDirectory() ||
+            openedMetadata.dev !== expected.dev || openedMetadata.ino !== expected.ino) {
+          throw new Error('trusted parent directory changed before descriptor-relative open');
+        }
+      } catch (error) {
+        await nextHandle.close().catch(() => {});
+        throw error;
+      }
+
+      await directoryHandle.close().catch(() => {});
+      directoryHandle = nextHandle;
+      directoryDescriptorPath = descriptorRoot + '/' + directoryHandle.fd;
+    }
+
+    return {
+      path: directoryDescriptorPath + '/' + segments.at(-1),
+      close: async () => { await directoryHandle.close().catch(() => {}); }
+    };
+  } catch (error) {
+    await directoryHandle.close().catch(() => {});
+    throw error;
+  }
+}
+
 async function writeReceiptPathFallback(rootPath, receiptPath, content) {
   const destination = resolve(rootPath, receiptPath);
   if (!insideRoot(rootPath, destination)) throw new Error('receipt path escapes repository root');
@@ -214,6 +259,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
   const failures = [];
   const warnings = [];
   const seen = new Map();
+  let trustedReadFallbackWarned = false;
 
   async function inspect(relativePath, kind, required = true) {
     if (!safeRelativePath(relativePath)) {
@@ -225,6 +271,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       failures.push({ path: relativePath, reason: 'path escapes repository root' });
       return null;
     }
+    let pinnedParent = null;
     try {
       let trustedPathSnapshot = null;
       let trustedPathLabel = null;
@@ -266,6 +313,19 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during preflight inspection' });
         return null;
       }
+      if (trustedPathSnapshot) {
+        const descriptorRoot = fsConstants.O_DIRECTORY && fsConstants.O_NOFOLLOW
+          ? receiptDescriptorRoot()
+          : null;
+        if (descriptorRoot) {
+          // Pin every trusted parent directory before any path-based metadata lookup
+          // or final-file open can be redirected by a transient real-directory swap.
+          pinnedParent = await openTrustedParentPinned(rootPath, relativePath, trustedPathSnapshot, descriptorRoot);
+        } else if (!trustedReadFallbackWarned) {
+          warnings.push('Trusted governance reads use guarded path-based checks on this platform; parent-directory descriptor pinning is unavailable, so transient directory replacement remains best-effort.');
+          trustedReadFallbackWarned = true;
+        }
+      }
       // Open the resolved file non-blocking and pin the descriptor before reading.
       // A FIFO/device must not hang a preflight, and a path replaced during the
       // realpath/open/read window must not make the receipt describe different bytes.
@@ -279,7 +339,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
         return null;
       }
       const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOFOLLOW ?? 0);
-      const handle = await open(actualPath, flags);
+      const handle = await open(pinnedParent?.path ?? actualPath, flags);
       let bytes;
       try {
         const openedMetadata = await handle.stat({ bigint: true });
@@ -400,6 +460,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     } catch (error) {
       if (required || error.code !== 'ENOENT') failures.push({ path: relativePath, reason: 'cannot read (' + (error.code ?? error.message) + ')' });
       return null;
+    } finally {
+      if (pinnedParent) await pinnedParent.close();
     }
   }
 
