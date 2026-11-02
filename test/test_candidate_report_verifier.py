@@ -938,5 +938,56 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                     self.assertEqual(independent.stdout, "")
 
 
+    def test_negative_zero_candidate_output_round_trips_through_both_verifiers(self):
+        specification = task_specification()
+        specification["id"] = "ngl.experiment-001.task:negative-zero-constant:v1"
+        specification["targetCoefficients"] = ["0"]
+        specification_path = self.directory / "negative-zero-specification.json"
+        receipt_path = self.directory / "negative-zero-receipt.json"
+        specification_path.write_text(
+            json.dumps(specification, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        synthesized = self.run_node(SYNTHESIZER, [str(specification_path)])
+        self.assertEqual(synthesized.returncode, 0, synthesized.stderr)
+        receipt = json.loads(synthesized.stdout)
+        # This program has the same exact polynomial normal form as constant zero,
+        # but JavaScript evaluates negate(0) to -0. JSON.stringify serializes it as 0.
+        receipt["program"] = {"op": "negate", "arg": {"op": "const", "value": 0}}
+        receipt_path.write_text(
+            json.dumps(receipt, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        scenarios = (
+            ("single", ["0"]),
+            ("range", ["--range", "0", "2"]),
+        )
+        for name, arguments in scenarios:
+            with self.subTest(name=name):
+                evaluated = self.run_node(EVALUATOR, [str(receipt_path), *arguments])
+                self.assertEqual(evaluated.returncode, 0, evaluated.stderr)
+                report_path = self.directory / ("negative-zero-" + name + ".json")
+                report_path.write_text(evaluated.stdout, encoding="utf-8")
+                report = json.loads(evaluated.stdout)
+                if name == "single":
+                    self.assertEqual(report["output"], 0)
+                else:
+                    self.assertEqual([row["output"] for row in report["evaluations"]], [0, 0, 0])
+
+                node = self.run_node(
+                    EVALUATOR,
+                    ["--verify-report", str(receipt_path), str(report_path)],
+                )
+                independent = self.run_verifier(report_path, receipt_path)
+                self.assertEqual(independent.returncode, 0, independent.stderr)
+                self.assertEqual(node.returncode, 0, node.stderr)
+                self.assertEqual(
+                    json.loads(node.stdout)["reportDigest"],
+                    json.loads(independent.stdout)["reportDigest"],
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
