@@ -688,8 +688,8 @@ test('preflight refuses receipt creation through an escaping directory symlink',
   }
 });
 
-test('preflight refuses a receipt parent swapped to an external symlink after its directory check', {
-  skip: process.platform === 'win32' ? 'POSIX symlink replacement requires symlink privileges' : false
+test('preflight refuses a receipt parent swapped to an external symlink after its directory is opened', {
+  skip: process.platform === 'win32' ? 'POSIX descriptor-relative symlink replacement requires symlink privileges' : false
 }, async () => {
   const root = await fixture();
   const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-race-outside-'));
@@ -700,18 +700,19 @@ test('preflight refuses a receipt parent swapped to an external symlink after it
       "const fs = require('node:fs');",
       "const path = require('node:path');",
       "const { syncBuiltinESMExports } = require('node:module');",
-      "const originalStat = fs.promises.stat;",
+      "const originalOpen = fs.promises.open;",
       "let swapped = false;",
-      "fs.promises.stat = async function(candidate, ...args) {",
-      "  const metadata = await originalStat.call(this, candidate, ...args);",
+      "fs.promises.open = async function(candidate, ...args) {",
+      "  const handle = await originalOpen.call(this, candidate, ...args);",
       "  const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
       "  const artifacts = path.join(root, 'artifacts');",
-      "  if (!swapped && path.resolve(String(candidate)) === artifacts) {",
+      "  if (!swapped && String(candidate).endsWith('/artifacts')) {",
       "    fs.renameSync(artifacts, path.join(root, 'artifacts-original'));",
       "    fs.symlinkSync(process.env.NGL_PREFLIGHT_SWAP_OUTSIDE, artifacts, 'dir');",
+      "    fs.writeFileSync(path.join(root, 'receipt-parent-swap.marker'), 'swapped');",
       "    swapped = true;",
       "  }",
-      "  return metadata;",
+      "  return handle;",
       "};",
       "syncBuiltinESMExports();"
     ].join('\n'));
@@ -731,6 +732,8 @@ test('preflight refuses a receipt parent swapped to an external symlink after it
       }
     });
     assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(await readFile(join(root, 'receipt-parent-swap.marker'), 'utf8'), 'swapped',
+      'the adversarial parent-directory replacement must execute');
     assert.equal(child.status, 1, child.stderr);
     const result = JSON.parse(child.stdout);
     assert.equal(result.status, 'blocked');
