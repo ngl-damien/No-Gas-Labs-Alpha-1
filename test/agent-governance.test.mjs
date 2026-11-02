@@ -651,6 +651,28 @@ test('preflight rejects a nested-instructions parent swapped between revalidatio
   }
 });
 
+test('preflight rejects an in-repository symlinked vendor pointer', {
+  skip: process.platform === 'win32' ? 'POSIX symlink creation requires symlink privileges' : false
+}, async () => {
+  const root = await fixture();
+  try {
+    await writeFile(join(root, 'vendor-decoy.md'),
+      'Read AGENTS.md and RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md.\n');
+    await rm(join(root, 'CLAUDE.md'));
+    await symlink('vendor-decoy.md', join(root, 'CLAUDE.md'), 'file');
+
+    const result = await runPreflight({ root });
+
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'CLAUDE.md' && item.reason.includes('symlink')
+    ));
+    assert.ok(!result.files.some(file => file.path === 'CLAUDE.md'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('preflight refuses receipt creation through an escaping directory symlink', async () => {
   const root = await fixture();
   const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-outside-'));
