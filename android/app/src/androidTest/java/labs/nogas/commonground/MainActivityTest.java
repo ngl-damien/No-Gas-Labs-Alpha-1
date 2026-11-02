@@ -134,8 +134,9 @@ public final class MainActivityTest {
                     0, pickerMonitor.getHits());
             AtomicReference<String> observedSiblingUrl = new AtomicReference<>();
             instrumentation.runOnMainSync(() -> observedSiblingUrl.set(webView.getUrl()));
-            assertEquals("the sibling page is not the trusted game document",
-                    siblingUrl, observedSiblingUrl.get());
+            assertTrue("the sibling document should have an active WebView URL", observedSiblingUrl.get() != null);
+            assertFalse("a same-origin base URL must not make a data document the trusted game entry",
+                    MainActivity.isTrustedGameDocumentForTests(observedSiblingUrl.get()));
         } finally {
             instrumentation.removeMonitor(pickerMonitor);
         }
@@ -261,6 +262,7 @@ public final class MainActivityTest {
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
         evaluate(activity,
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
@@ -327,6 +329,7 @@ public final class MainActivityTest {
                 "location.reload(); 'cleared'");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
         evaluate(activity, "document.getElementById('start-private').click(); 'new private world'");
         awaitJavaScript(activity,
                 "document.getElementById('play-ui').hidden === false && " +
