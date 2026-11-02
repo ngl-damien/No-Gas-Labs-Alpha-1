@@ -144,8 +144,64 @@ test('offline evaluator accepts only canonical in-range integer arguments', asyn
   }
 });
 
-test('offline evaluator requires exactly a receipt path and one input', () => {
+test('offline evaluator supports single-input and bounded range usage forms', () => {
   const result = run(evaluateScript, []);
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /Usage: node scripts\/evaluate-candidate-task\.mjs/);
+  assert.match(result.stderr, /Usage: node scripts\\/evaluate-candidate-task\\.mjs/);
+  assert.match(result.stderr, /--range <start> <end>/);
+  const incompleteRange = run(evaluateScript, ['unused.json', '--range', '0']);
+  assert.equal(incompleteRange.status, 2);
+  assert.match(incompleteRange.stderr, /--range <start> <end>/);
 });
+
+test('offline range evaluation checks every inclusive input and is byte-for-byte reproducible', async t => {
+  const { receiptPath } = await fixture(t);
+  const args = [receiptPath, '--range', '-3', '3'];
+  const first = run(evaluateScript, args);
+  const second = run(evaluateScript, args);
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(second.stdout, first.stdout, 'the same verified inputs must produce identical evidence bytes');
+
+  const report = JSON.parse(first.stdout);
+  assert.equal(report.schema, 'ngl.candidate-program-evaluation-range.v1');
+  assert.equal(report.taskSpecificationId, taskSpecification().id);
+  assert.match(report.taskSpecificationDigest, /^[a-f0-9]{64}$/);
+  assert.match(report.implementationHash, /^[a-f0-9]{64}$/);
+  assert.deepEqual(report.range, { start: -3, end: 3 });
+  assert.equal(report.evaluationCount, 7);
+  assert.deepEqual(report.evaluations, Array.from({ length: 7 }, (_, index) => {
+    const input = index - 3;
+    const output = 3 * input * input + 2 * input - 5;
+    return { input, output, expectedOutput: String(output) };
+  }));
+  assert.match(report.resultDigest, /^[a-f0-9]{64}$/);
+  assert.equal(report.proofVerified, true);
+  assert.equal(report.evaluationMatchesTarget, true);
+  assert.deepEqual(report.authority, {
+    taskSpecificationSignatureVerified: false,
+    founderInstallApprovalVerified: false,
+    capabilityInstalled: false,
+    canonicalStateChanged: false
+  });
+});
+
+test('offline range evaluation accepts the exact 4096-input bound and rejects larger or invalid ranges', async t => {
+  const { receiptPath } = await fixture(t);
+  const maximum = run(evaluateScript, [receiptPath, '--range', '-2048', '2047']);
+  assert.equal(maximum.status, 0, maximum.stderr);
+  assert.equal(JSON.parse(maximum.stdout).evaluationCount, 4096);
+
+  for (const [start, end, code] of [
+    ['0', '-1', 'CANDIDATE_RANGE_INVALID'],
+    ['0', '4096', 'CANDIDATE_RANGE_TOO_LARGE'],
+    ['-1000001', '0', 'CANDIDATE_INPUT_OUT_OF_BOUNDS'],
+    ['0', '1000001', 'CANDIDATE_INPUT_OUT_OF_BOUNDS'],
+    ['01', '2', 'CANDIDATE_INPUT_INVALID']
+  ]) {
+    const result = run(evaluateScript, [receiptPath, '--range', start, end]);
+    assert.equal(result.status, 1, start + '..' + end);
+    assert.match(result.stderr, new RegExp(code), start + '..' + end);
+    assert.equal(result.stdout, '');
+  }
+});;

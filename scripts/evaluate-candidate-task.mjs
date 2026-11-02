@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { resolve } from 'node:path';
 import { readBoundedRegularFile } from '../src/bounded-file-reader.mjs';
@@ -14,6 +15,7 @@ import {
 
 const MAX_RECEIPT_BYTES = 64 * 1024;
 const MAX_RECEIPT_JSON_DEPTH = 16;
+const MAX_RANGE_EVALUATIONS = 4096;
 const RECEIPT_KEYS = [
   'schema',
   'taskSpecificationDigest',
@@ -128,11 +130,32 @@ function evaluateTarget(specification, input) {
   return result;
 }
 
+function evaluateOne(verified, input) {
+  const output = evaluateCandidateProgram(verified.program, input);
+  const expectedOutput = evaluateTarget(verified.specification, input);
+  if (!Number.isSafeInteger(output) || BigInt(output) !== expectedOutput) {
+    fail('CANDIDATE_EVALUATION_MISMATCH');
+  }
+  return { input, output, expectedOutput: expectedOutput.toString() };
+}
+
+function authorityBoundary() {
+  return {
+    taskSpecificationSignatureVerified: false,
+    founderInstallApprovalVerified: false,
+    capabilityInstalled: false,
+    canonicalStateChanged: false
+  };
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length !== 2) {
+  const singleInput = args.length === 2 && args[1] !== '--range';
+  const rangeInput = args.length === 4 && args[1] === '--range';
+  if (!singleInput && !rangeInput) {
     process.stderr.write(
-      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n'
+      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\\n' +
+      '   or: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> --range <start> <end>\\n'
     );
     process.exitCode = 2;
     return;
@@ -140,32 +163,53 @@ async function main() {
 
   const receipt = await readReceipt(args[0]);
   const verified = verifySynthesisReceipt(receipt);
-  const input = parseInput(args[1], verified.specification);
-  const output = evaluateCandidateProgram(verified.program, input);
-  const expectedOutput = evaluateTarget(verified.specification, input);
-  if (!Number.isSafeInteger(output) || BigInt(output) !== expectedOutput) {
-    fail('CANDIDATE_EVALUATION_MISMATCH');
+  const implementationHash = candidateProgramHash(verified.program, 'v5', verified.specification);
+
+  if (singleInput) {
+    const input = parseInput(args[1], verified.specification);
+    const evaluation = evaluateOne(verified, input);
+    process.stdout.write(JSON.stringify({
+      schema: 'ngl.candidate-program-evaluation.v1',
+      taskSpecificationId: verified.specification.id,
+      taskSpecificationDigest: verified.digest,
+      implementationHash,
+      ...evaluation,
+      proofVerified: true,
+      evaluationMatchesTarget: true,
+      authority: authorityBoundary()
+    }, null, 2) + '\\n');
+    return;
   }
 
-  process.stdout.write(JSON.stringify({
-    schema: 'ngl.candidate-program-evaluation.v1',
+  const start = parseInput(args[2], verified.specification);
+  const end = parseInput(args[3], verified.specification);
+  if (start > end) fail('CANDIDATE_RANGE_INVALID');
+  const evaluationCount = end - start + 1;
+  if (evaluationCount > MAX_RANGE_EVALUATIONS) fail('CANDIDATE_RANGE_TOO_LARGE');
+
+  const evaluations = [];
+  for (let input = start; input <= end; input += 1) {
+    evaluations.push(evaluateOne(verified, input));
+  }
+
+  const report = {
+    schema: 'ngl.candidate-program-evaluation-range.v1',
     taskSpecificationId: verified.specification.id,
     taskSpecificationDigest: verified.digest,
-    implementationHash: candidateProgramHash(verified.program, 'v5', verified.specification),
-    input,
-    output,
-    expectedOutput: expectedOutput.toString(),
+    implementationHash,
+    range: { start, end },
+    evaluationCount: evaluations.length,
+    evaluations,
     proofVerified: true,
     evaluationMatchesTarget: true,
-    authority: {
-      taskSpecificationSignatureVerified: false,
-      founderInstallApprovalVerified: false,
-      capabilityInstalled: false,
-      canonicalStateChanged: false
-    }
-  }, null, 2) + '\n');
+    authority: authorityBoundary()
+  };
+  const resultDigest = createHash('sha256')
+    .update('ngl.candidate-program-evaluation-range:v1\\n')
+    .update(JSON.stringify(report))
+    .digest('hex');
+  process.stdout.write(JSON.stringify({ ...report, resultDigest }, null, 2) + '\\n');
 }
-
 main().catch(error => {
   process.stderr.write((error?.message || 'CANDIDATE_EVALUATION_FAILED') + '\n');
   process.exitCode = 1;
