@@ -1439,7 +1439,7 @@ Current main `game/server.mjs` still contains local `founder.key` auto-generatio
 
 ### Linked repositories
 
-- `AI-BI-Intelligence-node-gate`: read root instructions and `PROGRESS.md`, `SELF-EVAL.md`, `NEXT-DIRECTIVE.md`. PR #5 head `5c2837174ae4cfb5e581b1a95b1b... `?  The exact head is `5c2837174ae4cfb5e5816c6c26484cc60ed47b5f`. CI [41403632291](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632291) passed Node 18/20 (20/20 each) and security audit; Org CI [41403632592](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632592) failed before any jobs were created. Main's `init_node.sh` is mode 100644 and still contains failure suppressors; PR #5 proposes mode 100755 and fail-closed commands. No Termux bootstrap/device run was possible.
+- `AI-BI-Intelligence-node-gate`: read root instructions and `PROGRESS.md`, `SELF-EVAL.md`, `NEXT-DIRECTIVE.md`. PR #5 exact head `5c2837174ae4cfb5e5816c6c26484cc60ed47b5f`. CI [41403632291](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632291) passed Node 18/20 (20/20 each) and security audit; Org CI [41403632592](https://github.com/ngl-damien/AI-BI-Intelligence-node-gate/actions/runs/41403632592) failed before any jobs were created. Main's `init_node.sh` is mode 100644 and still contains failure suppressors; PR #5 proposes mode 100755 and fail-closed commands. No Termux bootstrap/device run was possible.
 - `no-gas-labs-governance`: root `AGENTS.md` requires `./init_repo.sh` first. Bootstrap could not run without a checkout/authorized device; inspection stopped rather than bypassing its instruction.
 - `ngl-mesh`: root `AGENTS.md` returned 404; inspection stopped.
 
