@@ -440,6 +440,36 @@ test('candidate task-spec inspection rejects duplicate JSON keys and non-canonic
   assert.match(invalidResult.stderr, /TASK_SPEC_INVALID/);
 });
 
+test('candidate-program-v1 review exposes the exact program and implementation hash without a task-spec key', async t => {
+  const directory = await temp(t);
+  const executor = keyPair();
+  const program = {
+    op: 'multiply',
+    left: { op: 'input' },
+    right: { op: 'input' }
+  };
+  const proposal = makeInstallationProposal({
+    id: 'candidate-square-review-v1',
+    strategy: 'candidate-program-v1',
+    program,
+    executorPublicKeyPem: executor.publicKeyPem,
+    nonce: 'review-candidate-square-v1',
+    issuedAt: Date.now() - 1000,
+    expiresAt: Date.now() + 60_000,
+    maxUses: 1
+  });
+  const proposalPath = join(directory, 'proposal-v1.json');
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\\n', { mode: 0o600 });
+
+  const result = run(['--inspect', proposalPath]);
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.proposalDigest, proposalDigest(proposal));
+  assert.deepEqual(receipt.proposal.program, program);
+  assert.equal(receipt.proposal.implementationHash, proposal.implementationHash);
+  assert.match(receipt.proposal.implementationHash, /^[a-f0-9]{64}$/);
+});
+
 test('candidate-program-v5 proposal inspection verifies its task signature against a pinned public key', async t => {
   const directory = await temp(t);
   const founder = keyPair();
