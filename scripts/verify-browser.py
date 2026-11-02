@@ -1578,7 +1578,7 @@ def player_guild_membership(browser,url,out):
 
 
 def commons_message_quest(browser,url,out):
-    """A shared mobile quest loop with pinned routes, idempotent replay and actor-bound progression."""
+    """A shared mobile quest loop with pinned routes, lost-response retry and actor-bound progression."""
     errors=[]
     speaker_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
     other_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
@@ -1691,7 +1691,7 @@ def commons_message_quest(browser,url,out):
         assert pending_after_loss.get('action',{}).get('type')=='post-message'
         assert pending_after_loss.get('action',{}).get('text')==message_text
         assert pending_after_loss.get('requestId'),'The client must preserve the exact retry identity after response loss'
-        assert speaker_page.locator('#commons-message').input_value()==message_text,'The unsafely uncertain message must remain available for exact retry'
+        assert speaker_page.locator('#commons-message').input_value()==message_text,'The uncertain message must remain available for exact retry'
         first_delivery_state=speaker_context.request.get(url+'api/state').json()
         assert first_delivery_state['world']['revision']==baseline_revision+1
         assert first_delivery_state['world']['xp']==baseline_xp
