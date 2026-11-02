@@ -88,14 +88,17 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
+      let trustedPathSnapshot = null;
+      let trustedPathLabel = null;
       if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
-        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+        trustedPathSnapshot = [];
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
           const component = segments.slice(0, index).join('/');
-          const metadata = await lstat(resolve(rootPath, component));
+          const metadata = await lstat(resolve(rootPath, component), { bigint: true });
           if (metadata.isSymbolicLink()) {
-            failures.push({ path: component, reason: label + ' path must not traverse a symlink' });
+            failures.push({ path: component, reason: trustedPathLabel + ' path must not traverse a symlink' });
             return null;
           }
           const expectedType = index === segments.length ? metadata.isFile() : metadata.isDirectory();
@@ -103,11 +106,17 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
             failures.push({
               path: component,
               reason: index === segments.length
-                ? label + ' must be a regular file'
+                ? trustedPathLabel + ' must be a regular file'
                 : 'trusted governance parent must be a directory'
             });
             return null;
           }
+          trustedPathSnapshot.push({
+            component,
+            dev: metadata.dev,
+            ino: metadata.ino,
+            type: index === segments.length ? 'file' : 'directory'
+          });
         }
       }
       const actualPath = await realpath(absolutePath);
@@ -167,6 +176,37 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
           return null;
         }
         const finalPathMetadata = await stat(finalPath, { bigint: true });
+        if (trustedPathSnapshot) {
+          for (const snapshot of trustedPathSnapshot) {
+            let currentMetadata;
+            try {
+              currentMetadata = await lstat(resolve(rootPath, snapshot.component), { bigint: true });
+            } catch {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path changed during preflight inspection'
+              });
+              return null;
+            }
+            if (currentMetadata.isSymbolicLink()) {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path must not traverse a symlink'
+              });
+              return null;
+            }
+            const currentType = currentMetadata.isFile() ? 'file' : currentMetadata.isDirectory() ? 'directory' : 'other';
+            if (currentMetadata.dev !== snapshot.dev ||
+                currentMetadata.ino !== snapshot.ino ||
+                currentType !== snapshot.type) {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path changed during preflight inspection'
+              });
+              return null;
+            }
+          }
+        }
         if (BigInt(readResult.total) !== openedMetadata.size ||
             !sameFileSnapshot(openedMetadata, readMetadata) || !sameFileSnapshot(readMetadata, finalPathMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed during preflight inspection' });
