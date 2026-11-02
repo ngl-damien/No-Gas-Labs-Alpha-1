@@ -167,7 +167,10 @@ function evaluateTarget(specification, input) {
 }
 
 function evaluateOne(verified, input) {
-  const output = evaluateCandidateProgram(verified.program, input);
+  const candidateOutput = evaluateCandidateProgram(verified.program, input);
+  // JSON.stringify serializes -0 as 0. Normalize at the report boundary so
+  // the serialized report replays under the same strict numeric comparison.
+  const output = Object.is(candidateOutput, -0) ? 0 : candidateOutput;
   const expectedOutput = evaluateTarget(verified.specification, input);
   if (!Number.isSafeInteger(output) || BigInt(output) !== expectedOutput) {
     fail('CANDIDATE_EVALUATION_MISMATCH');
@@ -251,7 +254,8 @@ function verifyEvaluationReport(verified, report) {
   if (report.schema === 'ngl.candidate-program-evaluation-range.v1') {
     requireExactKeys(report, RANGE_EVALUATION_REPORT_KEYS, 'EVALUATION_REPORT_INVALID');
     requireExactKeys(report.range, ['start', 'end'], 'EVALUATION_REPORT_RANGE_INVALID');
-    if (!Number.isSafeInteger(report.range.start) || !Number.isSafeInteger(report.range.end)) {
+    if (!Number.isSafeInteger(report.range.start) || !Number.isSafeInteger(report.range.end) ||
+        Object.is(report.range.start, -0) || Object.is(report.range.end, -0)) {
       fail('EVALUATION_REPORT_RANGE_INVALID');
     }
     let start;
