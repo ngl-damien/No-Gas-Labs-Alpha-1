@@ -92,7 +92,7 @@ function usage() {
     'Inspect candidate task: node scripts/approve-install.mjs --inspect-task-spec <task-spec.json>',
     'Sign candidate task after review: NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-hex> node scripts/approve-install.mjs --confirm-task-spec <full-task-spec-digest> <task-spec.json> <private-key.pem>',
     ''
-  ].join('\n'));
+  ].join('\\n'));
 }
 
 async function inspectProposal(args) {
@@ -120,6 +120,12 @@ async function inspectProposal(args) {
     maxUses: decision.maxUses,
     proof: decision.proof
   };
+  // A digest binds candidate code, but a human cannot meaningfully review what
+  // they are authorizing unless the exact normalized program and hash are shown.
+  if (decision.program !== undefined) {
+    proposal.program = decision.program;
+    proposal.implementationHash = decision.implementationHash;
+  }
   if (decision.strategy === 'candidate-program-v5') {
     proposal.taskSpecification = decision.taskSpecification;
     proposal.taskSpecificationDigest = candidateTaskSpecificationDigest(decision.taskSpecification);
@@ -130,8 +136,8 @@ async function inspectProposal(args) {
     schema: 'ngl.founder-install-review.v1',
     proposalDigest: proposalDigest(decision),
     proposal,
-    instruction: 'Review every field. Signing requires this exact full digest in a separate --confirm invocation.'
-  }, null, 2) + '\n');
+    instruction: 'Review the complete candidate program, implementation hash, proof, and every other field. Signing requires this exact full digest in a separate --confirm invocation.'
+  }, null, 2) + '\\n');
 }
 
 async function inspectTaskSpecification(path) {
@@ -142,7 +148,7 @@ async function inspectTaskSpecification(path) {
     taskSpecificationDigest: digest,
     taskSpecification: specification,
     instruction: 'Review the normalized task and full digest. Signing requires this exact digest in a separate --confirm-task-spec invocation.'
-  }, null, 2) + '\n');
+  }, null, 2) + '\\n');
 }
 
 async function confirmInstall(confirmedDigest, proposalPath, privateKeyPath) {
@@ -159,8 +165,8 @@ async function confirmInstall(confirmedDigest, proposalPath, privateKeyPath) {
     keyFingerprint: trusted.fingerprint,
     signature
   };
-  process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
-  process.stderr.write(`Approval signature produced for proposal ${digest}. This proves key possession only; it does not identify the human operating this process.\n`);
+  process.stdout.write(JSON.stringify(receipt, null, 2) + '\\n');
+  process.stderr.write(`Approval signature produced for proposal ${digest}. This proves key possession only; it does not identify the human operating this process.\\n`);
 }
 
 async function confirmTaskSpecification(confirmedDigest, specificationPath, privateKeyPath) {
@@ -176,8 +182,8 @@ async function confirmTaskSpecification(confirmedDigest, specificationPath, priv
     keyFingerprint: trusted.fingerprint,
     signature
   };
-  process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
-  process.stderr.write(`Task-specification signature produced for ${specification.id}. This proves key possession only; it is not an INSTALL approval and does not identify the human operating this process.\n`);
+  process.stdout.write(JSON.stringify(receipt, null, 2) + '\\n');
+  process.stderr.write(`Task-specification signature produced for ${specification.id}. This proves key possession only; it is not an INSTALL approval and does not identify the human operating this process.\\n`);
 }
 
 async function main() {
@@ -203,6 +209,6 @@ async function main() {
 }
 
 main().catch(error => {
-  process.stderr.write(`${error?.message || 'APPROVAL_FAILED'}\n`);
+  process.stderr.write(`${error?.message || 'APPROVAL_FAILED'}\\n`);
   process.exitCode = 1;
 });
