@@ -504,32 +504,40 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertIn("SYNTHESIS_RECEIPT_JSON_TOO_DEEP", independent.stderr)
         self.assertEqual(independent.stdout, "")
 
-    def test_negative_zero_input_matches_node_json_number_normalization(self):
-        report_path, _ = self.make_report("negative-zero", ["0"])
-        source = report_path.read_text(encoding="utf-8")
-        negative_zero_source = re.sub(
-            r'("input"\s*:\s*)0(?=\s*[,}])',
-            lambda match: match.group(1) + "-0.0",
-            source,
-            count=1,
+    def test_negative_zero_numeric_fields_match_node_deep_equality(self):
+        scenarios = (
+            ("single-input", ["0"], "input"),
+            ("single-output", ["1"], "output"),
+            ("range-row-output", ["--range", "0", "2"], "output"),
         )
-        self.assertNotEqual(negative_zero_source, source)
-        negative_zero_report = self.directory / "negative-zero-report.json"
-        negative_zero_report.write_text(negative_zero_source, encoding="utf-8")
+        for name, arguments, field in scenarios:
+            report_path, _ = self.make_report(name, arguments)
+            source = report_path.read_text(encoding="utf-8")
+            pattern = re.compile(
+                r'("' + re.escape(field) + r'"\s*:\s*)0(?=\s*[,}])'
+            )
+            for spelling in ("-0", "-0.0"):
+                with self.subTest(name=name, spelling=spelling):
+                    mutated, count = pattern.subn(
+                        lambda match: match.group(1) + spelling,
+                        source,
+                        count=1,
+                    )
+                    self.assertEqual(count, 1)
+                    negative_zero_report = self.directory / (name + "-" + spelling.replace(".", "dot") + ".json")
+                    negative_zero_report.write_text(mutated, encoding="utf-8")
 
-        node = self.run_node(
-            EVALUATOR,
-            ["--verify-report", str(self.receipt_path), str(negative_zero_report)],
-        )
-        independent = self.run_verifier(negative_zero_report)
-        self.assertEqual(node.returncode, 0, node.stderr)
-        self.assertEqual(independent.returncode, 0, independent.stderr)
-        node_receipt = json.loads(node.stdout)
-        python_receipt = json.loads(independent.stdout)
-        self.assertEqual(python_receipt["implementationHash"], node_receipt["implementationHash"])
-        self.assertEqual(python_receipt["reportDigest"], node_receipt["reportDigest"])
-        self.assertEqual(python_receipt["resultDigest"], node_receipt["resultDigest"])
-        self.assertIs(python_receipt["verified"], True)
+                    node = self.run_node(
+                        EVALUATOR,
+                        ["--verify-report", str(self.receipt_path), str(negative_zero_report)],
+                    )
+                    independent = self.run_verifier(negative_zero_report)
+                    self.assertEqual(node.returncode, 1)
+                    self.assertIn("EVALUATION_REPORT_MISMATCH", node.stderr)
+                    self.assertEqual(node.stdout, "")
+                    self.assertEqual(independent.returncode, 1)
+                    self.assertIn("EVALUATION_REPORT_MISMATCH", independent.stderr)
+                    self.assertEqual(independent.stdout, "")
 
     def test_large_integer_tokens_keep_node_python_schema_error_parity(self):
         report_path, _ = self.make_report("large-integer", ["17"])
