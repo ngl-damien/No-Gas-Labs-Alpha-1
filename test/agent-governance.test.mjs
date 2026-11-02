@@ -757,3 +757,80 @@ test('hosted preflight includes the world-view source and canonical checkpoint',
   assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
+
+
+test('preflight rejects a transient parent symlink swap that resolves a trusted checkpoint to a decoy', {
+  skip: process.platform === 'win32' ? 'POSIX symlink replacement requires symlink privileges' : false
+}, async () => {
+  const root = await fixture();
+  try {
+    const checkpointPath = 'docs/operations/LATEST_CHECKPOINT.md';
+    const instructionsPath = join(root, 'AGENTS.md');
+    const instructions = (await readFile(instructionsPath, 'utf8'))
+      .replace('--checkpoint CHECKPOINT.md', '--checkpoint ' + checkpointPath);
+    await writeFile(instructionsPath, instructions);
+    await writeFile(join(root, checkpointPath), '# Latest Durable Checkpoint\\nOriginal checkpoint.\\n');
+    await mkdir(join(root, 'docs/operations-decoy'));
+    const decoyBytes = Buffer.from('# Latest Durable Checkpoint\\nDecoy checkpoint.\\n');
+    await writeFile(join(root, 'docs/operations-decoy/LATEST_CHECKPOINT.md'), decoyBytes);
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/worker.mjs'), 'export {};\\n');
+
+    const hookPath = join(root, 'preflight-transient-parent-swap.cjs');
+    await writeFile(hookPath, [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const originalRealpath = fs.promises.realpath;",
+      "let swaps = 0;",
+      "fs.promises.realpath = async function(candidate, ...args) {",
+      "  const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
+      "  const expected = path.join(root, 'docs', 'operations', 'LATEST_CHECKPOINT.md');",
+      "  if (path.resolve(String(candidate)) !== expected) return originalRealpath.call(this, candidate, ...args);",
+      "  const docs = path.join(root, 'docs');",
+      "  const operations = path.join(docs, 'operations');",
+      "  const backup = path.join(docs, 'operations-original');",
+      "  fs.renameSync(operations, backup);",
+      "  fs.symlinkSync('operations-decoy', operations, 'dir');",
+      "  try {",
+      "    const resolved = await originalRealpath.call(this, candidate, ...args);",
+      "    swaps += 1;",
+      "    fs.writeFileSync(path.join(root, 'realpath-swap-count'), String(swaps));",
+      "    return resolved;",
+      "  } finally {",
+      "    fs.unlinkSync(operations);",
+      "    fs.renameSync(backup, operations);",
+      "  }",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join('\\n'));
+
+    const child = spawnSync(process.execPath, [
+      '--require', hookPath,
+      new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname,
+      '--root', root,
+      '--path', 'scripts/worker.mjs',
+      '--checkpoint', checkpointPath
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: { ...process.env, NGL_PREFLIGHT_SWAP_ROOT: root }
+    });
+
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.ok(Number(await readFile(join(root, 'realpath-swap-count'), 'utf8')) >= 3,
+      'the parent swap must run around every trusted checkpoint realpath resolution');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === checkpointPath && item.reason.includes('changed')
+    ));
+    assert.ok(!result.files.some(file =>
+      file.path === checkpointPath && file.sha256 === createHash('sha256').update(decoyBytes).digest('hex')
+    ), 'a decoy checkpoint must never be fingerprinted as the canonical checkpoint');
+    assert.match(await readFile(join(root, checkpointPath), 'utf8'), /Original checkpoint/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
