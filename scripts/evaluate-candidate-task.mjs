@@ -312,8 +312,12 @@ function verifyEvaluationReport(verified, report) {
 async function main() {
   const args = process.argv.slice(2);
   const verifyReport = args.length === 3 && args[0] === '--verify-report';
-  const singleInput = args.length === 2 && args[0] !== '--verify-report' && args[1] !== '--range';
-  const rangeInput = args.length === 4 && args[1] === '--range';
+  const singleInput = args.length === 2 &&
+    !args.includes('--range') &&
+    !args.includes('--verify-report');
+  const rangeInput = args.length === 4 &&
+    args[1] === '--range' &&
+    args[0] !== '--verify-report';
   if (!verifyReport && !singleInput && !rangeInput) {
     process.stderr.write(
       'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n' +
