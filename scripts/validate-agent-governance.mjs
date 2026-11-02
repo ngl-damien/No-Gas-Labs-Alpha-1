@@ -90,8 +90,8 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
     try {
       let trustedPathSnapshot = null;
       let trustedPathLabel = null;
-      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
-        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint', 'vendor-pointer'].includes(kind)) {
+        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : kind === 'vendor-pointer' ? 'vendor pointer' : 'trusted instruction';
         trustedPathSnapshot = [];
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
