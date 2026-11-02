@@ -1,10 +1,10 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,projectDecisionDocket,selectDecisionDocketProjection,encodeDecisionDocketCache,decodeDecisionDocketCache} from './quests.mjs';
+import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord,getExpeditionDocket,getResearchEncounterReviewQueue,projectDecisionDocket,selectDecisionDocketProjection,encodeDecisionDocketCache,decodeDecisionDocketCache} from './quests.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
 import {WorldView,PLACES,GUILD_NPCS,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderEvidenceArchive,renderInstitution,selectWorldSnapshot,hasDistinctChallengeActorId} from './institution-view.mjs';
+import {renderEvidenceArchive,renderInstitution,renderResearchEncounterQueue,selectWorldSnapshot,hasDistinctChallengeActorId} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
@@ -75,6 +75,31 @@ async function openInstitution(locationId = null, focusDecisionId = null) {
       await openInstitution('decision_chamber', decision.id);
     }),
   });
+  if (locationId === 'decision_chamber') {
+    const researchQueue = snapshot.world
+      ? getResearchEncounterReviewQueue(snapshot.world)
+      : null;
+    renderResearchEncounterQueue(content, researchQueue, {
+      founder: viewer.role === 'founder',
+      stale: snapshot.stale,
+      unavailable: snapshot.unavailable,
+      onReview: guarded(async (challenge, disposition, rationale) => {
+        if (mode !== 'shared' || viewer.id !== principalId ||
+            viewer.role !== principalRole || principalRole !== 'founder') {
+          throw new Error('The authenticated Founder session changed; refresh the Decision Chamber before recording a next step.');
+        }
+        await act({
+          type: 'review-experiment-challenge',
+          reportId: challenge.reportId,
+          challengeId: challenge.challengeId,
+          disposition,
+          rationale
+        });
+        toast('Founder next step retained in world history · dissent remains visible · no truth verdict, canonical Gate approval, or XP.');
+        await openInstitution('decision_chamber');
+      })
+    });
+  }
   if (locationId === 'decision_chamber' && typeof focusDecisionId === 'string' &&
       /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(focusDecisionId)) {
     const target = Array.from(content.querySelectorAll('[data-decision-id]'))
