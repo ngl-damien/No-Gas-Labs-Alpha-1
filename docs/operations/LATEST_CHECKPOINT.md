@@ -1036,3 +1036,52 @@ The scoped preflight checked every path component with `lstat`, then resolved th
 3. Keep linked repositories read-only until their own root instructions and required bootstrap are available.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder-key operation, or Founder acceptance occurred. No uninterrupted between-run execution is claimed.
+
+## Run 38 — 2026-11-02 UTC — transplant sealed Founder decision verification onto current preflight lineage
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability, security and integration.  
+**Prior durable work inspected:** Run 37 on PR #272, code head `b2ff42b8f94ab1c37d33f0adef7e30240d75121b`, durable checkpoint branch head `71f050bfe3e1d2c2c830c7050691cb4645619a10`. Full preceding history remains in PR #272.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.  
+**Parent:** PR #264, exact base head `caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b`, itself stacked on PR #263.  
+**Working branch:** `security/founder-decision-context-bound-relay-20261102`.  
+**Code head before this checkpoint append:** `858cfd80659b4504b0ef91c6bbfee589c544ec5e`.
+
+### Rehydrate and ranked selection
+
+- Root `AGENTS.md` SHA `a4beeee1c0ec46faab28502957c0e53850b2855d` and complete shared protocol SHA `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f` were read sequentially on the target base.
+- PR #16 remains closed/unmerged; merged PR #18 supersedes its historical Experiment 001 self-signing path. That defect was not recreated.
+- A separate source-backed mainline authority flaw remains: `src/authority/decision.js` accepts a caller-created `verification: { valid: true }` object in `authorizationEvent()`. The current source was fetched and inspected. This is distinct from PR #16.
+- PR #244 already contains a reviewed candidate fix, but is still open/draft on base `93bc9157dca95f7d4f552a88e8570823b30c11aa`, two commits behind current main. Its exact head `36a5bf5fefc08961f48716d9eb4210f6a206900d` has its own Verify `41348372569`, Genesis `41348372538`, and Browser Acceptance `41348372408` successful. Those donor-branch results are provenance only, not verification of this transplant.
+- Reinspection found the PR #264 base already contains the authority source, signer page and decision-chamber test in its hosted preflight list, but omits the new context-binding and world-integration tests. The two imported world dependencies `src/quest/engine.js` and `src/world/project.js` have identical blob SHAs on the donor and target branches; `proposeGuildAction()` retains the same signature on both, despite a changed guild-hall blob. No game/server files are changed.
+- Ranked candidates: (1) live server Decision Gate integration remains highest but is blocked by the current docket/context schema mismatch and overlapping server lineage; (2) helper-level caller-forgery rejection is source-backed, bounded and independently testable; (3) further candidate-program work is already active on PRs #268/#272; (4) MMORPG work remains Worker B-owned on PRs #265/#269/#271/#273. Selected (2).
+
+### Cycle 1 — transplant the sealed verifier and v2 signer
+
+- `src/authority/decision.js`: transplant PR #244's bounded canonical snapshots, module-private WeakMap verification seals, trusted monotonic time, strict P-256 receipt parsing, audience binding, persisted-event verification, and synchronous canonical-context resolver factory.
+- `authority/index.html`: update the browser signer to the v2 decision envelope expected by the verifier. No browser key was created or touched by this run.
+- `test/decision-chamber.test.js`: transplant adversarial tests, including explicit rejection of caller-forged `verification.valid`, binding verification results to exact payload/receipt, expiry and clock rollback, canonical snapshots, and envelope tampering.
+- Commits: `6a2fc74c9c7ff4d5e95d057fedcfc7e06fcfde38` (src/authority/decision.js); `414fb68e2592c0bd316cfb10113f16f4c90b04eb` (authority/index.html); `88894f93802cdf271670e125a9d16c8ecca8c75f` (test/decision-chamber.test.js).
+
+### Cycle 2 — preserve context and world acceptance in preflight
+
+- Add `test/decision-context-binding.test.js` for canonical proposal/quest/output resolution, asynchronous resolver rejection, and fail-closed context changes.
+- Add `test/decision-world-integration.test.js` for persisted signed authorization event verification and zero XP/inventory/world mutation on rejected or relabeled decisions.
+- Add both test files to `agent:preflight:ci` and a governance regression that requires the source, signer page and all three authority test paths in the scoped manifest.
+- Commits: `16604aabb02190b80d06da620eb1b4457daa3fd0` (test/decision-context-binding.test.js); `9a11d6be5d2500f6e060d7b73f36d535a2bfbdbc` (test/decision-world-integration.test.js); `57ca256ddda50e3d64db94248860079ff7c6d6c9` (package.json); `858cfd80659b4504b0ef91c6bbfee589c544ec5e` (test/agent-governance.test.mjs).
+
+### Verification boundary and unresolved authority
+
+- Local portable preflight and local Node tests were not available: this runtime has no repository checkout, and the connected GitHub interface does not execute repository commands. Hosted exact-head Verify/Genesis/Browser checks are required; no test pass is claimed for this new branch at checkpoint creation.
+- This is helper-level authority hardening. The live `game/server.mjs` mutation path still does not import/call `createContextBoundFounderAuthorizationVerifier`; the current Decision Docket's `proposedEffect`/evaluation/risks/rollback shape still lacks an evidenced mapping to the verifier's canonical proposal/quest/output resolver contract. Do not invent that mapping.
+- The host must supply a separately trusted public key fingerprint, audience, and canonical resolvers. A configured fingerprint is not proof of Damien's identity or private-key custody. No key, trust root, credential, secret, permission or Founder decision was created or changed.
+- PR #244 remains open/draft; this is a content-preserving transplant onto the newer PR #264 preflight lineage, not a merge or claim that #244 was integrated.
+- Worker B's latest inspected result is PR #273 head `7e83362b66194e5811ed47bb365f603a90bac23a`: Verify `41382561437`, Genesis `41382561408`, Browser `41382561374` all succeeded; Browser reported 17/17 journeys. Its description still says checks are pending; Worker B owns that correction. No game files or MMORPG ledger rows were edited here.
+
+### Next ranked actions
+
+1. Open/inspect the draft child PR and inspect exact-head Verify, Genesis Evidence Invariant and Browser Acceptance; repair only attributable failures and recheck the repaired exact head.
+2. Reconcile the live Decision Gate with Worker B's current server lineage only after canonical proposal/quest/output mapping and the trust-root/custody boundary are explicit; test a forged `verification.valid = true` through the actual server route and prove no event/state mutation.
+3. Keep PR #16/#18 history correctly classified; do not generate or enroll a Founder key. Keep PR #268/#272 candidate-program work and Worker B game PRs separate.
+4. Revisit linked repositories only when their root instructions and required bootstrap can be read and followed.
+
+No merge, release, deployment, spending, external announcement, permission/credential change, key operation, Founder decision or canonical world-state mutation occurred. No uninterrupted between-run execution is claimed.
