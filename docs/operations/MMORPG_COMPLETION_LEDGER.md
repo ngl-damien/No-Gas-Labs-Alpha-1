@@ -60,3 +60,18 @@ Keep current-main and proposed-branch evidence separate. Do not delete supersede
 
 
 - 2026-11-02 — Worker B — PWA activation recovery: PR #271 (`game/sw-activation-cache-cleanup-fallback-20261102`), draft child of PR #269 at base `f714cdfcbffbb81c3a971a2425de301e4f3a7181`. Runtime change in `game/sw.js` makes obsolete-cache enumeration/deletion best-effort and always proceeds to `clients.claim()`; `test/game-package.test.mjs` adds negative regressions for enumeration and deletion failures. Initial head `ac197085bbf1c01906af51fb32f9c5a6117dcda5` failed one test because the fixture mislabeled the active cache; the runtime correctly attempted to delete that unknown cache. Repair `c68032f863d2fc9357d2786f68816b7a19bc7498` uses the actual active cache name. Exact-head Verify `41378147817` passed: hosted preflight had zero warnings/failures; Node 24 tests, Python inspector, package build and institutional exercise all exited 0. Genesis `41378147869` passed. Browser Acceptance `41378147890` was in progress when recorded; no Browser pass is claimed. Local tests/preflight and physical Android-device acceptance were not performed. No canonical world event, XP, authority, merge, release or deployment changed.
+
+
+## 2026-11-01 — Worker B Academy tutor-folio integration
+
+- **Worker:** MMORPG / playable-world runtime.
+- **Objective:** make the Polymath Academy the in-world home for its own bounded tutor's retained responses, while preserving response provenance and rejection history.
+- **Proposed source:** PR #273, branch `game/bounded-guide-agents-20261101`, child of PR #271's `game/sw-activation-cache-cleanup-fallback-20261102` branch.
+- **Code head before this ledger refresh:** `b2e6e9d6681c05d028779fecb7d9fa49d9f2af9b`.
+- **Changed paths:** `game/collaborator-world-objects.mjs`, `game/client.mjs`, and `test/game-collaborator-world-objects.test.mjs`.
+- **Capability:** the Academy now selects at most eight newest tutor-role folios from the sealed collaborator-response projection, discloses older omissions, preserves rejected replies, and links each exact folio to the Evidence Archive. The selector rejects forged caller-supplied projections and does not mutate world state.
+- **Verification:** GitHub compare confirms 4 commits ahead / 0 behind the exact PR #271 base before this ledger-only update. GitHub combined status returned no statuses and the commit workflow-run lookup returned no PR-triggered runs at inspection time. No local checkout, Node 24, local preflight receipt, or local test run was available. Exact-head Verify, Genesis Evidence Invariant and Browser Acceptance remain pending; no test pass is claimed.
+- **Current-main vs proposed:** this is proposed branch work only. Mainline Academy behavior is unchanged until an authorized integration.
+- **Known limits:** the shelf displays metadata and routes to the full retained response; it does not render tutor output as trusted teaching, call an AI provider, establish provider provenance, verify claims, certify mastery, award XP, or grant authority. No physical Android-device test is claimed.
+- **Next action:** inspect exact-head hosted checks and logs; repair any attributable failure; add a browser journey proving the Academy shelf displays valid and rejected tutor folios with exact archive navigation and no event/revision/XP mutation if current browser acceptance does not already exercise it.
+- **Authority:** no merge, release, deployment, spending, key/credential/permission change, or Founder acceptance occurred.
