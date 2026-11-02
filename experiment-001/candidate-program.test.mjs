@@ -498,3 +498,39 @@ test('candidate-program-v3 INSTALL rejects a signed certificate that widens its 
   await assert.rejects(() => store.commit(tampered, signature), /INSTALL_PROOF_INVALID/);
   assert.equal(store.snapshot().sequence, 0, 'a signed but inconsistent proof certificate must not advance the ledger');
 }));
+
+const piecewiseOverfitProgram = () => ({
+  op: 'add',
+  left: squareProgram(),
+  right: {
+    op: 'max',
+    left: { op: 'const', value: 0 },
+    right: {
+      op: 'subtract',
+      left: { op: 'const', value: 1 },
+      right: {
+        op: 'abs',
+        arg: { op: 'subtract', left: { op: 'input' }, right: { op: 'const', value: 42 } }
+      }
+    }
+  }
+});
+
+test('candidate-program-v2 finite suite is overfit by a bounded piecewise bump that v3 conservatively rejects', async () => {
+  const lib = await loadPinned(pair());
+  const program = piecewiseOverfitProgram();
+  const v2 = lib.challenge('candidate-program-v2', program);
+
+  // max(0, 1 - abs(x - 42)) is zero at every one of the 15 v2
+  // challenge inputs, but changes the result at x=42.
+  assert.equal(v2.total, 15);
+  assert.equal(v2.passed, 15);
+  assert.deepEqual(v2.failed, []);
+  assert.equal(evaluateCandidateProgram(program, 41), 41 * 41);
+  assert.equal(evaluateCandidateProgram(program, 42), 42 * 42 + 1);
+
+  const v3 = lib.challenge('candidate-program-v3', program);
+  assert.equal(v3.passed, 0);
+  assert.deepEqual(v3.failed, ['CANDIDATE_PROOF_UNSUPPORTED_OPERATOR'],
+    'v3 must reject the non-polynomial abs/max proof language instead of treating finite samples as equivalence');
+});
