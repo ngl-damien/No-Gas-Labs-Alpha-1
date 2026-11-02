@@ -132,7 +132,7 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.length !== 2) {
     process.stderr.write(
-      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\\n'
+      'Usage: node scripts/evaluate-candidate-task.mjs <synthesis-receipt.json> <integer-input>\n'
     );
     process.exitCode = 2;
     return;
