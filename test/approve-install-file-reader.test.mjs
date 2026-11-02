@@ -513,3 +513,64 @@ test('candidate-program-v5 INSTALL confirmation rejects a task signature from an
   assert.match(result.stderr, /CANDIDATE_TASK_SPEC_SIGNATURE_INVALID/);
   assert.equal(result.stdout, '');
 });
+
+
+test('candidate-program-v5 offline operator flow composes task-spec and INSTALL signatures end to end', async t => {
+  const directory = await temp(t);
+  const founder = keyPair();
+  const executor = keyPair();
+  const specification = taskSpecificationFor();
+  const specificationPath = join(directory, 'task-spec.json');
+  const proposalPath = join(directory, 'proposal-v5.json');
+  const privateKeyPath = join(directory, 'founder-private.pem');
+  const publicKeyPath = join(directory, 'founder-public.pem');
+  await writeFile(specificationPath, JSON.stringify(specification, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(privateKeyPath, founder.privateKeyPem, { mode: 0o600 });
+  await chmod(privateKeyPath, 0o600);
+  await writeFile(publicKeyPath, founder.publicKeyPem, { mode: 0o600 });
+  const env = { NGL_FOUNDER_KEY_FINGERPRINT: publicKeyFingerprint(founder.publicKeyPem) };
+
+  const taskReviewResult = run(['--inspect-task-spec', specificationPath]);
+  assert.equal(taskReviewResult.status, 0, taskReviewResult.stderr);
+  const taskReview = JSON.parse(taskReviewResult.stdout);
+  assert.equal(taskReview.taskSpecificationDigest, candidateTaskSpecificationDigest(specification));
+
+  const taskSignatureResult = run([
+    '--confirm-task-spec',
+    taskReview.taskSpecificationDigest,
+    specificationPath,
+    privateKeyPath
+  ], env);
+  assert.equal(taskSignatureResult.status, 0, taskSignatureResult.stderr);
+  const taskSignatureReceipt = JSON.parse(taskSignatureResult.stdout);
+  assert.equal(verifySignature(
+    null,
+    Buffer.from(candidateTaskSpecificationPayload(specification)),
+    founder.publicKeyPem,
+    Buffer.from(taskSignatureReceipt.signature, 'base64url')
+  ), true);
+
+  const { proposal } = taskProposalFor(founder, executor, taskSignatureReceipt.signature);
+  await writeFile(proposalPath, JSON.stringify(proposal, null, 2) + '\n', { mode: 0o600 });
+  const proposalReviewResult = run(['--inspect', proposalPath, publicKeyPath], env);
+  assert.equal(proposalReviewResult.status, 0, proposalReviewResult.stderr);
+  const proposalReview = JSON.parse(proposalReviewResult.stdout);
+  assert.equal(proposalReview.proposalDigest, proposalDigest(proposal));
+  assert.equal(proposalReview.proposal.taskSpecificationVerifiedAgainstFingerprint, env.NGL_FOUNDER_KEY_FINGERPRINT);
+
+  const installApprovalResult = run([
+    '--confirm',
+    proposalDigest(proposal),
+    proposalPath,
+    privateKeyPath
+  ], env);
+  assert.equal(installApprovalResult.status, 0, installApprovalResult.stderr);
+  const installReceipt = JSON.parse(installApprovalResult.stdout);
+  assert.equal(installReceipt.proposalDigest, proposalDigest(proposal));
+  assert.equal(verifySignature(
+    null,
+    Buffer.from(approvalPayload(proposal)),
+    founder.publicKeyPem,
+    Buffer.from(installReceipt.signature, 'base64url')
+  ), true);
+});

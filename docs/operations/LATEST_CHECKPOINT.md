@@ -1305,3 +1305,14 @@ Next Worker A action remains: keep the candidate target trust contract, Founder 
 The exact implementation commit is recorded in this PR after the tree update. Exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance are **pending at checkpoint creation**; do not claim they pass until their runs are inspected. Local tests and local preflight are not claimed. No real Founder key was read, created, enrolled, rotated, exported, or changed. No merge, release, deployment, spending, external publication, production service call, or Founder decision occurred.
 
 **Next:** inspect all three workflows on the new exact head; read the Verify logs for the hosted preflight receipt and Node suite; fix only attributable failures; then append the exact run IDs/results to the PR handoff. After verification, resume the live server decision-envelope mapping as a separate security task, without touching Worker B's game paths or reconciling stacked branches by merge.
+
+
+### Run 33 — cycle 1 verification failure and cycle 2 repair
+
+- First implementation commit: `95ae898104667287f82525e93189dd427b7e35a1`.
+- Hosted Verify run `41375375743` produced a ready preflight receipt with `warnings: []` and `failures: []`, confirming that the signer script and existing CLI test file entered the scoped manifest. The Node run reported 905 tests, 904 passed, 1 failed. The only observed failure was a JavaScript parse error in the modified `test/agent-governance.test.mjs`: the new regular-expression assertion contained two literal backslashes before slash/dot, so Node parsed the slash as the regex terminator and reported `SyntaxError: Invalid regular expression flags`. The isolated failure points to the assertion line; the other 904 tests passed.
+- Genesis Evidence Invariant `41375375720` passed. Browser Acceptance `41375375732` was still running at the time of this diagnosis; no browser pass is claimed for that head.
+- **Cycle 2 repair:** correct the manifest-test regex to one escaped slash/dot and add a full ephemeral-key CLI acceptance journey: inspect task spec → confirm exact task-spec digest → inspect v5 proposal against the pinned public key → confirm proposal digest → verify the resulting INSTALL signature. This joins the previously separate positive CLI tests and proves their receipts compose without using a real Founder key.
+- The repair commit's exact-head hosted workflows are pending; the first failed Verify run is retained as evidence and is not counted as a pass.
+
+Worker B's latest observed PR #269 head is `f714cdfcbffbb81c3a971a2425de301e4f3a7181`. No Worker B game files or ledger rows were changed. PR #16 remains closed/unmerged and PR #18 remains the merged replacement; the live server Decision Gate and actual Founder key custody are still separate unresolved work. No key was created, read, enrolled, rotated, exported, or changed.

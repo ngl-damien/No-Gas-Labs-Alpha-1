@@ -560,9 +560,9 @@ test('hosted preflight includes the world-view source, Founder signer, and canon
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.equal(typeof command, 'string');
-  assert.match(command, /--path game\\/world-view\\.mjs(?:\\s|--)/);
-  assert.match(command, /--path scripts\\/approve-install\\.mjs(?:\\s|--)/);
-  assert.match(command, /--checkpoint docs\\/operations\\/LATEST_CHECKPOINT\\.md/);
+  assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
+  assert.match(command, /--path scripts\/approve-install\.mjs(?:\s|--)/);
+  assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
 });
 
 test('preflight rejects root instructions that share a hard-linked inode outside the checkout', async () => {
