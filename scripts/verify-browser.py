@@ -65,6 +65,7 @@ def armor_bearer_steps(page):
 
 
 def character_xp_components(page):
+    close_sheet(page)
     page.locator('#character-button').click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
     result=character_xp_from_open_sheet(page)
