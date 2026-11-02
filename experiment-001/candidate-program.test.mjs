@@ -25,6 +25,15 @@ const factoredSquareProgram = () => ({
   },
   right: { op: 'const', value: 1 }
 });
+const quadraticTargetProgram = () => ({
+  op: 'add',
+  left: {
+    op: 'subtract',
+    left: { op: 'multiply', left: { op: 'const', value: 2 }, right: squareProgram() },
+    right: { op: 'multiply', left: { op: 'const', value: 3 }, right: { op: 'input' } }
+  },
+  right: { op: 'const', value: 7 }
+});
 const overfitProgram = () => ({
   op: 'add',
   left: squareProgram(),
@@ -439,6 +448,10 @@ test('candidate AST payload is required only for the candidate-program strategy'
     strategy: 'candidate-program-v2',
     executorPublicKeyPem: pem(executor)
   }), /CANDIDATE_PROGRAM_INVALID/);
+  assert.throws(() => lib.makeInstallationProposal({
+    strategy: 'candidate-program-v4',
+    executorPublicKeyPem: pem(executor)
+  }), /CANDIDATE_PROGRAM_INVALID/);
 
   assert.throws(() => lib.makeInstallationProposal({
     strategy: 'square',
@@ -534,3 +547,116 @@ test('candidate-program-v2 finite suite is overfit by a bounded piecewise bump t
   assert.deepEqual(v3.failed, ['CANDIDATE_PROOF_UNSUPPORTED_OPERATOR'],
     'v3 must reject the non-polynomial abs/max proof language instead of treating finite samples as equivalence');
 });
+
+
+test('candidate-program-v4 proves a second fixed quadratic target with exact coefficients', async () => {
+  const lib = await loadPinned(pair());
+  const program = quadraticTargetProgram();
+  const proof = lib.challenge('candidate-program-v4', program);
+
+  assert.equal(proof.total, 1);
+  assert.equal(proof.passed, 1);
+  assert.deepEqual(proof.failed, []);
+  assert.equal(proof.implementationHash, candidateProgramHash(program, 'v4'));
+  assert.equal(proof.certificate.schema, 'ngl.candidate-program-proof.v2');
+  assert.equal(proof.certificate.target, 'ngl.experiment-001.target:quadratic-2x2-minus-3x-plus-7:v1');
+  assert.equal(proof.certificate.method, 'exact-integer-polynomial-normal-form');
+  assert.deepEqual(proof.certificate.coefficients, ['7', '-3', '2']);
+  assert.deepEqual(proof.certificate.targetCoefficients, ['7', '-3', '2']);
+  assert.equal(proof.certificate.maxIntermediateAbsoluteBound, '2000003000007');
+  assert.equal(proof.certificate.matchesTarget, true);
+
+  for (const input of [-1_000_000, -17, 0, 17, 1_000_000]) {
+    assert.equal(evaluateCandidateProgram(program, input), 2 * input * input - 3 * input + 7);
+  }
+
+  const nearMiss = structuredClone(program);
+  nearMiss.right.value = 8;
+  const mismatch = lib.challenge('candidate-program-v4', nearMiss);
+  assert.equal(mismatch.passed, 0);
+  assert.deepEqual(mismatch.failed, ['POLYNOMIAL_NOT_TARGET']);
+  assert.deepEqual(mismatch.certificate.coefficients, ['8', '-3', '2']);
+
+  const unsupported = lib.challenge('candidate-program-v4', piecewiseOverfitProgram());
+  assert.equal(unsupported.passed, 0);
+  assert.deepEqual(unsupported.failed, ['CANDIDATE_PROOF_UNSUPPORTED_OPERATOR']);
+});
+
+test('signed candidate-program-v4 INSTALL is reusable after a fresh-process restart', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const issuedAt = Date.now();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-quadratic-v4',
+    strategy: 'candidate-program-v4',
+    program: quadraticTargetProgram(),
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-program-v4',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+  assert.equal(draft.proof.total, 1);
+  assert.equal(draft.proof.passed, 1);
+  assert.equal(lib.validateInstallationProposal(draft).valid, true);
+
+  const storePath = join(directory, 'store-v4');
+  const store = await lib.openInstitution(storePath, pem(founder));
+  const signature = sign(null, Buffer.from(lib.approvalPayload(draft)), founder.privateKey).toString('base64url');
+  await store.commit(draft, signature);
+
+  const use = { kind: 'REUSE', id: draft.id, nonce: 'reuse-candidate-program-v4', input: -17, output: 636 };
+  const receipt = sign(null, Buffer.from(lib.executionReceiptPayload(use)), executor.privateKey).toString('base64url');
+  const workerPath = new URL('./reuse-worker.mjs', import.meta.url).pathname;
+  const child = spawnSync(process.execPath, [
+    workerPath, storePath, pem(founder), JSON.stringify(use), receipt
+  ], {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, NGL_FOUNDER_KEY_FINGERPRINT: fingerprint(founder) }
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const snapshot = JSON.parse(child.stdout.trim());
+  assert.equal(snapshot.sequence, 2);
+  assert.equal(snapshot.capabilities[draft.id].strategy, 'candidate-program-v4');
+  assert.equal(snapshot.capabilities[draft.id].uses, 1);
+  assert.deepEqual(snapshot.capabilities[draft.id].program, draft.program);
+  assert.equal(snapshot.capabilities[draft.id].implementationHash, draft.implementationHash);
+
+  const reopened = await lib.openInstitution(storePath, pem(founder));
+  assert.equal(reopened.snapshot().sequence, 2);
+  assert.equal(reopened.snapshot().capabilities[draft.id].strategy, 'candidate-program-v4');
+  assert.equal(reopened.snapshot().capabilities[draft.id].implementationHash, draft.implementationHash);
+}));
+
+test('candidate-program-v4 INSTALL rejects a signed certificate that changes the verifier target', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const issuedAt = Date.now();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-quadratic-v4-tampered',
+    strategy: 'candidate-program-v4',
+    program: quadraticTargetProgram(),
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-candidate-program-v4-tamper',
+    issuedAt,
+    expiresAt: issuedAt + 5 * 60_000,
+    maxUses: 1
+  });
+
+  const tampered = structuredClone(draft);
+  tampered.proof.certificate.targetCoefficients[0] = '8';
+  tampered.proof.certificate.target = 'ngl.experiment-001.target:attacker-controlled:v1';
+
+  assert.deepEqual(lib.validateInstallationProposal(tampered), {
+    valid: false,
+    reason: 'INSTALL_PROOF_INVALID'
+  });
+
+  const store = await lib.openInstitution(join(directory, 'store-v4-tampered'), pem(founder));
+  const signature = sign(null, Buffer.from(lib.approvalPayload(tampered)), founder.privateKey).toString('base64url');
+  await assert.rejects(() => store.commit(tampered, signature), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 0);
+}));

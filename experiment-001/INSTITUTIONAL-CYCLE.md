@@ -48,3 +48,12 @@ candidate-program-v3 is a separate, versioned proof mode. It accepts only the po
 The verifier also computes a conservative absolute-value bound for every AST node over the supported input interval [-1,000,000, 1,000,000]. It rejects a program if any intermediate bound can exceed JavaScript's maximum safe integer, so the evaluator does not silently round an intermediate value within that domain. The signed certificate publishes the exact limits: AST depth 12, 63 AST nodes, polynomial degree 32, coefficient width 4,096 bits, and JavaScript's maximum safe integer. The signed INSTALL contains the certificate and the v3 implementation hash; the ledger persists the program and certificate, and a fresh process reuses it under the same verifier.
 
 This is a formal equivalence proof only for the restricted polynomial language and the declared runtime-safety domain. It is not a proof for v1/v2 programs using non-polynomial operators, not a general-purpose theorem prover, not independent Founder identity/custody, and not novel AI discovery.
+
+
+## Second exact target — candidate-program-v4
+
+candidate-program-v4 reuses the same exact BigInt polynomial normal-form engine for a second verifier-defined target: **2x² − 3x + 7**. The target is fixed by the verifier, not supplied by the candidate proposal. Its ascending coefficient vector is [7, −3, 2], and the proof certificate uses a separate v2 schema containing the stable target ID and expected coefficients. The implementation hash uses the distinct `candidate-program:v4` domain; v1/v2/v3 identities and replay rules remain unchanged.
+
+The same restricted polynomial language and input interval [-1,000,000, 1,000,000] apply. The candidate's conservative maximum intermediate bound for this target is 2,000,003,000,007, below JavaScript's maximum safe integer. A signed INSTALL and fresh-process REUSE regression exercises persistence of the v4 program and its target-bound proof; negative tests reject a coefficient near-miss, unsupported non-polynomial operators, and a signed certificate that attempts to replace the verifier's target.
+
+This demonstrates reuse of the exact proof mechanism for one additional fixed target. It does not provide arbitrary caller-defined targets, general-purpose theorem proving, novel AI discovery, independent Founder identity/custody, or production autonomy.

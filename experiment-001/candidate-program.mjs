@@ -151,16 +151,19 @@ function boundedPolynomialMagnitude(coefficients) {
   return bound;
 }
 
-/**
- * Prove that a candidate program is exactly x² in the restricted polynomial
- * language. BigInt normal forms avoid floating-point proof arithmetic. A
- * conservative bound is checked at every AST node so runtime intermediates
- * remain safe integers throughout the declared input domain.
- *
- * abs/min/max are intentionally outside this proof language; they remain
- * available to the finite-test v1/v2 strategies.
- */
-export function proveCandidateSquareProgram(program) {
+const PROOF_LIMITS = Object.freeze({
+  maxAstDepth: MAX_DEPTH,
+  maxAstNodes: MAX_NODES,
+  maxPolynomialDegree: MAX_PROOF_DEGREE,
+  maxCoefficientBits: MAX_PROOF_COEFFICIENT_BITS,
+  maxSafeInteger: Number.MAX_SAFE_INTEGER
+});
+const QUADRATIC_TARGET = Object.freeze({
+  id: 'ngl.experiment-001.target:quadratic-2x2-minus-3x-plus-7:v1',
+  coefficients: Object.freeze([7n, -3n, 2n])
+});
+
+function analyzeCandidatePolynomial(program) {
   const normalized = validateCandidateProgram(program);
   let maximumIntermediateBound = 0n;
 
@@ -211,24 +214,53 @@ export function proveCandidateSquareProgram(program) {
     return coefficients;
   }
 
-  const coefficients = visit(normalized);
-  const matchesSquare = coefficients.length === 3 &&
-    coefficients[0] === 0n && coefficients[1] === 0n && coefficients[2] === 1n;
+  return { coefficients: visit(normalized), maximumIntermediateBound };
+}
 
+function matchesPolynomial(coefficients, expected) {
+  const length = Math.max(coefficients.length, expected.length);
+  for (let index = 0; index < length; index += 1) {
+    if ((coefficients[index] ?? 0n) !== (expected[index] ?? 0n)) return false;
+  }
+  return true;
+}
+
+/**
+ * Prove exact equivalence to x² in the restricted polynomial language.
+ * BigInt normal forms avoid floating-point proof arithmetic. A conservative
+ * bound is checked at every AST node so runtime intermediates remain safe
+ * integers throughout the declared input domain.
+ */
+export function proveCandidateSquareProgram(program) {
+  const { coefficients, maximumIntermediateBound } = analyzeCandidatePolynomial(program);
   return Object.freeze({
     schema: 'ngl.candidate-program-proof.v1',
     method: 'exact-integer-polynomial-normal-form',
     inputMin: -MAX_INPUT,
     inputMax: MAX_INPUT,
-    limits: Object.freeze({
-      maxAstDepth: MAX_DEPTH,
-      maxAstNodes: MAX_NODES,
-      maxPolynomialDegree: MAX_PROOF_DEGREE,
-      maxCoefficientBits: MAX_PROOF_COEFFICIENT_BITS,
-      maxSafeInteger: Number.MAX_SAFE_INTEGER
-    }),
+    limits: Object.freeze({ ...PROOF_LIMITS }),
     coefficients: Object.freeze(coefficients.map(value => value.toString())),
     maxIntermediateAbsoluteBound: maximumIntermediateBound.toString(),
-    matchesSquare
+    matchesSquare: matchesPolynomial(coefficients, [0n, 0n, 1n])
+  });
+}
+
+/**
+ * Prove exact equivalence to the second fixed target, 2x² - 3x + 7.
+ * The target is verifier-defined, not supplied by the candidate proposal.
+ */
+export function proveCandidateQuadraticProgram(program) {
+  const { coefficients, maximumIntermediateBound } = analyzeCandidatePolynomial(program);
+  return Object.freeze({
+    schema: 'ngl.candidate-program-proof.v2',
+    target: QUADRATIC_TARGET.id,
+    method: 'exact-integer-polynomial-normal-form',
+    inputMin: -MAX_INPUT,
+    inputMax: MAX_INPUT,
+    limits: Object.freeze({ ...PROOF_LIMITS }),
+    coefficients: Object.freeze(coefficients.map(value => value.toString())),
+    targetCoefficients: Object.freeze(QUADRATIC_TARGET.coefficients.map(value => value.toString())),
+    maxIntermediateAbsoluteBound: maximumIntermediateBound.toString(),
+    matchesTarget: matchesPolynomial(coefficients, QUADRATIC_TARGET.coefficients)
   });
 }
