@@ -465,3 +465,36 @@ test('candidate AST payload is required only for the candidate-program strategy'
     reason: 'INSTALL_SCHEMA_INVALID'
   });
 });
+
+test('candidate-program-v3 INSTALL rejects a signed certificate that widens its domain or resource limits', () => withTemp(async directory => {
+  const founder = pair();
+  const executor = pair();
+  const lib = await loadPinned(founder);
+  const issuedAt = Date.now();
+  const draft = lib.makeInstallationProposal({
+    id: 'candidate-square-v3-tampered-certificate',
+    strategy: 'candidate-program-v3',
+    program: factoredSquareProgram(),
+    executorPublicKeyPem: pem(executor),
+    nonce: 'install-v3-cert-tamper-0001',
+    issuedAt,
+    expiresAt: issuedAt + 60_000,
+    maxUses: 1
+  });
+
+  // Even a valid signature over an altered certificate must not redefine the
+  // verifier's declared input domain or resource budget.
+  const tampered = structuredClone(draft);
+  tampered.proof.certificate.inputMax = 1_000_001;
+  tampered.proof.certificate.limits.maxAstNodes = 64;
+
+  assert.deepEqual(lib.validateInstallationProposal(tampered), {
+    valid: false,
+    reason: 'INSTALL_PROOF_INVALID'
+  });
+
+  const store = await lib.openInstitution(join(directory, 'store-v3-tampered-certificate'), pem(founder));
+  const signature = sign(null, Buffer.from(lib.approvalPayload(tampered)), founder.privateKey).toString('base64url');
+  await assert.rejects(() => store.commit(tampered, signature), /INSTALL_PROOF_INVALID/);
+  assert.equal(store.snapshot().sequence, 0, 'a signed but inconsistent proof certificate must not advance the ledger');
+}));
