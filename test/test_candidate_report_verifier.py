@@ -253,6 +253,112 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 self.assertTrue(swapped, "the fixture must replace the path at the selected read boundary")
                 self.assertEqual(str(rejected.exception), "EVALUATION_REPORT_CHANGED_DURING_READ")
 
+    def test_parent_directory_symlink_swap_before_open_cannot_redirect_read(self):
+        if not (
+            os.name == "posix"
+            and os.open in os.supports_dir_fd
+            and os.stat in os.supports_dir_fd
+            and os.stat in os.supports_follow_symlinks
+            and hasattr(os, "O_DIRECTORY")
+            and hasattr(os, "O_NOFOLLOW")
+        ):
+            self.skipTest("directory-descriptor no-follow traversal is unavailable")
+
+        module_spec = importlib.util.spec_from_file_location("candidate_report_verifier_parent_race_before", VERIFIER)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory(prefix="ngl-parent-race-root-") as root_name, tempfile.TemporaryDirectory(prefix="ngl-parent-race-outside-") as outside_name:
+            root = Path(root_name)
+            outside = Path(outside_name)
+            parent = root / "reports"
+            parent.mkdir()
+            target = parent / "report.json"
+            target.write_text("inside", encoding="utf-8")
+            (outside / "report.json").write_text("outside-secret", encoding="utf-8")
+            moved = root / "reports-original"
+            original_open = os.open
+            swapped = False
+
+            def swap_parent():
+                nonlocal swapped
+                os.replace(parent, moved)
+                try:
+                    os.symlink(outside, parent, target_is_directory=True)
+                except OSError as error:
+                    self.skipTest("directory symlinks are unavailable: " + str(error))
+                swapped = True
+
+            def replace_before_open(path, flags, mode=0o777, *, dir_fd=None):
+                if not swapped and (
+                    (path == "reports" and dir_fd is not None)
+                    or (Path(path) == target.absolute() and dir_fd is None)
+                ):
+                    swap_parent()
+                if dir_fd is None:
+                    return original_open(path, flags, mode)
+                return original_open(path, flags, mode, dir_fd=dir_fd)
+
+            with patch.object(module.os, "open", side_effect=replace_before_open):
+                with self.assertRaises(module.VerificationError) as rejected:
+                    module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
+
+            self.assertTrue(swapped, "the parent must be replaced at the selected open boundary")
+            self.assertEqual(str(rejected.exception), "EVALUATION_REPORT_NOT_REGULAR")
+
+    def test_parent_directory_symlink_swap_after_open_keeps_read_pinned(self):
+        if not (
+            os.name == "posix"
+            and os.open in os.supports_dir_fd
+            and os.stat in os.supports_dir_fd
+            and os.stat in os.supports_follow_symlinks
+            and hasattr(os, "O_DIRECTORY")
+            and hasattr(os, "O_NOFOLLOW")
+        ):
+            self.skipTest("directory-descriptor no-follow traversal is unavailable")
+
+        module_spec = importlib.util.spec_from_file_location("candidate_report_verifier_parent_race_after", VERIFIER)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory(prefix="ngl-parent-race-root-") as root_name, tempfile.TemporaryDirectory(prefix="ngl-parent-race-outside-") as outside_name:
+            root = Path(root_name)
+            outside = Path(outside_name)
+            parent = root / "reports"
+            parent.mkdir()
+            target = parent / "report.json"
+            target.write_text("inside", encoding="utf-8")
+            (outside / "report.json").write_text("outside-secret", encoding="utf-8")
+            moved = root / "reports-original"
+            original_open = os.open
+            swapped = False
+
+            def swap_parent():
+                nonlocal swapped
+                os.replace(parent, moved)
+                try:
+                    os.symlink(outside, parent, target_is_directory=True)
+                except OSError as error:
+                    self.skipTest("directory symlinks are unavailable: " + str(error))
+                swapped = True
+
+            def replace_after_open(path, flags, mode=0o777, *, dir_fd=None):
+                if path == "reports" and dir_fd is not None and not swapped:
+                    descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+                    swap_parent()
+                    return descriptor
+                if Path(path) == target.absolute() and dir_fd is None and not swapped:
+                    swap_parent()
+                if dir_fd is None:
+                    return original_open(path, flags, mode)
+                return original_open(path, flags, mode, dir_fd=dir_fd)
+
+            with patch.object(module.os, "open", side_effect=replace_after_open):
+                source = module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
+
+            self.assertTrue(swapped, "the parent must be replaced after its directory descriptor is opened")
+            self.assertEqual(source, "inside", "the opened parent descriptor must not be redirected through the replacement symlink")
+
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
         source = self.receipt_path.read_text(encoding="utf-8")
