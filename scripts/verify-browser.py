@@ -1188,7 +1188,8 @@ def shared(browser,url,data,out):
             assert sheet_content.evaluate(
                 "element => !element.hasAttribute('data-institution-record-unverified')"
             ), 'A new docket sheet must not inherit prior unverified-record metadata, including an empty attribute'
-            expect(a.locator('#sheet')).to_contain_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-kicker')).to_have_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-content')).to_contain_text('not authenticated')
             offline_card=a.locator('[data-offline-decision-id="browser-docket-pending"]')
             expect(offline_card).to_be_visible()
             expect(offline_card).to_contain_text('LOCAL STATUS CLAIM · PENDING')
@@ -1203,7 +1204,8 @@ def shared(browser,url,data,out):
             expect(offline_record.get_by_role('button',name='Open local docket →',exact=True)).to_be_visible()
             offline_record.get_by_role('button',name='Open local docket →',exact=True).click()
             a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber · local archive'",timeout=15000)
-            expect(a.locator('#sheet-content')).to_contain_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-kicker')).to_have_text('LOCAL COPY · UNVERIFIED')
+            expect(a.locator('#sheet-content')).to_contain_text('not authenticated')
             expect(a.locator('#sheet-content [data-gate-action]')).to_have_count(0)
             close_sheet(a)
         finally:
