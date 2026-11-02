@@ -329,12 +329,31 @@ test('Founder challenge dispositions bind immutable source events without granti
   assert.equal(reviewProjection._projection.proposalStatus, 'linked', JSON.stringify(reviewProjection._projection));
   assert.equal(reviewProjection._projection.targetChallengeStatus, 'linked', JSON.stringify(reviewProjection._projection));
   assert.equal(reviewProjection.actor.id, founder.id);
+  const afterBeforeValidation = projectCharacter(reviewed.world, founder);
+  const eventIdCounts = new Map();
+  for (const event of reviewed.world.events) {
+    if (typeof event?.id === 'string' && event.id.length > 0) {
+      eventIdCounts.set(event.id, (eventIdCounts.get(event.id) || 0) + 1);
+    }
+  }
+  const uniqueEvents = reviewed.world.events.filter(event =>
+    typeof event?.id === 'string' && event.id.length > 0 && eventIdCounts.get(event.id) === 1
+  );
+  const actorBoundLinkedReviews = projectResearchRecords(uniqueEvents, reviewed.world.creations).filter(record =>
+    record.type === 'experiment-challenge-reviewed' &&
+    record._projection?.proposalStatus === 'linked' &&
+    record._projection?.targetChallengeStatus === 'linked' &&
+    record.actor?.id === founder.id && record.actor?.role === founder.role
+  );
+  const eventsBeforeValidation = JSON.stringify(reviewed.world.events);
   await validatePayload({
     world: reviewed.world,
     institutionalEvents: [],
     artifacts: {},
     publicationBindings: []
   });
+  assert.equal(JSON.stringify(reviewed.world.events), eventsBeforeValidation,
+    'validation must not rewrite retained game history');
   assert.equal(reviewEvent.outcome, undefined);
   assert.equal(reviewEvent.status, undefined);
   assert.equal(reviewed.world.xp, challenge.world.xp);
@@ -344,7 +363,14 @@ test('Founder challenge dispositions bind immutable source events without granti
     [before.xp, before.publicationXp, before.questXp],
     'a next-step disposition is not an XP-bearing experiment outcome'
   );
-  assert.equal(after.skills.find(skill => skill.id === 'deliberator').count, 1);
+  assert.equal(after.skills.find(skill => skill.id === 'deliberator').count, 1, JSON.stringify({
+    viewer: { id: founder.id, role: founder.role },
+    reviewEvent: { id: reviewEvent.id, actor: reviewEvent.actor },
+    duplicateEventIds: [...eventIdCounts].filter(([, count]) => count !== 1).map(([id]) => id),
+    actorBoundLinkedReviewIds: actorBoundLinkedReviews.map(record => record.id),
+    beforeValidationCount: afterBeforeValidation.skills.find(skill => skill.id === 'deliberator').count,
+    afterValidationCount: after.skills.find(skill => skill.id === 'deliberator').count
+  }));
   assert.equal(after.fieldSatchel.filter(item => item.id === 'challenge-review').length, 1);
   assert.deepEqual(
     after.fieldSatchel.find(item => item.kind === 'challenge-review').action,
