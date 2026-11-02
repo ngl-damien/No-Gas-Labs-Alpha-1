@@ -76,6 +76,10 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         scenarios = [
             ("single", ["17"], 1),
             ("range", ["--range", "-3", "3"], 7),
+            ("minimum-input", ["-1000000"], 1),
+            ("maximum-input", ["1000000"], 1),
+            ("lower-edge-range", ["--range", "-1000000", "-999999"], 2),
+            ("upper-edge-range", ["--range", "999999", "1000000"], 2),
         ]
         for name, arguments, expected_count in scenarios:
             with self.subTest(name=name):
