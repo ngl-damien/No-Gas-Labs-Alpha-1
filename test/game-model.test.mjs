@@ -370,7 +370,7 @@ test('Founder challenge dispositions bind immutable source events without granti
 
 
 
-async function reviewedMoonshot(disposition = 'request-evidence') {
+async function reviewedMoonshot(disposition = 'request-evidence', founderActor = founder) {
   const published = await publish(createWorld({ now }), 'observatory');
   const proposal = await applyAction(published.world, {
     type: 'propose-moonshot',
@@ -395,15 +395,16 @@ async function reviewedMoonshot(disposition = 'request-evidence') {
     challengeText: 'The report does not retain the control settings needed for reproduction.',
     evidenceCreationId: null,
     evidenceVersion: null
-  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+  }, founderActor, { now: '2026-10-17T12:00:03.000Z' });
   const reviewed = await applyAction(challenge.world, {
     type: 'review-experiment-challenge',
     reportId: report.result.reportId,
     challengeId: challenge.result.challengeId,
     disposition,
     rationale: 'Repeat the comparison and preserve the requested source version.'
-  }, founder, { now: '2026-10-17T12:00:04.000Z' });
+  }, founderActor, { now: '2026-10-17T12:00:04.000Z' });
   return {
+    founder: founderActor,
     world: reviewed.world,
     moonshotId: proposal.result.moonshotId,
     reviewId: reviewed.result.reviewId,
@@ -412,9 +413,10 @@ async function reviewedMoonshot(disposition = 'request-evidence') {
 }
 
 test('an actionable Founder disposition accepts one later source-linked follow-up without certifying its claim', async () => {
-  const source = await reviewedMoonshot('request-evidence');
+  const serverFounder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const source = await reviewedMoonshot('request-evidence', serverFounder);
   const beforeWitness = projectCharacter(source.world, witness);
-  const beforeFounder = projectCharacter(source.world, founder);
+  const beforeFounder = projectCharacter(source.world, source.founder);
   const beforeWorldXp = source.world.xp;
   const followed = await applyAction(source.world, {
     type: 'report-experiment',
@@ -434,7 +436,7 @@ test('an actionable Founder disposition accepts one later source-linked follow-u
   assert.equal(event.status, undefined);
   assert.equal(followed.world.xp, beforeWorldXp, 'a report cannot mint institutional world XP');
   const afterWitness = projectCharacter(followed.world, witness);
-  const afterFounder = projectCharacter(followed.world, founder);
+  const afterFounder = projectCharacter(followed.world, source.founder);
   assert.equal(afterWitness.questXp - beforeWitness.questXp, 25, 'only the reporting actor receives report-activity XP');
   assert.equal(afterFounder.questXp - beforeFounder.questXp, 0, 'the other actor receives no XP for a shared report');
   assert.equal(afterWitness.worldXp, beforeWitness.worldXp);

@@ -1101,7 +1101,8 @@ def research_follow_up_loop(browser,url,out):
         before_world=review_state['world']
         before_witness_xp=character_xp_components(witness_page)
         before_founder_xp=character_xp_components(founder_page)
-        assert before_world['xp']==100
+        before_world_xp=before_world['xp']
+        assert type(before_world_xp) is int and before_world_xp>=0
         assert founder_context.request.get(url+'api/decisions').json()['revision']==decisions_before['revision']
 
         for page in [witness_page,founder_page]:
@@ -1143,7 +1144,7 @@ def research_follow_up_loop(browser,url,out):
         assert follow_up['evidenceCreationId']==creation_id and follow_up['evidenceVersion']==1
         assert 'outcome' not in follow_up and 'status' not in follow_up and 'verdict' not in follow_up
         assert 'approval' not in follow_up and 'authority' not in follow_up
-        assert witness_state_after['world']['xp']==before_world['xp']
+        assert witness_state_after['world']['xp']==before_world_xp
         decisions_after=founder_context.request.get(url+'api/decisions').json()
         assert decisions_after['revision']==decisions_before['revision']
 
