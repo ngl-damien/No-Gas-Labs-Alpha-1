@@ -80,38 +80,125 @@ def read_bounded_regular_file(path, limit, label):
     if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
         fail(label + "_PATH_INVALID")
     absolute = Path(os.path.abspath(raw_path))
-
-    # Reject symlinks in every existing path component before opening.
-    current = Path(absolute.anchor)
-    try:
-        for part in absolute.parts[1:]:
-            current = current / part
-            info = os.lstat(current)
-            if stat.S_ISLNK(info.st_mode):
-                fail(label + "_NOT_REGULAR")
-            if current != absolute and not stat.S_ISDIR(info.st_mode):
-                fail(label + "_NOT_REGULAR")
-        before = os.lstat(absolute)
-    except FileNotFoundError:
-        fail(label + "_NOT_FOUND")
-    except VerificationError:
-        raise
-    except (OSError, ValueError):
-        fail(label + "_READ_FAILED")
-
-    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+    parts = absolute.parts
+    if len(parts) < 2:
         fail(label + "_NOT_REGULAR")
-    if before.st_size > limit:
-        fail(label + "_FILE_TOO_LARGE")
 
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    # POSIX directory descriptors pin every parent component. O_NOFOLLOW on
+    # the final file alone is insufficient: a parent can become a symlink
+    # between lstat(path_component) and open(full_path).
+    directory_fd_walk = (
+        os.name == "posix"
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+    directory_descriptors = []
+    directory_descriptor = None
     descriptor = None
+
     try:
-        descriptor = os.open(str(absolute), flags)
+        if directory_fd_walk:
+            directory_flags = (
+                os.O_RDONLY
+                | os.O_DIRECTORY
+                | os.O_NOFOLLOW
+                | getattr(os, "O_CLOEXEC", 0)
+            )
+            try:
+                directory_descriptor = os.open(absolute.anchor, directory_flags)
+                directory_descriptors.append(directory_descriptor)
+                for part in parts[1:-1]:
+                    try:
+                        next_descriptor = os.open(
+                            part, directory_flags, dir_fd=directory_descriptor
+                        )
+                    except OSError as error:
+                        if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                            fail(label + "_NOT_REGULAR")
+                        if error.errno == errno.ENOENT:
+                            fail(label + "_NOT_FOUND")
+                        raise
+                    directory_descriptors.append(next_descriptor)
+                    if not stat.S_ISDIR(os.fstat(next_descriptor).st_mode):
+                        fail(label + "_NOT_REGULAR")
+                    directory_descriptor = next_descriptor
+            except VerificationError:
+                raise
+            except FileNotFoundError:
+                fail(label + "_NOT_FOUND")
+            except OSError as error:
+                if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                    fail(label + "_NOT_REGULAR")
+                if error.errno == errno.ENOENT:
+                    fail(label + "_NOT_FOUND")
+                fail(label + "_READ_FAILED")
+
+            filename = parts[-1]
+            try:
+                before = os.stat(
+                    filename, dir_fd=directory_descriptor, follow_symlinks=False
+                )
+            except FileNotFoundError:
+                fail(label + "_NOT_FOUND")
+            except OSError as error:
+                if error.errno in (errno.ELOOP, errno.ENOTDIR):
+                    fail(label + "_NOT_REGULAR")
+                fail(label + "_READ_FAILED")
+        else:
+            # Best-effort compatibility path for platforms without POSIX
+            # dir_fd/O_NOFOLLOW support. It detects ordinary symlinks and
+            # replacement, but cannot make parent-path inspection atomic.
+            current = Path(absolute.anchor)
+            try:
+                for part in parts[1:]:
+                    current = current / part
+                    info = os.lstat(current)
+                    if stat.S_ISLNK(info.st_mode):
+                        fail(label + "_NOT_REGULAR")
+                    if current != absolute and not stat.S_ISDIR(info.st_mode):
+                        fail(label + "_NOT_REGULAR")
+                before = os.lstat(absolute)
+            except FileNotFoundError:
+                fail(label + "_NOT_FOUND")
+            except VerificationError:
+                raise
+            except (OSError, ValueError):
+                fail(label + "_READ_FAILED")
+            filename = parts[-1]
+
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            fail(label + "_NOT_REGULAR")
+        if before.st_size > limit:
+            fail(label + "_FILE_TOO_LARGE")
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        try:
+            if directory_fd_walk:
+                descriptor = os.open(filename, flags, dir_fd=directory_descriptor)
+            else:
+                descriptor = os.open(str(absolute), flags)
+        except FileNotFoundError:
+            fail(label + "_CHANGED_DURING_READ")
+        except OSError as error:
+            if error.errno in (errno.ELOOP, errno.ENOTDIR, errno.ENOENT):
+                fail(label + "_CHANGED_DURING_READ")
+            fail(label + "_READ_FAILED")
+
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
             fail(label + "_NOT_REGULAR")
         if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            fail(label + "_CHANGED_DURING_READ")
+        stable_fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(getattr(opened, field) != getattr(before, field) for field in stable_fields):
             fail(label + "_CHANGED_DURING_READ")
         if opened.st_size > limit:
             fail(label + "_FILE_TOO_LARGE")
@@ -127,14 +214,21 @@ def read_bounded_regular_file(path, limit, label):
             if total > limit:
                 fail(label + "_FILE_TOO_LARGE")
 
-        after = os.lstat(absolute)
+        try:
+            if directory_fd_walk:
+                after = os.stat(
+                    filename, dir_fd=directory_descriptor, follow_symlinks=False
+                )
+            else:
+                after = os.lstat(absolute)
+        except (FileNotFoundError, OSError):
+            fail(label + "_CHANGED_DURING_READ")
         opened_after = os.fstat(descriptor)
         identity = (opened.st_dev, opened.st_ino)
         if stat.S_ISLNK(after.st_mode) or not stat.S_ISREG(after.st_mode):
             fail(label + "_CHANGED_DURING_READ")
         if (after.st_dev, after.st_ino) != identity or (opened_after.st_dev, opened_after.st_ino) != identity:
             fail(label + "_CHANGED_DURING_READ")
-        stable_fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
         if any(getattr(after, field) != getattr(opened, field) for field in stable_fields):
             fail(label + "_CHANGED_DURING_READ")
         if any(getattr(opened_after, field) != getattr(opened, field) for field in stable_fields):
@@ -144,19 +238,28 @@ def read_bounded_regular_file(path, limit, label):
         source = b"".join(chunks)
     except VerificationError:
         raise
+    except FileNotFoundError:
+        fail(label + "_NOT_FOUND")
     except OSError as error:
-        if error.errno == errno.ELOOP:
+        if error.errno in (errno.ELOOP, errno.ENOTDIR):
             fail(label + "_NOT_REGULAR")
         fail(label + "_READ_FAILED")
     finally:
         if descriptor is not None:
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        for opened_directory in reversed(directory_descriptors):
+            try:
+                os.close(opened_directory)
+            except OSError:
+                pass
 
     try:
         return source.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         fail(label + "_INVALID_UTF8")
-
 
 def parse_json(source, label):
     def pairs(items):
