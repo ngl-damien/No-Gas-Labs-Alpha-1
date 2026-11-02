@@ -512,7 +512,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
 
         receipt_source = self.receipt_path.read_text(encoding="utf-8")
         large_receipt_source = re.sub(
-            r'("inputMin"\\s*:\\s*)-1000000(?=\\s*[,}])',
+            r'("inputMin"\s*:\s*)-1000000(?=\s*[,}])',
             lambda match: match.group(1) + huge_integer,
             receipt_source,
             count=1,
@@ -544,7 +544,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
 
         report_source = report_path.read_text(encoding="utf-8")
         large_report_source = re.sub(
-            r'("input"\\s*:\\s*)17(?=\\s*[,}])',
+            r'("input"\s*:\s*)17(?=\s*[,}])',
             lambda match: match.group(1) + huge_integer,
             report_source,
             count=1,
