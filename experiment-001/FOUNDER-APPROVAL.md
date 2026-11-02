@@ -70,3 +70,6 @@ NGL_FOUNDER_KEY_FINGERPRINT=<independently-provisioned-64-character-hex-fingerpr
 5. Confirm the full proposal digest and sign the INSTALL as in the existing two-step flow. For v5, the signer derives the public key from the explicitly supplied private key and verifies the task-specification signature against that key before emitting the separate INSTALL signature.
 
 The CLI never creates, enrolls, rotates, exports, or stores a Founder key. Both signatures still depend on the same configured key and trust pin. A valid signature proves key possession only. Tests use ephemeral keys; no real Founder key or approval is present.
+
+
+Within one institutional ledger, a task-specification ID is immutable: multiple capability installations may reference the same ID and digest, but a different normalized specification under an existing ID is rejected with `CANDIDATE_TASK_SPEC_ID_CONFLICT` before the ledger advances.
