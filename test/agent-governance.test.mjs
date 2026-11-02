@@ -688,6 +688,62 @@ test('preflight refuses receipt creation through an escaping directory symlink',
   }
 });
 
+test('preflight refuses a receipt parent swapped to an external symlink after its directory check', {
+  skip: process.platform === 'win32' ? 'POSIX symlink replacement requires symlink privileges' : false
+}, async () => {
+  const root = await fixture();
+  const outside = await mkdtemp(join(tmpdir(), 'ngl-agent-receipt-race-outside-'));
+  try {
+    await mkdir(join(root, 'artifacts'));
+    const hookPath = join(root, 'receipt-parent-swap.cjs');
+    await writeFile(hookPath, [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const originalStat = fs.promises.stat;",
+      "let swapped = false;",
+      "fs.promises.stat = async function(candidate, ...args) {",
+      "  const metadata = await originalStat.call(this, candidate, ...args);",
+      "  const root = process.env.NGL_PREFLIGHT_SWAP_ROOT;",
+      "  const artifacts = path.join(root, 'artifacts');",
+      "  if (!swapped && path.resolve(String(candidate)) === artifacts) {",
+      "    fs.renameSync(artifacts, path.join(root, 'artifacts-original'));",
+      "    fs.symlinkSync(process.env.NGL_PREFLIGHT_SWAP_OUTSIDE, artifacts, 'dir');",
+      "    swapped = true;",
+      "  }",
+      "  return metadata;",
+      "};",
+      "syncBuiltinESMExports();"
+    ].join('\n'));
+
+    const child = spawnSync(process.execPath, [
+      '--require', hookPath,
+      new URL('../scripts/validate-agent-governance.mjs', import.meta.url).pathname,
+      '--root', root,
+      '--receipt', 'artifacts/preflight.json'
+    ], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        NGL_PREFLIGHT_SWAP_ROOT: root,
+        NGL_PREFLIGHT_SWAP_OUTSIDE: outside
+      }
+    });
+    assert.equal(child.error, undefined, child.error?.message || 'preflight subprocess failed');
+    assert.equal(child.status, 1, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.status, 'blocked');
+    assert.ok(result.failures.some(item =>
+      item.path === 'artifacts/preflight.json' && item.reason.includes('receipt')
+    ));
+    await assert.rejects(readFile(join(outside, 'preflight.json'), 'utf8'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test('hosted preflight includes the world-view source and canonical checkpoint', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
