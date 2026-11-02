@@ -376,9 +376,9 @@ test('preflight rejects an in-place trusted-file rewrite after the initial snaps
     assert.equal(await readFile(started, 'utf8'), 'yes', 'the same-inode rewrite must occur after the initial snapshot');
     assert.equal(await readFile(restored, 'utf8'), 'yes', 'the original bytes must be restored before the child exits');
     const decoyHash = createHash('sha256').update(decoyBytes).digest('hex');
-    assert.ok(result.files.some(file =>
+    assert.ok(!result.files.some(file =>
       file.path === checkpointPath && file.sha256 === decoyHash
-    ), 'the pre-fix reader should expose the tampered checkpoint digest');
+    ), 'tampered bytes must never be fingerprinted as the canonical checkpoint');
     assert.equal(result.status, 'blocked', JSON.stringify(result));
     assert.equal(child.status, 1, child.stderr);
     assert.ok(result.failures.some(item =>
