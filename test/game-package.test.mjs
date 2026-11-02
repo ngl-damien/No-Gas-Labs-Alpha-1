@@ -50,7 +50,7 @@ test('service worker activation claims clients when obsolete-cache deletion fail
   const handlers=await serviceWorkerHarness({
     fetchImpl:async()=>serviceResponse('unused'),
     openCache:async()=>({}),
-    listCaches:async()=>['ngl-common-ground-shell-old','unrelated-cache','ngl-common-ground-shell-current'],
+    listCaches:async()=>['ngl-common-ground-shell-old','unrelated-cache','ngl-common-ground-shell-20261101-1'],
     deleteCache:async name=>{attempted.push(name);throw new Error('cache deletion denied');},
     claimClients:async()=>{claims+=1;}
   });
