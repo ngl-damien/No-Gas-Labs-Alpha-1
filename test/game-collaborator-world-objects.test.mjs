@@ -80,7 +80,8 @@ test('the Polymath Academy shelf selects only retained tutor folios and preserve
   const synthesizer = responseEvent({
     eventId: 'synth-event', responseId: 'synth-response', role: 'synthesizer',
     at: '2026-10-30T05:02:00.000Z', snapshotRevision: 2,
-    priorEvents: [proposal, tutor]
+    priorEvents: [proposal, tutor],
+    responseText: '{"scope":{"moonshotId":"moonshot-1","includedEventIds":["proposal-1"],"omittedEventIds":[]},"recordedSupport":[],"contradictions":[],"dissentPreserved":[],"unknowns":[],"nextDiscriminatingExperiment":{"procedure":"Repeat the bounded comparison.","outcome":"A reproducible counterexample would change the conclusion."}}'
   });
   const world = worldWith(null, { revision: 3, events: [proposal, tutor, synthesizer] });
   const before = structuredClone(world);
@@ -91,6 +92,9 @@ test('the Polymath Academy shelf selects only retained tutor folios and preserve
   assert.equal(shelf.items[0].roleId, 'tutor');
   assert.equal(shelf.items[0].validationStatus, 'valid-for-human-review');
   assert.equal(shelf.omittedCount, 0);
+  const forgedProjection = [{ ...projection[0], roleId: 'tutor', responseId: 'forged-tutor' }];
+  assert.deepEqual(selectAcademyTutorFolios(world, forgedProjection).items.map(item => item.responseId),
+    ['tutor-response'], 'an unsealed caller-supplied projection cannot invent an Academy folio');
   assert.deepEqual(world, before, 'the Academy shelf is a read-only projection');
 
   const rejected = responseEvent({
