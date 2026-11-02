@@ -1,12 +1,12 @@
 # Latest Durable Checkpoint
 
-**Updated:** 2026-10-31 UTC  
+**Updated:** 2026-11-02 UTC  
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`  
-**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability  
-**Current main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`  
-**Active proposal:** [PR #248](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/248), draft/open/unmerged  
-**Branch:** `ops/canonical-checkpoint-preflight-20261031-run10`  
-**PR #248 head at run-10 checkpoint refresh:** `4172b61ed793943948b7534a771cb262e56da48c` (Verify and Genesis passed; Browser Acceptance was still running at the time of this refresh).
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime  
+**Current main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f` (proposed game/Android stack remains unintegrated)  
+**Active proposal:** [PR #293](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/293), draft/open/unmerged  
+**Branch:** `game/android-acceptance-founder-cli-20261102`  
+**Code commit:** `df92fb4f1d385d430f169a1defd0ae5f945c70c8`, child of Worker A PR #291 head `64f54a398e63aa1d86a1f51176715b730417008f`, which is a child of Android PR #289 head `440194ad4f8e7619bffc5b86b9eadf41c0492648`.
 
 ## Cycle 1 — canonical checkpoint and hosted preflight repair
 
@@ -1062,3 +1062,44 @@ No merge, release, deployment, spending, external publication, credential/permis
 **Planned source/test scope:** `game/model.mjs`, `game/server.mjs`, `game/quests.mjs`, `game/client.mjs`, `game/chronicle.mjs`, `game/character-sheet.mjs`, `test/game-model.test.mjs`, `test/game-server.test.mjs`, `test/game-quests.test.mjs`, `test/chronicle.test.mjs`, `test/game-character-sheet.test.mjs`, and `scripts/verify-browser.py`. The preflight target manifest already covers these paths; do not edit Worker A's `package.json` or preflight contract.  
 **Acceptance plan:** negative model/server tests for unknown, mismatched, backdated, duplicate and non-actionable review references; require exact retained evidence for `request-evidence`; verify a later report completes the shared quest but only the reporting actor receives report-activity XP; verify no world XP, canonical decision revision, truth verdict, approval or authority changes; exercise Founder review → Witness follow-up in two browser sessions and inspect the resulting Moonshot Field/Chronicle/field-satchel record.  
 **Verification boundary at claim:** the parent #284 exact-head hosted checks and its 73-target preflight are baseline evidence only; they do not verify this new feature. No local checkout/Node 24 execution or physical Android-device acceptance is available in this run. No merge, release, deployment, spending, external publication, credential/permission change or Founder acceptance is authorized or claimed.
+
+
+---
+
+## Run 34 — 2026-11-02 — native Android acceptance and Founder CLI boundary
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; no proposed game/Android work is integrated into main.  
+**Prior checkpoint:** this branch's `docs/operations/LATEST_CHECKPOINT.md` ended at Run 33; its older Android and game evidence was treated as historical, not current.  
+**Latest Worker A result inspected:** PR #291, head `64f54a398e63aa1d86a1f51176715b730417008f`, child of PR #289. Verify `41532580892`, Genesis `41532581076`, and Browser Acceptance `41532581193` passed; Android `41532581039` completed with one instrumentation failure. PR #291's Linux Verify preflight was ready with 73 targets and zero warnings/failures; its macOS Android preflight receipt was ready with two explicit warnings for guarded path-based fallback where descriptor-relative parent pinning is unavailable.  
+**Other worker handoff inspected:** PR #289 comment [6589442466](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/289#issuecomment-6589442466) reports the current Android failure details and a separate production-loopback Founder-key test gap. Worker B owns the Android/game test files; no concurrent Worker A edit was made.  
+
+### Fresh exact-head failure attribution
+
+- PR #289 head `440194ad4f8e7619bffc5b86b9eadf41c0492648`: Verify `41528114719`, Genesis `41528114609`, Browser Acceptance `41528114787` passed; Android `41528114658` failed 2 of 5 instrumentation tests. One failure is a direct off-main-thread `WebView.getUrl()` call in `nativeBridgeRejectsSameOriginSiblingDocuments`. The other is a JavaScript evaluation callback timeout in `bundledWorldStartsPrivatelyAndSharedModeFailsClosed`; no renderer/logcat diagnosis was present in the run output.
+- PR #291 head `64f54a3`: Android `41532581039` failed only the same off-main-thread WebView call; all 5 instrumentation tests completed and the prior JavaScript callback timeout did not reproduce. Treat the timeout as non-reproduced, not proven fixed. The exact Android run still failed and does not establish acceptance.
+
+### Selected action and why it ranked highest
+
+The native Android package is a mandatory G7 gate, and the current combined stack already builds the APK and runs the API 35 emulator. The one reproducible instrumentation failure blocks that gate. The Founder-key CLI branch was a separate, source-backed startup boundary gap identified in Worker A's review; adding a negative regression protects against a production loopback deployment silently entering the development-only generated-key path.
+
+### Implementation
+
+- `android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java`: capture the sibling page URL through `Instrumentation.runOnMainSync` so no WebView method is called on the instrumentation thread. Separate the private-world DOM-storage/activity-recreation assertion from the broader shared/private doorway test. Wait for the recreated WebView to report a loaded URL/progress and include URL, progress, title, attachment, visibility, and Activity lifecycle state if the next JavaScript evaluation stalls. This improves diagnosis without changing application runtime behavior.
+- `test/game-server.test.mjs`: add a child-process regression with `NODE_ENV=production`, `HOST=127.0.0.1`, `PORT=0`, no `NGL_FOUNDER_KEY`, and an isolated runtime directory. It requires exit code 1 with the explicit-key error and proves the runtime directory remains absent. No key is generated or provisioned.
+- Code commit: `df92fb4f1d385d430f169a1defd0ae5f945c70c8`. Draft PR #293 is a child of PR #291. No game model/server source, canonical event, XP, inventory, identity, or authority semantics changed.
+
+### Verification boundary
+
+- PR #293 exact-head Verify, Genesis Evidence Invariant, Browser Acceptance, and Android Alpha-1 emulator checks are pending. Parent checks are baseline evidence only and do not verify the new code.
+- No local Node 24 test or portable preflight was run because both registered Desktop Commander devices were offline. Hosted preflight on the parent PR #291 is not a receipt for this new head.
+- No physical Android device, supported-device baseline, mainline integration, Founder acceptance, merge, release, or deployment is claimed.
+
+### Next ranked actions
+
+1. Inspect PR #293 exact-head Verify/Genesis/Browser/Android results; require the production-loopback CLI regression to pass and the WebView instrumentation suite to pass on the combined head.
+2. If the JavaScript evaluation timeout recurs, use the new WebView state diagnostics to distinguish a navigation/readiness issue from renderer failure before changing application behavior; add logcat capture only if the state remains insufficient.
+3. After Android acceptance is stable, return to the next unowned gameplay gate: a player-owned inventory/equipment transition with atomic ownership and event-derived provenance, or a deliberate non-combat encounter model without inferring Damien's combat preference.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder decision, key generation, or canonical game progress occurred.

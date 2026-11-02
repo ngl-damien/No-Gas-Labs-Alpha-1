@@ -69,16 +69,27 @@ public final class MainActivityTest {
                 "true",
                 evaluate(activity, "!!document.getElementById('world')"));
 
+    }
+
+
+    @Test
+    public void privateWorldWebViewStorageSurvivesActivityRecreation() throws Exception {
+        MainActivity activity = activity();
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
         evaluate(activity, "localStorage.setItem('ngl.android.shell-smoke', 'persisted'); 'saved'");
+
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
+        awaitPageLoaded(recreated);
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         assertEquals("the stable appassets origin retains DOM storage across activity recreation",
                 "\"persisted\"",
                 evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
     }
-
 
     @Test
     public void nativeBridgeRejectsSameOriginSiblingDocuments() throws Exception {
@@ -121,8 +132,10 @@ public final class MainActivityTest {
             Thread.sleep(500);
             assertEquals("same-origin sibling pages must not reach the native document picker",
                     0, pickerMonitor.getHits());
+            AtomicReference<String> observedSiblingUrl = new AtomicReference<>();
+            instrumentation.runOnMainSync(() -> observedSiblingUrl.set(webView.getUrl()));
             assertEquals("the sibling page is not the trusted game document",
-                    siblingUrl, webView.getUrl());
+                    siblingUrl, observedSiblingUrl.get());
         } finally {
             instrumentation.removeMonitor(pickerMonitor);
         }
@@ -452,13 +465,49 @@ public final class MainActivityTest {
         return result.get();
     }
 
+    private void awaitPageLoaded(MainActivity activity) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        AtomicReference<Boolean> ready = new AtomicReference<>(false);
+        while (System.nanoTime() < deadline) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                WebView current = activity.getGameWebViewForTests();
+                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100);
+            });
+            if (Boolean.TRUE.equals(ready.get())) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("WebView page did not finish loading: " + describeWebView(activity));
+    }
+
+    private String describeWebView(MainActivity activity) throws Exception {
+        AtomicReference<String> state = new AtomicReference<>("state unavailable");
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView current = activity.getGameWebViewForTests();
+            if (current == null) {
+                state.set("webView=null, activityDestroyed=" + activity.isDestroyed()
+                        + ", finishing=" + activity.isFinishing());
+                return;
+            }
+            state.set("url=" + current.getUrl()
+                    + ", progress=" + current.getProgress()
+                    + ", title=" + current.getTitle()
+                    + ", attached=" + current.isAttachedToWindow()
+                    + ", visibility=" + current.getVisibility()
+                    + ", windowVisibility=" + current.getWindowVisibility()
+                    + ", activityDestroyed=" + activity.isDestroyed()
+                    + ", finishing=" + activity.isFinishing());
+        });
+        return state.get();
+    }
+
     private void awaitJavaScript(MainActivity activity, String condition) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
             if ("true".equals(evaluate(activity, condition))) return;
             Thread.sleep(100);
         }
-        throw new AssertionError("Timed out waiting for WebView condition: " + condition);
+        throw new AssertionError("Timed out waiting for WebView condition: " + condition
+                + "; " + describeWebView(activity));
     }
 
     private void awaitCounter(MainActivity activity, CounterCondition condition) throws Exception {
@@ -482,7 +531,10 @@ public final class MainActivityTest {
                     latch.countDown();
                 })
         );
-        assertTrue("JavaScript evaluation did not complete", latch.await(10, TimeUnit.SECONDS));
+        if (!latch.await(10, TimeUnit.SECONDS)) {
+            throw new AssertionError("JavaScript evaluation did not complete for [" + script
+                    + "]; " + describeWebView(activity));
+        }
         return result.get();
     }
 
