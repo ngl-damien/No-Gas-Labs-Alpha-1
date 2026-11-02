@@ -40,7 +40,7 @@ final class NativeWorldFiles {
     static final int MAX_QUEUED_MESSAGES = MAX_QUEUED_CHUNKS + 2;
 
     private final Activity activity;
-    private final ThreadPoolExecutor io = createIoExecutor();
+    private final ThreadPoolExecutor io;
 
     private volatile boolean closed;
     private JavaScriptReplyProxy importReplyProxy;
@@ -65,7 +65,7 @@ final class NativeWorldFiles {
     private String exportMime;
 
     NativeWorldFiles(Activity activity) {
-        this.activity = activity;
+        this(activity, createIoExecutor());
     }
 
     // Injection point for deterministic instrumentation of queue pressure.
@@ -122,6 +122,10 @@ final class NativeWorldFiles {
     }
 
     private void openImportPicker(JavaScriptReplyProxy replyProxy) {
+        if (replyProxy == null) {
+            showToast("The game page is not ready to receive an import.");
+            return;
+        }
         if (importPickerActive || importInProgress || exportTransferActive
                 || exportAwaitingPicker || exportCopyInProgress || pendingExportFile != null) {
             showToast("Another native file transfer is already in progress.");
@@ -238,7 +242,11 @@ final class NativeWorldFiles {
     }
 
     private void queueExportChunk(byte[] chunk) {
-        if (!exportTransferActive || exportCompletionQueued) return;
+        if (!exportTransferActive) return;
+        if (exportCompletionQueued) {
+            abortExport(exportGeneration, "Unexpected data arrived after export completion.");
+            return;
+        }
         long generation = exportGeneration;
         if (chunk == null || chunk.length == 0 || chunk.length > CHUNK_BYTES) {
             abortExport(generation, "The export chunk exceeded the native transfer limit.");
