@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import re
@@ -6,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SYNTHESIZER = ROOT / "scripts" / "synthesize-candidate-task.mjs"
@@ -213,6 +215,39 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
             self.assertEqual(fifo_result.returncode, 1)
             self.assertIn("EVALUATION_REPORT_NOT_REGULAR", fifo_result.stderr)
             self.assertEqual(fifo_result.stdout, "")
+
+    def test_rejects_report_path_replacement_before_open_and_after_read(self):
+        module_spec = importlib.util.spec_from_file_location("candidate_report_verifier_under_test", VERIFIER)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+
+        for phase, trigger_count in (("before-open", 2), ("after-read", 3)):
+            with self.subTest(phase=phase):
+                target = self.directory / (phase + "-target.json")
+                replacement = self.directory / (phase + "-replacement.json")
+                target.write_bytes(b"original report bytes")
+                replacement.write_bytes(b"replacement report bytes")
+                absolute_target = target.absolute()
+                original_lstat = os.lstat
+                target_lstat_count = 0
+                swapped = False
+
+                def replace_at_boundary(path):
+                    nonlocal target_lstat_count, swapped
+                    metadata = original_lstat(path)
+                    if Path(path) == absolute_target:
+                        target_lstat_count += 1
+                        if target_lstat_count == trigger_count and not swapped:
+                            os.replace(replacement, target)
+                            swapped = True
+                    return metadata
+
+                with patch.object(module.os, "lstat", side_effect=replace_at_boundary):
+                    with self.assertRaises(module.VerificationError) as rejected:
+                        module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
+
+                self.assertTrue(swapped, "the fixture must replace the path at the selected read boundary")
+                self.assertEqual(str(rejected.exception), "EVALUATION_REPORT_CHANGED_DURING_READ")
 
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
