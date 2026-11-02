@@ -227,28 +227,61 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
                 replacement = self.directory / (phase + "-replacement.json")
                 target.write_bytes(b"original report bytes")
                 replacement.write_bytes(b"replacement report bytes")
-                absolute_target = target.absolute()
-                original_lstat = os.lstat
-                target_lstat_count = 0
                 swapped = False
 
-                def replace_at_boundary(path):
-                    nonlocal target_lstat_count, swapped
-                    is_target = Path(path) == absolute_target
-                    if is_target:
-                        target_lstat_count += 1
-                        if target_lstat_count == trigger_count and phase == "after-read" and not swapped:
+                if module.DIRECTORY_FD_WALK_SUPPORTED:
+                    original_open = os.open
+                    original_stat = os.stat
+                    final_stat_count = 0
+
+                    def replace_at_open(path, flags, mode=0o777, *, dir_fd=None):
+                        nonlocal swapped
+                        if (
+                            phase == "before-open"
+                            and path == target.name
+                            and dir_fd is not None
+                            and not swapped
+                        ):
                             os.replace(replacement, target)
                             swapped = True
-                    metadata = original_lstat(path)
-                    if is_target and target_lstat_count == trigger_count and phase == "before-open" and not swapped:
-                        os.replace(replacement, target)
-                        swapped = True
-                    return metadata
+                        if dir_fd is None:
+                            return original_open(path, flags, mode)
+                        return original_open(path, flags, mode, dir_fd=dir_fd)
 
-                with patch.object(module.os, "lstat", side_effect=replace_at_boundary):
-                    with self.assertRaises(module.VerificationError) as rejected:
-                        module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
+                    def replace_at_stat(path, *args, **kwargs):
+                        nonlocal final_stat_count, swapped
+                        if path == target.name and kwargs.get("dir_fd") is not None:
+                            final_stat_count += 1
+                            if phase == "after-read" and final_stat_count == 2 and not swapped:
+                                os.replace(replacement, target)
+                                swapped = True
+                        return original_stat(path, *args, **kwargs)
+
+                    with patch.object(module.os, "open", side_effect=replace_at_open), patch.object(module.os, "stat", side_effect=replace_at_stat):
+                        with self.assertRaises(module.VerificationError) as rejected:
+                            module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
+                else:
+                    absolute_target = target.absolute()
+                    original_lstat = os.lstat
+                    target_lstat_count = 0
+
+                    def replace_at_boundary(path):
+                        nonlocal target_lstat_count, swapped
+                        is_target = Path(path) == absolute_target
+                        if is_target:
+                            target_lstat_count += 1
+                            if target_lstat_count == trigger_count and phase == "after-read" and not swapped:
+                                os.replace(replacement, target)
+                                swapped = True
+                        metadata = original_lstat(path)
+                        if is_target and target_lstat_count == trigger_count and phase == "before-open" and not swapped:
+                            os.replace(replacement, target)
+                            swapped = True
+                        return metadata
+
+                    with patch.object(module.os, "lstat", side_effect=replace_at_boundary):
+                        with self.assertRaises(module.VerificationError) as rejected:
+                            module.read_bounded_regular_file(target, 1024, "EVALUATION_REPORT")
 
                 self.assertTrue(swapped, "the fixture must replace the path at the selected read boundary")
                 self.assertEqual(str(rejected.exception), "EVALUATION_REPORT_CHANGED_DURING_READ")
