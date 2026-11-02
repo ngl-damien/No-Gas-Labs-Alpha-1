@@ -36,3 +36,10 @@ The Python implementation preserves the Node/ECMAScript JSON-number boundary in 
 - Existing decimal/exponent parity tests continue to require matching implementation, report, and result digests for integral values such as `17.0` and `17e0`.
 
 These checks establish deterministic agreement for the covered JSON numeric cases; they do not broaden the candidate task's safe-integer domain or confer signing, installation, or canonical-state authority.
+
+
+## Polynomial-shape parity corpus
+
+The end-to-end Node/Python regression corpus now synthesizes, evaluates, and independently verifies zero and negative constants, a negative-slope linear polynomial, a sparse quadratic, coefficients that require bounded AST decomposition above the single-node constant limit, and a quadratic evaluated near the input-domain edge. For every case the tests compare the task digest, implementation hash, report digest, range-result digest, evaluation count, and authority-false result fields across both verifiers.
+
+The near-safe-integer case uses coefficients `["0", "1", "9000"]` over inputs `-1,000,000` and `-999,999`. Its worst-case absolute polynomial bound is 9,000,000,001,000,000, below `Number.MAX_SAFE_INTEGER`. The advertised degree limit is a hard ceiling, not a claim that every degree is realizable under the tighter input-domain and safe-integer bounds; higher-degree candidates may be rejected by the intermediate-bound proof.

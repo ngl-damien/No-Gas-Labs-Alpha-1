@@ -655,5 +655,70 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertEqual(independent.stdout, "")
 
 
+    def test_polynomial_shape_corpus_matches_node_and_independent_verifiers(self):
+        corpus = (
+            ("zero-constant", ["0"], ["--range", "-1", "1"], 3),
+            ("negative-constant", ["-7"], ["--range", "-2", "2"], 5),
+            ("negative-slope-linear", ["5", "-2"], ["--range", "-3", "3"], 7),
+            ("sparse-quadratic", ["1", "0", "-1"], ["--range", "-3", "3"], 7),
+            ("decomposed-coefficients", ["1000001", "-1000001"], ["--range", "-3", "3"], 7),
+            ("near-safe-integer-quadratic", ["0", "1", "9000"], ["--range", "-1000000", "-999999"], 2),
+        )
+
+        for name, coefficients, evaluation_args, expected_count in corpus:
+            with self.subTest(name=name):
+                specification = task_specification()
+                specification["id"] = "ngl.experiment-001.task:" + name + ":v1"
+                specification["targetCoefficients"] = coefficients
+                specification_path = self.directory / (name + "-specification.json")
+                receipt_path = self.directory / (name + "-receipt.json")
+                report_path = self.directory / (name + "-report.json")
+                specification_path.write_text(
+                    json.dumps(specification, indent=2) + "\\n",
+                    encoding="utf-8",
+                )
+
+                synthesized = self.run_node(SYNTHESIZER, [str(specification_path)])
+                self.assertEqual(synthesized.returncode, 0, synthesized.stderr)
+                receipt_path.write_text(synthesized.stdout, encoding="utf-8")
+
+                evaluated = self.run_node(
+                    EVALUATOR,
+                    [str(receipt_path), *evaluation_args],
+                )
+                self.assertEqual(evaluated.returncode, 0, evaluated.stderr)
+                report_path.write_text(evaluated.stdout, encoding="utf-8")
+
+                node = self.run_node(
+                    EVALUATOR,
+                    ["--verify-report", str(receipt_path), str(report_path)],
+                )
+                independent = self.run_verifier(report_path, receipt_path)
+                self.assertEqual(node.returncode, 0, node.stderr)
+                self.assertEqual(independent.returncode, 0, independent.stderr)
+
+                node_receipt = json.loads(node.stdout)
+                python_receipt = json.loads(independent.stdout)
+                self.assertEqual(python_receipt["taskSpecificationId"], specification["id"])
+                self.assertEqual(
+                    python_receipt["taskSpecificationDigest"],
+                    node_receipt["taskSpecificationDigest"],
+                )
+                self.assertEqual(
+                    python_receipt["implementationHash"],
+                    node_receipt["implementationHash"],
+                )
+                self.assertEqual(python_receipt["reportDigest"], node_receipt["reportDigest"])
+                self.assertEqual(python_receipt["resultDigest"], node_receipt["resultDigest"])
+                self.assertEqual(python_receipt["evaluationCount"], expected_count)
+                self.assertIs(python_receipt["verified"], True)
+                self.assertEqual(python_receipt["authority"], {
+                    "taskSpecificationSignatureVerified": False,
+                    "founderInstallApprovalVerified": False,
+                    "capabilityInstalled": False,
+                    "canonicalStateChanged": False,
+                })
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
