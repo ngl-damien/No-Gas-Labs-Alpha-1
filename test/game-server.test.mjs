@@ -1707,6 +1707,39 @@ test('network-bound CLI refuses to mint a Founder credential without explicit co
 });
 
 
+test('production loopback CLI refuses to mint a Founder credential without explicit configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-loopback-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = {
+    ...process.env,
+    NODE_ENV: 'production',
+    HOST: '127.0.0.1',
+    PORT: '0',
+    NGL_DATA_DIR: dataDir
+  };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+});
+
 test('shared server binds one later request-evidence follow-up to a Founder review and replays it idempotently', async t => {
   const f = await fixture(t);
   const founder = f.client();
