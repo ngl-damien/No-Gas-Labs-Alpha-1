@@ -1181,8 +1181,13 @@ def shared(browser,url,data,out):
             a.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
             a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall · local docket'",timeout=30000)
             # A new docket sheet must not inherit the prior record's DOM identity.
-            expect(a.locator('#sheet-content')).not_to_have_attribute('data-institution-record-id')
-            expect(a.locator('#sheet-content')).not_to_have_attribute('data-institution-record-unverified')
+            sheet_content = a.locator('#sheet-content')
+            assert sheet_content.evaluate(
+                "element => !element.hasAttribute('data-institution-record-id')"
+            ), 'A new docket sheet must not inherit a prior record ID, including an empty attribute'
+            assert sheet_content.evaluate(
+                "element => !element.hasAttribute('data-institution-record-unverified')"
+            ), 'A new docket sheet must not inherit prior unverified-record metadata, including an empty attribute'
             expect(a.locator('#sheet')).to_contain_text('LOCAL COPY · UNVERIFIED')
             offline_card=a.locator('[data-offline-decision-id="browser-docket-pending"]')
             expect(offline_card).to_be_visible()
