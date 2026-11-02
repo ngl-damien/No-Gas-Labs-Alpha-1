@@ -504,6 +504,76 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         self.assertIn("SYNTHESIS_RECEIPT_JSON_TOO_DEEP", independent.stderr)
         self.assertEqual(independent.stdout, "")
 
+    def test_large_integer_tokens_keep_node_python_schema_error_parity(self):
+        report_path, _ = self.make_report("large-integer", ["17"])
+        huge_integer = "9" * 700
+        python_env = os.environ.copy()
+        python_env["PYTHONINTMAXSTRDIGITS"] = "640"
+
+        receipt_source = self.receipt_path.read_text(encoding="utf-8")
+        large_receipt_source = re.sub(
+            r'("inputMin"\\s*:\\s*)-1000000(?=\\s*[,}])',
+            lambda match: match.group(1) + huge_integer,
+            receipt_source,
+            count=1,
+        )
+        self.assertNotEqual(large_receipt_source, receipt_source)
+        large_receipt = self.directory / "large-integer-receipt.json"
+        large_receipt.write_text(large_receipt_source, encoding="utf-8")
+
+        node_receipt = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(large_receipt), str(report_path)],
+        )
+        python_receipt = subprocess.run(
+            [sys.executable, str(VERIFIER), str(large_receipt), str(report_path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            env=python_env,
+        )
+        self.assertEqual(node_receipt.returncode, 1)
+        self.assertIn("SYNTHESIS_RECEIPT_INVALID", node_receipt.stderr)
+        self.assertEqual(node_receipt.stdout, "")
+        self.assertEqual(python_receipt.returncode, 1)
+        self.assertIn("SYNTHESIS_RECEIPT_INVALID", python_receipt.stderr)
+        self.assertNotIn("SYNTHESIS_RECEIPT_JSON_INVALID", python_receipt.stderr)
+        self.assertEqual(python_receipt.stdout, "")
+
+        report_source = report_path.read_text(encoding="utf-8")
+        large_report_source = re.sub(
+            r'("input"\\s*:\\s*)17(?=\\s*[,}])',
+            lambda match: match.group(1) + huge_integer,
+            report_source,
+            count=1,
+        )
+        self.assertNotEqual(large_report_source, report_source)
+        large_report = self.directory / "large-integer-report.json"
+        large_report.write_text(large_report_source, encoding="utf-8")
+
+        node_report = self.run_node(
+            EVALUATOR,
+            ["--verify-report", str(self.receipt_path), str(large_report)],
+        )
+        python_report = subprocess.run(
+            [sys.executable, str(VERIFIER), str(self.receipt_path), str(large_report)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            env=python_env,
+        )
+        self.assertEqual(node_report.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_INPUT_INVALID", node_report.stderr)
+        self.assertEqual(node_report.stdout, "")
+        self.assertEqual(python_report.returncode, 1)
+        self.assertIn("EVALUATION_REPORT_INPUT_INVALID", python_report.stderr)
+        self.assertNotIn("EVALUATION_REPORT_JSON_INVALID", python_report.stderr)
+        self.assertEqual(python_report.stdout, "")
+
     def test_duplicate_receipt_keys_and_bad_cli_arguments_fail_closed(self):
         report_path, _ = self.make_report("valid", ["17"])
         source = self.receipt_path.read_text(encoding="utf-8")
