@@ -508,7 +508,7 @@ class IndependentCandidateReportVerifierTests(unittest.TestCase):
         report_path, _ = self.make_report("negative-zero", ["0"])
         source = report_path.read_text(encoding="utf-8")
         negative_zero_source = re.sub(
-            r'("input"\\s*:\\s*)0(?=\\s*[,}])',
+            r'("input"\s*:\s*)0(?=\s*[,}])',
             lambda match: match.group(1) + "-0.0",
             source,
             count=1,
