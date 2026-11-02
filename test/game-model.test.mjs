@@ -9,9 +9,9 @@ import {projectCharacter} from '../game/character-sheet.mjs';
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
 const now='2026-10-17T12:00:00.000Z';
-async function publish(world, kind='loom') {
-  const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},founder,{now});
-  return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now});
+async function publish(world, kind='loom', actor=founder) {
+  const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},actor,{now});
+  return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},actor,{now});
 }
 test('private drafts stay private; immutable publication has verified bytes and game-only XP',async()=>{
   const original=createWorld({id:'test-world',now});
@@ -371,7 +371,7 @@ test('Founder challenge dispositions bind immutable source events without granti
 
 
 async function reviewedMoonshot(disposition = 'request-evidence', founderActor = founder) {
-  const published = await publish(createWorld({ now }), 'observatory');
+  const published = await publish(createWorld({ now }), 'observatory', founderActor);
   const proposal = await applyAction(published.world, {
     type: 'propose-moonshot',
     title: 'Can the control comparison be repeated?',
