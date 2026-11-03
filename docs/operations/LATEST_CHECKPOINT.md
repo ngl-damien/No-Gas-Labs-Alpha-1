@@ -6,12 +6,13 @@
 
 **Current focus:**
 
-- PR #317 — draft Source Observation event lifecycle, child of #315; exact parent head d4185da0661f165f68764238533dae6744d6e596.
-- G6 remains IN PROGRESS: actor-attributed research notes are proposed as canonical events with model- and server-side SHA-256 identity checks, version binding, replay-safe retries, Chronicle/Evidence Archive projection, and actor-scoped quest/skill projections. Verify and Genesis passed on code/test head a0eefca; Browser Acceptance passed 12/12 on runtime-identical head b35866e.
-- PR #316 remains a separate Founder Gate trust-root/JWK proposal; no key enrollment or Founder identity binding is claimed.
-- PR #313's Browser run passed 12/12, but Verify failed one Decision Chamber fixture test (774/775); do not transfer its Browser result to other heads.
-- Android emulator and physical-device acceptance remain separate; no physical device is verified in this run.
-- The top-down tile-and-sprite world transformation remains an unfinished product priority.
+- PR #329 — draft top-down pixel-art world renderer, child of PR #326 at exact parent head 60349b68f1b700acab66a359478416767f016d14; code/test head e5429fa032aa31e7adee392725850ea52a1b30fb passed hosted Verify, Genesis, and Browser Acceptance (12/12).
+- PR #326 remains the parent Source Observation event/register/docket stack; it is draft/unmerged. G6 remains IN PROGRESS because source retrieval, independent verification, and integration into main are not established.
+- PR #309 remains a separate, highly divergent Android lifecycle proposal that owns game/world-view.mjs; do not merge it as-is or reintroduce its older caller-trusted authority helper. PR #329 deliberately subclasses WorldView without changing that shared file.
+- Main remains cc317d49c8fdf003c78aa40f38a177095019066e. Main's G0–G9 ledger remains NOT ASSESSED; proposed-branch evidence is not mainline completion.
+- Physical Android-device acceptance and independently authenticated Founder Gate remain unverified.
+
+**Next falsification targets:** reconcile the #309 lifecycle work with current authority verification; add Source Observation/challenge/response counts to Evidence Archive and TownSquare projections without concurrent edits to game/world-view.mjs; expand the pixel tile/sprite world and inspect mobile performance; implement real source retrieval and independent verification; obtain physical supported-device evidence; preserve the distinction between attributed activity and truth/authority.
 
 **Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
 
@@ -368,3 +369,56 @@ PR #326 already had a read-only response queue, but the Evidence Archive still l
 - Source Observation event counts on the world-map badges remain absent; game/world-view.mjs is still owned by the divergent #309 branch. Next: reconcile/port the lifecycle change onto the current research stack, then add Evidence Archive/TownSquare map projections with tests.
 - The classic top-down tile-and-sprite renderer, actual source retrieval, physical Android-device acceptance, and independently authenticated Founder Gate remain unfinished.
 - No merge, release, deployment, external publication, key/credential/permission change, Founder decision, XP award, or canonical world-state mutation occurred.
+
+
+---
+
+## Run 45 — 2026-11-03 — Worker B — Top-down pixel world renderer
+
+**Objective:** make the explorable institution look and behave more like a classic top-down MMORPG while retaining the existing evidence-backed world, movement, route, interaction, multiplayer, and authority model.
+
+### Rehydration and baseline
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current main rechecked at `cc317d49c8fdf003c78aa40f38a177095019066e`; main was not changed.
+- Read root `AGENTS.md`, then the complete canonical shared scheduler protocol; read the latest checkpoint, MMORPG completion contract, and ledger before implementation.
+- Checked nested instructions for `game/`, `test/`, `scripts/`, `docs/`, and `docs/operations/`; all returned 404, so root instructions remain applicable.
+- Re-observed PR #326 at exact head `60349b68f1b700acab66a359478416767f016d14`; PR #329 is a draft child of that exact parent.
+- Re-observed PR #309: it remains a separate, highly divergent Android lifecycle stack (419 ahead / 38 behind the recorded main baseline) and contains an older authority helper that trusts caller-supplied `verification.valid`. Do not merge or transplant it wholesale. It still owns `game/world-view.mjs`; this change avoids that file.
+- Rechecked the Alpha-1 content-addressed receipt and Guild authorization mechanisms: digest/size establish byte identity, not truth; Guild only projects `AUTHORIZED` after verified authorization. The current world-view movement/collision/route code was used as the renderer's inherited base. No external donor code was copied; external donor repositories with missing root instructions were not opened.
+
+### Change delivered
+
+- Branch: `game/pixel-world-renderer-20261103`.
+- Draft child PR #329: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/329
+- Parent: PR #326 exact head `60349b68f1b700acab66a359478416767f016d14`.
+- Verified code/test head: `e5429fa032aa31e7adee392725850ea52a1b30fb`.
+- Eight changed paths:
+  - `game/pixel-world-view.mjs`: new `PixelWorldView` subclass. It draws deterministic 32-pixel terrain tiles (grass, paths, river, bridges, TownSquare paving, and the Unfinished stone field), bounded original pixel sprites (trees, rocks, Founder/Witness avatars, moonshots, challenges), tile-aligned institutional buildings, and discovery landmarks.
+  - `game/client.mjs`: selects `PixelWorldView` as the default world renderer.
+  - `game/server.mjs`: adds the new browser module to the explicit static allowlist.
+  - `test/pixel-world-view.test.mjs`: tests deterministic tile classes/variants, frozen tile descriptors, bridge-vs-water agreement with the existing walkability function, and bounded rectangular sprite grids.
+  - `test/game-server.test.mjs`: requires the client import and static route for the new module.
+  - `scripts/verify-browser.py`: asserts the active canvas uses `data-world-renderer=pixel-v1` in desktop, phone, and institutional-location journeys.
+  - `package.json` and `test/agent-governance.test.mjs`: declare and assert the new source and test paths in hosted preflight.
+- Movement, pathfinding, collision, input, proximity actions, discovery callbacks, shared presence, player-position persistence, Relay actions, and institutional event/state projections remain inherited from the existing `WorldView`. The renderer changes presentation only.
+- Tile variants are derived from integer tile coordinates. No random/model-generated state is consulted. Visible tiles are bounded to the camera viewport and decorative sprite count is capped at 48.
+- First Browser Acceptance attempt exposed a real integration omission: `pixel-world-view.mjs` was not in the game server's static allowlist. The missing route was added, and the static-module test now requires it to be served. The subsequent exact-head Browser run passed.
+
+### Exact-head verification — e5429fa032aa31e7adee392725850ea52a1b30fb
+
+- Verify / world projection [41674738272](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41674738272): **success**. Node 24.22.2 full `node --test` exited 0; Python inspector exited 0; game package build exited 0; bounded institutional exercise reported `passed: true`. Hosted preflight: `ready`, 50 targets, 52 file records, zero warnings and zero failures. Receipt artifact [13249866933](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41674738272/artifacts/13249866933), uploaded ZIP SHA-256 `a653b2877bf44810d7d3e850f281a84bc3a4a26ba1f11aa42a354a17ab2736da`.
+- Genesis Evidence Invariant [41674737586](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41674737586): **success**. The existing genesis test and regression confirmed a label, claimed digest, or missing resolver cannot manufacture `OBSERVED`.
+- Browser Acceptance [41674738714](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41674738714): **success, 12/12 journeys**. Exact journeys: desktop, phone, five institutional-location actions, two-session shared world, 320/360/412 px phone toolbars (five controls, 44 px minimum targets), 320/412 px one-button layouts, standalone file, standalone exact bytes, and shared restart. The institutional exercise observed five locations, one moonshot proposal/world object, two experiment reports, two research activity objects, one creation, and 100 publication XP; those are existing event-derived actions, not renderer-created progress. Browser artifact [13249932561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41674738714/artifacts/13249932561), 5,410,515 bytes, uploaded ZIP SHA-256 `9be77fbab8d3817fcad129e29b3fa94dc5ff377a9bd6d35f3d7481dbbb7d84fe`.
+- Inspected the exact-head desktop and phone screenshots from the Browser artifact. They show the tile grid, river and bridges, paths, institutional buildings, discovery landmarks, and pixel avatars/objects. The 320 px screenshot confirms the toolbar remains visible; some map labels are clipped/low-contrast at narrow widths and need visual refinement.
+- The first Browser run on the earlier code head failed because the static module route was missing; that failure was attributable, repaired, and the final exact-head run above passed. Browser logs still emit Node 20 action and `punycode`/`url.parse()` deprecation warnings.
+
+### State, limits, and next action
+
+- G6 remains **IN PROGRESS**. PR #329 is a proposed visual/runtime improvement, not a merged or deployed game. The pixel renderer creates no canonical event, XP, inventory, evidence, truth verdict, approval, authority, or Founder state.
+- Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`; PR #329 is a draft child of PR #326. No merge, release, deployment, or canonical game-state mutation occurred.
+- Local Node 24 tests and local preflight were not run: both registered Desktop Commander devices were offline and no local checkout/runtime was available. Hosted exact-head checks are the verification evidence.
+- The renderer does not change the existing `game/world-view.mjs` lifecycle; PR #309's Android lifecycle changes are not integrated. No physical Android-device acceptance is claimed.
+- Source Observation/dissent/response map counters remain a separate integration task because of #309 ownership of `game/world-view.mjs`. The pixel-art renderer is a first slice, not a complete RuneScape/Endless Online content recreation. Actual source retrieval, independent verification, and live Founder identity/key custody remain unverified.
+- Next: reconcile safe Android lifecycle changes without regressing current authority verification; add evidence/dissent/response counters to Evidence Archive and TownSquare; improve narrow-width map-label readability; expand terrain, avatar, NPC, and institution sprites; keep all world progression derived from retained events and proper human gates.
+
