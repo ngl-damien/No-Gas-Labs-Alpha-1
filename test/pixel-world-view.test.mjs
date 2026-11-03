@@ -877,6 +877,149 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
   }
 });
 
+test('accessible world-collaborator controls expose bounded approach/talk actions without changing canonical state', () => {
+  const savedGlobals = new Map();
+  const globalNames = [
+    'document', 'addEventListener', 'removeEventListener', 'requestAnimationFrame',
+    'cancelAnimationFrame', 'ResizeObserver', 'devicePixelRatio'
+  ];
+  for (const name of globalNames) savedGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+
+  class FakeElement {
+    constructor(tagName) {
+      this.tagName = tagName;
+      this.children = [];
+      this.listeners = new Map();
+      this.attributes = {};
+      this.dataset = {};
+      this.style = {};
+      this.hidden = false;
+      this.disabled = false;
+      this.parentNode = null;
+      this.classList = { contains: () => false };
+    }
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+    removeAttribute(name) { delete this.attributes[name]; }
+    addEventListener(type, handler) {
+      if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+      this.listeners.get(type).add(handler);
+    }
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter(child => child !== this);
+      this.parentNode = null;
+    }
+    contains(target) { return target === this || this.children.some(child => child.contains(target)); }
+    getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0 }; }
+    dispatch(type, event = {}) {
+      for (const handler of this.listeners.get(type) || []) handler({
+        preventDefault() {}, stopPropagation() {}, ...event, target: this
+      });
+    }
+  }
+
+  const body = new FakeElement('body');
+  const document = {
+    body,
+    createElement: tagName => new FakeElement(tagName),
+    getElementById: () => null,
+    querySelectorAll: () => body.children
+  };
+
+  try {
+    globalThis.document = document;
+    globalThis.addEventListener = () => {};
+    globalThis.removeEventListener = () => {};
+    globalThis.requestAnimationFrame = () => 1;
+    globalThis.cancelAnimationFrame = () => {};
+    globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+    globalThis.devicePixelRatio = 1;
+
+    const listeners = new Map();
+    const attributes = {};
+    let interaction = null;
+    const canvas = {
+      dataset: {},
+      style: {},
+      width: 0,
+      height: 0,
+      getContext: () => ({}),
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }),
+      addEventListener(type, handler) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(handler);
+      },
+      removeEventListener(type, handler) { listeners.get(type)?.delete(handler); },
+      focus() {},
+      setAttribute(name, value) { attributes[name] = value; },
+      removeAttribute(name) { delete attributes[name]; }
+    };
+    const view = new PixelWorldView(canvas, { onInteract: value => { interaction = value; } });
+    try {
+      const group = view.npcControlGroup;
+      assert.ok(group, 'the renderer should install an accessible collaborator group');
+      assert.equal(group.getAttribute?.('role') || group.attributes.role, 'group');
+      assert.equal(group.attributes['aria-label'], 'World collaborators');
+      assert.equal(group.children.length, GUILD_NPCS.length);
+      assert.equal(group.className, 'ngl-world-collaborator-controls');
+
+      const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
+      const button = view.npcControlButtons.get(npc.roleId);
+      assert.ok(button);
+      assert.equal(button.dataset.guildNpcControl, npc.roleId);
+      assert.equal(button.dataset.guildNpcAction, 'approach');
+      assert.ok(Number.parseFloat(button.style.minWidth) >= 44);
+      assert.ok(Number.parseFloat(button.style.minHeight) >= 44);
+      assert.match(button.attributes['aria-label'], /Hostile Archivist/);
+      assert.match(button.attributes['aria-label'], /advisory only|advisory entry point/i);
+
+      const worldBefore = structuredClone(view.world);
+      view.player = { x: 230, y: 220 };
+      button.dispatch('click');
+      assert.ok(view.route.length > 0, 'the accessible action should route toward the exact NPC');
+      assert.equal(interaction, null, 'approach is not an interaction or canonical event');
+
+      view.player = { x: npc.x, y: npc.y + 10 };
+      view.route = [];
+      view.updateNpcControls(false);
+      assert.equal(button.dataset.guildNpcAction, 'talk');
+      assert.match(button.attributes['aria-label'], /^Talk to Hostile Archivist/);
+      button.dispatch('click');
+      assert.deepEqual(interaction, {
+        type: 'institution', id: npc.routeLocation,
+        npcRoleId: npc.roleId, npcName: npc.name
+      });
+      assert.deepEqual(view.world, worldBefore, 'approach and talk leave the retained world unchanged');
+
+      group.dispatch('focusin');
+      assert.equal(view.npcControlsVisible, true);
+      assert.equal(group.style.clipPath, 'none', 'keyboard focus reveals the accessible control group');
+      const outside = new FakeElement('main');
+      group.dispatch('focusout', { relatedTarget: outside });
+      assert.equal(view.npcControlsVisible, false);
+      assert.equal(group.style.clipPath, 'inset(50%)', 'leaving the group returns it to the visually-hidden state');
+
+      view.updateNpcControls(true);
+      assert.equal(group.hidden, true, 'modal sheets suppress the out-of-modal collaborator controls');
+      assert.equal(button.disabled, true);
+      view.updateNpcControls(false);
+      assert.equal(group.hidden, false);
+      assert.equal(button.disabled, false);
+    } finally {
+      view.destroy();
+      assert.equal(body.children.length, 0, 'destroy removes the auxiliary accessibility controls');
+      assert.equal(listeners.get('pointerdown')?.size, 0);
+    }
+  } finally {
+    for (const name of globalNames) {
+      const descriptor = savedGlobals.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+});
+
 test('ordinary ground taps continue through the inherited movement handler', () => {
   const npc = GUILD_NPCS[0];
   const view = Object.create(PixelWorldView.prototype);
