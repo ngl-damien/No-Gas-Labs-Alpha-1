@@ -41,6 +41,13 @@ function sameDirectoryIdentity(left, right) {
     left.uid === right.uid && left.mode === right.mode;
 }
 
+function assertNonceLedgerPathIsNotReserved(absoluteLedgerPath, directory) {
+  if (absoluteLedgerPath === join(directory, '.founder-nonce.lock') ||
+      absoluteLedgerPath === join(directory, '.founder-nonce-recovery.lock')) {
+    throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID');
+  }
+}
+
 async function assertTrustedPrivateDirectory(directory) {
   if (process.platform === 'win32') {
     throw failure('FOUNDER_NONCE_RECOVERY_POSIX_REQUIRED');
@@ -254,9 +261,7 @@ async function inspectFounderNonceRecoveryState(ledgerPath, { ignoreRecoveryLeas
   }
   const absoluteLedgerPath = resolve(ledgerPath);
   const directory = dirname(absoluteLedgerPath);
-  if (absoluteLedgerPath === join(directory, '.founder-nonce.lock')) {
-    throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID');
-  }
+  assertNonceLedgerPathIsNotReserved(absoluteLedgerPath, directory);
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
   const recoveryLeasePath = join(directory, '.founder-nonce-recovery.lock');
   if (!ignoreRecoveryLease) {
@@ -451,6 +456,7 @@ export async function recoverFounderNonceLock({
 
   const absoluteLedgerPath = resolve(ledgerPath);
   const directory = dirname(absoluteLedgerPath);
+  assertNonceLedgerPathIsNotReserved(absoluteLedgerPath, directory);
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
   const recoveryLease = await acquireRecoveryLease(directory);
   let result;
