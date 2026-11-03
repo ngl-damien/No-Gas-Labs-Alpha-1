@@ -760,7 +760,7 @@ test('hosted preflight includes the world-view source, Source Observatory, and c
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.equal(typeof command, 'string');
-  assert.match(command, /^node scripts\\/run-agent-preflight-ci\\.mjs /);
+  assert.ok(command.startsWith('node scripts/run-agent-preflight-ci.mjs '));
   assert.ok(!command.includes('--receipt'), 'the CI wrapper must generate a unique receipt path');
   for (const path of [
     'game/world-view.mjs',
