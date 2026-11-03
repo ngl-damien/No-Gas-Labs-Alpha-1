@@ -6,7 +6,8 @@ import { projectCommonsMessages } from './social.mjs';
 
 const NON_XP_QUEST_EVENT_TYPES = new Set([
   'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded', 'message-posted',
-  'experiment-challenge-reviewed'
+  'experiment-challenge-reviewed', 'field-item-forged',
+  'field-item-equipped', 'field-item-unequipped'
 ]);
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -19,38 +20,39 @@ const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const XP_PER_QUEST_ACTIVITY = 25;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
 const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({
-    id: 'provenance', label: 'Receipt Buckler', kinds: Object.freeze(['published-artifact']),
+    id: 'provenance', label: 'Receipt Buckler', kinds: Object.freeze(['published-artifact']), sourceTypes: Object.freeze(['publish']),
     description: 'A version-matched publication receipt. It identifies retained bytes, not truth.'
   }),
   Object.freeze({
-    id: 'scouting', label: 'Surveyor’s Compass', kinds: Object.freeze(['guide-discovery']),
+    id: 'scouting', label: 'Surveyor’s Compass', kinds: Object.freeze(['guide-discovery']), sourceTypes: Object.freeze(['discover']),
     description: 'A recorded visit to an authored guide location; visiting does not verify its claims.'
   }),
   Object.freeze({
-    id: 'observation', label: 'Observer’s Lens', kinds: Object.freeze(['field-report', 'field-note']),
+    id: 'observation', label: 'Observer’s Lens', kinds: Object.freeze(['field-report', 'field-note']), sourceTypes: Object.freeze(['contribute', 'report']),
     description: 'An attributed note or report attached to a retained published version.'
   }),
   Object.freeze({
-    id: 'learning', label: 'Polymath Codex', kinds: Object.freeze(['retrieval-review', 'study-note']),
+    id: 'learning', label: 'Polymath Codex', kinds: Object.freeze(['retrieval-review', 'study-note']), sourceTypes: Object.freeze(['study', 'study-reviewed']),
     description: 'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'
   }),
   Object.freeze({
-    id: 'research', label: 'Moonshot Compass', kinds: Object.freeze(['experiment-report', 'moonshot-proposal']),
+    id: 'research', label: 'Moonshot Compass', kinds: Object.freeze(['experiment-report', 'moonshot-proposal']), sourceTypes: Object.freeze(['moonshot-proposed', 'experiment-reported']),
     description: 'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'
   }),
   Object.freeze({
-    id: 'adversarial', label: 'Contradiction Ward', kinds: Object.freeze(['experiment-challenge']),
+    id: 'adversarial', label: 'Contradiction Ward', kinds: Object.freeze(['experiment-challenge']), sourceTypes: Object.freeze(['experiment-challenged']),
     description: 'A retained challenge to another actor’s report; dissent remains unadjudicated.'
   }),
   Object.freeze({
-    id: 'collaboration', label: 'Relay Sigil', kinds: Object.freeze(['guild-folio']),
+    id: 'collaboration', label: 'Relay Sigil', kinds: Object.freeze(['guild-folio']), sourceTypes: Object.freeze(['collaborator-response-recorded']),
     description: 'A source-bound collaborator response preserved for human review, not approval.'
   }),
   Object.freeze({
-    id: 'restoration', label: 'Repair Gloves', kinds: Object.freeze(['checked-repair']),
+    id: 'restoration', label: 'Repair Gloves', kinds: Object.freeze(['checked-repair']), sourceTypes: Object.freeze(['publish']),
     description: 'A repair method linked to a checked publication sequence; it is not independent validation.'
   })
 ]);
@@ -683,8 +685,9 @@ export function projectCharacter(world, viewer, options = null) {
     satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(entry => entry.item)
   );
 
-  // A loadout is a player choice among retained, actor-owned source events.
-  // It never creates an item, verifies a claim, grants authority, or awards XP.
+  // A loadout is a player choice among retained source events or forged items
+  // owned by this actor. Forged items are separately event-backed and non-transferable.
+  // Equipment selection never verifies a claim, grants authority, or awards XP.
   const publicationEquipmentEntries = mine(retainedPublications, viewer).flatMap(event => {
     const version = retainedVersions.get(versionKey(event.creationId, event.version));
     if (!version || !Number.isInteger(positionByEvent.get(event))) return [];
@@ -707,12 +710,84 @@ export function projectCharacter(world, viewer, options = null) {
     }];
   });
   const publicationEntriesNewestFirst = publicationEquipmentEntries.slice().reverse();
+  const sourceEquipmentByEventId = new Map();
+  const sourceEquipmentCounts = new Map();
+  for (const entry of [...satchelEntries, ...publicationEquipmentEntries]) {
+    const sourceEventId = entry?.item?.eventId;
+    if (typeof sourceEventId !== 'string' || !sourceEventId) continue;
+    sourceEquipmentCounts.set(sourceEventId, (sourceEquipmentCounts.get(sourceEventId) || 0) + 1);
+    if (!sourceEquipmentByEventId.has(sourceEventId)) sourceEquipmentByEventId.set(sourceEventId, entry);
+  }
+  const forgedItemCounts = new Map();
+  const forgedSourceCounts = new Map();
+  for (const event of allEvents) {
+    if (event?.type !== 'field-item-forged') continue;
+    if (typeof event.itemId === 'string') forgedItemCounts.set(event.itemId, (forgedItemCounts.get(event.itemId) || 0) + 1);
+    if (typeof event.sourceEventId === 'string') forgedSourceCounts.set(event.sourceEventId, (forgedSourceCounts.get(event.sourceEventId) || 0) + 1);
+  }
+  const fieldInventoryEntries = [];
+  for (const event of events) {
+    if (event?.type !== 'field-item-forged') continue;
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+    const source = eventById.get(event.sourceEventId);
+    const sourceEntry = sourceEquipmentByEventId.get(event.sourceEventId);
+    const sourceItem = sourceEntry?.item;
+    const position = positionByEvent.get(event);
+    const sourcePosition = source ? positionByEvent.get(source) : -1;
+    const validItemId = typeof event.itemId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId);
+    if (!validItemId || forgedItemCounts.get(event.itemId) !== 1 ||
+        typeof event.sourceEventId !== 'string' || !event.sourceEventId ||
+        forgedSourceCounts.get(event.sourceEventId) !== 1 ||
+        sourceEquipmentCounts.get(event.sourceEventId) !== 1 ||
+        !slot || !source || !sourceItem || !Number.isInteger(position) ||
+        !Number.isInteger(sourcePosition) || sourcePosition >= position ||
+        source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
+        !slot.sourceTypes.includes(source.type) || !slot.kinds.includes(sourceItem.kind) ||
+        !isStrictTimestamp(event.at) || !isStrictTimestamp(source.at) ||
+        Date.parse(source.at) > Date.parse(event.at)) continue;
+    const item = Object.freeze({
+      id: event.itemId,
+      itemId: event.itemId,
+      eventId: event.id,
+      kind: 'forged-field-item',
+      slotId: slot.id,
+      slotLabel: slot.label,
+      title: slot.label,
+      at: event.at,
+      forgedAt: event.at,
+      status: 'player-owned · source-bound',
+      summary: 'Bound to one earlier retained activity event. This actor-owned item is not transferable and grants no XP, combat statistics or authority.',
+      ownerId: event.actor.id,
+      ownerRole: event.actor.role,
+      sourceEventId: source.id,
+      sourceKind: sourceItem.kind,
+      sourceCreationId: sourceItem.sourceCreationId ?? null,
+      sourceVersion: sourceItem.sourceVersion ?? null,
+      receipt: sourceItem.receipt ?? null,
+      action: sourceItem.action ?? null
+    });
+    fieldInventoryEntries.push({ position, item });
+  }
+  fieldInventoryEntries.sort((left, right) =>
+    right.position - left.position || left.item.itemId.localeCompare(right.item.itemId)
+  );
+  const fieldInventoryTotal = fieldInventoryEntries.length;
+  const fieldInventoryOmittedCount = Math.max(0, fieldInventoryTotal - MAX_FIELD_INVENTORY_ITEMS);
+  const fieldInventory = Object.freeze(
+    fieldInventoryEntries.slice(0, MAX_FIELD_INVENTORY_ITEMS).map(entry => entry.item)
+  );
   const equipmentCandidatesBySlot = new Map();
   const candidateBySlotAndEventId = new Map();
   for (const slot of FIELD_EQUIPMENT_SLOTS) {
     const sourceEntries = slot.kinds.includes('published-artifact') ? publicationEntriesNewestFirst : satchelEntries;
-    const eligibleEntries = sourceEntries.filter(entry => slot.kinds.includes(entry.item.kind) &&
-      typeof entry.item.eventId === 'string' && entry.item.eventId.length > 0);
+    const eligibleEntries = [
+      ...sourceEntries.filter(entry => slot.kinds.includes(entry.item.kind) &&
+        typeof entry.item.eventId === 'string' && entry.item.eventId.length > 0),
+      ...fieldInventoryEntries.filter(entry => entry.item.slotId === slot.id)
+    ].sort((left, right) =>
+      right.position - left.position || left.item.eventId.localeCompare(right.item.eventId)
+    );
     equipmentCandidatesBySlot.set(slot.id, eligibleEntries);
     const byEventId = new Map();
     for (const entry of eligibleEntries) if (!byEventId.has(entry.item.eventId)) byEventId.set(entry.item.eventId, entry);
@@ -746,7 +821,7 @@ export function projectCharacter(world, viewer, options = null) {
   }
   const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
     const eligibleEntries = equipmentCandidatesBySlot.get(slot.id) || [];
-    const automatic = eligibleEntries[0] || null;
+    const automatic = eligibleEntries.find(entry => entry.item.kind !== 'forged-field-item') || null;
     const selection = latestSelectionBySlot.get(slot.id) || null;
     const byEventId = candidateBySlotAndEventId.get(slot.id);
     let selected = automatic;
@@ -771,6 +846,16 @@ export function projectCharacter(world, viewer, options = null) {
       choices: Object.freeze(uniqueChoices),
       choicesOmittedCount: Math.max(0, eligibleEntries.length - uniqueChoices.length)
     });
+  }));
+
+  // Forger counts only unique actor-owned items bound to an earlier eligible source.
+  // Forging is a player action, not an XP receipt, truth verdict or authority grant.
+  skills.push(Object.freeze({
+    id: 'forger',
+    label: 'Forger',
+    count: fieldInventoryTotal,
+    record: 'actor-owned field items forged from unique earlier retained activity',
+    basis: 'Each item is bound to this actor and one eligible source event. It is non-transferable and grants no XP, combat power, truth, approval or authority.'
   }));
 
   // Armor Bearer is a reversible status projection of the current field kit.
@@ -827,6 +912,9 @@ export function projectCharacter(world, viewer, options = null) {
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
     equipment,
+    fieldInventory,
+    fieldInventoryTotal,
+    fieldInventoryOmittedCount,
     inventory: Object.freeze(inventory),
     fieldSatchel,
     fieldSatchelTotal,

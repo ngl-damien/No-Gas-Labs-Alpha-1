@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer, validatePayload } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
@@ -1446,6 +1447,183 @@ test('field loadout writes an idempotent actor-owned event without awarding XP',
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
 });
 
+
+test('Forge persists one actor-bound field item with same-request retry and no XP', async t => {
+  const f = await fixture(t);
+  const founderClient = f.client();
+  await founderClient.login();
+  await publish(founderClient);
+  const founderState = (await founderClient.request('/api/state')).body;
+  const founderId = founderState.viewer.id;
+  const witnessClient = f.client();
+  const before = (await witnessClient.request('/api/state')).body;
+  const witnessId = before.viewer.id;
+  const founderPublication = before.world.events.find(event => event.type === 'publish');
+  assert.ok(founderPublication);
+  const foreignForge = await witnessClient.request('/api/action', {
+    type: 'forge-field-item', slotId: 'provenance', sourceEventId: founderPublication.id
+  });
+  assert.equal(foreignForge.response.status, 409, 'a Witness cannot forge from a Founder-owned publication');
+
+  const discovery = await witnessClient.request('/api/action', {
+    type: 'discover', locationId: 'river', requestId: 'field-forge-discovery'
+  });
+  assert.equal(discovery.response.status, 200, JSON.stringify(discovery.body));
+  const source = discovery.body.world.events.find(event =>
+    event.type === 'discover' && event.locationId === 'river' && event.actor.id === witnessId
+  );
+  assert.ok(source);
+  const action = {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id,
+    requestId: 'field-forge-river'
+  };
+  const forged = await witnessClient.request('/api/action', action);
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const forgeEvent = forged.body.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forgeEvent.actor.id, witnessId);
+  assert.deepEqual(forged.body.result, {
+    itemId: forgeEvent.itemId, slotId: 'scouting', sourceEventId: source.id
+  });
+  assert.equal(forged.body.world.xp, before.world.xp, 'forging cannot award XP');
+  assert.equal(forged.body.world.revision, before.world.revision + 2);
+
+  const retry = await witnessClient.request('/api/action', action);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.world.revision, forged.body.world.revision, 'same request ID replays the same forge receipt');
+  assert.equal(retry.body.world.events.filter(event => event.type === 'field-item-forged').length, 1);
+
+  const equipped = await witnessClient.request('/api/action', {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id,
+    requestId: 'field-forge-equip'
+  });
+  assert.equal(equipped.response.status, 200, JSON.stringify(equipped.body));
+  assert.equal(equipped.body.world.xp, before.world.xp);
+  assert.equal(equipped.body.world.events.at(-1).sourceEventId, forgeEvent.id);
+  const witnessRecord = projectCharacter(equipped.body.world, { id: witnessId, role: 'witness' });
+  assert.equal(witnessRecord.fieldInventory.length, 1);
+  assert.equal(witnessRecord.equipment.find(slot => slot.id === 'scouting').source.eventId, forgeEvent.id);
+  assert.equal(projectCharacter(equipped.body.world, { id: founderId, role: 'founder' }).fieldInventory.length, 0);
+  const founderCannotEquip = await founderClient.request('/api/action', {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
+  });
+  assert.equal(founderCannotEquip.response.status, 409, 'item ownership cannot cross actors');
+});
+
+
+test('Forge inventory and loadout survive service restart and exact retries', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  await publish(founder, 'Forge restart source');
+
+  const witness = f.client();
+  const before = (await witness.request('/api/state')).body;
+  const witnessId = before.viewer.id;
+  assert.equal(before.viewer.role, 'witness');
+
+  const discovery = await witness.request('/api/action', {
+    type: 'discover', locationId: 'river', requestId: 'forge-restart-discovery'
+  });
+  assert.equal(discovery.response.status, 200, JSON.stringify(discovery.body));
+  const source = discovery.body.world.events.find(event =>
+    event.type === 'discover' && event.locationId === 'river' && event.actor.id === witnessId
+  );
+  assert.ok(source, 'the source activity must belong to the Witness who forges the item');
+
+  const forgeAction = {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id,
+    requestId: 'forge-restart-item'
+  };
+  const forged = await witness.request('/api/action', forgeAction);
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const forgeEvent = forged.body.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forged.body.world.xp, before.world.xp, 'forging cannot award XP');
+
+  const equipAction = {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id,
+    requestId: 'forge-restart-equip'
+  };
+  const equipped = await witness.request('/api/action', equipAction);
+  assert.equal(equipped.response.status, 200, JSON.stringify(equipped.body));
+  assert.equal(equipped.body.world.xp, before.world.xp, 'equipping cannot award XP');
+  const finalRevision = equipped.body.world.revision;
+  const witnessCookie = witness.cookie;
+
+  await f.closeGame();
+  const reopened = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => reopened.listen(0, '127.0.0.1', resolve));
+    const url = 'http://127.0.0.1:' + reopened.address().port;
+    async function request(path, body, cookie) {
+      const headers = { ...(cookie ? { cookie } : {}) };
+      if (body !== undefined) {
+        headers['content-type'] = 'application/json';
+        headers.origin = url;
+      }
+      const response = await fetch(url + path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      const nextCookie = response.headers.get('set-cookie')?.split(';')[0] || cookie;
+      return {
+        response,
+        body: await response.json(),
+        cookie: nextCookie
+      };
+    }
+
+    const restored = await request('/api/state', undefined, witnessCookie);
+    assert.equal(restored.response.status, 200);
+    assert.equal(restored.body.viewer.role, 'witness');
+    assert.equal(restored.body.viewer.id, witnessId, 'the same pseudonymous actor must survive restart');
+    assert.equal(restored.body.world.revision, finalRevision);
+    assert.equal(restored.body.world.xp, before.world.xp);
+
+    const forgeEvents = restored.body.world.events.filter(event => event.type === 'field-item-forged');
+    const equipEvents = restored.body.world.events.filter(event => event.type === 'field-item-equipped');
+    assert.equal(forgeEvents.length, 1, 'restart must retain one forged item event');
+    assert.equal(equipEvents.length, 1, 'restart must retain one loadout event');
+    assert.equal(forgeEvents[0].id, forgeEvent.id);
+    assert.equal(forgeEvents[0].itemId, forgeEvent.itemId);
+    assert.equal(forgeEvents[0].sourceEventId, source.id);
+    assert.equal(equipEvents[0].sourceEventId, forgeEvent.id);
+
+    const restoredCharacter = projectCharacter(restored.body.world, restored.body.viewer);
+    assert.equal(restoredCharacter.fieldInventory.length, 1);
+    assert.equal(restoredCharacter.fieldInventory[0].eventId, forgeEvent.id);
+    assert.equal(restoredCharacter.fieldInventory[0].sourceEventId, source.id);
+    assert.equal(
+      restoredCharacter.equipment.find(slot => slot.id === 'scouting').source.eventId,
+      forgeEvent.id
+    );
+
+    const forgeReplay = await request('/api/action', forgeAction, restored.cookie);
+    assert.equal(forgeReplay.response.status, 200, JSON.stringify(forgeReplay.body));
+    assert.equal(forgeReplay.body.idempotentReplay, true);
+    assert.equal(forgeReplay.body.result.itemId, forgeEvent.itemId);
+    assert.equal(forgeReplay.body.world.revision, finalRevision);
+    assert.equal(forgeReplay.body.world.events.filter(event => event.type === 'field-item-forged').length, 1);
+    assert.equal(forgeReplay.body.world.xp, before.world.xp);
+
+    const equipReplay = await request('/api/action', equipAction, restored.cookie);
+    assert.equal(equipReplay.response.status, 200, JSON.stringify(equipReplay.body));
+    assert.equal(equipReplay.body.idempotentReplay, true);
+    assert.equal(equipReplay.body.world.revision, finalRevision);
+    assert.equal(equipReplay.body.world.events.filter(event => event.type === 'field-item-equipped').length, 1);
+    assert.equal(equipReplay.body.world.xp, before.world.xp);
+
+    const founderLogin = await request('/api/login', { key: KEY, name: 'Damien' });
+    assert.equal(founderLogin.response.status, 200);
+    const founderState = await request('/api/state', undefined, founderLogin.cookie);
+    const founderCharacter = projectCharacter(founderState.body.world, founderState.body.viewer);
+    assert.equal(founderCharacter.fieldInventory.length, 0, 'the item must remain actor-scoped after restart');
+  } finally {
+    await reopened.closeGame();
+  }
+});
 
 test('Commons shared posts are idempotent, reports are private, and Founder moderation preserves history without XP', async t => {
   const f = await fixture(t);

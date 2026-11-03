@@ -9,6 +9,7 @@ const WORLD_EVENT_LOCATIONS = Object.freeze({
   draft: 'forge',
   repair: 'forge',
   publish: 'publication_house',
+  'field-item-forged': 'forge',
   contribute: 'town-square',
   report: 'evidence_archive',
   study: 'academy',

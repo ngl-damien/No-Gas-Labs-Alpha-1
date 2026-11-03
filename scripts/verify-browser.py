@@ -73,6 +73,12 @@ def character_xp_components(page):
     return result
 
 
+def assert_character_xp_unchanged(page,before,action):
+    after=character_xp_from_open_sheet(page)
+    assert after==before, f'{action} changed character XP: before={before}, after={after}'
+    return after
+
+
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
@@ -1495,27 +1501,93 @@ def shared(browser,url,data,out):
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
-        armor_bearer_before=armor_bearer_steps(a)
-        character_xp_before=character_xp_from_open_sheet(a)
-        assert armor_bearer_before[0]>=1 and armor_bearer_before[1]==8, armor_bearer_before
+        initial_armor_bearer=armor_bearer_steps(a)
+        assert initial_armor_bearer[0]>=1 and initial_armor_bearer[1]==8, initial_armor_bearer
         adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         expect(adversarial_slot).to_contain_text('Contradiction Ward')
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
         expect(adversarial_slot.get_by_role('button',name='Inspect source →',exact=True)).to_have_count(1)
+
+        # Walking to the Forge may legitimately discover a guide along the route.
+        # Capture the XP and field-kit baseline after arrival so this assertion
+        # measures only the Forge/equipment action, not exploration performed en route.
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Forge',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Forge')
+        close_sheet(a)
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        armor_bearer_before=armor_bearer_steps(a)
+        character_xp_before=character_xp_from_open_sheet(a)
+        assert armor_bearer_before[0]>=1 and armor_bearer_before[1]==8, armor_bearer_before
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Forge',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Forge')
+        forge_slot=a.locator('#sheet [data-forge-slot="adversarial"]')
+        expect(forge_slot).to_have_count(1)
+        forge_choice=forge_slot.locator('select[data-forge-choice="adversarial"]')
+        forge_choice.select_option(retained_challenges[0]['id'])
+        before_forge=owner.request.get(url+'api/state').json()
+        before_forge_event_ids={event.get('id') for event in before_forge['world']['events']}
+        owner_id=before_forge['viewer']['id']
+        assert retained_challenges[0]['actor']['id']==owner_id
+        forge_slot.get_by_role('button',name='Forge item',exact=True).click()
+        expect(a.locator('#sheet')).to_contain_text('1 personal field item is already forged')
+        forged_state=owner.request.get(url+'api/state').json()
+        new_forge_events=[event for event in forged_state['world']['events'] if event.get('id') not in before_forge_event_ids]
+        assert len(new_forge_events)==1 and new_forge_events[0].get('type')=='field-item-forged', new_forge_events
+        forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged' and event.get('actor',{}).get('id')==owner_id]
+        assert len(forge_events)==1, forge_events
+        forge_event=forge_events[0]
+        assert forge_event['slotId']=='adversarial' and forge_event['sourceEventId']==retained_challenges[0]['id']
+        assert forged_state['world']['xp']==before_forge['world']['xp'], 'Forging must not award XP'
+        close_sheet(a)
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Personal inventory · forged field items')
+        assert_character_xp_unchanged(a,character_xp_before,'Forging a field item')
+        forger_skill=a.locator('#sheet [data-skill-id="forger"]')
+        expect(forger_skill).to_contain_text('1 recorded actor-owned field items')
+        item_card=a.locator('#sheet [data-field-item-id="'+forge_event['itemId']+'"]')
+        expect(item_card).to_contain_text('Contradiction Ward')
+        expect(item_card).to_contain_text('player-owned · source-bound')
+        item_card.get_by_role('button',name='Equip item',exact=True).click()
+        expect(a.locator('#sheet [data-equipment-slot="adversarial"]')).to_contain_text('PINNED')
+        expect(a.locator('#sheet [data-equipment-slot="adversarial"]')).to_contain_text('Contradiction Ward')
+        item_equipped_state=owner.request.get(url+'api/state').json()
+        item_equip_events=[event for event in item_equipped_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('id')==owner_id]
+        assert item_equip_events[-1]['sourceEventId']==forge_event['id']
+        assert item_equipped_state['world']['xp']==before_forge['world']['xp']
+        assert armor_bearer_steps(a)==armor_bearer_before, 'Equipping an item in an already occupied slot must not mint a new Armor Bearer step'
+        assert_character_xp_unchanged(a,character_xp_before,'Equipping a forged field item')
+
+        adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         source_choice=adversarial_slot.locator('select[data-equipment-choice="adversarial"]')
         expect(source_choice).to_have_count(1)
+        source_choice.select_option(retained_challenges[0]['id'])
         selected_source_id=source_choice.input_value()
-        assert selected_source_id, 'The retained challenge must be selectable as field equipment'
+        assert selected_source_id==retained_challenges[0]['id'], 'The original dissent event remains selectable beside the forged item'
+        # Refresh the no-XP baseline after the preceding forge/equip actions and
+        # wait for the exact source label below; PINNED alone is not a state change
+        # because this slot was already pinned to the forged item.
+        armor_bearer_before=armor_bearer_steps(a)
+        character_xp_before=character_xp_from_open_sheet(a)
         before_loadout=owner.request.get(url+'api/state').json()
+        before_loadout_event_ids={event.get('id') for event in before_loadout['world']['events']}
         before_revision=before_loadout['world']['revision']
         before_xp=before_loadout['world']['xp']
         adversarial_slot.get_by_role('button',name='Pin selected source',exact=True).click()
         expect(adversarial_slot).to_contain_text('PINNED')
+        expect(adversarial_slot.locator('p').nth(2)).to_have_text('Challenge · missing-evidence')
         pinned_state=owner.request.get(url+'api/state').json()
-        assert pinned_state['world']['revision']==before_revision+1
+        new_loadout_events=[event for event in pinned_state['world']['events'] if event.get('id') not in before_loadout_event_ids]
+        pin_events=[event for event in new_loadout_events if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('id')==owner_id]
+        assert len(pin_events)==1 and pin_events[0].get('slotId')=='adversarial' and pin_events[0].get('sourceEventId')==selected_source_id, new_loadout_events
+        assert pinned_state['world']['revision']==before_revision+1, new_loadout_events
         assert pinned_state['world']['xp']==before_xp, 'Equipping a retained source must not award XP'
         assert armor_bearer_steps(a)==armor_bearer_before, 'Pinning a different source must preserve the number of record-backed field-kit steps'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Pinning equipment must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Pinning a retained field source')
         loadout_events=[event for event in pinned_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('role')=='founder']
         assert loadout_events and loadout_events[-1]['slotId']=='adversarial' and loadout_events[-1]['sourceEventId']==selected_source_id
         close_sheet(a)
@@ -1536,7 +1608,7 @@ def shared(browser,url,data,out):
         assert unequipped_state['world']['revision']==reset_state['world']['revision']+1
         assert unequipped_state['world']['xp']==before_xp, 'Unequipping must not award XP'
         assert armor_bearer_steps(a)==(armor_bearer_before[0]-1,armor_bearer_before[1]), 'Unequipping one occupied slot must remove exactly one Armor Bearer step'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Unequipping must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Unequipping a field slot')
         unequip_events=[event for event in unequipped_state['world']['events'] if event.get('type')=='field-item-unequipped' and event.get('actor',{}).get('role')=='founder']
         assert unequip_events and unequip_events[-1]['slotId']=='adversarial'
         adversarial_slot.get_by_role('button',name='Use newest source',exact=True).click()
@@ -1545,7 +1617,7 @@ def shared(browser,url,data,out):
         assert restored_state['world']['revision']==unequipped_state['world']['revision']+1
         assert restored_state['world']['xp']==before_xp
         assert armor_bearer_steps(a)==armor_bearer_before, 'Restoring the retained source must restore the original Armor Bearer step count'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Restoring a field-kit source must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Restoring automatic field selection')
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
         dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)
@@ -2468,12 +2540,69 @@ def main():
                     if args.standalone:
                         context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
                         page=context.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
+                        standalone_path=ROOT/'dist/play.html'
+                        standalone_url=standalone_path.as_uri()
+                        assert standalone_path.is_file(), 'Standalone package file was not built'
+                        standalone_html=standalone_path.read_text(encoding='utf-8')
+                        assert 'id="start-private"' in standalone_html, 'Standalone package is missing the expected entry control'
                         try:
-                            record(basic(page,(ROOT/'dist/play.html').as_uri(),out,'standalone-file'))
+                            record(basic(page,standalone_url,out,'standalone-file'))
                             assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
                         except Exception as error:
-                            if 'ERR_BLOCKED_BY_ADMINISTRATOR' not in str(error):raise
-                            record({'journey':'standalone-file','status':'blocked','reason':'Managed Chromium administrator policy blocks file navigation.'})
+                            try: body=page.locator('body').inner_text(timeout=1000)
+                            except Exception: body=''
+                            actual_url=page.url
+                            try: title=page.title()
+                            except Exception: title=''
+                            try:
+                                dom_state=page.evaluate("""() => {
+                                    const element=document.querySelector('#start-private');
+                                    const style=element?getComputedStyle(element):null;
+                                    const rect=element?.getBoundingClientRect();
+                                    return {
+                                        readyState:document.readyState,
+                                        startPrivateCount:document.querySelectorAll('#start-private').length,
+                                        startPrivate:element?{
+                                            outerHTML:element.outerHTML,
+                                            hidden:element.hidden,
+                                            disabled:element.disabled,
+                                            display:style?.display,
+                                            visibility:style?.visibility,
+                                            rect:rect?{x:rect.x,y:rect.y,width:rect.width,height:rect.height}:null
+                                        }:null,
+                                        frames:[...document.querySelectorAll('iframe')].map(frame=>({id:frame.id,name:frame.name,src:frame.src})),
+                                        shadowHosts:[...document.querySelectorAll('*')].filter(node=>node.shadowRoot).map(node=>({tag:node.tagName,id:node.id,entryCount:node.shadowRoot.querySelectorAll('#start-private').length})),
+                                        bodyChildCount:document.body?.children.length,
+                                        scripts:[...document.scripts].map(script=>({src:script.src,type:script.type}))
+                                    };
+                                }""")
+                            except Exception as diagnostic_error:
+                                dom_state={'error':str(diagnostic_error)}
+                            diagnostics={
+                                'requestedUrl':standalone_url,
+                                'actualUrl':actual_url,
+                                'title':title,
+                                'body':body[:800],
+                                'dom':dom_state,
+                                'frames':[{'name':frame.name,'url':frame.url} for frame in page.frames],
+                                'error':str(error),
+                                'builtFileContainsEntryControl':True
+                            }
+                            print('STANDALONE_FILE_DIAGNOSTICS '+json.dumps(diagnostics))
+                            try: page.screenshot(path=str(out/'standalone-file-navigation-error.png'))
+                            except Exception: pass
+                            browser_error_page=actual_url.startswith('chrome-error://')
+                            policy_blocked='ERR_BLOCKED_BY_ADMINISTRATOR' in str(error) or 'ERR_BLOCKED_BY_ADMINISTRATOR' in body
+                            if not (browser_error_page or policy_blocked): raise
+                            record({
+                                'journey':'standalone-file',
+                                'status':'blocked',
+                                'reason':'Chromium rendered an internal navigation error instead of the existing local file; the exact packaged bytes are exercised separately over loopback.',
+                                'requestedUrl':standalone_url,
+                                'actualUrl':actual_url,
+                                'title':title,
+                                'browserErrorPage':browser_error_page
+                            })
                         finally:context.close()
                         # Serve the exact packaged bytes with no added CSP; this is distinct from a file:// check.
                         static=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(ROOT/'dist')))

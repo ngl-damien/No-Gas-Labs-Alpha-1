@@ -202,7 +202,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
     ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0], ['deliberator', 0],
-    ['speaker', 0], ['questkeeper', 3], ['restorer', 0], ['armor-bearer', 3]
+    ['speaker', 0], ['questkeeper', 3], ['restorer', 0], ['forger', 0], ['armor-bearer', 3]
   ]);
   assert.deepEqual([record.xp, record.publicationXp, record.questXp], [150, 100, 50]);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -1194,6 +1194,45 @@ test('field satchel preserves failures and dissent while XP reflects objective-m
   assert.ok(founderRecord.equipment.every(slot => Object.isFrozen(slot)));
   assert.ok(founderRecord.equipment.every(slot => !slot.source || Object.isFrozen(slot.source)));
   assert.deepEqual(world, before, 'field equipment and the satchel are read-only projections');
+});
+
+test('personal field inventory is a bounded actor-owned projection of unique earlier forge events', async () => {
+  const discovered = await applyAction(createWorld({ id: 'field-forge-sheet-world', now: t1 }), {
+    type: 'discover', locationId: 'river'
+  }, witness, { now: t1 });
+  const source = discovered.world.events.find(item => item.type === 'discover');
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id
+  }, witness, { now: t2 });
+  const forgeEvent = forged.world.events.at(-1);
+  const before = structuredClone(forged.world);
+  const record = projectCharacter(forged.world, witness);
+  assert.equal(record.fieldInventoryTotal, 1);
+  assert.equal(record.fieldInventoryOmittedCount, 0);
+  assert.equal(record.fieldInventory.length, 1);
+  assert.equal(record.fieldInventory[0].itemId, forgeEvent.itemId);
+  assert.equal(record.fieldInventory[0].eventId, forgeEvent.id);
+  assert.equal(record.fieldInventory[0].sourceEventId, source.id);
+  assert.equal(record.fieldInventory[0].ownerId, witness.id);
+  assert.equal(record.fieldInventory[0].ownerRole, 'witness');
+  assert.equal(record.skills.find(skill => skill.id === 'forger').count, 1);
+  const scouting = record.equipment.find(slot => slot.id === 'scouting');
+  assert.equal(scouting.source.eventId, source.id, 'a forged item does not silently replace automatic selection');
+  assert.ok(scouting.choices.some(item => item.eventId === forgeEvent.id && item.kind === 'forged-field-item'));
+  assert.equal(projectCharacter(forged.world, founder).fieldInventory.length, 0, 'another actor cannot see or own this item');
+  assert.ok(Object.isFrozen(record.fieldInventory));
+  assert.ok(Object.isFrozen(record.fieldInventory[0]));
+  assert.deepEqual(forged.world, before, 'inventory projection never mutates canonical history');
+
+  const ambiguous = structuredClone(forged.world);
+  ambiguous.events.push({
+    ...forgeEvent,
+    id: 'field-forge-duplicate-event',
+    itemId: 'field-item-duplicate',
+    at: t3
+  });
+  const ambiguousRecord = projectCharacter(ambiguous, witness);
+  assert.equal(ambiguousRecord.fieldInventoryTotal, 0, 'a source reused by two forge events is not projected as owned inventory');
 });
 
 test('Relay Sigil preserves a rejected folio without granting approval or authority', () => {
