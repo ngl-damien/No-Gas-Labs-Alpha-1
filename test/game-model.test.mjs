@@ -196,6 +196,7 @@ test('Source Observation challenges preserve attributed dissent without changing
   assert.equal(event.creationId,creationId);
   assert.equal(event.version,1);
   assert.equal(event.challengeType,'contradiction');
+  assert.equal(event.challengeText,'The note cites a model assertion but identifies no retrievable primary source.');
   assert.deepEqual(challenged.result,{challengeId:event.challengeId});
   assert.equal(challenged.world.xp,beforeXp);
   assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
