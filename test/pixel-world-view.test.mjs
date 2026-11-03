@@ -496,7 +496,7 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.deepEqual(
     GUILD_NPCS.map(({ roleId, name, objective }) => ({ id: roleId, name, objective })),
     projectCollaboratorPackets({ events: [], creations: [] })
-      .map(({ id, name, objective }) => ({ id: name === 'x' ? name : roleId, name, objective }))
+      .map(({ id, name, objective }) => ({ id, name, objective }))
   );
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.roleId)).size, GUILD_NPCS.length);
