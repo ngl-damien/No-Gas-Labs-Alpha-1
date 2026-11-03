@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
       - name: Verify governed inputs and preserve a unique preflight receipt
@@ -109,7 +109,7 @@ jobs:
           if test -d lab-queue; then ls -la lab-queue; else echo "lab-queue not yet populated"; fi
       - name: Preserve the preflight receipt
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: hourly-agents-preflight-${{ github.run_id }}-${{ github.run_attempt }}
           path: .runtime/hourly-agents-enforcer-*.json
