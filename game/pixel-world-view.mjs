@@ -533,7 +533,8 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   type: index % 8 === 0 ? 'rock' : 'tree'
 })).filter(item =>
   classifyWorldTile(Math.floor(item.x / WORLD_TILE_SIZE), Math.floor(item.y / WORLD_TILE_SIZE)) === 'grass' &&
-  PLACES.every(place => Math.hypot(place.x - item.x, place.y - item.y) > 92)
+  PLACES.every(place => Math.hypot(place.x - item.x, place.y - item.y) > 92) &&
+  GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
 export class PixelWorldView extends WorldView {
@@ -984,7 +985,8 @@ export class PixelWorldView extends WorldView {
     this.drawQuestTarget();
 
     const near = this.nearest();
-    this.canvas.dataset.nearbyNpcRole = near?.type === 'npc' ? near.role : 'none';
+    this.canvas.dataset.nearbyNpcRole =
+      near?.type === 'npc' && near.distance < 145 ? near.role : 'none';
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
       const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
         : near.type === 'workbench' ? 'E · Make something'
