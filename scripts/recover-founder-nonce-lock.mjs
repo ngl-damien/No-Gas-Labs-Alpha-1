@@ -556,19 +556,22 @@ export async function recoverFounderNonceLock({
     }
     await assertDirectoryIdentity(directory, directoryIdentity);
 
-    const currentLock = await lstat(final.lockPath);
-    if (currentLock.isSymbolicLink() || !currentLock.isFile() ||
-        currentLock.dev !== before.lock.device || currentLock.ino !== before.lock.inode) {
-      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
-    }
-
     const finalPendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
     if (finalPendingTemporaryFiles.length !== 0) {
       throw failure('FOUNDER_NONCE_RECOVERY_STATE_CHANGED', 'temporary nonce files appeared before owner-lock removal');
     }
     // The held descriptor is the fence only while the pathname still names
-    // that exact file. Revalidate immediately before removing the owner lock.
+    // that exact file. Revalidate it, then re-read the complete owner receipt
+    // after the final temporary-file scan. An inode-only lstat misses an
+    // in-place owner-metadata rewrite that preserves device/inode.
     await assertRecoveryLeaseIdentity(recoveryLease);
+    const currentLock = await inspectWriterLock(final.lockPath);
+    if (!sameLockObservation(
+      { status: 'present', format: 'owner-metadata', owner: final.owner, file: final.lock },
+      currentLock
+    )) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
+    }
     await unlink(final.lockPath);
     try {
       await assertDirectoryIdentity(directory, directoryIdentity);
@@ -617,6 +620,7 @@ export async function recoverFounderNonceLock({
     if (error?.code === 'FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN' ||
         error?.code === 'FOUNDER_NONCE_RECOVERY_NEW_LOCK_PRESENT' ||
         error?.code === 'FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT' ||
+        error?.code === 'FOUNDER_NONCE_RECOVERY_LOCK_CHANGED' ||
         error?.code === 'FOUNDER_NONCE_RECOVERY_LEASE_CHANGED') {
       keepRecoveryLease = true;
     }

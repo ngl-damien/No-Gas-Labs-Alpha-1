@@ -894,6 +894,9 @@ test('offline recovery revalidates owner-lock contents after the final temporary
   const retained = JSON.parse(await readFile(value.lockPath, 'utf8'));
   assert.equal(retained.pid, observed.pid, 'the active replacement owner must remain recorded');
   assert.equal(retained.openedAt, replacementOpenedAt);
-  assert.equal(await exists(value.recoveryLeasePath), false, 'a pre-unlink refusal releases only its own recovery lease');
+  assert.equal(await exists(value.recoveryLeasePath), true, 'an owner-lock identity change retains the recovery fence for manual inspection');
+  const retainedLease = JSON.parse(await readFile(value.recoveryLeasePath, 'utf8'));
+  assert.equal(retainedLease.schema, 'ngl.founder-nonce-recovery.v1');
+  assert.equal(retainedLease.pid, observed.pid);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
