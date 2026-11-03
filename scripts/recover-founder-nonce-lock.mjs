@@ -454,13 +454,33 @@ async function acquireRecoveryLease(directory) {
   }
 }
 
+async function assertRecoveryLeaseIdentity(lease) {
+  let before;
+  let opened;
+  let after;
+  try {
+    before = await lstat(lease.path);
+    opened = await lease.handle.stat();
+    after = await lstat(lease.path);
+  } catch {
+    throw failure('FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
+  }
+
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (before.isSymbolicLink() || !before.isFile() ||
+      after.isSymbolicLink() || !after.isFile() ||
+      (before.mode & 0o777) !== 0o600 ||
+      (after.mode & 0o777) !== 0o600 ||
+      (uid !== null && (before.uid !== uid || after.uid !== uid)) ||
+      !sameFileSnapshot(before, opened) ||
+      !sameFileSnapshot(opened, after)) {
+    throw failure('FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
+  }
+}
+
 async function releaseRecoveryLease(lease, directory) {
   try {
-    const current = await lstat(lease.path);
-    if (current.isSymbolicLink() || !current.isFile() ||
-        current.dev !== lease.identity.dev || current.ino !== lease.identity.ino) {
-      throw failure('FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
-    }
+    await assertRecoveryLeaseIdentity(lease);
     await unlink(lease.path);
     await syncDirectory(directory);
   } catch (error) {
@@ -499,6 +519,7 @@ export async function recoverFounderNonceLock({
   let keepRecoveryLease = false;
 
   try {
+    await assertRecoveryLeaseIdentity(recoveryLease);
     await assertDirectoryIdentity(directory, directoryIdentity);
     const before = await inspectFounderNonceRecoveryState(absoluteLedgerPath, { ignoreRecoveryLease: true });
     if (before.status !== 'ready') {
@@ -536,6 +557,9 @@ export async function recoverFounderNonceLock({
     if (finalPendingTemporaryFiles.length !== 0) {
       throw failure('FOUNDER_NONCE_RECOVERY_STATE_CHANGED', 'temporary nonce files appeared before owner-lock removal');
     }
+    // The held descriptor is the fence only while the pathname still names
+    // that exact file. Revalidate immediately before removing the owner lock.
+    await assertRecoveryLeaseIdentity(recoveryLease);
     await unlink(final.lockPath);
     try {
       await assertDirectoryIdentity(directory, directoryIdentity);
