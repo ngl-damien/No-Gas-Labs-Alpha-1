@@ -10,8 +10,8 @@ test('CI preflight receipt paths are unique, repository-relative and non-overwri
   const first = createReceiptPath();
   const second = createReceiptPath();
   assert.notEqual(first, second);
-  assert.match(first, /^\\.runtime\\/agent-preflight-ci-[0-9a-f-]{36}\\.json$/);
-  assert.match(second, /^\\.runtime\\/agent-preflight-ci-[0-9a-f-]{36}\\.json$/);
+  assert.match(first, /^\.runtime\/agent-preflight-ci-[0-9a-f-]{36}\.json$/);
+  assert.match(second, /^\.runtime\/agent-preflight-ci-[0-9a-f-]{36}\.json$/);
 });
 
 test('CI runner appends its unique receipt after the declared target arguments', () => {
@@ -27,7 +27,7 @@ test('CI runner appends its unique receipt after the declared target arguments',
   assert.equal(childArgs[0], validatorPath);
   assert.deepEqual(childArgs.slice(1, -2), args);
   assert.equal(childArgs.at(-2), '--receipt');
-  assert.match(childArgs.at(-1), /^\\.runtime\\/agent-preflight-ci-[0-9a-f-]{36}\\.json$/);
+  assert.match(childArgs.at(-1), /^\.runtime\/agent-preflight-ci-[0-9a-f-]{36}\.json$/);
   assert.equal(options.stdio, 'inherit');
 });
 
