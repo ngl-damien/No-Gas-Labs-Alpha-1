@@ -486,3 +486,38 @@ test('read-only inspection rechecks a recovery lease that appears during its sna
   assert.equal(await exists(value.recoveryLeasePath), true);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+
+test('nonce ledger path cannot alias reserved owner or recovery lease files', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+
+  await assert.rejects(
+    inspectFounderNonceRecovery(value.lockPath),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
+  await assert.rejects(
+    inspectFounderNonceRecovery(value.recoveryLeasePath),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
+  await assert.rejects(
+    recoverFounderNonceLock({
+      ledgerPath: value.lockPath,
+      confirmOwnerStopped: true,
+      confirmSameHost: true
+    }),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
+  await assert.rejects(
+    recoverFounderNonceLock({
+      ledgerPath: value.recoveryLeasePath,
+      confirmOwnerStopped: true,
+      confirmSameHost: true
+    }),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
+
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), false);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
