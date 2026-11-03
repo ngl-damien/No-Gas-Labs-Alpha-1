@@ -209,6 +209,7 @@ export function verifyFounderDecision({
     return Object.freeze({ valid: false, reason: "PAYLOAD_SHAPE_INVALID" });
   }
   if (safePayload.schema !== "ngl.founder-decision.v1" ||
+      typeof safePayload.expires_at !== "string" ||
       typeof safePayload.proposal_id !== "string" || !safePayload.proposal_id ||
       typeof safePayload.quest_id !== "string" || !safePayload.quest_id ||
       ![safePayload.capabilities, safePayload.outputs, safePayload.acceptance].every(value =>
@@ -219,7 +220,8 @@ export function verifyFounderDecision({
       safeSigned.payload_sha256 !== decisionDigest(safePayload)) {
     return Object.freeze({ valid: false, reason: "PAYLOAD_DIGEST_MISMATCH" });
   }
-  if (typeof expected_fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(expected_fingerprint) ||
+  if (Object.hasOwn(safePublicKey || {}, "d") ||
+      typeof expected_fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(expected_fingerprint) ||
       safeSigned.key_fingerprint !== expected_fingerprint ||
       publicKeyFingerprint(safePublicKey) !== expected_fingerprint) {
     return Object.freeze({ valid: false, reason: "KEY_NOT_ENROLLED" });
@@ -257,8 +259,11 @@ function exactAuthorizationInput(input) {
     throw new Error("FOUNDER_AUTHORIZATION_INPUT_INVALID");
   }
   let descriptors;
-  try { descriptors = Object.getOwnPropertyDescriptors(input); }
-  catch { throw new Error("FOUNDER_AUTHORIZATION_INPUT_INVALID"); }
+  try {
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid prototype");
+    descriptors = Object.getOwnPropertyDescriptors(input);
+  } catch { throw new Error("FOUNDER_AUTHORIZATION_INPUT_INVALID"); }
   const keys = Reflect.ownKeys(descriptors);
   if (keys.length !== 2 || !keys.includes("signed") || !keys.includes("payload")) {
     throw new Error("FOUNDER_AUTHORIZATION_INPUT_INVALID");
@@ -319,7 +324,9 @@ export function authorizationEvent(input) {
 }
 
 /** Append-only receipt link for decision chain. */
-export function linkReceipt({ prevHash, payload, signed, now = Date.now() }) {
+export function linkReceipt(input) {
+  const args = snapshotJsonData(input);
+  const { prevHash, payload, signed, now = Date.now() } = args;
   const safePayload = snapshotJsonData(payload);
   const safeSigned = snapshotJsonData(signed);
   const prev = prevHash || "0".repeat(64);
