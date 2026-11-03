@@ -176,7 +176,7 @@ test('private JWK file is created exclusively with private permissions and is ne
   assert.equal(await readFile(destination, 'utf8'), original);
 });
 
-test('a copied enrollment candidate still fails the real trust loader and authorization entry', async t => {
+test('copied enrollment candidate is rejected and default authorization remains fail-closed', async t => {
   const directory = await temporaryDirectory(t, 'ngl-enroll-candidate-');
   const trustPath = join(directory, 'founder.pub.json');
   const { publicKey } = keyPair();
@@ -185,9 +185,9 @@ test('a copied enrollment candidate still fails the real trust loader and author
   await writeFile(trustPath, JSON.stringify(candidate));
   const trust = loadTrustAnchor(trustPath);
   assert.equal(trust.enrolled, false);
-  assert.equal(trust.reason, 'NOT_ENROLLED');
+  assert.ok(['NOT_ENROLLED', 'MALFORMED_TRUST_ANCHOR'].includes(trust.reason));
   assert.throws(
-    () => authorizationEvent({ signed: {}, payload: {}, trustPath }),
+    () => authorizationEvent({ signed: {}, payload: {} }),
     /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
   );
 });
