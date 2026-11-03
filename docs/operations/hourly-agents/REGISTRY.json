@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#301 8c2c953c supersedes #300"
+      "current_pr_focus": "main cc317d49; PR #301 merged and 4/4 exact-head checks passed (gate satisfied); PR #316 3/3 at 385ab39; PR #317 3/3 at abc71df; PR #318 2/3 with Browser quest-projection failure; PR #312 remains parent; #313 Verify fixture failure remains; cross-repo bootstrap gates recorded below."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -24,9 +24,300 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "93 vs 95"
+      "repo_delta": "Unreconciled; this run records a 12-repository core portfolio only, not an exhaustive owner/account inventory.",
+      "current_pr_focus": "Worker B: PR #317 is the 3/3-green Source Observatory candidate at abc71df; PR #318 at baff7251 has a Browser witness quest-projection failure; choose one canonical branch, preserve any unique direct-entry UX as separate follow-up, update MMORPG ledger from exact evidence."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
-  "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out"
+  "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
+  "repository_portfolio": {
+    "schema": "ngl.repository-portfolio.v1",
+    "observed_on": "2026-11-03",
+    "scope": "Twelve core NGL repositories selected from the accessible owner inventory. This is not an exhaustive account or organization inventory.",
+    "repositories": [
+      {
+        "repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+        "default_branch": "main",
+        "purpose": "Canonical playable-world/MMORPG and institutional integration repository.",
+        "purpose_status": "KNOWN_FROM_ROOT_CONTRACT",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "a4beeee1c0ec46faab28502957c0e53850b2855d"
+        },
+        "shared_protocol": {
+          "status": "READ_IN_FULL",
+          "path": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+          "blob_sha": "9a26ee4c17d2462dd66e99e90d258eaa9bcab79f"
+        },
+        "nested_agents_checked": [
+          "docs/AGENTS.md",
+          "docs/operations/AGENTS.md",
+          "docs/operations/hourly-agents/AGENTS.md",
+          "src/AGENTS.md",
+          "src/authority/AGENTS.md",
+          "src/institution/AGENTS.md",
+          "test/AGENTS.md",
+          "game/AGENTS.md",
+          "scripts/AGENTS.md"
+        ],
+        "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
+        "source_inspection": "COMPLETED",
+        "local_preflight": "NOT_RUN_NO_ONLINE_REMOTE_DEVICE",
+        "hosted_verification": "PR #316 exact head 385ab39: Verify, Genesis and Browser passed; Verify preflight receipt artifact 13224228103.",
+        "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
+        "latest_checkpoint": {
+          "path": "docs/operations/LATEST_CHECKPOINT.md",
+          "blob_sha": "e6076240b9a4baf4378f09212766e39f22a84c58",
+          "status": "STALE",
+          "declared_head": "ea025a587e0bb3113423ea67035ddfa83ea7dc9f",
+          "observed_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
+          "note": "PR #314/#317 own checkpoint updates on their branches; avoid a competing mainline checkpoint edit until stack ownership is reconciled."
+        },
+        "current_work": [
+          {
+            "pr": 312,
+            "status": "OPEN_DRAFT_PARENT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 313,
+            "status": "OPEN_DRAFT",
+            "checks": "2/3 last observed; Verify stale Decision Chamber fixture failure"
+          },
+          {
+            "pr": 314,
+            "status": "OPEN_DRAFT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 315,
+            "status": "OPEN_DRAFT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 316,
+            "status": "OPEN_DRAFT",
+            "head": "385ab39f808f9f4d952535f609d40c1797ddf7f3",
+            "checks": "3/3 passed"
+          },
+          {
+            "pr": 317,
+            "status": "OPEN",
+            "head": "abc71df5965864cefd46adcdccf6c3b660bd4282",
+            "checks": "3/3 passed; 12/12 Browser journeys"
+          },
+          {
+            "pr": 318,
+            "status": "OPEN_DRAFT",
+            "head": "baff7251c6b289533017355e249913b3d41d53ce",
+            "checks": "2/3; Browser witness quest projection remains OPEN 0/1"
+          },
+          {
+            "pr": 301,
+            "status": "MERGED",
+            "head": "8c2c953c8d88ebe53388f660cc9c02de39e4cfb6",
+            "checks": "4/4 passed; prior creation gate satisfied"
+          },
+          {
+            "pr": 300,
+            "status": "CLOSED_UNMERGED"
+          }
+        ]
+      },
+      {
+        "repository": "ngl-damien/recursive-artifact-engine",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/ngl-mesh",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-command-center",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-monorepo",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/AI-BI-Intelligence-node-gate",
+        "default_branch": "main",
+        "purpose": "Android-first Node intelligence node gate and one-touch deployment target (from root AGENTS.md).",
+        "purpose_status": "KNOWN_FROM_ROOT_AGENTS",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "f76315da93c96c56049f2bcb61adde7dafe508b0"
+        },
+        "continuity_files": [
+          {
+            "path": "PROGRESS.md",
+            "blob_sha": "486f0d675de2c926b5773447f6eaa9837659c9db",
+            "status": "READ",
+            "audit_date": "2026-09-05"
+          },
+          {
+            "path": "SELF-EVAL.md",
+            "blob_sha": "cbdc350ca74cdd335d23863d54acc32fd91aebf6",
+            "status": "READ"
+          },
+          {
+            "path": "NEXT-DIRECTIVE.md",
+            "blob_sha": "139837b2aaca551b6754ce0a2a9e6aba547bdfd0",
+            "status": "READ"
+          }
+        ],
+        "bootstrap_required": "init_node.sh must be confirmed executable and run before source work.",
+        "bootstrap_status": "BLOCKED_NO_LOCAL_SHELL_OR_ONLINE_DEVICE; bootstrap not executed and executable bit not verified",
+        "shared_protocol": {
+          "status": "NO_SHARED_PROTOCOL_PATH_REFERENCED_BY_ROOT; NOT_READ"
+        },
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "PROGRESS.md dated 2026-09-05; stale for current integration decisions"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-system-integration",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/evidenceos",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-governance",
+        "default_branch": "main",
+        "purpose": "Governance and CI/CD control plane (from root AGENTS.md).",
+        "purpose_status": "KNOWN_FROM_ROOT_AGENTS",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "61b3dda35bb40151b33c5aba09ee2581d4b9b45b"
+        },
+        "bootstrap_required": "./init_repo.sh must run before source work.",
+        "bootstrap_status": "BLOCKED_NO_LOCAL_SHELL_OR_ONLINE_DEVICE; bootstrap not executed",
+        "shared_protocol": {
+          "status": "NO_SHARED_PROTOCOL_PATH_REFERENCED_BY_ROOT; NOT_READ"
+        },
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-execution",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/ngl-recovery-manifest",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      }
+    ],
+    "next_actions": [
+      "Keep PR #316 draft and reconcile it only after its PR #312 parent; do not provision host trust or Founder keys without Founder authority.",
+      "Worker B should select PR #317 as the current 3/3-green Source Observatory candidate; preserve the PR #318 Browser failure and port only unique UX in a separate tested follow-up.",
+      "After PR #312 is integrated, rebase PR #313 and rerun all exact-head checks.",
+      "Refresh LATEST_CHECKPOINT.md through one reviewed integration after PR #314/#317 resolve checkpoint ownership.",
+      "Do not inspect or modify external repository source until its root AGENTS/bootstrap gate can be satisfied."
+    ]
+  }
 }
