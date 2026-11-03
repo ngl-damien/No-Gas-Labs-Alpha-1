@@ -368,6 +368,7 @@ export const SOURCE_OBSERVATION_SOURCE_KINDS = Object.freeze([
   'model-assertion'
 ]);
 const sourceObservationSourceKinds = new Set(SOURCE_OBSERVATION_SOURCE_KINDS);
+const sourceObservationChallengeTypes = new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
 const sourceObservationExportKeys = ['assurance', 'observations', 'schema'];
 const sourceObservationAssuranceKeys = ['execution', 'independentVerification', 'modelAssertions', 'sourceRetrieval'];
 const sourceObservationNoteKeys = ['claim', 'falsifier', 'nextTest', 'source', 'sourceKind', 'uncertainty'];
@@ -490,6 +491,15 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
   const eventIdCounts = countBy(events, 'id', hasText);
   const observationEvents = events.filter(event => event?.type === 'source-observation-recorded');
   const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
+  const sourceObservationChallengeEvents = events.filter(event => event?.type === 'source-observation-challenged');
+  const challengeIdCounts = countBy(sourceObservationChallengeEvents, 'challengeId', hasText);
+  const challengesByObservation = new Map();
+  events.forEach((event, index) => {
+    if (event?.type !== 'source-observation-challenged' || !hasText(event.observationId)) return;
+    const rowsForObservation = challengesByObservation.get(event.observationId) || [];
+    rowsForObservation.push({ event, index });
+    challengesByObservation.set(event.observationId, rowsForObservation);
+  });
   const versions = new Map();
   for (const creation of creations) {
     if (!creation || unsafeCreations.has(creation) || typeof creation.id !== 'string' || !creation.id) continue;
@@ -570,6 +580,19 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus = 'unavailable';
       projectionReason = 'The source publication does not precede this note with a matching retained timestamp.';
     }
+    const challenges = (challengesByObservation.get(event.observationId) || []).filter(({ event: challenge, index: challengeIndex }) =>
+      !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
+      typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
+      typeof challenge.actor?.id === 'string' && challenge.actor.id && ['founder', 'witness'].includes(challenge.actor.role) &&
+      challenge.actor.id !== event.actor?.id && challenge.creationId === event.creationId && challenge.version === event.version &&
+      sourceObservationChallengeTypes.has(challenge.challengeType) && typeof challenge.challengeText === 'string' &&
+      challenge.challengeText.trim() && Array.from(challenge.challengeText).length <= 1000 &&
+      isStrictTimestamp(challenge.at) && challengeIndex > index && Date.parse(event.at) <= Date.parse(challenge.at)
+    ).map(({ event: challenge }) => Object.freeze({
+      id: challenge.id, challengeId: challenge.challengeId, observationId: challenge.observationId,
+      creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
+      challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at
+    }));
     const warning = event.sourceKind === 'model-assertion'
       ? 'Model assertions are leads only, not evidence.'
       : event.sourceKind === 'tool-output'
@@ -595,6 +618,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       modelAssertions: event.modelAssertions,
       execution: event.execution,
       normalizedRecordDigest: event.normalizedRecordDigest,
+      challenges: Object.freeze(challenges),
       targetTitle: target?.version?.title || target?.creation?.title || null,
       projectionStatus,
       projectionReason,
