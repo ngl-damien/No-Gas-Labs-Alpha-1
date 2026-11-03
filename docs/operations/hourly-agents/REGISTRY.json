@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "Main cc317d49; PR #301 merged and 4/4 passed; PR #312 parent 3/3; PR #316 head a5ea861 3/3 (Verify 41631301805, Genesis 41631301807, Browser 41631302068; 12/12); PR #320 head 887c812 3/3; PR #322 head 29eb650 3/3; PR #313 2/3 due stale Decision Chamber fixture; PR #321 docs branch 2/3 due same inherited fixture; linked-repo bootstrap gates remain."
+      "current_pr_focus": "Main cc317d49 unchanged; PR #312 parent 3/3; PR #316 head 206e617: World Projection 41638605411 and Genesis 41638605427 passed (Browser not triggered for authority-only paths); PR #321 head 67a2534 3/3 passed (Verify 41637992508, Genesis 41637992674, Browser 41637992533); PR #322 head 29eb650 3/3; PR #323 head 9074aaaa Verify 41638571002 and Genesis 41638570793 passed, Browser 41638570851 in progress; prior #323 head 08376e7 Browser run 41636704506 failed before challenge commit because Playwright Route.fetch saw TargetClosedError; #313 2/3 inherited fixture; linked-repo bootstrap gates remain."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -63,7 +63,7 @@
         "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
         "source_inspection": "COMPLETED",
         "local_preflight": "NOT_RUN_NO_LOCAL_CHECKOUT_OR_ONLINE_REMOTE_DEVICE; hosted post-change preflight only",
-        "hosted_verification": "PR #316 exact head a5ea861c7a4f2556fd809f64775993b5f6064cca: Verify 41631301805, Genesis 41631301807, Browser 41631302068 all passed; Browser 12/12. Verify preflight ready with no warnings/failures; artifact 13228691349. Browser artifact 13228846860.",
+        "hosted_verification": "PR #316 exact head 206e617510f63098018513c77621be673dc92f2c: test-first head aecd922 exposed two writable-ancestor trust/nonce path gaps; final head passed World Projection 41638605411 (Node tests, Python inspector, package build, institutional exercise) and Genesis 41638605427. Browser not triggered for authority-only changes. PR #321 exact head 67a2534a5a266905870036593388e55479c5ee53 passed Verify 41637992508, Genesis 41637992674, Browser 41637992533.",
         "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
         "latest_checkpoint": {
           "path": "docs/operations/LATEST_CHECKPOINT.md",
@@ -97,8 +97,8 @@
           {
             "pr": 316,
             "status": "OPEN_DRAFT_CHILD_OF_312",
-            "head": "a5ea861c7a4f2556fd809f64775993b5f6064cca",
-            "checks": "3/3 passed: Verify 41631301805; Genesis 41631301807; Browser 41631302068 (12/12). Verify preflight ready; artifact 13228691349."
+            "head": "206e617510f63098018513c77621be673dc92f2c",
+            "checks": "2/2 triggered workflows passed: World Projection 41638605411; Genesis Evidence Invariant 41638605427. Browser not triggered for authority-only paths."
           },
           {
             "pr": 317,
@@ -131,14 +131,20 @@
           {
             "pr": 321,
             "status": "OPEN_DRAFT",
-            "head": "292379d6957b8077f49f4764f4f6419011cc44d1",
-            "checks": "2/3: Genesis and Browser pass; Verify fails inherited FOUNDER_NOT_ENROLLED Decision Chamber fixture on main-based branch."
+            "head": "67a2534a5a266905870036593388e55479c5ee53",
+            "checks": "3/3 passed: Verify 41637992508; Genesis 41637992674; Browser 41637992533. Contains explicit TEST_ONLY Decision Chamber fixture backport from #312; reconcile after parent integration."
           },
           {
             "pr": 322,
             "status": "OPEN_DRAFT",
             "head": "29eb650edbae9403786fd410ebcff4e5eb8e96d7",
             "checks": "3/3 passed."
+          },
+          {
+            "pr": 323,
+            "status": "OPEN_DRAFT_CHILD_OF_320",
+            "head": "9074aaaa7642ec9b205cc5aee742a00db3022224",
+            "checks": "Verify 41638571002 and Genesis 41638570793 passed; current-head Browser 41638570851 in progress. Earlier head 08376e7 run 41636704506 failed before commit with Playwright Route.fetch TargetClosedError; old-head rerun is not current-head evidence."
           }
         ]
       },
@@ -331,11 +337,12 @@
       }
     ],
     "next_actions": [
-      "Keep PR #316 draft and stacked on #312; do not provision host trust or Founder keys without Founder authority. Its latest exact head a5ea861 has 3/3 hosted checks; helper-level only.",
-      "Worker B: keep the PR #317 -> #320 Source Observatory stack as the current 3/3-green candidate; maintain G6 IN PROGRESS and exact-head evidence. Preserve PR #318's Browser witness-quest failure; do not integrate both overlapping branches.",
-      "After #312 is integrated, rebase #313 and rerun all exact-head checks; PR #321's main-based Verify failure is the inherited Decision Chamber fixture, not a docs test result.",
-      "Refresh main LATEST_CHECKPOINT.md only after #314/#317 checkpoint ownership is reconciled; current main checkpoint remains stale.",
-      "Do not inspect or modify linked repository source until its root AGENTS and mandatory bootstrap can be satisfied."
+      "Re-poll PR #323 current-head Browser run 41638570851; distinguish a transient browser/context closure from a deterministic Relay lost-response harness defect. Do not transfer old-head run 41636704506 to head 9074aaaa.",
+      "Keep PR #316 draft and stacked on #312; the writable-ancestor regression tests now pass on head 206e617, but the helper is not integrated into the live game server and no host trust/nonce paths or Founder key are provisioned.",
+      "Keep PR #321 draft at 67a2534 with 3/3 exact-head checks; its Decision Chamber TEST_ONLY fixture is a narrow backport from #312 and should be reconciled after #312 integration.",
+      "After #312 integrates, rebase PR #313 and rerun all exact-head checks; preserve the existing Browser success as separate from its Verify failure.",
+      "Refresh main LATEST_CHECKPOINT.md only after #314/#317/#320 checkpoint ownership is reconciled; current main checkpoint remains stale.",
+      "Do not inspect or modify linked repository source until root AGENTS instructions and required bootstrap scripts can be read and executed."
     ]
   }
 }
