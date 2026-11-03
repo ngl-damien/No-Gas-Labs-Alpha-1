@@ -627,3 +627,69 @@ test('offline recovery refuses owner-lock removal when a temporary nonce file ap
   assert.equal(await exists(value.recoveryLeasePath), false);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+
+test('offline recovery refuses owner-lock removal when its recovery lease is replaced during recovery', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const replacementOpenedAt = '2000-01-01T00:00:00.000Z';
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalReaddir = fsPromises.readdir;",
+    "const originalUnlink = fsPromises.unlink;",
+    "const originalWriteFile = fsPromises.writeFile;",
+    "let directoryReads = 0;",
+    "let replaced = false;",
+    "fsPromises.readdir = async (target, ...args) => {",
+    "  const entries = await originalReaddir(target, ...args);",
+    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "    directoryReads += 1;",
+    "    if (!replaced && directoryReads === 4) {",
+    "      replaced = true;",
+    "      await originalUnlink(process.env.TEST_RECOVERY_LEASE);",
+    "      const receipt = JSON.stringify({",
+    "        openedAt: process.env.TEST_REPLACEMENT_OPENED_AT,",
+    "        pid: process.pid,",
+    "        schema: 'ngl.founder-nonce-recovery.v1'",
+    "      });",
+    "      await originalWriteFile(process.env.TEST_RECOVERY_LEASE, receipt, { mode: 0o600 });",
+    "    }",
+    "  }",
+    "  return entries;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: 'unexpected-recovered', directoryReads, replaced }));",
+    "  process.exitCode = 1;",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), directoryReads, replaced }));",
+    "}"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_RECOVERY_LEASE: value.recoveryLeasePath,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule,
+      TEST_REPLACEMENT_OPENED_AT: replacementOpenedAt
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
+  assert.equal(observed.directoryReads, 5, 'the lease identity check must follow the final pre-unlink scan');
+  assert.equal(observed.replaced, true);
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+  assert.equal(JSON.parse(await readFile(value.recoveryLeasePath, 'utf8')).openedAt, replacementOpenedAt);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
