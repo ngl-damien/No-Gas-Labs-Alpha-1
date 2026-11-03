@@ -358,7 +358,7 @@ function validateHistory(world) {
     if (event.type === 'source-observation-challenged') {
       const target = sourceObservationById.get(event.observationId);
       const targetIndex = target ? eventPositions.get(target) : -1;
-      if (typeof event.challengeId !== 'string' || !event.challengeId || sourceObservationChallengeIds.has(event.challengeId) ||
+      if (typeof event.challengeId !== 'string' || !event.challengeId || sourceObservationChallengeIds.has(event.challengeId) || challengeIds.has(event.challengeId) ||
           typeof event.observationId !== 'string' || !event.observationId || !target ||
           typeof event.creationId !== 'string' || event.creationId !== target.creationId ||
           !Number.isSafeInteger(event.version) || event.version !== target.version ||
@@ -369,6 +369,7 @@ function validateHistory(world) {
         throw new Error('Stored source-observation challenge is malformed or does not target an earlier note from another actor');
       }
       sourceObservationChallengeIds.add(event.challengeId);
+      challengeIds.add(event.challengeId);
       if (event.actionResult !== undefined &&
           (Object.keys(event.actionResult).sort().join(',') !== 'challengeId' || event.actionResult.challengeId !== event.challengeId)) {
         throw new Error('Stored source-observation challenge result mismatch');
