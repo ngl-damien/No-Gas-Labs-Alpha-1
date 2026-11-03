@@ -259,6 +259,16 @@ function releaseNonceLock(lockPath, identity, directory) {
   syncDirectory(directory);
 }
 
+function assertNoFounderNonceRecoveryLease(directory) {
+  const leasePath = path.join(directory, ".founder-nonce-recovery.lock");
+  try { lstatSync(leasePath); }
+  catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw new Error("FOUNDER_NONCE_RECOVERY_IN_PROGRESS");
+  }
+  throw new Error("FOUNDER_NONCE_RECOVERY_IN_PROGRESS");
+}
+
 function consumeFounderNonce(nonce) {
   const configuredPath = process.env.NGL_FOUNDER_NONCE_LEDGER_PATH;
   if (!configuredPath || !path.isAbsolute(configuredPath)) {
@@ -273,6 +283,7 @@ function consumeFounderNonce(nonce) {
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const lockPath = path.join(directory, ".founder-nonce.lock");
   if (ledgerPath === lockPath) throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+  assertNoFounderNonceRecoveryLease(directory);
 
   let lockDescriptor;
   let lockIdentity;
@@ -290,6 +301,7 @@ function consumeFounderNonce(nonce) {
       throw new Error("FOUNDER_NONCE_LEDGER_UNSAFE");
     }
     lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+    assertNoFounderNonceRecoveryLease(directory);
     writeFileSync(lockDescriptor, canonical({
       schema: "ngl.ledger-lock.v1",
       pid: process.pid,
@@ -299,6 +311,7 @@ function consumeFounderNonce(nonce) {
     assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
     try { syncDirectory(directory); }
     catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
+    assertNoFounderNonceRecoveryLease(directory);
 
     const nonces = readNonceLedger(ledgerPath);
     if (nonces.includes(nonce)) throw new Error("FOUNDER_NONCE_REPLAY");
