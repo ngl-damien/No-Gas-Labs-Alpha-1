@@ -1153,3 +1153,61 @@ No Android app runtime code, canonical event, XP, inventory, player authority, o
 2. If Android still fails, download the new diagnostics artifact and inspect the connected-test XML, logcat, Activity state, and WebView provider before changing runtime code.
 3. Once native acceptance is stable, resume the next unowned G4 capability: source-version-bound player-owned item claims with actor ownership, deterministic inventory projection, and no XP/authority side effects; keep player-to-player transfer as a separate G5 task.
 
+---
+
+## Run 36 — 2026-11-02 — Forge inventory restart durability and standalone browser-navigation diagnostics
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** ngl-damien/No-Gas-Labs-Alpha-1.  
+**Main baseline:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f; the current mainline has not received the proposed MMORPG stack.  
+**Active proposal:** PR #298, draft/open/unmerged, branch game/field-item-forge-20261102, child of PR #295 branch android/instrumentation-diagnostics-20261102 at base head 85b3249ef176137e3b066e28a9f9a1820e67cde0.  
+**Code commit delivered:** 5deb493ab03182b3a53208ae82911861f9ab48bc.
+
+### Rehydration and ownership
+
+- Read root AGENTS.md alone, then the complete canonical docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md alone, first on main and again at the exact PR #298 code head.
+- Read this branch's latest durable checkpoint (Run 35), docs/operations/MMORPG_COMPLETION_CONTRACT.md, and docs/operations/MMORPG_COMPLETION_LEDGER.md; re-observed PR #298, its Android parent PR #295, and Worker A's child PR #300 and latest discussion.
+- Relevant nested instruction paths for touched directories were checked: scripts/AGENTS.md, test/AGENTS.md, docs/AGENTS.md, and docs/operations/AGENTS.md all returned 404. Root AGENTS.md remains applicable.
+- Hosted preflight on the exact code head reported status ready, 73 declared targets, warnings: [], and failures: []. It included both changed paths, test/game-server.test.mjs and scripts/verify-browser.py, plus the current checkpoint/ledger contracts.
+- Local preflight/tests were unavailable: both registered Desktop Commander devices (LAPTOP-4HARKCK5 and localhost) were offline. Hosted Node 24.22.1 verification is the execution evidence; no local test result is claimed.
+
+### Latest worker handoff
+
+- Worker A's PR #300 remains draft/open and currently points at child head 8042572801ed86f232829fec75c9352d6c41674f, based on parent PR #298.
+- The child contains only test/checkpoint-symlink-safety.test.mjs relative to its prior parent and should preserve that delta.
+- Parent PR #298 advanced to 5deb493...; handoff comment 6593712543 requests Worker A to reconcile to the new parent and rerun exact-head checks. This is coordination only, not a merge.
+
+### Donor inspection and disposition
+
+- Mesh/Relay RaeEvidenceBridge.java independently reads and hashes the APK, binds the external report to those bytes, appends a content-addressed artifact with deterministic UUID replay protection, and explicitly does not grant execution authority. EvidenceAuthorizedTransition.java is a new integration experiment requiring a separate Ed25519 operator grant bound to case/evidence/action/nonce/expiry with replay/revocation state. These are evidence/authority patterns, not an inventory subsystem; no Java bridge was copied.
+- Mesh's proof-carrying-work package uses file hashes, explicit acceptance, and payment evidence; proposals/connectors do not authorize themselves.
+- AGP T.R.U. kernel uses bounded temporal states (HYPOTHESIS, BUILT, TESTED, OBSERVED, EXTERNALLY_CORROBORATED) and untrusted assurance labels. This informs evidence labeling, not automatic game rewards.
+- The Guild Hall reference in src/world/guild-hall.js marks proposals authorized only through isVerifiedAuthorization; no such consequential transition is involved in a personal field item.
+- integrations/recovery-vault/cockpit-reference/src/hooks/useGameState.js increments XP from a UI callback and resets local game state; rejected as a canonical progression mechanism.
+- Command Center reference is source-asset recovery metadata with identified but missing binary images, not a ready runtime mechanism. No RuneUX path exists in the current main tree. TownSquare is already a native Alpha-1 world location in game/world-view.mjs; no separate TownSquare application was imported.
+- No donor application was copied wholesale.
+
+### Selected objective and implementation
+
+The current Forge feature already represented a player's earlier retained activity as a non-transferable item, but its server test did not prove the item and loadout survive a full service restart. The highest-leverage bounded improvement was to make this player-owned state verifiable across the failure/recovery boundary before expanding the economy.
+
+1. test/game-server.test.mjs adds “Forge inventory and loadout survive service restart and exact retries”. A Witness discovers at the River, forges a scouting item from that exact earlier actor-owned event, equips it, then the service closes and reopens against the same private data directory. The original pseudonymous Witness cookie must recover the same actor; the forge/equip events, item ID, source linkage, equipment projection and revision must remain unchanged. Replaying the exact original forge and equip request IDs must return idempotent receipts without duplicate events, revision changes or XP. A newly authenticated Founder must still see no Witness-owned field item.
+2. scripts/verify-browser.py now asserts that dist/play.html exists and contains the expected #start-private control before attempting file:// navigation. If the click fails, it records requested/actual URL, title, body, error and a screenshot. It marks the file journey blocked only for a Chromium internal error page or explicit ERR_BLOCKED_BY_ADMINISTRATOR; otherwise it still fails. The separate standalone-exact-bytes loopback journey remains required, so the file navigation is not silently reported as a pass.
+3. No game runtime code, item rules, XP, authority, canonical events, Android application code, or Founder decision changed in this run. The Forge runtime itself remains proposed in PR #298.
+
+### Exact-head hosted verification — 5deb493...
+
+- Verify [41564831326](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41564831326): passed. Hosted preflight ready, 73 targets, zero warnings/failures; Node 24.22.1 test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0 / passed: true.
+- Genesis Evidence Invariant [41564831264](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41564831264): passed.
+- Browser Acceptance [41564831362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41564831362): in progress at last poll. The preceding head 691bcde... Browser run [41562655038](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562655038) passed the gameplay journeys, including the Forge item path, but failed the standalone-file journey because #start-private was not found. The current diagnostic repair has not yet received a final result.
+- Android Alpha-1 [41564831412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41564831412): in progress at last poll. The parent PR #295 exact-head Android run [41544967753](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41544967753) succeeded on an API 35 emulator with 6/6 instrumentation tests, 0 skipped and 0 failed; diagnostics artifact [13190496009](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41544967753/artifacts/13190496009), APK artifact [13189592850](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41544967753/artifacts/13189592850). This is emulator evidence, not physical-device acceptance.
+- No physical Android device, local Node 24/preflight, mainline integration, merge, release, deployment, or Founder acceptance is claimed.
+
+### Limits and next ranked actions
+
+1. Recheck Browser Acceptance and inspect its exact-head diagnostics/artifact. If it reports an internal browser error page, retain blocked as the file-navigation status and require the exact-byte loopback journey to pass; if it fails elsewhere, repair the attributable defect without broadening the exception.
+2. Recheck Android Alpha-1 on 5deb493...; inspect instrumentation report/logcat before attributing any emulator failure.
+3. Update the child PR #300 only through its Worker A handoff; preserve its child-only preflight regression test and require exact-head checks after reconciliation.
+4. Continue the next gameplay capability only after this durable inventory proof: a non-transferable personal item is not yet a transferable economy or a combat/encounter system. No conventional-combat preference is inferred.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder acceptance, or canonical XP/authority transition occurred.
