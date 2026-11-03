@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync, createHash, sign, randomUUID } from "node:crypto";
-import { writeFileSync, readFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync, readFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
+import { createInterface } from "node:readline";
 import {
   makeDecisionPayload,
   decisionDigest,
@@ -15,6 +16,7 @@ import {
   linkReceipt,
   newNonce,
 } from "../src/authority/decision.js";
+import { inspectWriterLock } from "../src/institution/lock-inspector.mjs";
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -60,6 +62,157 @@ function withEnvironment(values, callback) {
 const proposal = { event_id: "prop-1", type: "PROPOSAL", quest_id: "q-1" };
 const quest = { quest_id: "q-1" };
 const future = new Date(Date.now() + 3_600_000).toISOString();
+
+function createAuthorizationFixture(dir) {
+  const modulePath = path.join(dir, "src", "authority", "decision.js");
+  const trustPath = path.join(dir, "docs", "authority", "founder.pub.json");
+  const dataDirectory = path.join(dir, "data");
+  mkdirSync(path.dirname(modulePath), { recursive: true, mode: 0o700 });
+  mkdirSync(path.dirname(trustPath), { recursive: true, mode: 0o700 });
+  mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+  const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
+  writeFileSync(modulePath, source, { mode: 0o600 });
+  const kp = keyPair();
+  const payload = makeDecisionPayload({
+    proposal,
+    quest,
+    capabilities: ["read"],
+    outputs: ["test-output"],
+    acceptance: ["verify"],
+    expires_at: future,
+  });
+  writeFileSync(trustPath, JSON.stringify({
+    schema: "ngl.founder-trust-anchor.v1",
+    status: "ENROLLED",
+    enrolled: true,
+    mode: "PRODUCTION",
+    public_key_jwk: kp.jwk,
+    fingerprint: kp.fingerprint,
+  }), { mode: 0o600 });
+  return {
+    moduleUrl: pathToFileURL(modulePath).href,
+    trustPath,
+    dataDirectory,
+    nonceLedgerPath: path.join(dataDirectory, "founder-nonces.json"),
+    payload,
+    sign: () => signPayload(kp.privateKey, payload, kp.fingerprint),
+  };
+}
+
+function startAuthorizationWorker(fixture, signed) {
+  const source = [
+    "import { authorizationEvent } from " + JSON.stringify(fixture.moduleUrl) + ";",
+    "import { createInterface } from 'node:readline';",
+    "console.log('READY');",
+    "for await (const line of createInterface({ input: process.stdin })) {",
+    "  if (line !== 'go') continue;",
+    "  try {",
+    "    const event = authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) });",
+    "    console.log('AUTHORIZED:' + event.event_id);",
+    "  } catch (error) {",
+    "    console.log('ERROR:' + (error && error.message ? error.message : String(error)));",
+    "  }",
+    "  break;",
+    "}",
+  ].join("\n");
+  const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
+    env: {
+      ...process.env,
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      TEST_SIGNED: JSON.stringify(signed),
+      TEST_PAYLOAD: JSON.stringify(fixture.payload),
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.stdin.on("error", () => {});
+  const reader = createInterface({ input: child.stdout });
+  const lines = [];
+  const waiters = [];
+  reader.on("line", line => {
+    const waiter = waiters.shift();
+    if (waiter) waiter(line);
+    else lines.push(line);
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", chunk => { stderr += chunk; });
+  const exit = new Promise(resolve => child.once("close", (code, signal) => resolve({ code, signal })));
+  const nextLine = () => lines.length
+    ? Promise.resolve(lines.shift())
+    : new Promise((resolve, reject) => {
+        waiters.push(resolve);
+        child.once("error", reject);
+      });
+  return { child, nextLine, exit, get stderr() { return stderr; } };
+}
+
+function startCrashWorker(fixture, signed, crashPoint, markerPath) {
+  const source = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const ledgerPath = process.env.NGL_FOUNDER_NONCE_LEDGER_PATH;",
+    "const markerPath = process.env.TEST_MARKER_PATH;",
+    "if (process.env.TEST_CRASH_POINT === 'before-rename') {",
+    "  const originalRenameSync = fs.renameSync;",
+    "  fs.renameSync = (from, to) => {",
+    "    if (to === ledgerPath) {",
+    "      fs.writeFileSync(markerPath, 'before-rename', { mode: 0o600 });",
+    "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);",
+    "      throw new Error('crash barrier expired');",
+    "    }",
+    "    return originalRenameSync(from, to);",
+    "  };",
+    "} else {",
+    "  const originalFsyncSync = fs.fsyncSync;",
+    "  let directorySyncs = 0;",
+    "  fs.fsyncSync = descriptor => {",
+    "    if (fs.fstatSync(descriptor).isDirectory()) {",
+    "      directorySyncs += 1;",
+    "      if (directorySyncs === 2) {",
+    "        fs.writeFileSync(markerPath, 'after-rename-before-directory-sync', { mode: 0o600 });",
+    "        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);",
+    "        throw new Error('crash barrier expired');",
+    "      }",
+    "    }",
+    "    return originalFsyncSync(descriptor);",
+    "  };",
+    "}",
+    "syncBuiltinESMExports();",
+    "const { authorizationEvent } = await import(" + JSON.stringify(fixture.moduleUrl) + ");",
+    "authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) });",
+  ].join("\n");
+  const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
+    env: {
+      ...process.env,
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      TEST_SIGNED: JSON.stringify(signed),
+      TEST_PAYLOAD: JSON.stringify(fixture.payload),
+      TEST_CRASH_POINT: crashPoint,
+      TEST_MARKER_PATH: markerPath,
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", chunk => { stderr += chunk; });
+  const exit = new Promise(resolve => child.once("close", (code, signal) => resolve({ code, signal })));
+  return { child, exit, get stderr() { return stderr; } };
+}
+
+async function waitForMarker(markerPath, worker, label) {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    if (existsSync(markerPath)) return;
+    if (worker.child.exitCode !== null || worker.child.signalCode !== null) {
+      throw new Error(label + " exited before reaching the fault boundary: " + worker.stderr);
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(label + " did not reach the fault boundary: " + worker.stderr);
+}
+
 
 test("valid decision verifies cryptographically against the matching P-256 key", () => {
   const kp = keyPair();
@@ -460,4 +613,173 @@ test("decision payload snapshots and deeply freezes nested scope arrays", () => 
   assert.equal(Object.isFrozen(payload.outputs), true);
   assert.equal(Object.isFrozen(payload.acceptance), true);
   assert.throws(() => payload.capabilities.push("admin"), TypeError);
+});
+
+
+test("concurrent processes serialize durable Founder nonce-ledger writes without losing entries", { timeout: 30000 }, async t => {
+  const dir = path.join(tmpdir(), "ngl-auth-concurrency-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fixture = createAuthorizationFixture(dir);
+  const signed = Array.from({ length: 4 }, () => fixture.sign());
+  const workers = signed.map(item => startAuthorizationWorker(fixture, item));
+  const bounded = (promise, label, worker = null) => {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + (worker?.stderr ? ": " + worker.stderr : ""))), 10000);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+
+  try {
+    const ready = await Promise.all(workers.map(worker => bounded(worker.nextLine(), "worker readiness", worker)));
+    assert.deepEqual(ready, ["READY", "READY", "READY", "READY"]);
+    for (const worker of workers) worker.child.stdin.end("go\n");
+
+    const outcomes = await Promise.all(workers.map(worker => bounded(worker.nextLine(), "worker outcome", worker)));
+    const exits = await Promise.all(workers.map(worker => bounded(worker.exit, "worker exit", worker)));
+    assert.deepEqual(exits.map(item => item.code), [0, 0, 0, 0]);
+    const locked = [];
+    outcomes.forEach((outcome, index) => {
+      if (outcome === "ERROR:FOUNDER_NONCE_LEDGER_LOCKED") locked.push(index);
+      else assert.match(outcome, /^AUTHORIZED:/);
+    });
+
+    const retrySource = [
+      "import { authorizationEvent } from " + JSON.stringify(fixture.moduleUrl) + ";",
+      "const event = authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) });",
+      "console.log('AUTHORIZED:' + event.event_id);",
+    ].join("\n");
+    for (const index of locked) {
+      const retry = spawnSync(process.execPath, ["--input-type=module", "-e", retrySource], {
+        encoding: "utf8",
+        timeout: 10000,
+        env: {
+          ...process.env,
+          NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+          NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+          TEST_SIGNED: JSON.stringify(signed[index]),
+          TEST_PAYLOAD: JSON.stringify(fixture.payload),
+        },
+      });
+      assert.equal(retry.status, 0, retry.stderr);
+      assert.match(retry.stdout, /^AUTHORIZED:/m);
+    }
+
+    const saved = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.equal(saved.schema, "ngl.founder-nonce-ledger.v1");
+    assert.deepEqual([...saved.nonces].sort(), signed.map(item => item.nonce).sort());
+    assert.equal(new Set(saved.nonces).size, signed.length);
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
+  } finally {
+    for (const worker of workers) {
+      if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill("SIGKILL");
+    }
+    await Promise.allSettled(workers.map(worker => worker.exit));
+  }
+});
+
+test("read-only writer-lock inspector recognizes a stale Founder nonce lock without authorizing deletion", async t => {
+  const dir = path.join(tmpdir(), "ngl-auth-lock-inspector-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const lockPath = path.join(dir, ".founder-nonce.lock");
+  writeFileSync(lockPath, canonical({
+    schema: "ngl.ledger-lock.v1",
+    pid: 2147483647,
+    openedAt: new Date().toISOString(),
+  }), { mode: 0o600 });
+
+  const report = await inspectWriterLock(lockPath);
+  assert.equal(report.status, "present");
+  assert.equal(report.format, "owner-metadata");
+  assert.equal(report.owner.schema, "ngl.ledger-lock.v1");
+  assert.equal(report.owner.processProbe, "not-found");
+  assert.equal(report.safeToRemove, false);
+});
+
+test("process death before nonce-ledger rename leaves an inspectable stale lock and uncommitted temporary file", { timeout: 30000 }, async t => {
+  const dir = path.join(tmpdir(), "ngl-auth-crash-before-rename-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const markerPath = path.join(dir, "crash-boundary.marker");
+  const worker = startCrashWorker(fixture, signed, "before-rename", markerPath);
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+
+  try {
+    await waitForMarker(markerPath, worker, "pre-rename crash worker");
+    worker.child.kill("SIGKILL");
+    const stopped = await worker.exit;
+    assert.equal(stopped.signal, "SIGKILL", worker.stderr);
+    assert.equal(readFileSync(markerPath, "utf8"), "before-rename");
+    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+
+    const names = readdirSync(fixture.dataDirectory);
+    const temporary = names.find(name => name.startsWith(".founder-nonce-") && name.endsWith(".tmp"));
+    assert.ok(temporary, "the fsynced temporary ledger remains for offline inspection");
+    assert.ok(names.includes(".founder-nonce.lock"), "process death leaves the owner lock in place");
+    const inspection = await inspectWriterLock(lockPath);
+    assert.equal(inspection.owner.processProbe, "not-found");
+    assert.equal(inspection.safeToRemove, false);
+
+    // Test-only offline recovery after independently observing that the child is dead.
+    unlinkSync(path.join(fixture.dataDirectory, temporary));
+    unlinkSync(lockPath);
+    const event = withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => authorizationEvent({ signed, payload: fixture.payload }));
+    assert.equal(event.type, "QUEST_AUTHORIZED");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
+  } finally {
+    if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill("SIGKILL");
+    await Promise.allSettled([worker.exit]);
+  }
+});
+
+test("process death after nonce-ledger rename retains the nonce and blocks replay after offline lock recovery", { timeout: 30000 }, async t => {
+  const dir = path.join(tmpdir(), "ngl-auth-crash-after-rename-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const markerPath = path.join(dir, "crash-boundary.marker");
+  const worker = startCrashWorker(fixture, signed, "after-rename", markerPath);
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+
+  try {
+    await waitForMarker(markerPath, worker, "post-rename crash worker");
+    worker.child.kill("SIGKILL");
+    const stopped = await worker.exit;
+    assert.equal(stopped.signal, "SIGKILL", worker.stderr);
+    assert.equal(readFileSync(markerPath, "utf8"), "after-rename-before-directory-sync");
+
+    const saved = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.deepEqual(saved.nonces, [signed.nonce], "the atomic rename is visible before directory sync");
+    const names = readdirSync(fixture.dataDirectory);
+    assert.ok(names.includes(".founder-nonce.lock"), "process death leaves the owner lock in place");
+    assert.equal(names.some(name => name.startsWith(".founder-nonce-") && name.endsWith(".tmp")), false);
+    const inspection = await inspectWriterLock(lockPath);
+    assert.equal(inspection.owner.processProbe, "not-found");
+    assert.equal(inspection.safeToRemove, false);
+
+    // Test-only offline recovery after independently observing that the child is dead.
+    unlinkSync(lockPath);
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
+    ));
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
+    assert.equal(existsSync(lockPath), false);
+  } finally {
+    if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill("SIGKILL");
+    await Promise.allSettled([worker.exit]);
+  }
 });
