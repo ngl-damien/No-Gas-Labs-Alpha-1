@@ -358,8 +358,12 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const sourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
-    .filter(record => record.projectionStatus === 'linked' && record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
+  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked');
+  const sourceObservationRecords = allSourceObservationRecords
+    .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
+  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+    .filter(challenge => challenge.actor?.id === viewer?.id && challenge.actor?.role === viewer?.role);
 
   const completedQuestObjectives = getQuestTrail(world, viewer)
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
@@ -411,9 +415,9 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: matchedReports.length,
-      record: 'reports',
-      basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
+      count: matchedReports.length + sourceObservationChallenges.length,
+      record: 'reports and challenges to another actor’s source observations',
+      basis: 'Attributed version-bound reports plus unique, earlier challenges to another actor’s retained source notes; this counts dissenting practice, not correctness or adjudication.'
     },
     {
       id: 'researcher',
