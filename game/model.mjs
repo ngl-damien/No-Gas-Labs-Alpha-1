@@ -1,5 +1,6 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 const encoder=new TextEncoder();
@@ -75,6 +76,47 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const studyId=uid('study');
       result={studyId};
       recordEvent('study',{studyId,creationId:c.id,version:action.version,question,attempt,nextCheck});
+      break;
+    }
+    case 'record-source-observation':{
+      const creationId=text(action.creationId,128,'Source Observatory ID');
+      if(!Number.isSafeInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a positive retained Observatory version.');
+      const sourceCreation=world.creations.find(item=>item.id===creationId);
+      if(!sourceCreation||sourceCreation.kind!=='observatory')fail('INVALID_SOURCE_OBSERVATORY','Source observations must bind to a published Source Observatory.',409);
+      const versions=[...(sourceCreation.versions||[]),sourceCreation].filter(item=>item.version===action.version);
+      const publicationEvents=world.events.filter(item=>item.type==='publish'&&item.creationId===creationId&&item.version===action.version);
+      if(versions.length!==1||(versions[0].kind??sourceCreation.kind)!=='observatory'||!isStrictTimestamp(versions[0].publishedAt)||
+         publicationEvents.length!==1||publicationEvents[0].at!==versions[0].publishedAt||
+         Date.parse(publicationEvents[0].at)>Date.parse(at))fail('STALE_VERSION','The selected Observatory version is not uniquely retained and published before this note.',409);
+      const observationId=text(action.observationId,128,'Source observation identity');
+      if(!/^source-observation-[a-f0-9]{64}$/.test(observationId))fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity must be a normalized SHA-256 identifier.');
+      if(requestMeta?.requestId&&requestMeta.requestId!==observationId)fail('INVALID_SOURCE_OBSERVATION_ID','The transport request ID must match the normalized observation identity.');
+      const claim=text(action.claim,500,'Claim');
+      const sourceKind=text(action.sourceKind,32,'Source class');
+      if(!SOURCE_OBSERVATION_SOURCE_KINDS.includes(sourceKind))fail('INVALID_SOURCE_KIND','Choose a known self-classified source kind.');
+      const source=text(action.source,500,'Source or attribution');
+      const optional=value=>value===undefined||value===null?null:text(value,500,'Optional source observation field');
+      const falsifier=optional(action.falsifier),uncertainty=optional(action.uncertainty),nextTest=optional(action.nextTest);
+      const normalizedRecordDigest=observationId.slice('source-observation-'.length);
+      const existing=world.events.filter(item=>item.type==='source-observation-recorded'&&item.observationId===observationId);
+      if(existing.length){
+        const previous=existing[0];
+        const same=existing.length===1&&previous.actor.id===who.id&&previous.actor.role===who.role&&
+          previous.creationId===creationId&&previous.version===action.version&&previous.claim===claim&&
+          previous.sourceKind===sourceKind&&previous.source===source&&previous.falsifier===falsifier&&
+          previous.uncertainty===uncertainty&&previous.nextTest===nextTest&&
+          previous.normalizedRecordDigest===normalizedRecordDigest;
+        if(!same)fail('SOURCE_OBSERVATION_ID_CONFLICT','This normalized observation identity is already bound to different actor or note content.',409);
+        result={observationId,duplicate:true};
+        break;
+      }
+      result={observationId,duplicate:false};
+      recordEvent('source-observation-recorded',{
+        observationId,creationId,version:action.version,claim,sourceKind,source,falsifier,uncertainty,nextTest,
+        originSchema:'ngl.source-observatory.v2',bindingMode:'USER_SELECTED',
+        sourceRetrieval:'NOT_PERFORMED',independentVerification:'NOT_PERFORMED',
+        modelAssertions:'LEADS_ONLY',execution:'NOT_EXECUTED',normalizedRecordDigest
+      });
       break;
     }
     case 'review-study':{
@@ -225,7 +267,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','source-observation-recorded':'duplicate,observationId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   for(const creation of raw.creations)for(const version of [...creation.versions,creation]){const publishedAt=Date.parse(version.publishedAt);const publications=publicationsByVersion.get(historyKey(version.id,version.version))||[];if(!isStrictTimestamp(version.publishedAt)||!Number.isFinite(publishedAt)||publications.length!==1||!isStrictTimestamp(publications[0].at)||Date.parse(publications[0].at)!==publishedAt)invalid('Published version timestamp does not match retained publication history.');}
   for(const e of raw.events)if(e.type==='moonshot-proposed'){
@@ -267,6 +309,31 @@ export async function validateWorld(raw) {
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
     }
+  }
+  const sourceObservationIds=new Set();
+  const allowedSourceObservationKeys=new Set(['id','type','actor','at','semantics','observationId','creationId','version','claim','sourceKind','source','falsifier','uncertainty','nextTest','originSchema','bindingMode','sourceRetrieval','independentVerification','modelAssertions','execution','normalizedRecordDigest','requestId','actionFingerprint','actionResult']);
+  for(const e of raw.events)if(e.type==='source-observation-recorded'){
+    if(Object.keys(e).some(key=>!allowedSourceObservationKeys.has(key)))invalid('Source observation contains unsupported canonical fields.');
+    unique(e.observationId);
+    const digest=typeof e.observationId==='string'&&e.observationId.startsWith('source-observation-')?e.observationId.slice('source-observation-'.length):'';
+    if(typeof e.observationId!=='string'||!/^source-observation-[a-f0-9]{64}$/.test(e.observationId)||sourceObservationIds.has(e.observationId)||
+       typeof e.creationId!=='string'||!e.creationId||!Number.isSafeInteger(e.version)||e.version<1||
+       typeof e.claim!=='string'||!e.claim.trim()||Array.from(e.claim).length>500||
+       !SOURCE_OBSERVATION_SOURCE_KINDS.includes(e.sourceKind)||typeof e.source!=='string'||!e.source.trim()||Array.from(e.source).length>500||
+       ![e.falsifier,e.uncertainty,e.nextTest].every(value=>value===null||(typeof value==='string'&&value.trim()&&Array.from(value).length<=500))||
+       e.originSchema!=='ngl.source-observatory.v2'||e.bindingMode!=='USER_SELECTED'||
+       e.sourceRetrieval!=='NOT_PERFORMED'||e.independentVerification!=='NOT_PERFORMED'||e.modelAssertions!=='LEADS_ONLY'||e.execution!=='NOT_EXECUTED'||
+       !/^[a-f0-9]{64}$/.test(e.normalizedRecordDigest)||e.normalizedRecordDigest!==digest||
+       (e.requestId!==undefined&&e.requestId!==e.observationId)||
+       (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='duplicate,observationId'||e.actionResult.duplicate!==false||e.actionResult.observationId!==e.observationId)))invalid('Malformed or repeated Source Observatory observation.');
+    const source=raw.creations.find(item=>item.id===e.creationId);
+    const versions=source?[...(source.versions||[]),source].filter(item=>item.version===e.version):[];
+    const publications=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
+    if(!source||source.kind!=='observatory'||versions.length!==1||(versions[0].kind??source.kind)!=='observatory'||
+       !isStrictTimestamp(versions[0].publishedAt)||publications.length!==1||
+       publications[0].at!==versions[0].publishedAt||eventPositions.get(publications[0])>=eventPositions.get(e)||
+       Date.parse(versions[0].publishedAt)>Date.parse(e.at))invalid('Source observation must bind to one earlier retained Source Observatory publication.');
+    sourceObservationIds.add(e.observationId);
   }
   const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   for(let index=0;index<raw.events.length;index++){

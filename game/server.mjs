@@ -14,6 +14,7 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -43,7 +44,8 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId']
+  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -114,6 +116,19 @@ function preflightAction(input) {
       preflightText(input.nextCheck, 500, 'Next check', { required: true });
       break;
     }
+    case 'record-source-observation': {
+      requiredId(input.creationId, 'Source Observatory ID');
+      if (!Number.isSafeInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a positive retained Observatory version.');
+      requiredId(input.observationId, 'Source observation identity');
+      if (!/^source-observation-[a-f0-9]{64}$/.test(input.observationId) || input.requestId !== input.observationId) fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation and request IDs must match the normalized SHA-256 identity.');
+      preflightText(input.claim, 500, 'Claim', { required: true });
+      if (!SOURCE_OBSERVATION_SOURCE_KINDS.includes(input.sourceKind)) fail('INVALID_SOURCE_KIND', 'Choose a known self-classified source kind.');
+      preflightText(input.source, 500, 'Source or attribution', { required: true });
+      preflightText(input.falsifier, 500, 'Falsifier', { nullable: true });
+      preflightText(input.uncertainty, 500, 'Uncertainty', { nullable: true });
+      preflightText(input.nextTest, 500, 'Next test', { nullable: true });
+      break;
+    }
     case 'review-study': {
       requiredId(input.studyId, 'Study note ID');
       preflightText(input.response, 1000, 'Retrieval response', { required: true });
@@ -176,11 +191,12 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const sourceObservationIds = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
@@ -299,6 +315,38 @@ function validateHistory(world) {
       }
       challengeIds.add(event.challengeId);
     }
+    if (event.type === 'source-observation-recorded') {
+      const index = eventPositions.get(event);
+      const digest = artifactReceipt(sourceObservationRequestMaterial({
+        actorId: event.actor?.id, actorRole: event.actor?.role, creationId: event.creationId, version: event.version,
+        claim: event.claim, sourceKind: event.sourceKind, source: event.source,
+        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest
+      })).digest;
+      const key = historyKey(event.creationId, event.version);
+      const source = world.creations.find(creation => creation.id === event.creationId);
+      const versions = source ? [...(source.versions || []), source].filter(version => version.version === event.version) : [];
+      const publicationsForVersion = publicationEventsByVersion.get(key) || [];
+      if (typeof event.observationId !== 'string' || event.observationId !== 'source-observation-' + digest ||
+          event.normalizedRecordDigest !== digest || sourceObservationIds.has(event.observationId) ||
+          event.requestId !== undefined && event.requestId !== event.observationId ||
+          !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
+          !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
+          publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
+          Date.parse(versions[0].publishedAt) > Date.parse(event.at) ||
+          !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
+          event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
+          event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
+          event.modelAssertions !== 'LEADS_ONLY' || event.execution !== 'NOT_EXECUTED' ||
+          typeof event.claim !== 'string' || !event.claim.trim() || Array.from(event.claim).length > 500 ||
+          typeof event.source !== 'string' || !event.source.trim() || Array.from(event.source).length > 500 ||
+          ![event.falsifier, event.uncertainty, event.nextTest].every(value => value === null || (typeof value === 'string' && value.trim() && Array.from(value).length <= 500))) {
+        throw new Error('Stored Source Observatory observation is malformed or unbound.');
+      }
+      if (event.actionResult !== undefined && (Object.keys(event.actionResult).sort().join(',') !== 'duplicate,observationId' || event.actionResult.duplicate !== false || event.actionResult.observationId !== event.observationId)) {
+        throw new Error('Stored Source Observatory observation result mismatch.');
+      }
+      sourceObservationIds.add(event.observationId);
+    }
     if (event.type === 'collaborator-response-recorded') {
       const index = eventPositions.get(event);
       if (typeof event.responseId !== 'string' || !event.responseId || collaboratorResponseIds.has(event.responseId) ||
@@ -347,7 +395,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -904,6 +952,17 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         return await enqueue(async () => {
           // Re-check after waiting: a logout may have demoted this live session.
           const actor = { ...session.actor };
+          if (action.type === 'record-source-observation') {
+            const digest = artifactReceipt(sourceObservationRequestMaterial({
+              actorId: actor.id, actorRole: actor.role, creationId: action.creationId, version: action.version,
+              claim: action.claim, sourceKind: action.sourceKind, source: action.source,
+              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest
+            })).digest;
+            const expectedObservationId = 'source-observation-' + digest;
+            if (action.observationId !== expectedObservationId || requestId !== expectedObservationId) {
+              fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation ID must match this actor, selected version and normalized note content.');
+            }
+          }
           const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
@@ -911,6 +970,9 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
             return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
           }
           const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
+          if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
+            return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
+          }
           const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
           try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
           kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });

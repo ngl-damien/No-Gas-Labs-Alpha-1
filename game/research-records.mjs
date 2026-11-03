@@ -353,3 +353,252 @@ export function projectResearchRecords(input, retainedCreations = []) {
       return rightTime - leftTime || right._projection.index - left._projection.index;
     });
 }
+
+
+// A Source Observatory export is an author-entered notebook, not a verified
+// source package. Keep its schema strict so imports cannot silently smuggle
+// execution, verification, or approval fields into the shared world.
+export const SOURCE_OBSERVATION_SOURCE_KINDS = Object.freeze([
+  'unspecified',
+  'direct-observation',
+  'primary-source',
+  'secondary-source',
+  'tool-output',
+  'user-report',
+  'model-assertion'
+]);
+const sourceObservationSourceKinds = new Set(SOURCE_OBSERVATION_SOURCE_KINDS);
+const sourceObservationExportKeys = ['assurance', 'observations', 'schema'];
+const sourceObservationAssuranceKeys = ['execution', 'independentVerification', 'modelAssertions', 'sourceRetrieval'];
+const sourceObservationNoteKeys = ['claim', 'falsifier', 'nextTest', 'source', 'sourceKind', 'uncertainty'];
+const sourceObservationExactKeys = (value, keys) =>
+  value && typeof value === 'object' && !Array.isArray(value) &&
+  Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+const sourceObservationRequiredText = (value, label) => {
+  if (typeof value !== 'string' || !value.trim() || Array.from(value.trim()).length > 500) {
+    throw new TypeError(label + ' must be 1–500 characters.');
+  }
+  return value.trim();
+};
+const sourceObservationOptionalText = (value, label) => {
+  if (value === null) return null;
+  if (typeof value !== 'string' || Array.from(value.trim()).length > 500) {
+    throw new TypeError(label + ' must be null or at most 500 characters.');
+  }
+  return value.trim() || null;
+};
+
+export function parseSourceObservatoryExport(input) {
+  let parsed = input;
+  if (typeof input === 'string') {
+    try { parsed = JSON.parse(input); }
+    catch { throw new TypeError('The selected file is not valid JSON.'); }
+  }
+  const snapshot = snapshotData(parsed);
+  const value = snapshot.value;
+  if (!snapshot.safe || !sourceObservationExactKeys(value, sourceObservationExportKeys) ||
+      value.schema !== 'ngl.source-observatory.v2') {
+    throw new TypeError('Choose an exact ngl.source-observatory.v2 export.');
+  }
+  const assurance = value.assurance;
+  if (!sourceObservationExactKeys(assurance, sourceObservationAssuranceKeys) ||
+      assurance.sourceRetrieval !== 'NOT_PERFORMED' ||
+      assurance.independentVerification !== 'NOT_PERFORMED' ||
+      assurance.modelAssertions !== 'LEADS_ONLY' ||
+      assurance.execution !== 'NOT_EXECUTED') {
+    throw new TypeError('The export assurance block is missing or has been altered.');
+  }
+  const rows = snapshotArrayEntries(value.observations, 100);
+  if (rows.length < 1 || rows.length > 100 || rows.some(row => !row.safe)) {
+    throw new TypeError('An export must contain 1–100 bounded observations.');
+  }
+  const observations = rows.map((entry, index) => {
+    const row = entry.value;
+    if (!sourceObservationExactKeys(row, sourceObservationNoteKeys)) {
+      throw new TypeError('Observation ' + (index + 1) + ' has an unsupported shape.');
+    }
+    if (!sourceObservationSourceKinds.has(row.sourceKind)) {
+      throw new TypeError('Observation ' + (index + 1) + ' has an unknown source class.');
+    }
+    return Object.freeze({
+      claim: sourceObservationRequiredText(row.claim, 'Claim'),
+      sourceKind: row.sourceKind,
+      source: sourceObservationRequiredText(row.source, 'Source/attribution'),
+      falsifier: sourceObservationOptionalText(row.falsifier, 'Falsifier'),
+      uncertainty: sourceObservationOptionalText(row.uncertainty, 'Uncertainty'),
+      nextTest: sourceObservationOptionalText(row.nextTest, 'Next test')
+    });
+  });
+  return Object.freeze({
+    schema: value.schema,
+    assurance: Object.freeze({
+      sourceRetrieval: assurance.sourceRetrieval,
+      independentVerification: assurance.independentVerification,
+      modelAssertions: assurance.modelAssertions,
+      execution: assurance.execution
+    }),
+    observations: Object.freeze(observations)
+  });
+}
+
+// This normalized-note identity is not a receipt for the exported file and
+// does not prove that its contents originated from the selected artifact.
+export function sourceObservationRequestMaterial({
+  actorId, actorRole, creationId, version, claim, sourceKind, source,
+  falsifier = null, uncertainty = null, nextTest = null
+}) {
+  const required = (value, label) => {
+    if (typeof value !== 'string' || !value.trim()) throw new TypeError(label + ' is required.');
+    return value.trim();
+  };
+  const optional = (value, label) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'string') throw new TypeError(label + ' must be text or null.');
+    return value.trim() || null;
+  };
+  if (!Number.isSafeInteger(version) || version < 1) throw new TypeError('Version must be a positive integer.');
+  if (!sourceObservationSourceKinds.has(sourceKind)) throw new TypeError('Unknown source class.');
+  return JSON.stringify({
+    protocol: 'ngl.source-observation-id.v1',
+    actorId: required(actorId, 'Actor ID'),
+    actorRole: required(actorRole, 'Actor role'),
+    creationId: required(creationId, 'Creation ID'),
+    version,
+    claim: sourceObservationRequiredText(claim, 'Claim'),
+    sourceKind,
+    source: sourceObservationRequiredText(source, 'Source/attribution'),
+    falsifier: optional(falsifier, 'Falsifier'),
+    uncertainty: optional(uncertainty, 'Uncertainty'),
+    nextTest: optional(nextTest, 'Next test')
+  });
+}
+
+export function projectSourceObservationRecords(eventsInput, creationsInput) {
+  const eventEntries = snapshotArrayEntries(eventsInput, MAX_EVENT_COUNT);
+  const creationEntries = snapshotArrayEntries(creationsInput, MAX_RETAINED_CREATIONS);
+  const events = eventEntries.map(entry => entry.value);
+  const creations = creationEntries.map(entry => entry.value);
+  const unsafeEvents = new WeakSet();
+  const unsafeCreations = new WeakSet();
+  eventEntries.forEach(entry => {
+    if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeEvents.add(entry.value);
+  });
+  creationEntries.forEach(entry => {
+    if (!entry.safe && entry.value && typeof entry.value === 'object') unsafeCreations.add(entry.value);
+  });
+  const eventIdCounts = countBy(events, 'id', hasText);
+  const observationEvents = events.filter(event => event?.type === 'source-observation-recorded');
+  const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
+  const versions = new Map();
+  for (const creation of creations) {
+    if (!creation || unsafeCreations.has(creation) || typeof creation.id !== 'string' || !creation.id) continue;
+    for (const version of [...rows(creation.versions), creation]) {
+      if (!version || !Number.isSafeInteger(version.version) || version.version < 1 ||
+          (version.kind ?? creation.kind) !== 'observatory') continue;
+      const key = JSON.stringify([creation.id, version.version]);
+      if (versions.has(key)) versions.set(key, null);
+      else versions.set(key, { creation, version });
+    }
+  }
+  const publications = new Map();
+  events.forEach((event, index) => {
+    if (unsafeEvents.has(event) || event?.type !== 'publish' || !hasText(event.creationId) ||
+        !Number.isSafeInteger(event.version) || event.version < 1) return;
+    const key = JSON.stringify([event.creationId, event.version]);
+    const rowsForVersion = publications.get(key) || [];
+    rowsForVersion.push({ event, index });
+    publications.set(key, rowsForVersion);
+  });
+  const records = [];
+  events.forEach((event, index) => {
+    if (event?.type !== 'source-observation-recorded') return;
+    const digest = typeof event.observationId === 'string' &&
+      event.observationId.startsWith('source-observation-')
+      ? event.observationId.slice('source-observation-'.length) : '';
+    const optionalText = value => value === null ||
+      (typeof value === 'string' && value.trim() && Array.from(value).length <= 500);
+    const validShape = !unsafeEvents.has(event) &&
+      typeof event.id === 'string' && event.id &&
+      typeof event.actor?.id === 'string' && event.actor.id &&
+      ['founder', 'witness'].includes(event.actor.role) &&
+      isStrictTimestamp(event.at) &&
+      typeof event.creationId === 'string' && event.creationId &&
+      Number.isSafeInteger(event.version) && event.version > 0 &&
+      typeof event.claim === 'string' && event.claim.trim() && Array.from(event.claim).length <= 500 &&
+      sourceObservationSourceKinds.has(event.sourceKind) &&
+      typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
+      optionalText(event.falsifier) && optionalText(event.uncertainty) && optionalText(event.nextTest) &&
+      event.originSchema === 'ngl.source-observatory.v2' &&
+      event.bindingMode === 'USER_SELECTED' &&
+      event.sourceRetrieval === 'NOT_PERFORMED' &&
+      event.independentVerification === 'NOT_PERFORMED' &&
+      event.modelAssertions === 'LEADS_ONLY' &&
+      event.execution === 'NOT_EXECUTED' &&
+      /^[a-f0-9]{64}$/.test(digest) &&
+      event.normalizedRecordDigest === digest &&
+      (event.requestId === undefined || event.requestId === event.observationId) &&
+      (event.actionResult === undefined ||
+        (sourceObservationExactKeys(event.actionResult, ['duplicate', 'observationId']) &&
+          event.actionResult.duplicate === false && event.actionResult.observationId === event.observationId));
+    let projectionStatus = 'linked';
+    let projectionReason = null;
+    if (!validShape) {
+      projectionStatus = 'malformed';
+      projectionReason = 'The retained note does not match the bounded Source Observatory record schema.';
+    } else if (eventIdCounts.get(event.id) !== 1 || observationIdCounts.get(event.observationId) !== 1) {
+      projectionStatus = 'ambiguous';
+      projectionReason = 'The event or normalized note identity is repeated.';
+    }
+    const key = JSON.stringify([event.creationId, event.version]);
+    const target = versions.get(key);
+    const publicationRows = publications.get(key) || [];
+    if (projectionStatus === 'linked' && target === undefined) {
+      projectionStatus = 'unavailable';
+      projectionReason = 'The selected Source Observatory version is not retained.';
+    } else if (projectionStatus === 'linked' && target === null) {
+      projectionStatus = 'ambiguous';
+      projectionReason = 'The selected Source Observatory version has duplicate retained identities.';
+    } else if (projectionStatus === 'linked' && publicationRows.length !== 1) {
+      projectionStatus = publicationRows.length ? 'ambiguous' : 'unavailable';
+      projectionReason = 'The selected version does not have one unique retained publication event.';
+    } else if (projectionStatus === 'linked' &&
+      (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) ||
+       !isStrictTimestamp(target.version.publishedAt) ||
+       publicationRows[0].event.at !== target.version.publishedAt ||
+       Date.parse(event.at) < Date.parse(publicationRows[0].event.at))) {
+      projectionStatus = 'unavailable';
+      projectionReason = 'The source publication does not precede this note with a matching retained timestamp.';
+    }
+    const warning = event.sourceKind === 'model-assertion'
+      ? 'Model assertions are leads only, not evidence.'
+      : event.sourceKind === 'tool-output'
+        ? 'Tool output is attributed output, not independent verification.'
+        : 'This is an author-entered note, not an independently verified claim.';
+    records.push(Object.freeze({
+      id: event.id,
+      observationId: event.observationId,
+      creationId: event.creationId,
+      version: event.version,
+      claim: event.claim,
+      sourceKind: event.sourceKind,
+      source: event.source,
+      falsifier: event.falsifier,
+      uncertainty: event.uncertainty,
+      nextTest: event.nextTest,
+      actor: event.actor,
+      at: event.at,
+      originSchema: event.originSchema,
+      bindingMode: event.bindingMode,
+      sourceRetrieval: event.sourceRetrieval,
+      independentVerification: event.independentVerification,
+      modelAssertions: event.modelAssertions,
+      execution: event.execution,
+      normalizedRecordDigest: event.normalizedRecordDigest,
+      targetTitle: target?.version?.title || target?.creation?.title || null,
+      projectionStatus,
+      projectionReason,
+      warning
+    }));
+  });
+  return Object.freeze(records.sort((a, b) => String(b.at).localeCompare(String(a.at))));
+}
