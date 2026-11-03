@@ -155,3 +155,43 @@ The current-head Browser run has now completed successfully: [41638570851](https
 - PR #316 remains helper-level with trust anchor `NOT_ENROLLED`; no Founder key or host trust/nonce paths were provisioned. PR #16's historical allegation remains superseded by closed #16 / merged #18.
 - Nine linked repositories still lack root `AGENTS.md`; AI-BI's required `init_node.sh` is mode 100644; governance's bootstrap could not be run without a shell/device. No linked source was inspected.
 - Full run evidence and next ranked actions: `docs/operations/checkpoints/2026-11-03-worker-a-run-06.md`. This is a durable handoff, not a claim of continuous work between runs.
+
+---
+
+## Worker A Run 07 — 2026-11-03 14:46 UTC
+
+### Rehydration and current evidence
+
+- Read root `AGENTS.md` (blob `a4beeee1c0ec46faab28502957c0e53850b2855d`) and the complete shared protocol (blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`) sequentially on main and rechecked both on this steering branch. Main is still `cc317d49c8fdf003c78aa40f38a177095019066e`.
+- Main `docs/operations/LATEST_CHECKPOINT.md` remains stale: blob `e6076240b9a4baf4378f09212766e39f22a84c58` declares `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. I did not overwrite it while the #314/#317/#320/#323/#326 proposed stack owns the newer Worker B checkpoint chain.
+- Latest Worker B result re-read from PR #326: head `5db5d4f5704dda0f3874cc05bb2ae275a9e0da2a`, draft child of #323 head `749cefdf84fc8602bb09bbcd3c6ccdd0159087c6`. Exact-head Verify `41654132200`, Genesis `41654132277`, and Browser `41654132153` passed; Browser completed 12/12. Latest Worker B checkpoint blob `677428c9216b140e4ab752272036098a06904965`; ledger blob `0508a30c7987f62570eb2b6739e2d03c63d5bc66`. G6 remains IN PROGRESS; map counters still wait on #309 ownership of `game/world-view.mjs`; source retrieval/independent verification, tile-and-sprite rendering, and physical-device acceptance remain open.
+- Fresh #16 patch inspection: five changed files; no `demonstrate()` or `QUEST_AUTHORIZED` in the final PR #16 patch. The only `generateKeyPairSync` match is in `experiment-001/institutional-cycle.test.mjs`. PR #16 is closed/unmerged and PR #18 merged. The historical self-signing allegation is superseded; do not recreate it.
+- Current main source recheck: `game/server.mjs` blob `a40eefbd452a41919548e95b5c57fd9372858d8b` imports `openDecisions`, not `authorizationEvent()`, and retains the local `founder.key` path. Default trust-anchor blob `d8bbc990cbdb08304e6ce3b5be0a417ac4c16e9b` is explicitly `NOT_ENROLLED`. No real Founder key, host trust root, or live cryptographic mutation boundary is provisioned.
+- Rechecked linked-repository root instructions for `recursive-artifact-engine`, `ngl-mesh`, `no-gas-labs-command-center`, and `no-gas-labs`; all four returned 404 for `AGENTS.md`. No linked source was opened or changed. The other blocked repositories and bootstrap requirements remain as recorded in the portfolio registry.
+- No local checkout or Node 24 runtime was available. No local preflight/test is claimed. Hosted preflight on PR #325 is post-change evidence only.
+
+### Cycle 1 — repair and harden offline Founder nonce recovery
+
+- PR #324 head `770bd3a20a75d9d00d504839e3bfdccf32383a8e` failed Verify `41645115308` at 802/803; Genesis `41645115251` and Browser `41645115330` passed. The child #325 fixed the missing function brace that prevented the recovery module from parsing and added a shared recovery lease observed by the recovery command and nonce writer.
+- PR #325 head `1bb1de3dc736a1a289a50f873c08d6637858a6f8`: Verify `41649044314`, Genesis `41649044432`, Browser `41649044407` all passed. Browser logs show 12/12 journeys. Verify used Node 24.22.1, the full test command exited 0, hosted preflight returned `ready` with empty warnings/failures, and receipt artifact `13235523952` uploaded. Browser artifact `13236632346` uploaded. #325 remains draft and helper-level.
+- Reinspection found one additional fail-closed defect in #325: after unlinking the stale owner lock and syncing the directory, a non-`ENOENT` error from the final `lstat()` fell through with `keepRecoveryLease === false`; the function could then remove its recovery fence despite being unable to confirm the final lock path state.
+- Implemented a narrow child PR #327: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/327. Branch `security/fail-closed-recovery-lock-inspection-20261103`; exact head `d9425d409a32b16f7b9bf0a60ddca3ad44837def`; parent #325 exact head `1bb1de3dc736a1a289a50f873c08d6637858a6f8`; three commits ahead, zero behind at creation.
+- Changes: `scripts/recover-founder-nonce-lock.mjs` now retains `.founder-nonce-recovery.lock` and returns `FOUNDER_NONCE_RECOVERY_LOCK_STATE_UNCERTAIN` for any post-unlink owner-lock inspection error other than `ENOENT`. `test/founder-nonce-recovery.test.mjs` adds a child-process fault-injection test that performs the real owner-lock unlink and directory sync, injects `EACCES` into the final owner-lock `lstat()`, and asserts the original lock is absent, the recovery lease remains, and ledger bytes are unchanged.
+- Exact-head PR #327 workflows at last observation: Verify `41656959123` PASS (Node 24.22.1 test command exit 0; hosted preflight `ready`, zero warnings/failures; artifact `13239543666`), Genesis `41656959387` PASS, Browser Acceptance `41656959128` still IN PROGRESS. Do not call #327 3/3 until Browser completes. No local test result is claimed.
+
+### Cycle 2 — challenge supersession and cross-worker ownership
+
+- #316 remains a helper-level child of #312; its current head is `206e617510f63098018513c77621be673dc92f2c`. Its current PR-associated Verify `41638605411`, Genesis `41638605427`, and Browser `41638605570` all passed. It does not establish production Founder identity or live server authorization.
+- #326 is the latest Worker B proposal; no changes were made to its game files. Its stated map-count follow-up still overlaps #309's `game/world-view.mjs` ownership. Worker A should not edit that shared renderer concurrently; the next safe handoff is to reconcile #309 and then let Worker B add event counts with explicit tests for recorded/challenged/responded events.
+- Linked repositories remain bootstrap-blocked; no source audit is claimed for them.
+
+### Current blockers and next ranked actions
+
+1. Poll PR #327 Browser run `41656959128`; inspect its exact-head journey output and artifact. If it fails, fix only an attributable regression and rerun the current head.
+2. Keep #327 and its #325/#324/#316/#312 parent chain draft/unmerged. Review the complete recovery/nonce threat model, including old writer versions, same-host/PID-namespace assumptions, and manual cleanup of a retained recovery lease.
+3. Preserve the default `NOT_ENROLLED` trust anchor. Founder-controlled key custody, independently provisioned host trust root, and canonical live mutation-boundary integration remain unresolved; no key generation/enrollment or host provisioning is authorized.
+4. Worker B: reconcile #309 `game/world-view.mjs` ownership with #326, then add map projections for Source Observation record/challenge/response events. Keep G6 IN PROGRESS until source retrieval and independent verification, physical-device acceptance, and the remaining release gates are evidenced.
+5. Do not inspect linked-repository source until each repository's root instructions and required bootstrap can be satisfied.
+6. Refresh the main checkpoint only after the proposed #314/#317/#320/#323/#326 checkpoint ownership is reconciled. Main remains unchanged.
+
+No merge, release, deployment, spending, key/credential operation, permission change, external publication, or Founder-reserved decision occurred. This is a run checkpoint, not a claim of uninterrupted work between runs.
