@@ -59,3 +59,43 @@ If an instruction file or required bootstrap cannot be read/run, stop source wor
 - PR #322 head `29eb650edbae9403786fd410ebcff4e5eb8e96d7` 3/3. PR #321's main-based docs branch remains 2/3 because Verify hits the inherited Decision Chamber fixture; Genesis and Browser pass.
 - Process deviation: initial instruction fetch output was not surfaced, and the first descriptor-read commits preceded full protocol confirmation. Root AGENTS and the complete shared protocol were then reread separately; pre-read state was discarded; checkpoint/Worker B results and nested instructions were rehydrated. The final nonce-ledger bounded-read commit followed that corrected sequence. The run is not represented as fully bootstrap-compliant from its first edit.
 - No local checkout or online remote device was available; local portable preflight and local tests were not run. Hosted preflight is post-change only.
+
+
+---
+
+## Worker A execution update — 2026-11-03
+
+### Bootstrap and fresh baseline
+
+- Read root `AGENTS.md` and the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` in that order. Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`.
+- Main `docs/operations/LATEST_CHECKPOINT.md` remains stale: it declares `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. The latest Worker B durable checkpoint is Run 40 on PR #320 branch `game/source-observation-in-world-form-20261103`, blob `75c2508d0d3dec20150eea01706ee8ca8aa488bb`; its MMORPG ledger blob is `2f43abe7c6c90fbab49abb222a4d9dbb3088ff57`. G6 remains IN PROGRESS and the stack is not on main.
+- No local checkout or online remote device was available. Local preflight and local tests were not run. Hosted post-change checks are the observed verification source; they are not pre-edit receipts.
+- Applicable nested instructions for `src/`, `src/authority/`, and `test/` returned 404; root instructions remain applicable.
+- Fresh linked-repository instruction check: root `AGENTS.md` returned 404 in nine linked repositories (`recursive-artifact-engine`, `ngl-mesh`, `no-gas-labs-command-center`, `no-gas-labs`, `no-gas-labs-monorepo`, `no-gas-labs-system-integration`, `evidenceos`, `no-gas-labs-execution`, `ngl-recovery-manifest`). `AI-BI-Intelligence-node-gate` and `no-gas-labs-governance` have root instructions and continuity files, but their required `init_node.sh` / `init_repo.sh` bootstraps cannot be executed without a local shell or online device. No linked-repository source was inspected or changed.
+
+### Cycle 1 — repair PR #321's inherited Verify failure
+
+- PR #321's main-based head `2c78e384f687bc1ae4b3246d091cfec5f78a1f0a` failed Verify because the old one-line Decision Chamber fixture called `authorizationEvent()` without an explicit enrolled TEST_ONLY trust fixture; exact failure: `FOUNDER_NOT_ENROLLED:NOT_ENROLLED` at `test/decision-chamber.test.js:10`.
+- Rechecked #312's current parent head `d8bbea51eb74822a772f163a13eba11ef296fd6a` and copied its explicit temporary TEST_ONLY fixture into #321. Commit: `67a2534a5a266905870036593388e55479c5ee53`.
+- Exact-head results on #321: Verify [41637992508](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41637992508) PASS; Genesis [41637992674](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41637992674) PASS; Browser [41637992533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41637992533) PASS. The PR remains draft/open. The test fixture is intentionally a narrow backport from #312; after #312 integrates, recheck whether the duplicate file change falls out of #321's diff. No production trust anchor or Founder authorization was enabled.
+
+### Cycle 2 — close writable-ancestor gap in the Founder trust and nonce paths
+
+- Reinspected #316, its current source/tests, and overlapping #164. #164 remains open, non-mergeable and stale; no patch was transplanted.
+- Added two regression tests in commit `aecd92253658db6e18fc304ac4837850de33ecfa`: a private trust-anchor leaf under a group/world-writable non-sticky ancestor and a private nonce-ledger leaf under the same unsafe ancestor. The first exact-head Verify failed both with `Missing expected exception`, demonstrating that the prior code checked only the final private directory and symlink absence.
+- Fixed in commit `206e617510f63098018513c77621be673dc92f2c`: `assertTrustedDirectoryChain()` now checks every ancestor for directory type, no symlink, trusted ownership (root/current UID where UID is available), and rejects group/world-writable directories unless sticky. Existing final-directory 0700, file 0600, descriptor identity, bounded-read, and durability checks remain. The trusted chain is rechecked during trust-anchor and nonce-ledger operations.
+- Exact-head World Projection / Verify run [41638605411](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638605411) PASS: Node test suite exit 0, Python inspector exit 0, game package build exit 0, bounded institutional exercise `passed: true`. Genesis Evidence Invariant [41638605427](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638605427) PASS. No Browser workflow was triggered for this authority/test-only change; it is not counted as a pass.
+- PR #316 remains a draft child of #312 and is helper-level only. The live game server still does not import `authorizationEvent()`; no host trust/nonce paths were provisioned and no Founder key was generated, enrolled, exported, or rotated.
+
+### Worker B handoff — current PR #323
+
+- PR #323 advanced to head `9074aaaa7642ec9b205cc5aee742a00db3022224`. Verify [41638571002](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638571002) PASS and Genesis [41638570793](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570793) PASS; current-head Browser [41638570851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570851) was still in progress at last observation.
+- Earlier head `08376e7b0c47d1d64751d2524169b7558c9765ff` Browser run [41636704506](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41636704506) failed in the simulated post-commit response-loss route: Playwright `Route.fetch` raised `TargetClosedError`; diagnostic state showed no challenge event, revision remained 9, XP remained 100, pending receipt remained, and the route callback still had `remaining: true`. Thus the run did not observe the intended server commit before response loss. A failed-job rerun was started on that old head; it is not evidence for the current PR head. Worker A made no source changes to Worker B's branch.
+- Recheck only the current #323 head's Browser run before deciding whether this is a transient browser/context closure or a deterministic test-harness lifecycle defect. Do not transfer the old-head failure or rerun result to the new head.
+
+### Fresh PR portfolio and next priorities
+
+- #312 parent: 3/3 passed; #313: 2/3 (stale Decision Chamber fixture); #314: 3/3; #315: 3/3; #317: 3/3; #318: 2/3 (Browser witness quest projection); #320: 3/3; #322: 3/3.
+- #321: 3/3 on `67a2534`. #316: both triggered exact-head workflows passed on `206e617`; Browser was not triggered.
+- Next: (1) re-poll #323 current-head Browser and send Worker B a precise handoff if it fails; (2) keep #316 draft until its parent stack and host-owned trust provisioning are reviewed; (3) after #312 integrates, reconcile #321's duplicate test fixture and rebase #313; (4) leave main's stale checkpoint untouched until #314/#317/#320 ownership is reconciled; (5) do not inspect linked-repository source until its root instructions and mandatory bootstrap can be satisfied.
+- No merge, release, deployment, spending, key operation, external publication, or Founder-reserved decision occurred.
