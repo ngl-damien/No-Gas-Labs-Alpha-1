@@ -1,4 +1,81 @@
 import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from './world-view.mjs';
+import { projectSourceObservationRecords } from './research-records.mjs';
+
+const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
+const unavailableSourceObservationMapCounts = () => Object.freeze({
+  available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+});
+
+function ownDataValue(object, key) {
+  if (!object || (typeof object !== 'object' && typeof object !== 'function')) return undefined;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isArraySafely(value) {
+  try { return Array.isArray(value); } catch { return false; }
+}
+
+/**
+ * Project only uniquely linked Source Observation activity onto the map.
+ * Unlinked, malformed, duplicated, or otherwise unprojectable retained events
+ * are counted as review items rather than silently becoming zero activity.
+ */
+export function projectSourceObservationMapCounts(world) {
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
+  if (!isArraySafely(events) || !isArraySafely(creations)) {
+    return unavailableSourceObservationMapCounts();
+  }
+
+  const eventCount = ownDataValue(events, 'length');
+  if (!Number.isSafeInteger(eventCount) || eventCount < 0 ||
+      eventCount > MAX_SOURCE_OBSERVATION_MAP_EVENTS) {
+    return unavailableSourceObservationMapCounts();
+  }
+
+  const raw = { notes: 0, dissent: 0, responses: 0 };
+  for (let index = 0; index < eventCount; index += 1) {
+    const event = ownDataValue(events, String(index));
+    const type = ownDataValue(event, 'type');
+    if (type === 'source-observation-recorded') raw.notes += 1;
+    else if (type === 'source-observation-challenged') raw.dissent += 1;
+    else if (type === 'source-observation-challenge-responded') raw.responses += 1;
+  }
+
+  let records;
+  try {
+    records = projectSourceObservationRecords(events, creations);
+  } catch {
+    return unavailableSourceObservationMapCounts();
+  }
+  if (!isArraySafely(records)) return unavailableSourceObservationMapCounts();
+
+  const linkedRecords = records.filter(record => record?.projectionStatus === 'linked');
+  const challenges = linkedRecords.flatMap(record =>
+    isArraySafely(record.challenges) ? record.challenges : []
+  );
+  const responses = challenges.reduce((total, challenge) =>
+    total + (isArraySafely(challenge.responses) ? challenge.responses.length : 0), 0);
+  const pending = challenges.filter(challenge => challenge.responseStatus === 'unanswered').length;
+  const review = Math.max(0, raw.notes - linkedRecords.length) +
+    Math.max(0, raw.dissent - challenges.length) +
+    Math.max(0, raw.responses - responses);
+
+  return Object.freeze({
+    available: true,
+    notes: linkedRecords.length,
+    dissent: challenges.length,
+    responses,
+    pending,
+    review
+  });
+}
+
 
 export const WORLD_TILE_SIZE = 32;
 const HALF_TILE = WORLD_TILE_SIZE / 2;
@@ -256,7 +333,37 @@ export class PixelWorldView extends WorldView {
     super(canvas, options);
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
-    canvas.setAttribute('aria-label', 'No Gas Labs top-down pixel-art world');
+    this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+    this.updateResearchAccessibility();
+  }
+
+  setWorld(world, institutionSummary = this.institutionSummary) {
+    const previousWorld = this.world;
+    super.setWorld(world, institutionSummary);
+    if (this.world !== previousWorld) {
+      this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+      this.updateResearchAccessibility();
+    }
+  }
+
+  updateResearchAccessibility() {
+    const counts = this.sourceObservationMapCounts;
+    if (!counts?.available) {
+      this.canvas.dataset.sourceObservationCounts = 'unavailable';
+      this.canvas.setAttribute('aria-label',
+        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity.');
+      return;
+    }
+    this.canvas.dataset.sourceObservationCounts =
+      `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
+    this.canvas.setAttribute('aria-label',
+      `No Gas Labs top-down pixel-art world. Evidence Archive: ${counts.notes} linked Source Observation notes, ${counts.dissent} linked dissent challenges, ${counts.responses} linked author responses, ${counts.pending} pending author responses, and ${counts.review} retained records requiring review. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`);
+  }
+
+  sourceObservationMapLine() {
+    const counts = this.sourceObservationMapCounts;
+    if (!counts?.available) return 'RESEARCH COUNTS UNAVAILABLE';
+    return `N${counts.notes} D${counts.dissent} R${counts.responses} P${counts.pending} !${counts.review}`;
   }
 
   text(value, x, y, size = 13, color = '#29443d', font = 'ui-monospace, monospace') {
@@ -319,6 +426,7 @@ export class PixelWorldView extends WorldView {
     }
     this.text('TOWNSQUARE', 1040, 468, 11, '#273b30');
     this.text((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 480, 8, '#445c49');
+    this.text(this.sourceObservationMapLine(), 1040, 492, 7, '#445c49');
   }
 
   drawInstitution(place) {
@@ -340,6 +448,9 @@ export class PixelWorldView extends WorldView {
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
     this.text(place.name.toUpperCase(), place.x, place.y + 34, 8, '#293c30');
     this.text((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 46, 7, '#445b49');
+    if (place.id === 'evidence_archive') {
+      this.text(this.sourceObservationMapLine(), place.x, place.y + 58, 7, '#445b49');
+    }
   }
 
   drawPlace(place) {
