@@ -117,11 +117,12 @@ export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => 
   })] : [];
 }));
 
-const GUILD_NPC_COLORS = Object.freeze(Object.fromEntries(
-  GUILD_NPC_POSITIONS.map(position => [position.roleId, Object.freeze({
-    G: position.accent, F: '#e0bd96', V: position.accent, L: '#e8e6dc', B: '#343e39'
-  })])
-));
+const GUILD_NPC_COLORS = Object.freeze({
+  archivist: Object.freeze({ H: '#536b49', F: '#e0bd96', G: '#718765', L: '#d4d8c2', T: '#765d40', B: '#343e39' }),
+  adversary: Object.freeze({ R: '#a64f3b', F: '#e0bd96', W: '#e8e6dc', B: '#343e39' }),
+  synthesizer: Object.freeze({ S: '#536b68', F: '#e0bd96', C: '#5f8873', L: '#c4d1a0', T: '#765d40', B: '#343e39' }),
+  tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' })
+});
 
 function guildNpcStatusLabel(status) {
   return status === 'ready' ? 'PACKET READY'
@@ -222,6 +223,40 @@ export function projectMapLabelMetrics(screenFontSize, zoom, viewportWidth) {
     horizontalPadding: 8 / zoom,
     verticalPadding: 5 / zoom,
     lineWidth: 1.5 / zoom
+  });
+}
+
+/**
+ * Keep a map-label panel inside the visible viewport without pulling wholly
+ * off-screen objects into view. Inputs and outputs are in CSS pixels/world units.
+ */
+export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewportHeight, camera, zoom,
+  panelWidth, panelHeight, margin = 8) {
+  const cameraX = ownDataValue(camera, 'x');
+  const cameraY = ownDataValue(camera, 'y');
+  if (![anchorX, anchorY, viewportWidth, viewportHeight, cameraX, cameraY, zoom,
+    panelWidth, panelHeight, margin].every(Number.isFinite) ||
+      viewportWidth < 64 || viewportHeight < 64 || zoom <= 0 ||
+      panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
+      margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
+      panelWidth > viewportWidth - margin * 2 ||
+      panelHeight > viewportHeight - margin * 2) return null;
+
+  const screenX = viewportWidth / 2 + (anchorX - cameraX) * zoom;
+  const screenY = viewportHeight / 2 + (anchorY - cameraY) * zoom;
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return null;
+  const originalLeft = screenX - panelWidth / 2;
+  const originalTop = screenY - panelHeight;
+  const originalRight = originalLeft + panelWidth;
+  const originalBottom = originalTop + panelHeight;
+  if (originalRight <= margin || originalLeft >= viewportWidth - margin ||
+      originalBottom <= margin || originalTop >= viewportHeight - margin) return null;
+
+  const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, originalLeft));
+  const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, originalTop));
+  return Object.freeze({
+    x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
+    y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
   });
 }
 
@@ -464,6 +499,54 @@ export const PIXEL_SPRITES = Object.freeze({
     '..RRRR..',
     '...TT...',
     '...TT...'
+  ]),
+  archivist: Object.freeze([
+    '....HHHH....',
+    '...HHHHHH...',
+    '..HHFFFFHH..',
+    '..HFFFFFFH..',
+    '..GGGGGGGG..',
+    '..GGLGGGLG..',
+    '...GGTTGG...',
+    '...GGTTGG...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  adversary: Object.freeze([
+    '....RRRR....',
+    '...RRRRRR...',
+    '..RRFFFFRR..',
+    '..RFFFFFFR..',
+    '.RRWWWWWWRR.',
+    '.RRRWWWWRRR.',
+    '...RRRRRR...',
+    '...RRRRRR...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  synthesizer: Object.freeze([
+    '...SSSSSS...',
+    '..SSSSSSSS..',
+    '..SFFFFFFS..',
+    '..FFFFFFF...',
+    '..CCCCCCCC..',
+    '..CCLLCCLL..',
+    '...CCTTCC...',
+    '...CCCCCC...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  tutor: Object.freeze([
+    '....HHHH....',
+    '...HHHHHH...',
+    '..HHFFFFHH..',
+    '..HFFFFFFH..',
+    '..VVVVVVVV..',
+    '..VVLLVVLL..',
+    '...VVTTVV...',
+    '...VVVVVV...',
+    '...BBBBBB...',
+    '..BB....BB..'
   ])
 });
 
@@ -579,6 +662,67 @@ function drawPixelBuilding(context, x, y, roof, wall, trim) {
   context.fillStyle = '#657b5e';
   context.fillRect(x - 25, y - 12, 6, 4);
   context.fillRect(x + 19, y - 12, 6, 4);
+}
+
+function institutionFeatures(rows) {
+  return Object.freeze(rows.map(([x, y, width, height, palette]) =>
+    Object.freeze({ x, y, width, height, palette })
+  ));
+}
+
+// Each landmark gets a silhouette tied to its actual institutional purpose:
+// council banner, forge chimney, archive stacks, human-gate pillars, academy
+// spire, observatory telescope, or publication press.
+const INSTITUTION_ARCHITECTURE = Object.freeze({
+  guild_hall: institutionFeatures([
+    [-48, -64, 96, 7, 'trim'], [-4, -86, 8, 22, 'trim'],
+    [-16, -82, 32, 12, 'accent'], [-42, -18, 8, 24, 'trim'], [34, -18, 8, 24, 'trim']
+  ]),
+  forge: institutionFeatures([
+    [-28, -100, 16, 46, 'trim'], [-32, -104, 24, 6, 'wall'],
+    [10, -30, 22, 18, 'accent'], [14, -26, 14, 10, 'glow'], [-12, 4, 38, 6, 'trim']
+  ]),
+  evidence_archive: institutionFeatures([
+    [-42, -92, 18, 40, 'trim'], [24, -92, 18, 40, 'trim'],
+    [-37, -84, 10, 5, 'accent'], [29, -84, 10, 5, 'accent'],
+    [-27, -14, 8, 10, 'accent'], [-9, -14, 8, 10, 'wall'],
+    [9, -14, 8, 10, 'accent'], [27, -14, 8, 10, 'wall']
+  ]),
+  decision_chamber: institutionFeatures([
+    [-44, -78, 8, 58, 'trim'], [-18, -78, 8, 58, 'trim'],
+    [10, -78, 8, 58, 'trim'], [36, -78, 8, 58, 'trim'],
+    [-50, -86, 100, 8, 'roof'], [-10, -28, 20, 28, 'accent']
+  ]),
+  academy: institutionFeatures([
+    [-12, -116, 24, 62, 'trim'], [-6, -132, 12, 16, 'roof'],
+    [-30, -82, 12, 28, 'trim'], [18, -82, 12, 28, 'trim'],
+    [-8, -56, 16, 12, 'accent'], [-3, -53, 6, 6, 'wall']
+  ]),
+  moonshot_field: institutionFeatures([
+    [-42, -74, 84, 8, 'trim'], [-34, -90, 68, 16, 'roof'],
+    [-20, -98, 40, 8, 'trim'], [28, -112, 8, 36, 'accent'],
+    [22, -114, 20, 6, 'glow'], [18, -76, 28, 6, 'wall']
+  ]),
+  publication_house: institutionFeatures([
+    [-42, -76, 84, 8, 'trim'], [-32, -90, 64, 14, 'roof'],
+    [-20, -102, 40, 10, 'trim'], [-12, -32, 24, 18, 'accent'],
+    [-34, -10, 68, 8, 'trim'], [22, -54, 12, 18, 'wall']
+  ])
+});
+const INSTITUTION_FEATURE_COLORS = Object.freeze({ accent: '#c77b48', glow: '#e0bd69' });
+
+function drawInstitutionBuilding(context, place, roof, wall, trim) {
+  const baseY = place.y + 8;
+  drawPixelBuilding(context, place.x, baseY, roof, wall, trim);
+  for (const feature of INSTITUTION_ARCHITECTURE[place.id] || []) {
+    const color = feature.palette === 'roof' ? roof
+      : feature.palette === 'wall' ? wall
+        : feature.palette === 'trim' ? trim
+          : INSTITUTION_FEATURE_COLORS[feature.palette];
+    if (!color) continue;
+    context.fillStyle = color;
+    context.fillRect(place.x + feature.x, baseY + feature.y, feature.width, feature.height);
+  }
 }
 
 const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
@@ -756,16 +900,22 @@ export class PixelWorldView extends WorldView {
     }
     const width = Math.min(metrics.maxWidth, Math.max(metrics.minWidth,
       Math.ceil(context.measureText(label).width) + 2 * metrics.horizontalPadding));
-    const left = Math.round(x - width / 2);
-    const top = Math.round(y - metrics.fontSize - metrics.verticalPadding);
     const height = metrics.fontSize + 2 * metrics.verticalPadding;
+    const placement = projectMapLabelPosition(
+      x, y, this.width, this.height, this.camera, this.zoom, width * this.zoom, height * this.zoom
+    );
+    if (!placement) return;
+    const drawX = placement.x;
+    const drawY = placement.y;
+    const left = Math.round(drawX - width / 2);
+    const top = Math.round(drawY - metrics.fontSize - metrics.verticalPadding);
     context.fillStyle = '#0c0d0b';
     context.fillRect(left, top, width, height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = metrics.lineWidth;
     context.strokeRect(left + metrics.lineWidth / 2, top + metrics.lineWidth / 2,
       width - metrics.lineWidth, height - metrics.lineWidth);
-    this.text(label, x, y, metrics.fontSize, '#f5f1e6');
+    this.text(label, drawX, drawY, metrics.fontSize, '#f5f1e6');
   }
 
   drawResearchCounterPanel(x, y) {
@@ -842,7 +992,7 @@ export class PixelWorldView extends WorldView {
       publication_house: '#a85f42'
     };
     const roof = roofColors[place.id] || '#536d53';
-    drawPixelBuilding(this.ctx, place.x, place.y + 8, roof, '#c6c7a5', '#344638');
+    drawInstitutionBuilding(this.ctx, place, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
     this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
     this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 68, 10);
@@ -957,11 +1107,12 @@ export class PixelWorldView extends WorldView {
 
   drawGuildNpc(npc) {
     const colors = GUILD_NPC_COLORS[npc.roleId];
-    if (!colors) return;
+    const sprite = PIXEL_SPRITES[npc.roleId];
+    if (!colors || !sprite) return;
     const context = this.ctx;
     context.fillStyle = '#26382e66';
     context.fillRect(npc.x - 12, npc.y + 2, 24, 5);
-    drawSprite(context, PIXEL_SPRITES.visitor, colors, npc.x, npc.y, 4);
+    drawSprite(context, sprite, colors, npc.x, npc.y, 4);
     this.text(npc.sigil, npc.x, npc.y - 13, 9, '#e8e6dc', 'system-ui');
     this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
     const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);

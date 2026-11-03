@@ -15,6 +15,7 @@ import {
   projectSourceObservationMapCounts,
   projectQuestMapTarget,
   projectMapLabelMetrics,
+  projectMapLabelPosition,
   projectQuestCompassIndicator,
   projectGuildNpcReadiness,
   PixelWorldView,
@@ -57,6 +58,46 @@ test('pixel sprites use rectangular, bounded, data-only character grids', () => 
     assert.ok(Object.isFrozen(rows), name + ' sprite rows must be immutable');
   }
   assert.ok(Object.isFrozen(PIXEL_SPRITES));
+});
+
+test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
+  const signatures = GUILD_NPCS.map(npc => {
+    const rectangles = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
+    view.guildNpcReadiness = [];
+    view.text = () => {};
+    view.drawMapLabel = () => {};
+    view.drawGuildNpc(npc);
+    return rectangles.slice(1).map(([x, y, width, height]) =>
+      [x - npc.x, y - npc.y, width, height].join(',')
+    ).join('|');
+  });
+  assert.equal(new Set(signatures).size, GUILD_NPCS.length,
+    'each institutional role must have a different rendered pixel silhouette');
+});
+
+test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
+  const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
+  assert.deepEqual(places.map(place => place.id), [
+    'guild_hall', 'forge', 'evidence_archive', 'decision_chamber',
+    'academy', 'moonshot_field', 'publication_house'
+  ]);
+  const signatures = places.map(place => {
+    const rectangles = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
+    view.text = () => {};
+    view.drawMapLabel = () => {};
+    view.institutionCounts = {};
+    view.drawInstitution(place);
+    assert.ok(rectangles.length > 14, place.id + ' must draw its function-specific features');
+    return rectangles.map(([x, y, width, height]) =>
+      [x, y, width, height].join(',')
+    ).join('|');
+  });
+  assert.equal(new Set(signatures).size, places.length,
+    'institution landmarks must not be recolored copies of one generic building');
 });
 
 
@@ -330,6 +371,73 @@ test('map label metrics preserve readable screen size across mobile and desktop 
   assert.equal(projectMapLabelMetrics(11, 0, 320), null);
   assert.equal(projectMapLabelMetrics(7, 0.78, 320), null);
   assert.equal(projectMapLabelMetrics(11, 0.78, 40), null);
+});
+
+test('map label placement clamps visible panels and hides fully off-screen labels', () => {
+  const camera = { x: 0, y: 0 };
+  const inside = projectMapLabelPosition(0, 0, 320, 240, camera, 1, 100, 21);
+  assert.deepEqual(inside, { x: 0, y: 0 });
+
+  const left = projectMapLabelPosition(-140, 0, 320, 240, camera, 1, 100, 21);
+  assert.ok(left);
+  assert.equal(160 + left.x - 50, 8, 'left panel edge stays inside the viewport margin');
+
+  const right = projectMapLabelPosition(140, 0, 320, 240, camera, 1, 100, 21);
+  assert.ok(right);
+  assert.equal(160 + right.x + 50, 312, 'right panel edge stays inside the viewport margin');
+
+  const top = projectMapLabelPosition(0, -110, 320, 240, camera, 1, 100, 21);
+  assert.ok(top);
+  assert.equal(120 + top.y - 21, 8, 'top panel edge stays inside the viewport margin');
+
+  const bottom = projectMapLabelPosition(0, 130, 320, 240, camera, 1, 100, 21);
+  assert.ok(bottom);
+  assert.equal(120 + bottom.y, 232, 'bottom panel edge stays inside the viewport margin');
+
+  assert.equal(projectMapLabelPosition(-300, 0, 320, 240, camera, 1, 100, 21), null,
+    'a wholly off-screen object must not be pulled into view by its label');
+  assert.equal(projectMapLabelPosition(0, -300, 320, 240, camera, 1, 100, 21), null);
+  assert.equal(projectMapLabelPosition(0, 0, 40, 240, camera, 1, 100, 21), null);
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, camera, 1, 300, 21), null);
+  assert.ok(Object.isFrozen(left));
+
+  let reads = 0;
+  const hostileCamera = Object.defineProperty({}, 'x', {
+    enumerable: true,
+    get() { reads += 1; return 0; }
+  });
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, hostileCamera, 1, 100, 21), null);
+  assert.equal(reads, 0);
+});
+
+test('drawMapLabel clamps a partially visible panel and omits a wholly off-screen panel', () => {
+  const calls = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.width = 320;
+  view.height = 240;
+  view.zoom = 1;
+  view.camera = { x: 0, y: 0 };
+  view.ctx = {
+    font: '',
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    textAlign: 'center',
+    measureText: value => ({ width: Array.from(value).length * 6 }),
+    fillRect: (...args) => calls.push({ type: 'fill', args }),
+    strokeRect: (...args) => calls.push({ type: 'stroke', args })
+  };
+  view.text = (value, x, y) => calls.push({ type: 'text', value, x, y });
+
+  view.drawMapLabel('LEFT EDGE', -140, 120, 11);
+  const panel = calls.find(call => call.type === 'fill').args;
+  assert.ok(160 + panel[0] >= 8 - 1);
+  assert.ok(160 + panel[0] + panel[2] <= 312 + 1);
+  assert.ok(120 + panel[1] >= 8 - 1);
+
+  const before = calls.length;
+  view.drawMapLabel('OFFSCREEN', -400, 120, 11);
+  assert.equal(calls.length, before);
 });
 
 test('quest compass stays hidden for visible objectives and points to off-screen destinations', () => {
