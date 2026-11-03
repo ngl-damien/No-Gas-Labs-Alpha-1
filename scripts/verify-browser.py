@@ -593,6 +593,7 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-source-observation-card]')).to_have_count(1)
         assert b.locator('#source-observations script').count()==0, 'Claim text must remain text, not executable markup'
         expect(b.locator('#source-observations')).to_contain_text('Model assertions are leads only, not evidence.')
+        close_sheet(b)
         b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Recorder')
         expect(b.locator('#sheet')).to_contain_text('1 recorded')
