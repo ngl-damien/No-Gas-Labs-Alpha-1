@@ -189,6 +189,43 @@ test('private JWK file is created exclusively with private permissions and is ne
   assert.equal(await readFile(destination, 'utf8'), original);
 });
 
+test('directory-sync uncertainty suppresses candidate output and preserves the private file for inspection', async t => {
+  if (IS_WINDOWS) return t.skip('POSIX directory synchronization is not available on Windows.');
+  const repositoryRoot = await makePrivateDirectory(await temporaryDirectory(t, 'ngl-enroll-repo-'));
+  const privateDirectory = await makePrivateDirectory(await temporaryDirectory(t, 'ngl-enroll-private-'));
+  const destination = join(privateDirectory, 'founder.jwk');
+  const output = [];
+  const failingDirectorySync = fd => {
+    if (fstatSync(fd).isDirectory()) {
+      const error = new Error('injected parent-directory sync failure');
+      error.code = 'EIO';
+      throw error;
+    }
+    return fsyncSync(fd);
+  };
+
+  assert.throws(
+    () => main(['--write-private-path', destination], {
+      platform: process.platform,
+      repositoryRoot,
+      generateKeyPairSync: () => keyPair(),
+      validatePrivateKeyDestination,
+      writePrivateKey: (file, jwk, options) => writePrivateKeyFile(file, jwk, {
+        ...options,
+        fsyncSync: failingDirectorySync
+      }),
+      log: value => output.push(String(value))
+    }),
+    error => error.code === 'FOUNDER_PRIVATE_KEY_DIRECTORY_SYNC_UNCERTAIN'
+  );
+
+  assert.deepEqual(output, [], 'an uncertain directory entry must not be reported as a completed export');
+  const metadata = await stat(destination);
+  assert.equal(metadata.isFile(), true);
+  assert.equal(metadata.mode & 0o077, 0);
+  assert.equal(typeof JSON.parse(await readFile(destination, 'utf8')).d, 'string');
+});
+
 test('copied enrollment candidate is rejected and default authorization remains fail-closed', async t => {
   const directory = await temporaryDirectory(t, 'ngl-enroll-candidate-');
   const trustPath = join(directory, 'founder.pub.json');
