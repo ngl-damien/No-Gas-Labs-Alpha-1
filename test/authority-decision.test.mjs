@@ -332,6 +332,8 @@ test("TEST_ONLY anchors are inspectable but cannot authorize; a PRODUCTION test 
     const authorized = isolated.authorizationEvent({ signed, payload });
     assert.equal(authorized.type, "QUEST_AUTHORIZED");
     assert.equal(authorized.trust_mode, "PRODUCTION");
+    assert.equal(Object.isFrozen(authorized), true);
+    assert.equal(Object.isFrozen(authorized.capabilities), true);
     assert.throws(
       () => isolated.authorizationEvent({ signed, payload }),
       /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
@@ -369,4 +371,32 @@ test("trust anchors reject private JWK material and additional non-contract JWK 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test("decision payload snapshots and deeply freezes nested scope arrays", () => {
+  const capabilities = ["read"];
+  const outputs = ["artifact"];
+  const acceptance = ["verify"];
+  const payload = makeDecisionPayload({
+    proposal,
+    quest,
+    capabilities,
+    outputs,
+    acceptance,
+    expires_at: future,
+  });
+
+  capabilities.push("root");
+  outputs[0] = "mutated";
+  acceptance.length = 0;
+
+  assert.deepEqual(payload.capabilities, ["read"]);
+  assert.deepEqual(payload.outputs, ["artifact"]);
+  assert.deepEqual(payload.acceptance, ["verify"]);
+  assert.equal(Object.isFrozen(payload), true);
+  assert.equal(Object.isFrozen(payload.capabilities), true);
+  assert.equal(Object.isFrozen(payload.outputs), true);
+  assert.equal(Object.isFrozen(payload.acceptance), true);
+  assert.throws(() => payload.capabilities.push("admin"), TypeError);
 });
