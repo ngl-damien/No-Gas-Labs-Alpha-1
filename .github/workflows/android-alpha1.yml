@@ -112,13 +112,16 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
-          target: google_apis
+          # This offline-only APK needs platform WebView, not Google Play services.
+          target: default
           arch: x86_64
           profile: pixel_2
           # Cold boot consumed ~480s once; allow 15 minutes while retaining the 40-minute job cap.
           emulator-boot-timeout: 900
           disable-animations: true
           script: |
+            # Confirm the AOSP image exposes an active platform WebView provider before instrumentation.
+            webview_state="$(adb shell dumpsys webviewupdate | tr -d '\r')"; printf '%s\n' "$webview_state"; if ! printf '%s\n' "$webview_state" | grep -Eq 'Current WebView package \(name, version\): \(com\.(android|google\.android)\.webview, '; then echo "No active Android WebView provider is installed in this emulator image." >&2; exit 1; fi
             # Bypass verification only for ADB/ADT/USB test installs; keep the
             # emulator's general package-verifier setting untouched.
             # The emulator runner executes script lines independently, so keep
