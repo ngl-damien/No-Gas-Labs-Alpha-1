@@ -1,6 +1,6 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial} from './research-records.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 const encoder=new TextEncoder();
