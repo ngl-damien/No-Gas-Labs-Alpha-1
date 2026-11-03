@@ -720,7 +720,39 @@ def shared(browser,url,data,out):
         assert len([event for event in after_challenge_retry['world']['events'] if event['type']=='source-observation-challenged'])==1
         assert after_challenge_retry['world']['revision']==committed_challenge['world']['revision'], 'Exact retry must not append a second challenge'
         assert after_challenge_retry['world']['xp']==before_challenge['world']['xp']==100
-        # The original Witness author can answer the Founder challenge without editing the note.
+        # Exercise the Evidence Archive docket as a real world interaction.
+        # The challenger can inspect the exact version but cannot see the author's response control.
+        before_docket=visitor.request.get(url+'api/state').json()
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE')
+        expect(a.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
+        docket_selector='[data-source-observation-pending-challenge="'+challenge_events[0]["challengeId"]+'"]'
+        docket_button=a.locator(docket_selector)
+        expect(docket_button).to_have_count(1)
+        a.screenshot(path=str(out/'source-observation-response-docket-pending.png'))
+        docket_button.click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
+        expect(a.locator('#version-select')).to_have_value(str(source_observation['version']))
+        expect(a.locator('[data-source-observation-response-details]')).to_have_count(0)
+        after_docket=visitor.request.get(url+'api/state').json()
+        assert after_docket['world']['revision']==before_docket['world']['revision'], 'Opening the read-only docket and exact version must not append a world event'
+        assert after_docket['world']['xp']==before_docket['world']['xp'], 'Opening the read-only docket and exact version must not award XP'
+
+        # The original Witness author can answer from the same docket without editing the note.
+        visit(b,'The shared observatory')
+        expect(b.locator('[data-source-observation-challenge]')).to_have_count(1)
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(b.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
+        author_docket_button=b.locator(docket_selector)
+        expect(author_docket_button).to_have_count(1)
+        author_docket_button.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
+        expect(b.locator('#version-select')).to_have_value(str(source_observation['version']))
+        expect(b.locator('[data-source-observation-response-details]')).to_have_count(1)
         response_text='The note is a lead only; source retrieval remains outstanding.'
         before_author_response=visitor.request.get(url+'api/state').json()
         lost_author_response={'remaining':True}
@@ -789,6 +821,22 @@ def shared(browser,url,data,out):
         expect(a.locator('[data-source-observation-challenge]')).to_have_count(1)
         expect(a.locator('[data-source-observation-response]')).to_have_count(1)
         expect(b.locator('#source-observations')).to_contain_text(challenge_text)
+
+        # The answered challenge leaves the action queue but remains in shared Chronicle history.
+        docket_before_answered_view=visitor.request.get(url+'api/state').json()
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('[data-source-observation-pending-challenge]')).to_have_count(0)
+        expect(a.locator('#sheet')).to_contain_text('No unanswered Source Observation challenges')
+        expect(a.locator('#sheet')).to_contain_text('Source observation challenged')
+        expect(a.locator('#sheet')).to_contain_text('Author response to source challenge')
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & RESPONSE')
+        a.screenshot(path=str(out/'source-observation-response-docket-answered.png'))
+        docket_after_answered_view=visitor.request.get(url+'api/state').json()
+        assert docket_after_answered_view['world']['revision']==docket_before_answered_view['world']['revision'], 'Viewing the answered docket must not append a world event'
+        assert docket_after_answered_view['world']['xp']==docket_before_answered_view['world']['xp'], 'Viewing the answered docket must not award XP'
+        close_sheet(a)
         close_sheet(a);a.locator('#character-button').click()
         expect(a.locator('#sheet')).to_contain_text('Challenger')
         expect(a.locator('#sheet')).to_contain_text('1 recorded')
@@ -960,7 +1008,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle'}
     finally:owner.close();visitor.close()
 
 
