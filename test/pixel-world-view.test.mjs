@@ -6,7 +6,8 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
-import { isWalkable, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
+import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
+import { COLLABORATOR_ROLES } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -375,12 +376,10 @@ test('quest compass rejects malformed viewport and hostile target accessors with
 
 
 test('Guild Hall NPCs are fixed, bounded guides with no model or canonical authority', () => {
-  assert.deepEqual(GUILD_NPCS.map(npc => npc.role), [
-    'archivist', 'adversary', 'synthesizer', 'tutor'
-  ]);
-  assert.deepEqual(GUILD_NPCS.map(npc => npc.name), [
-    'Hostile Archivist', 'Adversary', 'Synthesis Clerk', 'Polymath Tutor'
-  ]);
+  assert.deepEqual(
+    GUILD_NPCS.map(({ roleId, name, objective }) => ({ id: roleId, name, objective })),
+    COLLABORATOR_ROLES
+  );
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.role)).size, GUILD_NPCS.length);
   assert.ok(Object.isFrozen(GUILD_NPCS));
@@ -396,8 +395,28 @@ test('Guild Hall NPCs are fixed, bounded guides with no model or canonical autho
     assert.ok(npc.x >= 0 && npc.x <= WORLD_WIDTH);
     assert.ok(npc.y >= 0 && npc.y <= WORLD_HEIGHT);
     assert.equal(isWalkable(npc.x, npc.y, []), true, npc.name + ' must stand on walkable terrain');
-    assert.ok(Math.hypot(npc.x - 230, npc.y - 220) < 160,
-      npc.name + ' must be reachable from the Guild Hall interaction area');
+    assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
+      npc.name + ' must have a walkable route from Guild Hall');
+  }
+});
+
+test('quest navigation routes to each Guild Hall NPC but does not auto-interact on arrival', () => {
+  for (const npc of GUILD_NPCS) {
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = { x: 230, y: 220 };
+    view.world = { creations: [] };
+    view.route = [];
+    view.target = 'old-target';
+    view.targetType = 'place';
+
+    view.goTo(npc.id);
+
+    assert.ok(view.route.length > 0, npc.name + ' should have a route');
+    const destination = view.route[view.route.length - 1];
+    assert.ok(Math.hypot(destination.x - npc.x, destination.y - (npc.y + 12)) < 32,
+      npc.name + ' route should end beside the exact NPC');
+    assert.equal(view.target, null, 'arrival requires an explicit interact action');
+    assert.equal(view.targetType, null);
   }
 });
 
@@ -414,7 +433,7 @@ test('speaking to a Guild Hall NPC routes to the existing collaborator workbench
   for (const npc of GUILD_NPCS) {
     let interaction = null;
     const view = Object.create(PixelWorldView.prototype);
-    view.player = { x: npc.x, y: npc.y };
+    view.player = { x: npc.x, y: npc.y + 10 };
     view.world = world;
     view.researchObjects = [];
     view.researchActivityObjects = [];
@@ -428,14 +447,14 @@ test('speaking to a Guild Hall NPC routes to the existing collaborator workbench
 
     const nearest = view.nearest();
     assert.equal(nearest.type, 'npc');
-    assert.equal(nearest.role, npc.role);
+    assert.equal(nearest.roleId, npc.roleId);
     assert.equal(nearest.distance, 0);
 
     view.interact();
     assert.deepEqual(interaction, {
       type: 'institution',
       id: 'guild_hall',
-      npcRole: npc.role,
+      npcRoleId: npc.roleId,
       npcName: npc.name
     });
     assert.deepEqual(world, before, 'conversation only opens the existing Guild Hall workbench');
