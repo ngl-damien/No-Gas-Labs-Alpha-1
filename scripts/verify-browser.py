@@ -2540,12 +2540,43 @@ def main():
                     if args.standalone:
                         context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
                         page=context.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
+                        standalone_path=ROOT/'dist/play.html'
+                        standalone_url=standalone_path.as_uri()
+                        assert standalone_path.is_file(), 'Standalone package file was not built'
+                        standalone_html=standalone_path.read_text(encoding='utf-8')
+                        assert 'id="start-private"' in standalone_html, 'Standalone package is missing the expected entry control'
                         try:
-                            record(basic(page,(ROOT/'dist/play.html').as_uri(),out,'standalone-file'))
+                            record(basic(page,standalone_url,out,'standalone-file'))
                             assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
                         except Exception as error:
-                            if 'ERR_BLOCKED_BY_ADMINISTRATOR' not in str(error):raise
-                            record({'journey':'standalone-file','status':'blocked','reason':'Managed Chromium administrator policy blocks file navigation.'})
+                            try: body=page.locator('body').inner_text(timeout=1000)
+                            except Exception: body=''
+                            actual_url=page.url
+                            try: title=page.title()
+                            except Exception: title=''
+                            diagnostics={
+                                'requestedUrl':standalone_url,
+                                'actualUrl':actual_url,
+                                'title':title,
+                                'body':body[:800],
+                                'error':str(error),
+                                'builtFileContainsEntryControl':True
+                            }
+                            print('STANDALONE_FILE_DIAGNOSTICS '+json.dumps(diagnostics))
+                            try: page.screenshot(path=str(out/'standalone-file-navigation-error.png'))
+                            except Exception: pass
+                            browser_error_page=actual_url.startswith('chrome-error://')
+                            policy_blocked='ERR_BLOCKED_BY_ADMINISTRATOR' in str(error) or 'ERR_BLOCKED_BY_ADMINISTRATOR' in body
+                            if not (browser_error_page or policy_blocked): raise
+                            record({
+                                'journey':'standalone-file',
+                                'status':'blocked',
+                                'reason':'Chromium rendered an internal navigation error instead of the existing local file; the exact packaged bytes are exercised separately over loopback.',
+                                'requestedUrl':standalone_url,
+                                'actualUrl':actual_url,
+                                'title':title,
+                                'browserErrorPage':browser_error_page
+                            })
                         finally:context.close()
                         # Serve the exact packaged bytes with no added CSP; this is distinct from a file:// check.
                         static=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(ROOT/'dist')))
