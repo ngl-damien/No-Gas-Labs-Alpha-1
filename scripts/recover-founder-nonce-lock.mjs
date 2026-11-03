@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, readdir, unlink } from 'node:fs/promises';
-import { dirname, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
@@ -43,7 +43,8 @@ function sameDirectoryIdentity(left, right) {
 
 function assertNonceLedgerPathIsNotReserved(absoluteLedgerPath, directory) {
   if (absoluteLedgerPath === join(directory, '.founder-nonce.lock') ||
-      absoluteLedgerPath === join(directory, '.founder-nonce-recovery.lock')) {
+      absoluteLedgerPath === join(directory, '.founder-nonce-recovery.lock') ||
+      TEMPORARY_NONCE_FILE.test(basename(absoluteLedgerPath))) {
     throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID');
   }
 }
@@ -501,7 +502,8 @@ async function releaseRecoveryLease(lease, directory) {
 export async function recoverFounderNonceLock({
   ledgerPath,
   confirmOwnerStopped = false,
-  confirmSameHost = false
+  confirmSameHost = false,
+  confirmLedgerAbsent = false
 } = {}) {
   if (confirmOwnerStopped !== true || confirmSameHost !== true) {
     throw failure('FOUNDER_NONCE_RECOVERY_CONFIRMATION_REQUIRED');
@@ -525,6 +527,12 @@ export async function recoverFounderNonceLock({
     const before = await inspectFounderNonceRecoveryState(absoluteLedgerPath, { ignoreRecoveryLease: true });
     if (before.status !== 'ready') {
       throw failure('FOUNDER_NONCE_RECOVERY_NOT_READY', before.reason || before.status);
+    }
+    // An absent ledger is ambiguous: it may never have been initialized, or
+    // previously committed replay history may have been deleted. Require a
+    // separate explicit acknowledgement before clearing the stale owner lock.
+    if (!before.ledger.exists && confirmLedgerAbsent !== true) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_ABSENT_CONFIRMATION_REQUIRED');
     }
 
     const syncedLedger = await readNonceLedger(absoluteLedgerPath, { sync: true });
@@ -599,6 +607,7 @@ export async function recoverFounderNonceLock({
       ledgerPath: final.ledgerPath,
       ledger: final.ledger,
       ledgerModified: false,
+      ledgerAbsenceConfirmed: final.ledger.exists === false && confirmLedgerAbsent === true,
       safeToRemove: false,
       authorityGranted: false,
       warning: RECOVERY_WARNING
@@ -626,10 +635,11 @@ function usage() {
   return [
     'Usage:',
     '  npm run recover:founder-nonce',
-    '  npm run recover:founder-nonce -- --recover --confirm-owner-stopped --confirm-same-host',
+    '  npm run recover:founder-nonce -- --recover --confirm-owner-stopped --confirm-same-host [--confirm-ledger-absent]',
     '',
     'NGL_FOUNDER_NONCE_LEDGER_PATH must name the absolute host-configured nonce ledger.',
     'The first form is read-only. The second removes only a validated stale lock; it never deletes pending temporary files or changes nonce contents.',
+    'If the nonce ledger is absent, recovery refuses to clear the lock unless --confirm-ledger-absent is supplied: absence cannot prove that prior replay history never existed.',
     'Recovery holds .founder-nonce-recovery.lock to fence new writers; if it remains after interruption, inspect it manually before cleanup.',
     'The lease coordinates only writers running this version; stop older writers before recovery.',
     'A PID probe is advisory. Confirm the owner is stopped and the lock belongs to this host/PID namespace.'
@@ -650,14 +660,21 @@ async function main(args) {
     console.log(JSON.stringify(result, null, 2));
     return ['blocked', 'manual-inspection-required'].includes(result.status) ? 2 : 0;
   }
-  if (args.length === 3 &&
-      args.includes('--recover') &&
-      args.includes('--confirm-owner-stopped') &&
-      args.includes('--confirm-same-host')) {
+  const recoveryFlags = [
+    '--recover',
+    '--confirm-owner-stopped',
+    '--confirm-same-host',
+    '--confirm-ledger-absent'
+  ];
+  if ((args.length === 3 || args.length === 4) &&
+      recoveryFlags.slice(0, 3).every(flag => args.includes(flag)) &&
+      args.every(flag => recoveryFlags.includes(flag)) &&
+      new Set(args).size === args.length) {
     const result = await recoverFounderNonceLock({
       ledgerPath,
       confirmOwnerStopped: true,
-      confirmSameHost: true
+      confirmSameHost: true,
+      confirmLedgerAbsent: args.includes('--confirm-ledger-absent')
     });
     console.log(JSON.stringify(result, null, 2));
     return 0;

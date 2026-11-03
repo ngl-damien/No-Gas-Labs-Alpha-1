@@ -195,20 +195,35 @@ test('orphaned pre-rename temporary files remain visible when the owner lock is 
   assert.equal(await exists(temporary), true);
 });
 
-test('a stale lock with no ledger can be recovered without creating or inventing nonce state', async t => {
+test('a stale lock without a nonce ledger requires separate replay-history acknowledgement', async t => {
   const value = await fixture(t, { withLedger: false });
   const inspection = await inspectFounderNonceRecovery(value.ledgerPath);
   assert.equal(inspection.status, 'ready');
   assert.equal(inspection.ledger.exists, false);
+
+  await assert.rejects(
+    recoverFounderNonceLock({
+      ledgerPath: value.ledgerPath,
+      confirmOwnerStopped: true,
+      confirmSameHost: true
+    }),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_ABSENT_CONFIRMATION_REQUIRED/
+  );
+  assert.equal(await exists(value.ledgerPath), false);
+  assert.equal(await exists(value.lockPath), true, 'the owner lock must remain without the separate acknowledgement');
+  assert.equal(await exists(value.recoveryLeasePath), false, 'the temporary recovery lease must be released after the refusal');
+
   const result = await recoverFounderNonceLock({
     ledgerPath: value.ledgerPath,
     confirmOwnerStopped: true,
-    confirmSameHost: true
+    confirmSameHost: true,
+    confirmLedgerAbsent: true
   });
   assert.equal(result.status, 'recovered');
   assert.equal(result.ledger.exists, false);
   assert.equal(result.ledgerModified, false);
-  assert.equal(await exists(value.ledgerPath), false);
+  assert.equal(result.ledgerAbsenceConfirmed, true);
+  assert.equal(await exists(value.ledgerPath), false, 'recovery must not invent nonce history');
   assert.equal(await exists(value.lockPath), false);
   assert.equal(await exists(value.recoveryLeasePath), false);
 });
@@ -334,6 +349,40 @@ test('recovery CLI help loads without host configuration and documents the recov
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Usage:/);
   assert.match(result.stdout, /founder-nonce-recovery\.lock/);
+  assert.match(result.stdout, /--confirm-ledger-absent/);
+  assert.match(result.stdout, /absence cannot prove that prior replay history never existed/);
+});
+
+
+
+test('recovery CLI requires explicit acknowledgement when the nonce ledger is absent', async t => {
+  const value = await fixture(t, { withLedger: false });
+  const scriptPath = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const env = { ...process.env, NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath };
+  const baseArgs = [scriptPath, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];
+
+  const unacknowledged = spawnSync(process.execPath, baseArgs, {
+    encoding: 'utf8',
+    timeout: 10000,
+    env
+  });
+  assert.equal(unacknowledged.status, 1, unacknowledged.stdout);
+  assert.match(unacknowledged.stderr, /FOUNDER_NONCE_RECOVERY_LEDGER_ABSENT_CONFIRMATION_REQUIRED/);
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), false);
+  assert.equal(await exists(value.ledgerPath), false);
+
+  const acknowledged = spawnSync(process.execPath, [...baseArgs, '--confirm-ledger-absent'], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env
+  });
+  assert.equal(acknowledged.status, 0, acknowledged.stderr);
+  assert.match(acknowledged.stdout, /"status": "recovered"/);
+  assert.match(acknowledged.stdout, /"ledgerAbsenceConfirmed": true/);
+  assert.equal(await exists(value.lockPath), false);
+  assert.equal(await exists(value.recoveryLeasePath), false);
+  assert.equal(await exists(value.ledgerPath), false);
 });
 
 test('unreadable post-unlink owner-lock inspection retains the recovery fence', async t => {
@@ -488,9 +537,10 @@ test('read-only inspection rechecks a recovery lease that appears during its sna
 });
 
 
-test('nonce ledger path cannot alias reserved owner or recovery lease files', async t => {
+test('nonce ledger path cannot alias reserved owner, recovery lease, or temporary file names', async t => {
   const value = await fixture(t);
   const ledgerBefore = await readFile(value.ledgerPath);
+  const temporaryLedgerPath = join(value.directory, '.founder-nonce-' + randomUUID() + '.tmp');
 
   await assert.rejects(
     inspectFounderNonceRecovery(value.lockPath),
@@ -498,6 +548,10 @@ test('nonce ledger path cannot alias reserved owner or recovery lease files', as
   );
   await assert.rejects(
     inspectFounderNonceRecovery(value.recoveryLeasePath),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
+  await assert.rejects(
+    inspectFounderNonceRecovery(temporaryLedgerPath),
     /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
   );
   await assert.rejects(
@@ -516,7 +570,16 @@ test('nonce ledger path cannot alias reserved owner or recovery lease files', as
     }),
     /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
   );
+  await assert.rejects(
+    recoverFounderNonceLock({
+      ledgerPath: temporaryLedgerPath,
+      confirmOwnerStopped: true,
+      confirmSameHost: true
+    }),
+    /FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID/
+  );
 
+  assert.equal(await exists(temporaryLedgerPath), false);
   assert.equal(await exists(value.lockPath), true);
   assert.equal(await exists(value.recoveryLeasePath), false);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);

@@ -8,6 +8,7 @@ const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.
 const NONCE_LEDGER_SCHEMA = "ngl.founder-nonce-ledger.v1";
 const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_NONCE_COUNT = 100_000;
+const TEMPORARY_NONCE_FILE = /^\.founder-nonce-[0-9a-f-]{36}\.tmp$/;
 
 function snapshotJsonData(value, limits = {}) {
   const maxDepth = limits.maxDepth ?? 32;
@@ -282,7 +283,11 @@ function consumeFounderNonce(nonce) {
   assertTrustedDirectoryChain(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const lockPath = path.join(directory, ".founder-nonce.lock");
-  if (ledgerPath === lockPath) throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+  const recoveryLeasePath = path.join(directory, ".founder-nonce-recovery.lock");
+  if (ledgerPath === lockPath || ledgerPath === recoveryLeasePath ||
+      TEMPORARY_NONCE_FILE.test(path.basename(ledgerPath))) {
+    throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+  }
   assertNoFounderNonceRecoveryLease(directory);
 
   let lockDescriptor;

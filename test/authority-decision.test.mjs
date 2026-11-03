@@ -1028,6 +1028,35 @@ test("Founder nonce ledger rejects a private leaf below a writable non-sticky an
 });
 
 
+test("nonce ledger path rejects both reserved lock filenames before creating state", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-reserved-ledger-path-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+    const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
+    const temporaryLedgerPath = path.join(fixture.dataDirectory, ".founder-nonce-" + randomUUID() + ".tmp");
+
+    for (const ledgerPath of [ownerLockPath, recoveryLeasePath, temporaryLedgerPath]) {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: ledgerPath,
+      }, () => assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_PATH_INVALID/
+      ));
+      assert.equal(existsSync(ownerLockPath), false, "invalid paths must not acquire the owner lock");
+      assert.equal(existsSync(recoveryLeasePath), false, "invalid paths must not create a ledger at the recovery-lease name");
+      assert.equal(existsSync(temporaryLedgerPath), false, "invalid paths must not create a ledger in the temporary-file namespace");
+      assert.deepEqual(readdirSync(fixture.dataDirectory), []);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
 test("a pre-existing recovery lease blocks nonce writes before lock acquisition", () => {
   const dir = path.join(tmpdir(), "ngl-auth-recovery-lease-existing-" + process.pid + "-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
