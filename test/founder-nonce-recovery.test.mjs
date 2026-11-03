@@ -398,7 +398,7 @@ test('read-only recovery inspection opens the nonce ledger without write access'
     "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
     "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
     "console.log(JSON.stringify({ status: result.status, ledger: result.ledger, ledgerAccessMode }));"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
