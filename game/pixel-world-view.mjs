@@ -1,4 +1,5 @@
-import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from './world-view.mjs';
+import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
+import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
@@ -81,51 +82,50 @@ export function projectSourceObservationMapCounts(world) {
 const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
-export const GUILD_NPCS = Object.freeze([
-  Object.freeze({
-    id: 'guild-npc-archivist', role: 'archivist', name: 'Hostile Archivist',
-    shortName: 'ARCHIVIST', x: 110, y: 260,
-    objective: 'Audit identity, chronology, and evidence links; report gaps, not truth.',
-    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
-    mayWriteCanonicalState: false, mayGrantAuthority: false,
-    mayAwardProgress: false, mayCertifyTruthOrExecution: false
-  }),
-  Object.freeze({
-    id: 'guild-npc-adversary', role: 'adversary', name: 'Adversary',
-    shortName: 'ADVERSARY', x: 200, y: 320,
-    objective: 'Draft a falsifiable challenge to one retained experiment report for human review.',
-    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
-    mayWriteCanonicalState: false, mayGrantAuthority: false,
-    mayAwardProgress: false, mayCertifyTruthOrExecution: false
-  }),
-  Object.freeze({
-    id: 'guild-npc-synthesizer', role: 'synthesizer', name: 'Synthesis Clerk',
-    shortName: 'SYNTHESIS', x: 290, y: 320,
-    objective: 'Compare a bounded source slice while preserving contradictions and omissions.',
-    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
-    mayWriteCanonicalState: false, mayGrantAuthority: false,
-    mayAwardProgress: false, mayCertifyTruthOrExecution: false
-  }),
-  Object.freeze({
-    id: 'guild-npc-tutor', role: 'tutor', name: 'Polymath Tutor',
-    shortName: 'TUTOR', x: 380, y: 260,
-    objective: 'Teach prerequisites and retrieval questions without declaring mastery.',
-    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
-    mayWriteCanonicalState: false, mayGrantAuthority: false,
-    mayAwardProgress: false, mayCertifyTruthOrExecution: false
-  })
+const GUILD_NPC_POSITIONS = Object.freeze([
+  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
+  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
+  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
+  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
 ]);
-
-const GUILD_NPC_COLORS = Object.freeze({
-  archivist: Object.freeze({ G: '#66734f', F: '#e0bd96', V: '#a88b52', L: '#e8e6dc', B: '#343e39' }),
-  adversary: Object.freeze({ G: '#9d4f3e', F: '#e0bd96', V: '#a64f3b', L: '#e8e6dc', B: '#343e39' }),
-  synthesizer: Object.freeze({ G: '#4c736d', F: '#e0bd96', V: '#5c8b7e', L: '#d7e0c2', B: '#343e39' }),
-  tutor: Object.freeze({ G: '#6b7887', F: '#e0bd96', V: '#718c98', L: '#c5cdd4', B: '#343e39' })
+const GUILD_NPC_SHORT_NAMES = Object.freeze({
+  archivist: 'ARCHIVIST',
+  adversary: 'ADVERSARY',
+  synthesizer: 'SYNTHESIS',
+  tutor: 'TUTOR'
 });
 
-const GUILD_NPC_ACCESSIBILITY_TEXT =
-  'Guild Hall guide NPCs: Hostile Archivist audits retained event identity and evidence links; Adversary drafts falsifiable challenges; Synthesis Clerk compares bounded records while preserving dissent; Polymath Tutor teaches fundamentals and retrieval questions. These authored guides do not invoke models, write canonical state, grant authority, award progress, certify truth, or declare mastery. Speaking to one opens the existing Guild Hall collaborator workbench.';
+// The role catalogue is the single source of names and objectives. The pixel
+// renderer contributes only map positions and visual accents.
+export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
+  const role = COLLABORATOR_ROLES.find(candidate => candidate.id === position.roleId);
+  return role ? [Object.freeze({
+    id: 'guild-npc-' + role.id,
+    roleId: role.id,
+    name: role.name,
+    objective: role.objective,
+    shortName: GUILD_NPC_SHORT_NAMES[role.id] || role.name.toUpperCase(),
+    routeLocation: 'guild_hall',
+    authority: 'advisory-only',
+    invokesModel: false,
+    mayWriteCanonicalState: false,
+    mayGrantAuthority: false,
+    mayAwardProgress: false,
+    mayCertifyTruthOrExecution: false,
+    ...position
+  })] : [];
+}));
 
+const GUILD_NPC_COLORS = Object.freeze(Object.fromEntries(
+  GUILD_NPC_POSITIONS.map(position => [position.roleId, Object.freeze({
+    G: position.accent, F: '#e0bd96', V: position.accent, L: '#e8e6dc', B: '#343e39'
+  })])
+));
+
+const GUILD_NPC_ACCESSIBILITY_TEXT =
+  'Guild Hall bounded collaborator guides: ' +
+  GUILD_NPCS.map(npc => npc.name + ': ' + npc.objective).join(' ') +
+  ' These authored entry points do not invoke models, write canonical state, grant authority, award progress, certify truth, or declare mastery. Speaking to one opens the existing Guild Hall collaborator workbench.';
 function safeQuestTargetId(value) {
   return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -548,6 +548,26 @@ export class PixelWorldView extends WorldView {
     this.updateResearchAccessibility();
   }
 
+  goTo(id, targetType) {
+    const npc = typeof id === 'string' ? GUILD_NPCS.find(candidate => candidate.id === id) : null;
+    if (!npc) return super.goTo(id, targetType);
+    if (targetType !== undefined && targetType !== 'npc') {
+      this.cancelRoute();
+      return;
+    }
+    const route = findRoute(this.player, { x: npc.x, y: npc.y + 12 }, this.world.creations);
+    if (!route.length) {
+      this.cancelRoute();
+      return;
+    }
+    this.route = route;
+    this.route.shift();
+    // Arrival leaves the player beside the NPC. The player must still use
+    // the explicit interact control; navigation alone is not a world event.
+    this.target = null;
+    this.targetType = null;
+  }
+
   nearest(targetId, targetType) {
     const ordinary = super.nearest(targetId, targetType);
     const includeNpcs = targetType === undefined || targetType === 'npc';
@@ -556,7 +576,9 @@ export class PixelWorldView extends WorldView {
     ).map(npc => ({
       ...npc,
       type: 'npc',
-      distance: Math.hypot(npc.x - this.player.x, npc.y - this.player.y)
+      x: npc.x,
+      y: npc.y + 10,
+      distance: Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
     })) : [];
     return [ordinary, ...npcs].filter(Boolean)
       .sort((left, right) => left.distance - right.distance)[0] || null;
@@ -570,7 +592,7 @@ export class PixelWorldView extends WorldView {
       this.callbacks.onInteract({
         type: 'institution',
         id: nearest.routeLocation,
-        npcRole: nearest.role,
+        npcRoleId: nearest.roleId,
         npcName: nearest.name
       });
       return;
@@ -872,12 +894,13 @@ export class PixelWorldView extends WorldView {
   }
 
   drawGuildNpc(npc) {
-    const colors = GUILD_NPC_COLORS[npc.role];
+    const colors = GUILD_NPC_COLORS[npc.roleId];
     if (!colors) return;
     const context = this.ctx;
     context.fillStyle = '#26382e66';
     context.fillRect(npc.x - 12, npc.y + 2, 24, 5);
     drawSprite(context, PIXEL_SPRITES.visitor, colors, npc.x, npc.y, 4);
+    this.text(npc.sigil, npc.x, npc.y - 13, 9, '#e8e6dc', 'system-ui');
     this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
   }
 
@@ -986,7 +1009,7 @@ export class PixelWorldView extends WorldView {
 
     const near = this.nearest();
     this.canvas.dataset.nearbyNpcRole =
-      near?.type === 'npc' && near.distance < 145 ? near.role : 'none';
+      near?.type === 'npc' && near.distance < 145 ? near.roleId : 'none';
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
       const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
         : near.type === 'workbench' ? 'E · Make something'
