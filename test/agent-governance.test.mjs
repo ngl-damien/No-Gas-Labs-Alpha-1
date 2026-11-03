@@ -756,12 +756,24 @@ test('preflight refuses a receipt parent swapped to an external symlink after it
   }
 });
 
-test('hosted preflight includes the world-view source and canonical checkpoint', async () => {
+test('hosted preflight includes the world-view source, Source Observatory, and canonical checkpoint', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.equal(typeof command, 'string');
-  assert.match(command, /--path game\/world-view\.mjs(?:\s|--)/);
-  assert.match(command, /--checkpoint docs\/operations\/LATEST_CHECKPOINT\.md/);
+  assert.match(command, /^node scripts\\/run-agent-preflight-ci\\.mjs /);
+  assert.ok(!command.includes('--receipt'), 'the CI wrapper must generate a unique receipt path');
+  for (const path of [
+    'game/world-view.mjs',
+    '.github/workflows/android-alpha1.yml',
+    'game/artifacts.mjs',
+    'test/android-workflow.test.mjs',
+    'test/game-artifacts.test.mjs',
+    'scripts/run-agent-preflight-ci.mjs',
+    'test/agent-preflight-ci-runner.test.mjs'
+  ]) {
+    assert.ok(command.includes('--path ' + path), 'missing preflight target: ' + path);
+  }
+  assert.ok(command.includes('--checkpoint docs/operations/LATEST_CHECKPOINT.md'));
 });
 
 
