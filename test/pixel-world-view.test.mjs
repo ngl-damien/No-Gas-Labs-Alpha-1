@@ -479,6 +479,45 @@ test('map renderer measures visible HUD overlays relative to its canvas', () => 
   }
 });
 
+test('map overlay cache refreshes when the playable UI becomes visible', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  let hidden = true;
+  const selectors = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  view.width = 320;
+  view.height = 240;
+  view.mapOverlayVisibility = false;
+  view.mapOverlayRects = [];
+  globalThis.document = {
+    getElementById(id) {
+      assert.equal(id, 'play-ui');
+      return { hidden };
+    },
+    querySelectorAll(selector) {
+      selectors.push(selector);
+      return [{
+        getBoundingClientRect: () => hidden
+          ? ({ left: 0, top: 0, right: 0, bottom: 0 })
+          : ({ left: 20, top: 30, right: 150, bottom: 100 })
+      }];
+    }
+  };
+  try {
+    view.refreshMapOverlayRectsIfNeeded();
+    assert.deepEqual(view.mapOverlayRects, [], 'hidden play UI contributes no obstruction');
+    hidden = false;
+    view.refreshMapOverlayRectsIfNeeded();
+    assert.deepEqual(view.mapOverlayRects, [{ left: 20, top: 30, right: 150, bottom: 100 }]);
+    assert.equal(view.mapOverlayVisibility, true);
+    assert.match(selectors.at(-1), /#quest-card/);
+    assert.ok(Object.isFrozen(view.mapOverlayRects));
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+});
+
 test('drawMapLabel reserves earlier panels so stacked institutional labels do not collide', () => {
   const calls = [];
   const view = Object.create(PixelWorldView.prototype);
