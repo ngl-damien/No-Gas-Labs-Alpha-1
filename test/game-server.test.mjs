@@ -1312,6 +1312,7 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   assert.equal(challenges[0].observationId, observationId);
   assert.equal(challenges[0].creationId, published.body.result.creationId);
   assert.equal(challenges[0].version, 1);
+  assert.equal(challenges[0].challengeText, challengeAction.challengeText);
   assert.equal(after.body.world.xp, before.body.world.xp);
   const revision = after.body.world.revision;
   const replay = await witness.request('/api/action', challengeAction);
