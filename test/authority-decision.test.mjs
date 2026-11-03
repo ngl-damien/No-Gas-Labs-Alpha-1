@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { generateKeyPairSync, createHash, sign, randomUUID } from "node:crypto";
-import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -39,6 +40,21 @@ function signPayload(privateKey, payload, fingerprint) {
     signature: sign("sha256", Buffer.from(canonical(payload)), privateKey).toString("base64url"),
     nonce: newNonce(),
   };
+}
+
+function withEnvironment(values, callback) {
+  const previous = new Map(Object.keys(values).map(key => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try { return callback(); }
+  finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 const proposal = { event_id: "prop-1", type: "PROPOSAL", quest_id: "q-1" };
@@ -180,7 +196,7 @@ test("a self-pinned attacker cannot choose the trust path, clock, nonce set or v
       consumed_nonces: new Set(),
       verification: { valid: true },
     }), /FOUNDER_AUTHORIZATION_INPUT_INVALID/);
-    assert.throws(() => authorizationEvent({ signed, payload }), /FOUNDER_NOT_ENROLLED/);
+    assert.throws(() => authorizationEvent({ signed, payload }), /FOUNDER_TRUST_ROOT_UNCONFIGURED/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -201,10 +217,12 @@ test("NOT_ENROLLED sentinel fails closed", () => {
     }));
     assert.equal(loadTrustAnchor(trustPath).enrolled, false);
     assert.equal(loadTrustAnchor(trustPath).reason, "NOT_ENROLLED");
-    assert.throws(() => authorizationEvent({
-      signed: { payload_sha256: "0".repeat(64), key_fingerprint: "0".repeat(64), signature: "AAAA", nonce: newNonce() },
-      payload: { schema: "ngl.founder-decision.v1" },
-    }), /FOUNDER_NOT_ENROLLED/);
+    withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath }, () => {
+      assert.throws(() => authorizationEvent({
+        signed: { payload_sha256: "0".repeat(64), key_fingerprint: "0".repeat(64), signature: "AAAA", nonce: newNonce() },
+        payload: { schema: "ngl.founder-decision.v1" },
+      }), /FOUNDER_NOT_ENROLLED/);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -292,15 +310,18 @@ test("trust-anchor enrollment metadata must match the exact schema/status/enroll
   }
 });
 
-test("TEST_ONLY anchors are inspectable but cannot authorize; a PRODUCTION test anchor authorizes once", async () => {
+test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable cross-process nonce ledger", async () => {
   const dir = path.join(tmpdir(), "ngl-auth-mode-" + process.pid + "-" + randomUUID());
   const modulePath = path.join(dir, "src", "authority", "decision.js");
   const trustPath = path.join(dir, "docs", "authority", "founder.pub.json");
-  mkdirSync(path.dirname(modulePath), { recursive: true });
-  mkdirSync(path.dirname(trustPath), { recursive: true });
+  const dataDirectory = path.join(dir, "data");
+  const nonceLedgerPath = path.join(dataDirectory, "founder-nonces.json");
+  mkdirSync(path.dirname(modulePath), { recursive: true, mode: 0o700 });
+  mkdirSync(path.dirname(trustPath), { recursive: true, mode: 0o700 });
+  mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
   try {
     const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
-    writeFileSync(modulePath, source);
+    writeFileSync(modulePath, source, { mode: 0o600 });
     const isolated = await import(pathToFileURL(modulePath).href + "?mode-test=" + randomUUID());
     const kp = keyPair();
     const payload = isolated.makeDecisionPayload({
@@ -320,24 +341,56 @@ test("TEST_ONLY anchors are inspectable but cannot authorize; a PRODUCTION test 
       public_key_jwk: kp.jwk,
       fingerprint: kp.fingerprint,
     });
+    const environment = {
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: nonceLedgerPath,
+    };
 
-    writeFileSync(trustPath, JSON.stringify(anchor("TEST_ONLY")));
+    writeFileSync(trustPath, JSON.stringify(anchor("TEST_ONLY")), { mode: 0o600 });
     assert.equal(isolated.loadTrustAnchor().mode, "TEST_ONLY");
-    assert.throws(
-      () => isolated.authorizationEvent({ signed, payload }),
-      /FOUNDER_TRUST_MODE_INVALID/
-    );
+    withEnvironment(environment, () => {
+      assert.throws(
+        () => isolated.authorizationEvent({ signed, payload }),
+        /FOUNDER_TRUST_MODE_INVALID/
+      );
+    });
 
-    writeFileSync(trustPath, JSON.stringify(anchor("PRODUCTION")));
-    const authorized = isolated.authorizationEvent({ signed, payload });
-    assert.equal(authorized.type, "QUEST_AUTHORIZED");
-    assert.equal(authorized.trust_mode, "PRODUCTION");
-    assert.equal(Object.isFrozen(authorized), true);
-    assert.equal(Object.isFrozen(authorized.capabilities), true);
-    assert.throws(
-      () => isolated.authorizationEvent({ signed, payload }),
-      /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
-    );
+    writeFileSync(trustPath, JSON.stringify(anchor("PRODUCTION")), { mode: 0o600 });
+    withEnvironment(environment, () => {
+      const authorized = isolated.authorizationEvent({ signed, payload });
+      assert.equal(authorized.type, "QUEST_AUTHORIZED");
+      assert.equal(authorized.trust_mode, "PRODUCTION");
+      assert.equal(Object.isFrozen(authorized), true);
+      assert.equal(Object.isFrozen(authorized.capabilities), true);
+      const saved = JSON.parse(readFileSync(nonceLedgerPath, "utf8"));
+      assert.equal(saved.schema, "ngl.founder-nonce-ledger.v1");
+      assert.deepEqual(saved.nonces, [signed.nonce]);
+      assert.throws(
+        () => isolated.authorizationEvent({ signed, payload }),
+        /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
+      );
+
+      const childSource =
+        "import { authorizationEvent } from " + JSON.stringify(pathToFileURL(modulePath).href) + ";\n" +
+        "try { authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) }); console.log(\"UNEXPECTED_AUTHORIZATION\"); process.exitCode = 1; }\n" +
+        "catch (error) { console.log(error.message); process.exitCode = error.message === \"FOUNDER_DECISION_INVALID:NONCE_REPLAY\" ? 0 : 2; }\n";
+      const child = spawnSync(process.execPath, ["--input-type=module", "-e", childSource], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, TEST_SIGNED: JSON.stringify(signed), TEST_PAYLOAD: JSON.stringify(payload) },
+      });
+      assert.equal(child.status, 0, child.stderr);
+      assert.match(child.stdout, /FOUNDER_DECISION_INVALID:NONCE_REPLAY/);
+
+      const secondSigned = signPayload(kp.privateKey, payload, kp.fingerprint);
+      const lockPath = path.join(dataDirectory, ".founder-nonce.lock");
+      writeFileSync(lockPath, canonical({ schema: "ngl.ledger-lock.v1", pid: process.pid, openedAt: new Date().toISOString() }), { mode: 0o600 });
+      assert.throws(
+        () => isolated.authorizationEvent({ signed: secondSigned, payload }),
+        /FOUNDER_NONCE_LEDGER_LOCKED/
+      );
+      unlinkSync(lockPath);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
