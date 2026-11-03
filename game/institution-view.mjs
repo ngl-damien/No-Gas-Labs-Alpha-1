@@ -73,10 +73,13 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
 
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
+const MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD = 20;
+const MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE = 10;
 
 /**
- * A read-only response docket for uniquely linked Source Observation challenges.
- * Ambiguous history stays visible but never invites another response write.
+ * A read-only Evidence Archive research desk. The action queue is derived from
+ * uniquely linked history; the register preserves the note, dissent, response,
+ * exact version and fixed assurance boundary without creating game state.
  */
 function renderSourceObservationResponseQueue(container, world, onOpenArtifact) {
  container.append(el('h3','SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE'));
@@ -86,8 +89,6 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(warning);
   return;
  }
- // Match the bounds enforced by projectSourceObservationRecords. An oversized
- // snapshot is unavailable, not an empty queue.
  if(world.events.length>100_000||world.creations.length>20_000) {
   const warning=el('p','The Source Observation snapshot exceeds the bounded projection limit. No response action is offered and the queue is not treated as empty.');
   warning.className='evidence-warning';
@@ -111,9 +112,10 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
  const linked=records.filter(record=>record?.projectionStatus==='linked');
  const unlinkedCount=records.length-linked.length;
  const pending=[],ambiguous=[];
- let projectedChallengeCount=0;
+ let projectedChallengeCount=0,linkedResponseCount=0;
  for(const record of linked) for(const challenge of Array.isArray(record.challenges)?record.challenges:[]) {
   projectedChallengeCount+=1;
+  linkedResponseCount+=Array.isArray(challenge.responses)?challenge.responses.length:0;
   const item={record,challenge};
   if(challenge?.responseStatus==='unanswered')pending.push(item);
   else if(challenge?.responseStatus==='ambiguous')ambiguous.push(item);
@@ -129,14 +131,14 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
  pending.sort(newestFirst);
  ambiguous.sort(newestFirst);
- container.append(el('p',`${pending.length} uniquely linked challenge(s) await an author response · ${ambiguous.length} ambiguous response-history item(s). This is a read-only queue; only the original note author can respond.`));
+ container.append(el('p',pending.length+' uniquely linked challenge(s) await an author response · '+ambiguous.length+' ambiguous response-history item(s). This is a read-only queue; only the original note author can respond.'));
  if(unlinkedCount>0) {
-  const warning=el('p',`${unlinkedCount} Source Observation record(s) could not be uniquely linked. They are not actionable here and remain inspectable in the Chronicle.`);
+  const warning=el('p',unlinkedCount+' Source Observation record(s) could not be uniquely linked. They are not actionable here and remain inspectable in the Chronicle.');
   warning.className='evidence-warning';
   container.append(warning);
  }
  if(unprojectedChallengeCount>0) {
-  const warning=el('p',`${unprojectedChallengeCount} retained challenge event(s) could not be uniquely linked to a valid observation. No response action is offered; inspect the Chronicle.`);
+  const warning=el('p',unprojectedChallengeCount+' retained challenge event(s) could not be uniquely linked to a valid observation. No response action is offered; inspect the Chronicle.');
   warning.className='evidence-warning';
   container.append(warning);
  }
@@ -145,7 +147,6 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
    ?'No unanswered Source Observation challenges. The Chronicle keeps every retained challenge and author response.'
    :'No uniquely linked unanswered challenge is actionable in this snapshot. Unlinked or ambiguous history remains in the Chronicle.';
   container.append(el('p',emptyMessage));
-  return;
  }
  for(const {record,challenge} of pending.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {
   const card=el('article');
@@ -153,12 +154,12 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.dataset.recordType='SOURCE_OBSERVATION_PENDING_CHALLENGE';
   card.dataset.challengeId=challenge.challengeId;
   card.append(el('h3',record.claim));
-  card.append(el('p',`Source version: ${record.targetTitle||record.creationId} · v${record.version} · original author ${record.actor?.name||record.actor?.id||'unknown'}`));
-  card.append(el('p',`Challenge: ${challenge.challengeType} · ${challenge.actor?.name||challenge.actor?.id||'unknown actor'} · ${challenge.at||'time unavailable'}`));
+  card.append(el('p','Source version: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · original author '+(record.actor?.name||record.actor?.id||'unknown')));
+  card.append(el('p','Challenge: '+challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable')));
   card.append(el('p',challenge.challengeText));
   card.append(el('p','Only the original note author can respond. The challenge remains dissent, not a verdict, independent evidence, or authority.','form-help'));
   if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
-   const inspect=el('button',`Open source observation · v${record.version}`);
+   const inspect=el('button','Open source observation · v'+record.version);
    inspect.type='button';
    inspect.dataset.sourceObservationPendingChallenge=challenge.challengeId;
    inspect.dataset.creationId=record.creationId;
@@ -169,7 +170,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(card);
  }
  if(pending.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
-  const more=el('p',`${pending.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS} additional unanswered challenge(s) remain in the Chronicle.`);
+  const more=el('p',(pending.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional unanswered challenge(s) remain in the Chronicle.');
   more.className='form-help';
   container.append(more);
  }
@@ -179,7 +180,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.dataset.recordType='SOURCE_OBSERVATION_AMBIGUOUS_RESPONSE';
   card.dataset.sourceObservationAmbiguousChallenge=challenge.challengeId;
   card.append(el('h3',record.claim));
-  card.append(el('p',`Ambiguous response history · ${record.creationId} · v${record.version} · challenge ${challenge.challengeId}`));
+  card.append(el('p','Ambiguous response history · '+record.creationId+' · v'+record.version+' · challenge '+challenge.challengeId));
   card.append(el('p',challenge.challengeText));
   const warning=el('p','Response history is ambiguous. No response is selected or counted; inspect the retained Chronicle rather than creating another response.');
   warning.className='evidence-warning';
@@ -187,12 +188,79 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(card);
  }
  if(ambiguous.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
-  const more=el('p',`${ambiguous.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS} additional ambiguous challenge history item(s) remain in the Chronicle.`);
+  const more=el('p',(ambiguous.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional ambiguous challenge history item(s) remain in the Chronicle.');
+  more.className='form-help';
+  container.append(more);
+ }
+
+ container.append(el('h3','SOURCE OBSERVATION REGISTER'));
+ container.append(el('p',linked.length+' uniquely linked observation(s) · '+projectedChallengeCount+' linked challenge(s) · '+linkedResponseCount+' uniquely linked response record(s). This is an attributed research register, not a truth or verification ledger.'));
+ if(!linked.length) {
+  container.append(el('p',records.length
+   ?'No Source Observation currently has a unique retained source-version link. Unlinked and malformed history remains in the Chronicle.'
+   :'No Source Observation has been retained in this snapshot yet.'));
+  return;
+ }
+ for(const record of linked.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {
+  const card=el('article');
+  card.className='field-card';
+  card.dataset.recordType='SOURCE_OBSERVATION_REGISTER';
+  card.dataset.sourceObservationRegisterRecord=record.observationId;
+  card.append(el('h3',record.claim));
+  card.append(el('p','Retained source: '+(record.targetTitle||record.creationId)+' · '+record.creationId+' · v'+record.version+' · author '+(record.actor?.name||record.actor?.id||'unknown')));
+  card.append(el('p','Author-selected source class: '+record.sourceKind));
+  card.append(el('p','Source / attribution: '+record.source));
+  card.append(el('p',record.falsifier?'Possible falsifier: '+record.falsifier:'Possible falsifier: not supplied in this note.'));
+  card.append(el('p',record.uncertainty?'Uncertainty: '+record.uncertainty:'Uncertainty: not supplied in this note.'));
+  card.append(el('p',record.nextTest?'Next discriminating test: '+record.nextTest:'Next discriminating test: not supplied in this note.'));
+  card.append(el('p','Assurance: source retrieval '+record.sourceRetrieval+' · independent verification '+record.independentVerification+' · model assertions '+record.modelAssertions+' · execution '+record.execution,'form-help'));
+  card.append(el('p',record.warning,'evidence-warning'));
+  if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
+   const inspect=el('button','Open exact source version · v'+record.version);
+   inspect.type='button';
+   inspect.dataset.sourceObservationRegisterOpen=record.observationId;
+   inspect.dataset.creationId=record.creationId;
+   inspect.dataset.version=String(record.version);
+   inspect.onclick=()=>onOpenArtifact(record.creationId,record.version);
+   card.append(inspect);
+  }
+  const challenges=Array.isArray(record.challenges)?record.challenges:[];
+  card.append(el('h4','RETAINED DISSENT & RESPONSES · '+challenges.length));
+  if(!challenges.length)card.append(el('p','No challenge is retained against this observation yet.'));
+  for(const challenge of challenges.slice(0,MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD)) {
+   const item=el('section');
+   item.className='field-card';
+   item.dataset.sourceObservationRegisterChallenge=challenge.challengeId;
+   item.append(el('h4',challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')));
+   item.append(el('p',challenge.challengeText));
+   if(challenge.responseStatus==='answered')item.append(el('p','AUTHOR RESPONSE RETAINED'));
+   else if(challenge.responseStatus==='ambiguous')item.append(el('p','AMBIGUOUS RESPONSE HISTORY · no response is selected or counted.','evidence-warning'));
+   else item.append(el('p','Awaiting the original note author response.'));
+   const responses=Array.isArray(challenge.responses)?challenge.responses:[];
+   for(const response of responses.slice(0,MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE)) {
+    item.append(el('p','Author response · '+(response.actor?.name||response.actor?.id||'unknown actor')+' · '+(response.at||'time unavailable')));
+    item.append(el('p',response.responseText));
+   }
+   if(responses.length>MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE) {
+    const more=el('p',(responses.length-MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE)+' additional response records remain in the Chronicle.');
+    more.className='form-help';
+    item.append(more);
+   }
+   card.append(item);
+  }
+  if(challenges.length>MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD) {
+   const more=el('p',(challenges.length-MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD)+' additional challenge records remain in the Chronicle.');
+   more.className='form-help';
+   card.append(more);
+  }
+  container.append(card);
+ }
+ if(linked.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
+  const more=el('p',(linked.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional linked observation(s) remain in the Chronicle.');
   more.className='form-help';
   container.append(more);
  }
 }
-
 export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
