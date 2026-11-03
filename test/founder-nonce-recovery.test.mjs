@@ -308,7 +308,7 @@ test('unreadable post-unlink owner-lock inspection retains the recovery fence', 
     "} catch (error) {",
     "  console.log('ERROR:' + (error?.code || error?.message || String(error)));",
     "}"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
