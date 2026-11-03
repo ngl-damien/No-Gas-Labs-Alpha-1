@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { writeFile, mkdir, realpath, stat, lstat, open } from 'node:fs/promises';
+import { writeFile, mkdir, realpath, stat, lstat, open, unlink } from 'node:fs/promises';
 import { dirname, basename, resolve, relative, posix, isAbsolute, win32, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -15,6 +15,144 @@ function insideRoot(root, candidate) {
 function sameFileSnapshot(left, right) {
   return left.dev === right.dev && left.ino === right.ino &&
     left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
+}
+function sameResolvedPath(expected, actual) {
+  const expectedPath = resolve(expected);
+  const actualPath = resolve(actual);
+  return process.platform === 'win32'
+    ? expectedPath.toLowerCase() === actualPath.toLowerCase()
+    : expectedPath === actualPath;
+}
+
+export function receiptDescriptorRootForPlatform(platform) {
+  // Linux procfs exposes directory descriptors as traversable paths. Darwin's
+  // /dev/fd entries are not a reliable child-path namespace for mkdir/open, so
+  // use the existing guarded realpath/lstat fallback there and on other hosts.
+  return platform === 'linux' ? '/proc/self/fd' : null;
+}
+
+function receiptDescriptorRoot() {
+  return receiptDescriptorRootForPlatform(process.platform);
+}
+
+async function writeReceiptPathFallback(rootPath, receiptPath, content) {
+  const destination = resolve(rootPath, receiptPath);
+  if (!insideRoot(rootPath, destination)) throw new Error('receipt path escapes repository root');
+  const segments = dirname(receiptPath) === '.' ? [] : dirname(receiptPath).split('/');
+  let realParent = rootPath;
+  for (const segment of segments) {
+    const candidate = resolve(realParent, segment);
+    let resolvedDirectory;
+    try {
+      resolvedDirectory = await realpath(candidate);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      await mkdir(candidate);
+      resolvedDirectory = await realpath(candidate);
+    }
+    if (!insideRoot(rootPath, resolvedDirectory)) {
+      throw new Error('receipt directory escapes repository root through a symlink');
+    }
+    if (!(await stat(resolvedDirectory)).isDirectory()) throw new Error('receipt parent is not a directory');
+    realParent = resolvedDirectory;
+  }
+  await writeFile(resolve(realParent, basename(destination)), content, { flag: 'wx' });
+}
+
+async function writeReceiptPinned(rootPath, receiptPath, content, descriptorRoot) {
+  const directoryFlags = fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW;
+  const parentSegments = dirname(receiptPath) === '.' ? [] : dirname(receiptPath).split('/');
+  const snapshots = [];
+  let directoryHandle = await open(rootPath, directoryFlags);
+  let directoryDescriptorPath = descriptorRoot + '/' + directoryHandle.fd;
+  let receiptHandle = null;
+  let receiptPathViaDescriptor = null;
+  let receiptCreated = false;
+
+  try {
+    const rootHandleMetadata = await directoryHandle.stat({ bigint: true });
+    const rootPathMetadata = await lstat(rootPath, { bigint: true });
+    if (rootPathMetadata.isSymbolicLink() || !rootPathMetadata.isDirectory() ||
+        rootPathMetadata.dev !== rootHandleMetadata.dev || rootPathMetadata.ino !== rootHandleMetadata.ino) {
+      throw new Error('receipt root changed during creation');
+    }
+    snapshots.push({ path: rootPath, dev: rootHandleMetadata.dev, ino: rootHandleMetadata.ino });
+
+    for (let index = 0; index < parentSegments.length; index += 1) {
+      const candidate = directoryDescriptorPath + '/' + parentSegments[index];
+      try {
+        await mkdir(candidate);
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
+
+      const nextHandle = await open(candidate, directoryFlags);
+      try {
+        const openedMetadata = await nextHandle.stat({ bigint: true });
+        const expectedPath = resolve(rootPath, ...parentSegments.slice(0, index + 1));
+        const pathMetadata = await lstat(expectedPath, { bigint: true });
+        if (pathMetadata.isSymbolicLink() || !pathMetadata.isDirectory() ||
+            pathMetadata.dev !== openedMetadata.dev || pathMetadata.ino !== openedMetadata.ino) {
+          throw new Error('receipt directory changed during creation');
+        }
+        snapshots.push({ path: expectedPath, dev: openedMetadata.dev, ino: openedMetadata.ino });
+      } catch (error) {
+        await nextHandle.close().catch(() => {});
+        throw error;
+      }
+
+      await directoryHandle.close().catch(() => {});
+      directoryHandle = nextHandle;
+      directoryDescriptorPath = descriptorRoot + '/' + directoryHandle.fd;
+    }
+
+    const assertStable = async () => {
+      for (const snapshot of snapshots) {
+        let current;
+        try {
+          current = await lstat(snapshot.path, { bigint: true });
+        } catch {
+          throw new Error('receipt directory changed during creation');
+        }
+        if (current.isSymbolicLink() || !current.isDirectory() ||
+            current.dev !== snapshot.dev || current.ino !== snapshot.ino) {
+          throw new Error('receipt directory changed during creation');
+        }
+      }
+      const resolvedDirectory = await realpath(directoryDescriptorPath);
+      if (!insideRoot(rootPath, resolvedDirectory)) {
+        throw new Error('receipt directory escapes repository root');
+      }
+    };
+
+    await assertStable();
+    receiptPathViaDescriptor = directoryDescriptorPath + '/' + basename(receiptPath);
+    const fileFlags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
+    receiptHandle = await open(receiptPathViaDescriptor, fileFlags, 0o600);
+    receiptCreated = true;
+    await receiptHandle.writeFile(content);
+    await receiptHandle.sync();
+    await receiptHandle.close();
+    receiptHandle = null;
+    await assertStable();
+  } catch (error) {
+    if (receiptHandle) await receiptHandle.close().catch(() => {});
+    if (receiptCreated && receiptPathViaDescriptor) await unlink(receiptPathViaDescriptor).catch(() => {});
+    throw error;
+  } finally {
+    await directoryHandle.close().catch(() => {});
+  }
+}
+
+async function writeReceiptSafely(rootPath, receiptPath, result) {
+  const descriptorRoot = receiptDescriptorRoot();
+  const content = () => JSON.stringify(result, null, 2) + '\n';
+  if (!descriptorRoot || !fsConstants.O_DIRECTORY || !fsConstants.O_NOFOLLOW) {
+    result.warnings.push('Receipt parent-directory race protection is unavailable on this platform; path-based receipt creation is best-effort.');
+    await writeReceiptPathFallback(rootPath, receiptPath, content());
+    return;
+  }
+  await writeReceiptPinned(rootPath, receiptPath, content(), descriptorRoot);
 }
 export const MAX_PREFLIGHT_FILE_BYTES = 16 * 1024 * 1024;
 const PREFLIGHT_READ_CHUNK_BYTES = 64 * 1024;
@@ -88,14 +226,17 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       return null;
     }
     try {
-      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint'].includes(kind)) {
-        const label = kind === 'durable-checkpoint' ? 'durable checkpoint' : 'trusted instruction';
+      let trustedPathSnapshot = null;
+      let trustedPathLabel = null;
+      if (['root-instructions', 'shared-protocol', 'nested-instructions', 'durable-checkpoint', 'vendor-pointer'].includes(kind)) {
+        trustedPathLabel = kind === 'durable-checkpoint' ? 'durable checkpoint' : kind === 'vendor-pointer' ? 'vendor pointer' : 'trusted instruction';
+        trustedPathSnapshot = [];
         const segments = relativePath.split('/');
         for (let index = 1; index <= segments.length; index += 1) {
           const component = segments.slice(0, index).join('/');
-          const metadata = await lstat(resolve(rootPath, component));
+          const metadata = await lstat(resolve(rootPath, component), { bigint: true });
           if (metadata.isSymbolicLink()) {
-            failures.push({ path: component, reason: label + ' path must not traverse a symlink' });
+            failures.push({ path: component, reason: trustedPathLabel + ' path must not traverse a symlink' });
             return null;
           }
           const expectedType = index === segments.length ? metadata.isFile() : metadata.isDirectory();
@@ -103,16 +244,26 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
             failures.push({
               path: component,
               reason: index === segments.length
-                ? label + ' must be a regular file'
+                ? trustedPathLabel + ' must be a regular file'
                 : 'trusted governance parent must be a directory'
             });
             return null;
           }
+          trustedPathSnapshot.push({
+            component,
+            dev: metadata.dev,
+            ino: metadata.ino,
+            type: index === segments.length ? 'file' : 'directory'
+          });
         }
       }
       const actualPath = await realpath(absolutePath);
       if (!insideRoot(rootPath, actualPath)) {
         failures.push({ path: relativePath, reason: 'resolved path escapes repository root through a symlink' });
+        return null;
+      }
+      if (trustedPathSnapshot && !sameResolvedPath(absolutePath, actualPath)) {
+        failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during preflight inspection' });
         return null;
       }
       // Open the resolved file non-blocking and pin the descriptor before reading.
@@ -149,6 +300,10 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
           failures.push({ path: relativePath, reason: 'resolved path escapes repository root during open' });
           return null;
         }
+        if (trustedPathSnapshot && !sameResolvedPath(absolutePath, openedPath)) {
+          failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during open' });
+          return null;
+        }
         const openedPathMetadata = await stat(openedPath, { bigint: true });
         if (!sameFileSnapshot(openedMetadata, openedPathMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed while opening for preflight inspection' });
@@ -166,7 +321,52 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
           failures.push({ path: relativePath, reason: 'resolved path escapes repository root during read' });
           return null;
         }
+        if (trustedPathSnapshot && !sameResolvedPath(absolutePath, finalPath)) {
+          failures.push({ path: relativePath, reason: trustedPathLabel + ' path changed through symlink resolution during read' });
+          return null;
+        }
         const finalPathMetadata = await stat(finalPath, { bigint: true });
+        if (trustedPathSnapshot) {
+          const matchesSnapshot = async snapshot => {
+            let currentMetadata;
+            try {
+              currentMetadata = await lstat(resolve(rootPath, snapshot.component), { bigint: true });
+            } catch {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path changed during preflight inspection'
+              });
+              return false;
+            }
+            if (currentMetadata.isSymbolicLink()) {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path must not traverse a symlink'
+              });
+              return false;
+            }
+            const currentType = currentMetadata.isFile() ? 'file' : currentMetadata.isDirectory() ? 'directory' : 'other';
+            if (currentMetadata.dev !== snapshot.dev ||
+                currentMetadata.ino !== snapshot.ino ||
+                currentType !== snapshot.type) {
+              failures.push({
+                path: snapshot.component,
+                reason: trustedPathLabel + ' path changed during preflight inspection'
+              });
+              return false;
+            }
+            return true;
+          };
+          // Keep the forward pass for precise child-path diagnostics. Then
+          // recheck deepest-first so an ancestor swapped after its first check
+          // is still observed before this trusted path is accepted.
+          for (const snapshot of trustedPathSnapshot) {
+            if (!await matchesSnapshot(snapshot)) return null;
+          }
+          for (const snapshot of [...trustedPathSnapshot].reverse()) {
+            if (!await matchesSnapshot(snapshot)) return null;
+          }
+        }
         if (BigInt(readResult.total) !== openedMetadata.size ||
             !sameFileSnapshot(openedMetadata, readMetadata) || !sameFileSnapshot(readMetadata, finalPathMetadata)) {
           failures.push({ path: relativePath, reason: 'file changed during preflight inspection' });
@@ -306,25 +506,7 @@ export async function runPreflight({ root = process.cwd(), entry = 'AGENTS.md', 
       result.status = 'blocked';
     } else {
       try {
-        const destination = resolve(rootPath, receiptPath);
-        if (!insideRoot(rootPath, destination)) throw new Error('receipt path escapes repository root');
-        const segments = dirname(receiptPath) === '.' ? [] : dirname(receiptPath).split('/');
-        let realParent = rootPath;
-        for (const segment of segments) {
-          const candidate = resolve(realParent, segment);
-          let resolvedDirectory;
-          try {
-            resolvedDirectory = await realpath(candidate);
-          } catch (error) {
-            if (error.code !== 'ENOENT') throw error;
-            await mkdir(candidate);
-            resolvedDirectory = await realpath(candidate);
-          }
-          if (!insideRoot(rootPath, resolvedDirectory)) throw new Error('receipt directory escapes repository root through a symlink');
-          if (!(await stat(resolvedDirectory)).isDirectory()) throw new Error('receipt parent is not a directory');
-          realParent = resolvedDirectory;
-        }
-        await writeFile(resolve(realParent, basename(destination)), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
+        await writeReceiptSafely(rootPath, receiptPath, result);
       } catch (error) {
         result.failures.push({ path: receiptPath, reason: 'cannot write receipt (' + (error.code ?? error.message) + ')' });
         result.status = 'blocked';
