@@ -206,4 +206,26 @@ test('Source Observation challenges preserve attributed dissent without changing
   const tampered=structuredClone(challenged.world);
   tampered.events.at(-1).version=2;
   await assert.rejects(validateWorld(tampered));
+
+  const proposal=await applyAction(challenged.world,{
+    type:'propose-moonshot',title:'A bounded test',hypothesis:'A source can be inspected.',
+    falsifier:'The source cannot be retrieved.',evidenceNeeded:'A retained primary-source capture.'
+  },founder,{now:'2026-10-17T12:00:04.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Attempt a bounded retrieval.',observation:'The outcome remains inconclusive.',
+    reportedOutcome:'inconclusive'
+  },founder,{now:'2026-10-17T12:00:05.000Z'});
+  const malformed=structuredClone(report.world);
+  malformed.events.push({
+    id:'cross-kind-challenge-test',type:'experiment-challenged',actor:witness,
+    at:'2026-10-17T12:00:06.000Z',semantics:'Attributed challenge; not adjudicated.',
+    challengeId:event.challengeId,reportId:report.result.reportId,
+    moonshotId:proposal.result.moonshotId,challengeType:'contradiction',
+    challengeText:'This challenge must have a unique identity.',
+    evidenceCreationId:null,evidenceVersion:null
+  });
+  malformed.revision+=1;
+  malformed.updatedAt='2026-10-17T12:00:06.000Z';
+  await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
 });
