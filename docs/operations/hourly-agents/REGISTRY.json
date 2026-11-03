@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "Main cc317d49 unchanged; PR #312 parent 3/3; PR #316 head 206e617: World Projection 41638605411 and Genesis 41638605427 passed (Browser not triggered for authority-only paths); PR #321 head 67a2534 3/3 passed (Verify 41637992508, Genesis 41637992674, Browser 41637992533); PR #322 head 29eb650 3/3; PR #323 head 9074aaaa Verify 41638571002 and Genesis 41638570793 passed, Browser 41638570851 in progress; prior #323 head 08376e7 Browser run 41636704506 failed before challenge commit because Playwright Route.fetch saw TargetClosedError; #313 2/3 inherited fixture; linked-repo bootstrap gates remain."
+      "current_pr_focus": "Main cc317d49 unchanged; PR #312 parent 3/3; PR #316 head 206e617: World Projection 41638605411 and Genesis 41638605427 passed (Browser not triggered for authority-only paths); PR #321 code/test head 67a2534 passed 3/3 and latest docs checkpoint head b629782 has checks queued; PR #322 head 29eb650 3/3; PR #323 current head 9074aaaa passed Verify 41638571002, Genesis 41638570793, Browser 41638570851 (12/12); earlier 08376e7 Browser failure was superseded and its rerun cancelled after branch advance; #313 2/3 inherited fixture; linked-repo bootstrap gates remain."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -63,7 +63,7 @@
         "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
         "source_inspection": "COMPLETED",
         "local_preflight": "NOT_RUN_NO_LOCAL_CHECKOUT_OR_ONLINE_REMOTE_DEVICE; hosted post-change preflight only",
-        "hosted_verification": "PR #316 exact head 206e617510f63098018513c77621be673dc92f2c: test-first head aecd922 exposed two writable-ancestor trust/nonce path gaps; final head passed World Projection 41638605411 (Node tests, Python inspector, package build, institutional exercise) and Genesis 41638605427. Browser not triggered for authority-only changes. PR #321 exact head 67a2534a5a266905870036593388e55479c5ee53 passed Verify 41637992508, Genesis 41637992674, Browser 41637992533.",
+        "hosted_verification": "PR #316 exact head 206e617510f63098018513c77621be673dc92f2c: test-first head aecd922 exposed two writable-ancestor trust/nonce path gaps; final head passed World Projection 41638605411 (Node tests, Python inspector, package build, institutional exercise) and Genesis 41638605427. Browser not triggered for authority-only changes. PR #321 code/test head 67a2534 passed Verify 41637992508, Genesis 41637992674, Browser 41637992533; latest docs checkpoint head b629782 has fresh checks pending. PR #323 current head 9074aaaa passed Verify 41638571002, Genesis 41638570793, Browser 41638570851 (12/12).",
         "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
         "latest_checkpoint": {
           "path": "docs/operations/LATEST_CHECKPOINT.md",
@@ -131,8 +131,8 @@
           {
             "pr": 321,
             "status": "OPEN_DRAFT",
-            "head": "67a2534a5a266905870036593388e55479c5ee53",
-            "checks": "3/3 passed: Verify 41637992508; Genesis 41637992674; Browser 41637992533. Contains explicit TEST_ONLY Decision Chamber fixture backport from #312; reconcile after parent integration."
+            "head": "b62978253578bc6bf1ec2e4a12632c5265bbebc4",
+            "checks": "Code/test head 67a2534 passed 3/3 (Verify 41637992508, Genesis 41637992674, Browser 41637992533); docs checkpoint head b629782 triggered fresh exact-head checks, pending at last observation."
           },
           {
             "pr": 322,
@@ -144,8 +144,16 @@
             "pr": 323,
             "status": "OPEN_DRAFT_CHILD_OF_320",
             "head": "9074aaaa7642ec9b205cc5aee742a00db3022224",
-            "checks": "Verify 41638571002 and Genesis 41638570793 passed; current-head Browser 41638570851 in progress. Earlier head 08376e7 run 41636704506 failed before commit with Playwright Route.fetch TargetClosedError; old-head rerun is not current-head evidence."
+            "checks": "3/3 passed: Verify 41638571002; Genesis 41638570793; Browser 41638570851 (12/12). Earlier failure on superseded head 08376e7 was not reproduced on current head; old-head rerun cancelled after branch advance."
           }
+        ],
+        "next_actions": [
+          "Re-poll PR #321 latest docs-only head b629782 after its three queued workflows complete; preserve the prior 67a2534 3/3 code/test result separately.",
+          "Keep PR #316 draft and stacked on #312; writable-ancestor trust/nonce path regressions now pass, but the helper remains outside the live game server and host trust/key provisioning remains a Founder-controlled gate.",
+          "Keep PR #323 current head 9074aaaa as 3/3 green (Browser 12/12); G6 remains IN PROGRESS and the Source Observatory stack is not integrated on main.",
+          "After #312 integrates, reconcile PR #321's duplicate TEST_ONLY fixture and rebase PR #313; do not transfer old-head workflow results.",
+          "Refresh main LATEST_CHECKPOINT.md only after #314/#317/#320 checkpoint ownership is reconciled; current main checkpoint remains stale.",
+          "Do not inspect or modify linked repository source until root AGENTS instructions and required bootstrap scripts can be read and executed."
         ]
       },
       {

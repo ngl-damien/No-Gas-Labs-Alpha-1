@@ -99,3 +99,8 @@ If an instruction file or required bootstrap cannot be read/run, stop source wor
 - #321: 3/3 on `67a2534`. #316: both triggered exact-head workflows passed on `206e617`; Browser was not triggered.
 - Next: (1) re-poll #323 current-head Browser and send Worker B a precise handoff if it fails; (2) keep #316 draft until its parent stack and host-owned trust provisioning are reviewed; (3) after #312 integrates, reconcile #321's duplicate test fixture and rebase #313; (4) leave main's stale checkpoint untouched until #314/#317/#320 ownership is reconciled; (5) do not inspect linked-repository source until its root instructions and mandatory bootstrap can be satisfied.
 - No merge, release, deployment, spending, key operation, external publication, or Founder-reserved decision occurred.
+
+
+### Final status correction — PR #323
+
+The current-head Browser run has now completed successfully: [41638570851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570851), 12/12 journeys, including the two-session shared journey and shared restart. Together with Verify [41638571002](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638571002) and Genesis [41638570793](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570793), current PR #323 head `9074aaaa7642ec9b205cc5aee742a00db3022224` is 3/3 green. The earlier `08376e7` Browser failure was superseded; its rerun was cancelled after Worker B advanced the branch. No current-head Browser failure remains observed.
