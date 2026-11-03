@@ -194,7 +194,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
  }
 
  container.append(el('h3','SOURCE OBSERVATION REGISTER'));
- container.append(el('p',linked.length+' uniquely linked observation(s) · '+projectedChallengeCount+' linked challenge(s) · '+linkedResponseCount+' uniquely linked response record(s). This is an attributed research register, not a truth or verification ledger.'));
+ container.append(el('p',linked.length+' uniquely linked source observation(s) · '+projectedChallengeCount+' linked challenge(s) · '+linkedResponseCount+' projected author response record(s). This is an attributed research register, not a truth or verification ledger.'));
  if(!linked.length) {
   container.append(el('p',records.length
    ?'No Source Observation currently has a unique retained source-version link. Unlinked and malformed history remains in the Chronicle.'
