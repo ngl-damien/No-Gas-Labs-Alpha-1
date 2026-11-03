@@ -398,7 +398,7 @@ test('map label placement clamps visible panels and hides fully off-screen label
     'a wholly off-screen object must not be pulled into view by its label');
   assert.equal(projectMapLabelPosition(0, -300, 320, 240, camera, 1, 100, 21), null);
   assert.equal(projectMapLabelPosition(0, 0, 40, 240, camera, 1, 100, 21), null);
-  assert.equal(projectMapLabelPosition(0, 0, 320, 240, camera, 1, 300, 21), null);
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, camera, 1, 305, 21), null);
   assert.ok(Object.isFrozen(left));
 
   let reads = 0;

@@ -537,8 +537,8 @@ export const PIXEL_SPRITES = Object.freeze({
     '..BB....BB..'
   ]),
   tutor: Object.freeze([
-    '....HHHH....',
     '...HHHHHH...',
+    '..HHHHHHHH..',
     '..HHFFFFHH..',
     '..HFFFFFFH..',
     '..VVVVVVVV..',
