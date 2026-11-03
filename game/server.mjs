@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { CHALLENGE_REVIEW_DISPOSITIONS } from './research-records.mjs';
-import {FIELD_EQUIPMENT_SLOTS} from './character-sheet.mjs';
+import {FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
 import {COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,COMMONS_DISPOSITIONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT} from './social.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -45,7 +45,7 @@ const exact = (value, fields) => {
 const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
-  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'unequip-field-item': ['type', 'slotId', 'requestId'],
+  contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'forge-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'unequip-field-item': ['type', 'slotId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'followUpReviewId', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
@@ -163,6 +163,10 @@ function preflightAction(input) {
       if (!CHALLENGE_REVIEW_DISPOSITIONS.some(item => item.value === input.disposition)) fail('INVALID_CHALLENGE_REVIEW_DISPOSITION', 'Choose a bounded Founder disposition.');
       preflightText(input.rationale, 1000, 'Disposition rationale', { required: true });
       break;
+    case 'forge-field-item':
+      if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_FIELD_ITEM_SLOT', 'Choose a known field-equipment slot.');
+      requiredId(input.sourceEventId, 'Source event ID');
+      break;
     case 'equip-field-item':
       if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
       if (!Object.hasOwn(input, 'sourceEventId') || !(input.sourceEventId === null || (typeof input.sourceEventId === 'string' && input.sourceEventId.length > 0 && input.sourceEventId.length <= 128 && input.sourceEventId.trim() === input.sourceEventId))) fail('INVALID_EQUIPMENT_SOURCE', 'Choose a retained source or null for automatic selection.');
@@ -228,7 +232,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-reviewed': ['reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-reviewed': ['reviewId', 'reportId', 'challengeId', 'moonshotId', 'disposition', 'rationale', 'sourceEventIds'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), reviewedChallengeIds = new Set(), challengeReviewById = new Map(), followUpReviewIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -437,7 +441,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-reviewed': 'reviewId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-reviewed': 'reviewId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -448,6 +452,7 @@ function validateHistory(world) {
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'field-item-forged' && (result.itemId !== event.itemId || result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-item forge result mismatch');
       if (event.type === 'field-item-equipped' && (result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-equipment result mismatch');
       if (event.type === 'field-item-unequipped' && result.slotId !== event.slotId) throw new Error('Stored idempotency field-unequip result mismatch');
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
@@ -471,6 +476,72 @@ function validateHistory(world) {
       const index = notes[event.type].findIndex(note => note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor) && (event.type === 'discover' ? note.locationId === event.locationId : note.creationId === event.creationId && note.version === event.version));
       if (index < 0) throw new Error('Stored contribution / discovery history mismatch');
       notes[event.type].splice(index, 1);
+    }
+  }
+  const forgedItemIds = new Set(), forgedSourceKeys = new Set(), forgedCountsByActor = new Map();
+  const validRawFieldItemSource = (slotId, source, sourceIndex, actor, targetIndex) => {
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === slotId);
+    if (!slot || !source || !Number.isInteger(sourceIndex) || sourceIndex >= targetIndex ||
+        source.actor?.id !== actor?.id || source.actor?.role !== actor?.role ||
+        !slot.sourceTypes.includes(source.type)) return false;
+    if (slotId === 'scouting') {
+      const matches = world.discoveries.filter(record => record.actor?.id === source.actor.id &&
+        record.actor?.role === source.actor.role && record.locationId === source.locationId && record.at === source.at);
+      if (source.repeat === true || matches.length !== 1) return false;
+    }
+    if (slotId === 'observation') {
+      const records = source.type === 'report' ? world.reports : world.contributions;
+      const matches = records.filter(record => record.actor?.id === source.actor.id &&
+        record.actor?.role === source.actor.role && record.creationId === source.creationId &&
+        record.version === source.version && record.at === source.at);
+      const publications = publicationEventsByVersion.get(historyKey(source.creationId, source.version)) || [];
+      if (matches.length !== 1 || publications.length !== 1 ||
+          eventPositions.get(publications[0]) >= sourceIndex || Date.parse(publications[0].at) > Date.parse(source.at)) return false;
+    }
+    if (slotId === 'restoration') {
+      if (!Number.isSafeInteger(source.version) || source.version < 2 ||
+          typeof source.creationId !== 'string' || !source.creationId) return false;
+      const methods = world.methods.filter(method => method.actor?.id === source.actor.id &&
+        method.actor?.role === source.actor.role && method.creationId === source.creationId &&
+        method.version === source.version && method.at === source.at);
+      const repairs = world.events.slice(0, sourceIndex).filter(repair => repair.type === 'repair' &&
+        repair.actor?.id === source.actor.id && repair.actor?.role === source.actor.role &&
+        repair.creationId === source.creationId && repair.baseVersion === source.version - 1 &&
+        Date.parse(repair.at) <= Date.parse(source.at));
+      if (methods.length !== 1 || repairs.length !== 1) return false;
+    }
+    return true;
+  };
+  for (let index = 0; index < world.events.length; index += 1) {
+    const event = world.events[index];
+    if (event.type === 'field-item-forged') {
+      const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+      const source = eventById.get(event.sourceEventId);
+      const sourceIndex = source ? eventPositions.get(source) : -1;
+      const actorKey = historyKey(event.actor?.id, event.actor?.role);
+      const sourceKey = historyKey(actorKey, event.sourceEventId);
+      const count = forgedCountsByActor.get(actorKey) || 0;
+      if (typeof event.itemId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId) ||
+          forgedItemIds.has(event.itemId) || typeof event.sourceEventId !== 'string' ||
+          !event.sourceEventId || event.sourceEventId.length > 128 || forgedSourceKeys.has(sourceKey) ||
+          count >= MAX_FIELD_INVENTORY_ITEMS ||
+          !validRawFieldItemSource(event.slotId, source, sourceIndex, event.actor, index)) {
+        throw new Error('Stored field-item forge is not bound to one earlier eligible source owned by the same actor');
+      }
+      forgedItemIds.add(event.itemId);
+      forgedSourceKeys.add(sourceKey);
+      forgedCountsByActor.set(actorKey, count + 1);
+    } else if (event.type === 'field-item-equipped' && event.sourceEventId !== null) {
+      const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+      const source = eventById.get(event.sourceEventId);
+      const sourceIndex = source ? eventPositions.get(source) : -1;
+      if (!slot || !source || !Number.isInteger(sourceIndex) || sourceIndex >= index ||
+          source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
+          (source.type === 'field-item-forged'
+            ? source.slotId !== event.slotId
+            : !validRawFieldItemSource(event.slotId, source, sourceIndex, event.actor, index))) {
+        throw new Error('Stored field-equipment selection is not bound to an earlier eligible source owned by the same actor');
+      }
     }
   }
   for (const draft of world.drafts) {

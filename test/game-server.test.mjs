@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer, validatePayload } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
@@ -1446,6 +1447,68 @@ test('field loadout writes an idempotent actor-owned event without awarding XP',
   assert.equal((await witnessClient.request('/api/action',{type:'equip-field-item',slotId:'scouting'})).response.status,400);
 });
 
+
+test('Forge persists one actor-bound field item with same-request retry and no XP', async t => {
+  const f = await fixture(t);
+  const founderClient = f.client();
+  await founderClient.login();
+  await publish(founderClient);
+  const founderState = (await founderClient.request('/api/state')).body;
+  const founderId = founderState.viewer.id;
+  const witnessClient = f.client();
+  const before = (await witnessClient.request('/api/state')).body;
+  const witnessId = before.viewer.id;
+  const founderPublication = before.world.events.find(event => event.type === 'publish');
+  assert.ok(founderPublication);
+  const foreignForge = await witnessClient.request('/api/action', {
+    type: 'forge-field-item', slotId: 'provenance', sourceEventId: founderPublication.id
+  });
+  assert.equal(foreignForge.response.status, 409, 'a Witness cannot forge from a Founder-owned publication');
+
+  const discovery = await witnessClient.request('/api/action', {
+    type: 'discover', locationId: 'river', requestId: 'field-forge-discovery'
+  });
+  assert.equal(discovery.response.status, 200, JSON.stringify(discovery.body));
+  const source = discovery.body.world.events.find(event =>
+    event.type === 'discover' && event.locationId === 'river' && event.actor.id === witnessId
+  );
+  assert.ok(source);
+  const action = {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id,
+    requestId: 'field-forge-river'
+  };
+  const forged = await witnessClient.request('/api/action', action);
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const forgeEvent = forged.body.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forgeEvent.actor.id, witnessId);
+  assert.deepEqual(forged.body.result, {
+    itemId: forgeEvent.itemId, slotId: 'scouting', sourceEventId: source.id
+  });
+  assert.equal(forged.body.world.xp, before.world.xp, 'forging cannot award XP');
+  assert.equal(forged.body.world.revision, before.world.revision + 2);
+
+  const retry = await witnessClient.request('/api/action', action);
+  assert.equal(retry.response.status, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.world.revision, forged.body.world.revision, 'same request ID replays the same forge receipt');
+  assert.equal(retry.body.world.events.filter(event => event.type === 'field-item-forged').length, 1);
+
+  const equipped = await witnessClient.request('/api/action', {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id,
+    requestId: 'field-forge-equip'
+  });
+  assert.equal(equipped.response.status, 200, JSON.stringify(equipped.body));
+  assert.equal(equipped.body.world.xp, before.world.xp);
+  assert.equal(equipped.body.world.events.at(-1).sourceEventId, forgeEvent.id);
+  const witnessRecord = projectCharacter(equipped.body.world, { id: witnessId, role: 'witness' });
+  assert.equal(witnessRecord.fieldInventory.length, 1);
+  assert.equal(witnessRecord.equipment.find(slot => slot.id === 'scouting').source.eventId, forgeEvent.id);
+  assert.equal(projectCharacter(equipped.body.world, { id: founderId, role: 'founder' }).fieldInventory.length, 0);
+  const founderCannotEquip = await founderClient.request('/api/action', {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
+  });
+  assert.equal(founderCannotEquip.response.status, 409, 'item ownership cannot cross actors');
+});
 
 test('Commons shared posts are idempotent, reports are private, and Founder moderation preserves history without XP', async t => {
   const f = await fixture(t);

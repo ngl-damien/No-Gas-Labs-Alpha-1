@@ -5,6 +5,8 @@ import { validatePayload } from '../game/server.mjs';
 import { projectResearchRecords } from '../game/research-records.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import {projectInstitutionRecordWorldObjects} from '../game/institution-record-objects.mjs';
+import {PLACES} from '../game/world-view.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -140,6 +142,85 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   assert.equal(await validateWorld(world).then(() => true), true);
 });
 
+
+test('Forge creates an actor-owned field item from one earlier retained source and equips that item without XP',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const source=discovered.world.events.find(event=>event.type==='discover'&&event.locationId==='river');
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:01.000Z'});
+  const forgeEvent=forged.world.events.at(-1);
+  assert.equal(forgeEvent.type,'field-item-forged');
+  assert.deepEqual(forged.result,{itemId:forgeEvent.itemId,slotId:'scouting',sourceEventId:source.id});
+  assert.equal(forged.world.xp,0,'forging a representation of existing work cannot award XP');
+  await assert.doesNotReject(validateWorld(forged.world));
+
+  const record=projectCharacter(forged.world,witness);
+  const item=record.fieldInventory[0];
+  assert.equal(record.fieldInventoryTotal,1);
+  assert.equal(record.fieldInventoryOmittedCount,0);
+  assert.equal(item.kind,'forged-field-item');
+  assert.equal(item.eventId,forgeEvent.id);
+  assert.equal(item.sourceEventId,source.id);
+  assert.equal(item.ownerId,witness.id);
+  assert.equal(record.skills.find(skill=>skill.id==='forger').count,1);
+  const scouting=record.equipment.find(slot=>slot.id==='scouting');
+  assert.equal(scouting.source.eventId,source.id,'forging does not silently equip an item');
+  assert.ok(scouting.choices.some(choice=>choice.eventId===forgeEvent.id&&choice.kind==='forged-field-item'));
+
+  const worldObjects=projectInstitutionRecordWorldObjects({world:forged.world,places:PLACES,isWalkable:()=>true});
+  const forgeObject=worldObjects.objects.find(object=>object.entryId===forgeEvent.id);
+  assert.equal(forgeObject.locationId,'forge','the Forge retains its own playable institutional record');
+
+  const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:02.000Z'});
+  const equippedSlot=projectCharacter(equipped.world,witness).equipment.find(slot=>slot.id==='scouting');
+  assert.equal(equippedSlot.mode,'pinned');
+  assert.equal(equippedSlot.source.eventId,forgeEvent.id);
+  assert.equal(equippedSlot.source.kind,'forged-field-item');
+  assert.equal(equipped.world.xp,0,'equipping the forged item cannot award XP');
+  await assert.doesNotReject(validateWorld(equipped.world));
+});
+
+test('Forge rejects wrong-slot, missing, foreign, reused and chained sources and rejects ambiguous imported ownership',async()=>{
+  const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
+  const source=discovered.world.events.find(event=>event.type==='discover');
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:'missing-source'},witness,{now}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:01.000Z'});
+  const forgeEvent=forged.world.events.at(-1);
+  await assert.rejects(
+    applyAction(forged.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:02.000Z'}),
+    error=>error.code==='FIELD_ITEM_ALREADY_FORGED'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:02.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+
+  const mismatched=structuredClone(forged.world);
+  mismatched.events.at(-1).slotId='provenance';
+  await assert.rejects(validateWorld(mismatched),error=>error.code==='INVALID_WORLD');
+
+  const ambiguous=structuredClone(forged.world);
+  ambiguous.events.push({
+    ...forgeEvent,
+    id:'field-forge-duplicate-event',
+    itemId:'field-item-duplicate',
+    at:'2026-10-17T12:00:02.000Z'
+  });
+  ambiguous.revision=ambiguous.events.length;
+  ambiguous.updatedAt=ambiguous.events.at(-1).at;
+  await assert.rejects(validateWorld(ambiguous),error=>error.code==='INVALID_WORLD');
+});
 
 test('field loadout choices are actor-owned, append-only, reversible, and XP-neutral',async()=>{
   const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});

@@ -1502,10 +1502,51 @@ def shared(browser,url,data,out):
         expect(adversarial_slot).to_contain_text('Contradiction Ward')
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
         expect(adversarial_slot.get_by_role('button',name='Inspect source →',exact=True)).to_have_count(1)
+
+        # The Forge creates an actor-owned item only from this actor's exact earlier challenge event.
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Forge',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Making Bench')
+        forge_slot=a.locator('#sheet [data-forge-slot="adversarial"]')
+        expect(forge_slot).to_have_count(1)
+        forge_choice=forge_slot.locator('select[data-forge-choice="adversarial"]')
+        forge_choice.select_option(retained_challenges[0]['id'])
+        before_forge=owner.request.get(url+'api/state').json()
+        owner_id=before_forge['viewer']['id']
+        assert retained_challenges[0]['actor']['id']==owner_id
+        forge_slot.get_by_role('button',name='Forge item',exact=True).click()
+        expect(a.locator('#sheet')).to_contain_text('1 personal field item is already forged')
+        forged_state=owner.request.get(url+'api/state').json()
+        forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged' and event.get('actor',{}).get('id')==owner_id]
+        assert len(forge_events)==1, forge_events
+        forge_event=forge_events[0]
+        assert forge_event['slotId']=='adversarial' and forge_event['sourceEventId']==retained_challenges[0]['id']
+        assert forged_state['world']['xp']==before_forge['world']['xp'], 'Forging must not award XP'
+        close_sheet(a)
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Personal inventory · forged field items')
+        forger_skill=a.locator('#sheet [data-skill-id="forger"]')
+        expect(forger_skill).to_contain_text('1 recorded actor-owned field items')
+        item_card=a.locator('#sheet [data-field-item-id="'+forge_event['itemId']+'"]')
+        expect(item_card).to_contain_text('Contradiction Ward')
+        expect(item_card).to_contain_text('player-owned · source-bound')
+        item_card.get_by_role('button',name='Equip item',exact=True).click()
+        expect(a.locator('#sheet [data-equipment-slot="adversarial"]')).to_contain_text('PINNED')
+        expect(a.locator('#sheet [data-equipment-slot="adversarial"]')).to_contain_text('Contradiction Ward')
+        item_equipped_state=owner.request.get(url+'api/state').json()
+        item_equip_events=[event for event in item_equipped_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('id')==owner_id]
+        assert item_equip_events[-1]['sourceEventId']==forge_event['id']
+        assert item_equipped_state['world']['xp']==before_forge['world']['xp']
+        assert armor_bearer_steps(a)==armor_bearer_before, 'Equipping an item in an already occupied slot must not mint a new Armor Bearer step'
+        assert character_xp_from_open_sheet(a)==character_xp_before, 'Forging and equipping must not award character XP'
+
+        adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         source_choice=adversarial_slot.locator('select[data-equipment-choice="adversarial"]')
         expect(source_choice).to_have_count(1)
+        source_choice.select_option(retained_challenges[0]['id'])
         selected_source_id=source_choice.input_value()
-        assert selected_source_id, 'The retained challenge must be selectable as field equipment'
+        assert selected_source_id==retained_challenges[0]['id'], 'The original dissent event remains selectable beside the forged item'
         before_loadout=owner.request.get(url+'api/state').json()
         before_revision=before_loadout['world']['revision']
         before_xp=before_loadout['world']['xp']
