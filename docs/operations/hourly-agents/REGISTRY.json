@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "main cc317d49; PR #301 merged and 4/4 exact-head checks passed (gate satisfied); PR #316 3/3 at 385ab39; PR #317 3/3 at abc71df; PR #318 2/3 with Browser quest-projection failure; PR #312 remains parent; #313 Verify fixture failure remains; cross-repo bootstrap gates recorded below."
+      "current_pr_focus": "Main cc317d49; PR #301 merged and 4/4 passed; PR #312 parent 3/3; PR #316 head a5ea861 3/3 (Verify 41631301805, Genesis 41631301807, Browser 41631302068; 12/12); PR #320 head 887c812 3/3; PR #322 head 29eb650 3/3; PR #313 2/3 due stale Decision Chamber fixture; PR #321 docs branch 2/3 due same inherited fixture; linked-repo bootstrap gates remain."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "Unreconciled; this run records a 12-repository core portfolio only, not an exhaustive owner/account inventory.",
-      "current_pr_focus": "Worker B: PR #317 is the 3/3-green Source Observatory candidate at abc71df; PR #318 at baff7251 has a Browser witness quest-projection failure; choose one canonical branch, preserve any unique direct-entry UX as separate follow-up, update MMORPG ledger from exact evidence."
+      "current_pr_focus": "Worker B: PR #317 abc71df 3/3 and PR #320 887c812 3/3 are the current Source Observatory stack; G6 remains IN PROGRESS. PR #318 baff7251 remains 2/3 because Browser witness quest projection stays OPEN 0/1. #317/#318 overlap; preserve the #318 failure as a regression and do not integrate both."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
@@ -62,8 +62,8 @@
         ],
         "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
         "source_inspection": "COMPLETED",
-        "local_preflight": "NOT_RUN_NO_ONLINE_REMOTE_DEVICE",
-        "hosted_verification": "PR #316 exact head 385ab39: Verify, Genesis and Browser passed; Verify preflight receipt artifact 13224228103.",
+        "local_preflight": "NOT_RUN_NO_LOCAL_CHECKOUT_OR_ONLINE_REMOTE_DEVICE; hosted post-change preflight only",
+        "hosted_verification": "PR #316 exact head a5ea861c7a4f2556fd809f64775993b5f6064cca: Verify 41631301805, Genesis 41631301807, Browser 41631302068 all passed; Browser 12/12. Verify preflight ready with no warnings/failures; artifact 13228691349. Browser artifact 13228846860.",
         "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
         "latest_checkpoint": {
           "path": "docs/operations/LATEST_CHECKPOINT.md",
@@ -96,9 +96,9 @@
           },
           {
             "pr": 316,
-            "status": "OPEN_DRAFT",
-            "head": "385ab39f808f9f4d952535f609d40c1797ddf7f3",
-            "checks": "3/3 passed"
+            "status": "OPEN_DRAFT_CHILD_OF_312",
+            "head": "a5ea861c7a4f2556fd809f64775993b5f6064cca",
+            "checks": "3/3 passed: Verify 41631301805; Genesis 41631301807; Browser 41631302068 (12/12). Verify preflight ready; artifact 13228691349."
           },
           {
             "pr": 317,
@@ -121,6 +121,24 @@
           {
             "pr": 300,
             "status": "CLOSED_UNMERGED"
+          },
+          {
+            "pr": 320,
+            "status": "OPEN_DRAFT_CHILD_OF_317",
+            "head": "887c81272df8bf11ebe8b39c49bfbc354fd35dac",
+            "checks": "3/3 passed; Browser 12/12. G6 Source Observatory remains IN PROGRESS, not complete."
+          },
+          {
+            "pr": 321,
+            "status": "OPEN_DRAFT",
+            "head": "292379d6957b8077f49f4764f4f6419011cc44d1",
+            "checks": "2/3: Genesis and Browser pass; Verify fails inherited FOUNDER_NOT_ENROLLED Decision Chamber fixture on main-based branch."
+          },
+          {
+            "pr": 322,
+            "status": "OPEN_DRAFT",
+            "head": "29eb650edbae9403786fd410ebcff4e5eb8e96d7",
+            "checks": "3/3 passed."
           }
         ]
       },
@@ -313,11 +331,11 @@
       }
     ],
     "next_actions": [
-      "Keep PR #316 draft and reconcile it only after its PR #312 parent; do not provision host trust or Founder keys without Founder authority.",
-      "Worker B should select PR #317 as the current 3/3-green Source Observatory candidate; preserve the PR #318 Browser failure and port only unique UX in a separate tested follow-up.",
-      "After PR #312 is integrated, rebase PR #313 and rerun all exact-head checks.",
-      "Refresh LATEST_CHECKPOINT.md through one reviewed integration after PR #314/#317 resolve checkpoint ownership.",
-      "Do not inspect or modify external repository source until its root AGENTS/bootstrap gate can be satisfied."
+      "Keep PR #316 draft and stacked on #312; do not provision host trust or Founder keys without Founder authority. Its latest exact head a5ea861 has 3/3 hosted checks; helper-level only.",
+      "Worker B: keep the PR #317 -> #320 Source Observatory stack as the current 3/3-green candidate; maintain G6 IN PROGRESS and exact-head evidence. Preserve PR #318's Browser witness-quest failure; do not integrate both overlapping branches.",
+      "After #312 is integrated, rebase #313 and rerun all exact-head checks; PR #321's main-based Verify failure is the inherited Decision Chamber fixture, not a docs test result.",
+      "Refresh main LATEST_CHECKPOINT.md only after #314/#317 checkpoint ownership is reconciled; current main checkpoint remains stale.",
+      "Do not inspect or modify linked repository source until its root AGENTS and mandatory bootstrap can be satisfied."
     ]
   }
 }
