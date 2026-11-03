@@ -97,7 +97,7 @@ const GUILD_NPC_SHORT_NAMES = Object.freeze({
 });
 
 // The role catalogue is the single source of names and objectives. The pixel
-// renderer contributes only map positions and visual accents.
+// renderer contributes map positions, service institutions and visual accents.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
   const role = COLLABORATOR_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
   const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
@@ -168,7 +168,7 @@ function guildNpcAccessibilityText(readiness) {
   const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
   const descriptions = GUILD_NPCS.map(npc => {
     const entry = byRole.get(npc.roleId);
-    if (!entry) return npc.name + ': packet state unavailable.';
+    if (!entry) return npc.name + ' at ' + npc.locationLabel + ': packet state unavailable.';
     const countPhrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
     const packetState = entry.status === 'ready'
       ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}`
