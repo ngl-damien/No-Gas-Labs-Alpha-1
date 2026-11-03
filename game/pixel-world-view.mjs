@@ -818,7 +818,7 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
-const MAP_OVERLAY_SELECTOR = '#quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, #sheet-backdrop, #sheet, #portal, #toast';
+const MAP_OVERLAY_SELECTOR = '#quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
@@ -834,7 +834,124 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
+    this.createNpcControls();
     this.observeMapOverlays();
+  }
+
+  createNpcControls() {
+    if (typeof document === 'undefined' || !document.body ||
+        typeof document.createElement !== 'function' ||
+        typeof document.body.appendChild !== 'function') return;
+    try {
+      const group = document.createElement('div');
+      group.className = 'ngl-world-collaborator-controls';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'World collaborators');
+      group.dataset.worldNpcControls = 'true';
+      Object.assign(group.style, {
+        position: 'fixed', left: '8px', bottom: '8px',
+        width: '1px', height: '1px', margin: '-1px', padding: '0',
+        overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+        border: '0', zIndex: '1000'
+      });
+      group.addEventListener('focusin', () => this.setNpcControlsVisible(true));
+      group.addEventListener('focusout', event => {
+        if (!group.contains?.(event?.relatedTarget)) this.setNpcControlsVisible(false);
+      });
+
+      this.npcControlButtons = new Map();
+      for (const npc of GUILD_NPCS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.guildNpcControl = npc.roleId;
+        button.textContent = 'Approach ' + npc.shortName;
+        button.setAttribute('aria-label',
+          'Approach ' + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
+          ' Advisory only; no model execution, canonical event, evidence, progress, approval, or authority is created.');
+        Object.assign(button.style, {
+          display: 'block', minWidth: '44px', minHeight: '44px',
+          padding: '8px 10px', background: '#141512',
+          border: '1px solid #9aa39a', borderRadius: '6px',
+          color: '#e8e6dc', font: '12px system-ui', textAlign: 'left',
+          touchAction: 'manipulation', cursor: 'pointer'
+        });
+        button.addEventListener('click', event => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          this.handleNpcAction(npc.id);
+        });
+        group.appendChild(button);
+        this.npcControlButtons.set(npc.roleId, button);
+      }
+      document.body.appendChild(group);
+      this.npcControlGroup = group;
+      this.npcControlsVisible = false;
+      this.updateNpcControls(false);
+    } catch {
+      try { this.npcControlGroup?.remove?.(); } catch {}
+      this.npcControlGroup = null;
+      this.npcControlButtons = new Map();
+    }
+  }
+
+  setNpcControlsVisible(visible) {
+    const group = this.npcControlGroup;
+    if (!group?.style) return;
+    this.npcControlsVisible = visible === true;
+    if (this.npcControlsVisible) {
+      Object.assign(group.style, {
+        width: 'min(320px, calc(100vw - 16px))', height: 'auto',
+        margin: '0', padding: '8px', overflow: 'visible',
+        clipPath: 'none', whiteSpace: 'normal', background: '#0c0d0b',
+        border: '1px solid #9aa39a', borderRadius: '8px',
+        color: '#e8e6dc', display: 'grid', gap: '8px',
+        boxShadow: '0 4px 16px rgba(0,0,0,.32)'
+      });
+    } else {
+      Object.assign(group.style, {
+        width: '1px', height: '1px', margin: '-1px', padding: '0',
+        overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+        background: 'transparent', border: '0', borderRadius: '0',
+        boxShadow: 'none'
+      });
+    }
+  }
+
+  updateNpcControls(modalOpen = false) {
+    const group = this.npcControlGroup;
+    if (!group || !(this.npcControlButtons instanceof Map)) return;
+    group.hidden = modalOpen === true;
+    for (const npc of GUILD_NPCS) {
+      const button = this.npcControlButtons.get(npc.roleId);
+      if (!button) continue;
+      button.disabled = modalOpen === true;
+      if (modalOpen) continue;
+      const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+        ? Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
+        : Infinity;
+      const canTalk = distance < 160;
+      const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
+      const packetState = readiness?.status || 'unavailable';
+      const action = canTalk ? 'Talk to ' : 'Approach ';
+      button.textContent = (canTalk ? 'Talk' : 'Approach') + ' · ' + npc.shortName + ' · ' + npc.locationLabel;
+      button.dataset.guildNpcAction = canTalk ? 'talk' : 'approach';
+      button.setAttribute('aria-label',
+        action + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
+        ' Packet state: ' + packetState + '. ' +
+        (canTalk
+          ? 'Activating opens the owning institution; it does not submit a collaborator response.'
+          : 'Activating routes to this exact character. Arrival requires a separate explicit interaction.') +
+        ' This advisory entry point invokes no model and creates no canonical event, evidence, progress, approval, or authority.');
+    }
+  }
+
+  handleNpcAction(id) {
+    if (typeof document !== 'undefined' &&
+        document.body?.classList?.contains?.('modal-open') === true) return;
+    const nearest = this.nearest(id, 'npc');
+    if (nearest?.type !== 'npc') return;
+    if (nearest.distance < 160) this.interact(id, 'npc');
+    else this.goTo(id, 'npc');
   }
 
   resize() {
@@ -1432,6 +1549,7 @@ export class PixelWorldView extends WorldView {
     const promptRange = near?.type === 'npc' ? 160 : 145;
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
+    this.updateNpcControls(modalOpen);
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
       ? this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
@@ -1461,5 +1579,12 @@ export class PixelWorldView extends WorldView {
     }
     context.restore();
     this.drawQuestCompass();
+  }
+
+  destroy() {
+    try { this.npcControlGroup?.remove?.(); } catch {}
+    this.npcControlGroup = null;
+    this.npcControlButtons?.clear?.();
+    super.destroy();
   }
 }
