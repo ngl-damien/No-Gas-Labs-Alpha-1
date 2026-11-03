@@ -196,7 +196,9 @@ test("a self-pinned attacker cannot choose the trust path, clock, nonce set or v
       consumed_nonces: new Set(),
       verification: { valid: true },
     }), /FOUNDER_AUTHORIZATION_INPUT_INVALID/);
-    assert.throws(() => authorizationEvent({ signed, payload }), /FOUNDER_TRUST_ROOT_UNCONFIGURED/);
+    withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: null, NGL_FOUNDER_NONCE_LEDGER_PATH: null }, () => {
+      assert.throws(() => authorizationEvent({ signed, payload }), /FOUNDER_TRUST_ROOT_UNCONFIGURED/);
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -356,6 +358,12 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
     });
 
     writeFileSync(trustPath, JSON.stringify(anchor("PRODUCTION")), { mode: 0o600 });
+    withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath, NGL_FOUNDER_NONCE_LEDGER_PATH: null }, () => {
+      assert.throws(
+        () => isolated.authorizationEvent({ signed, payload }),
+        /FOUNDER_NONCE_LEDGER_UNCONFIGURED/
+      );
+    });
     withEnvironment(environment, () => {
       const authorized = isolated.authorizationEvent({ signed, payload });
       assert.equal(authorized.type, "QUEST_AUTHORIZED");
