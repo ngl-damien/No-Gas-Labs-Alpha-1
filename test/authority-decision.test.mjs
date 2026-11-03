@@ -1036,8 +1036,9 @@ test("nonce ledger path rejects both reserved lock filenames before creating sta
     const signed = fixture.sign();
     const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
     const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
+    const temporaryLedgerPath = path.join(fixture.dataDirectory, ".founder-nonce-" + randomUUID() + ".tmp");
 
-    for (const ledgerPath of [ownerLockPath, recoveryLeasePath]) {
+    for (const ledgerPath of [ownerLockPath, recoveryLeasePath, temporaryLedgerPath]) {
       withEnvironment({
         NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
         NGL_FOUNDER_NONCE_LEDGER_PATH: ledgerPath,
@@ -1047,6 +1048,7 @@ test("nonce ledger path rejects both reserved lock filenames before creating sta
       ));
       assert.equal(existsSync(ownerLockPath), false, "invalid paths must not acquire the owner lock");
       assert.equal(existsSync(recoveryLeasePath), false, "invalid paths must not create a ledger at the recovery-lease name");
+      assert.equal(existsSync(temporaryLedgerPath), false, "invalid paths must not create a ledger in the temporary-file namespace");
       assert.deepEqual(readdirSync(fixture.dataDirectory), []);
     }
   } finally {
