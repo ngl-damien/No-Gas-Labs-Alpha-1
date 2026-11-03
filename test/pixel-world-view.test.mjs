@@ -281,3 +281,30 @@ test('quest map targets fail closed on identity collisions, duplicate versions a
     moonshotId: activity.moonshotId, activityId: activity.activityId
   }, { creations: [] }, [], [activity, { ...activity, activityId: 'other-report' }]), null);
 });
+
+
+test('prefixed research target IDs preserve the full valid source identifier', () => {
+  const moonshotId = 'm'.repeat(128);
+  const objectId = 'moonshot-object:' + moonshotId;
+  const researchObjects = [{
+    id: objectId, moonshotId, title: 'Long-ID moonshot', x: 1320, y: 520
+  }];
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'research-object', id: objectId, moonshotId }, { creations: [] }, researchObjects),
+    { kind: 'research-object', id: objectId, x: 1320, y: 520, label: 'Long-ID moonshot' }
+  );
+
+  const eventId = 'e'.repeat(128);
+  const activityId = 'a'.repeat(128);
+  const activityObjectId = 'research-activity:' + eventId;
+  const researchActivityObjects = [{
+    id: activityObjectId, moonshotId, activityId,
+    title: 'Long-ID activity', x: 1144, y: 629, mapVisible: true
+  }];
+  assert.deepEqual(
+    projectQuestMapTarget({
+      type: 'research-activity', id: activityObjectId, moonshotId, activityId
+    }, { creations: [] }, [], researchActivityObjects),
+    { kind: 'research-activity', id: activityObjectId, x: 1144, y: 629, label: 'Long-ID activity' }
+  );
+});

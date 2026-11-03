@@ -78,7 +78,7 @@ export function projectSourceObservationMapCounts(world) {
 }
 
 
-const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
 function safeQuestTargetId(value) {
