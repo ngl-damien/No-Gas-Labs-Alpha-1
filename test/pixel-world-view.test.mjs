@@ -6,7 +6,8 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
-import { isWalkable, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
+import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -14,7 +15,11 @@ import {
   projectSourceObservationMapCounts,
   projectQuestMapTarget,
   projectMapLabelMetrics,
-  projectQuestCompassIndicator
+  projectMapLabelPosition,
+  projectQuestCompassIndicator,
+  projectGuildNpcReadiness,
+  PixelWorldView,
+  GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
@@ -53,6 +58,46 @@ test('pixel sprites use rectangular, bounded, data-only character grids', () => 
     assert.ok(Object.isFrozen(rows), name + ' sprite rows must be immutable');
   }
   assert.ok(Object.isFrozen(PIXEL_SPRITES));
+});
+
+test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
+  const signatures = GUILD_NPCS.map(npc => {
+    const rectangles = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
+    view.guildNpcReadiness = [];
+    view.text = () => {};
+    view.drawMapLabel = () => {};
+    view.drawGuildNpc(npc);
+    return rectangles.slice(1).map(([x, y, width, height]) =>
+      [x - npc.x, y - npc.y, width, height].join(',')
+    ).join('|');
+  });
+  assert.equal(new Set(signatures).size, GUILD_NPCS.length,
+    'each institutional role must have a different rendered pixel silhouette');
+});
+
+test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
+  const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
+  assert.deepEqual(places.map(place => place.id), [
+    'guild_hall', 'forge', 'evidence_archive', 'decision_chamber',
+    'academy', 'moonshot_field', 'publication_house'
+  ]);
+  const signatures = places.map(place => {
+    const rectangles = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
+    view.text = () => {};
+    view.drawMapLabel = () => {};
+    view.institutionCounts = {};
+    view.drawInstitution(place);
+    assert.ok(rectangles.length > 14, place.id + ' must draw its function-specific features');
+    return rectangles.map(([x, y, width, height]) =>
+      [x, y, width, height].join(',')
+    ).join('|');
+  });
+  assert.equal(new Set(signatures).size, places.length,
+    'institution landmarks must not be recolored copies of one generic building');
 });
 
 
@@ -328,6 +373,73 @@ test('map label metrics preserve readable screen size across mobile and desktop 
   assert.equal(projectMapLabelMetrics(11, 0.78, 40), null);
 });
 
+test('map label placement clamps visible panels and hides fully off-screen labels', () => {
+  const camera = { x: 0, y: 0 };
+  const inside = projectMapLabelPosition(0, 0, 320, 240, camera, 1, 100, 21);
+  assert.deepEqual(inside, { x: 0, y: 0 });
+
+  const left = projectMapLabelPosition(-140, 0, 320, 240, camera, 1, 100, 21);
+  assert.ok(left);
+  assert.equal(160 + left.x - 50, 8, 'left panel edge stays inside the viewport margin');
+
+  const right = projectMapLabelPosition(140, 0, 320, 240, camera, 1, 100, 21);
+  assert.ok(right);
+  assert.equal(160 + right.x + 50, 312, 'right panel edge stays inside the viewport margin');
+
+  const top = projectMapLabelPosition(0, -110, 320, 240, camera, 1, 100, 21);
+  assert.ok(top);
+  assert.equal(120 + top.y - 21, 8, 'top panel edge stays inside the viewport margin');
+
+  const bottom = projectMapLabelPosition(0, 130, 320, 240, camera, 1, 100, 21);
+  assert.ok(bottom);
+  assert.equal(120 + bottom.y, 232, 'bottom panel edge stays inside the viewport margin');
+
+  assert.equal(projectMapLabelPosition(-300, 0, 320, 240, camera, 1, 100, 21), null,
+    'a wholly off-screen object must not be pulled into view by its label');
+  assert.equal(projectMapLabelPosition(0, -300, 320, 240, camera, 1, 100, 21), null);
+  assert.equal(projectMapLabelPosition(0, 0, 40, 240, camera, 1, 100, 21), null);
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, camera, 1, 305, 21), null);
+  assert.ok(Object.isFrozen(left));
+
+  let reads = 0;
+  const hostileCamera = Object.defineProperty({}, 'x', {
+    enumerable: true,
+    get() { reads += 1; return 0; }
+  });
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, hostileCamera, 1, 100, 21), null);
+  assert.equal(reads, 0);
+});
+
+test('drawMapLabel clamps a partially visible panel and omits a wholly off-screen panel', () => {
+  const calls = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.width = 320;
+  view.height = 240;
+  view.zoom = 1;
+  view.camera = { x: 0, y: 0 };
+  view.ctx = {
+    font: '',
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    textAlign: 'center',
+    measureText: value => ({ width: Array.from(value).length * 6 }),
+    fillRect: (...args) => calls.push({ type: 'fill', args }),
+    strokeRect: (...args) => calls.push({ type: 'stroke', args })
+  };
+  view.text = (value, x, y) => calls.push({ type: 'text', value, x, y });
+
+  view.drawMapLabel('LEFT EDGE', -140, 120, 11);
+  const panel = calls.find(call => call.type === 'fill').args;
+  assert.ok(160 + panel[0] >= 8 - 1);
+  assert.ok(160 + panel[0] + panel[2] <= 312 + 1);
+  assert.ok(120 + panel[1] >= 8 - 1);
+
+  const before = calls.length;
+  view.drawMapLabel('OFFSCREEN', -400, 120, 11);
+  assert.equal(calls.length, before);
+});
+
 test('quest compass stays hidden for visible objectives and points to off-screen destinations', () => {
   assert.equal(projectQuestCompassIndicator(
     { x: 325, y: 645, label: 'The Making Bench' },
@@ -369,4 +481,225 @@ test('quest compass rejects malformed viewport and hostile target accessors with
   });
   assert.equal(projectQuestCompassIndicator(hostile, { x: 700, y: 500 }, 390, 844, 0.78), null);
   assert.equal(reads, 0);
+});
+
+
+test('Guild Hall NPCs are fixed, bounded guides with no model or canonical authority', () => {
+  assert.deepEqual(
+    GUILD_NPCS.map(({ roleId, name, objective }) => ({ id: roleId, name, objective })),
+    projectCollaboratorPackets({ events: [], creations: [] })
+      .map(({ id, name, objective }) => ({ id, name, objective }))
+  );
+  assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
+  assert.equal(new Set(GUILD_NPCS.map(npc => npc.roleId)).size, GUILD_NPCS.length);
+  assert.ok(Object.isFrozen(GUILD_NPCS));
+  for (const npc of GUILD_NPCS) {
+    assert.ok(Object.isFrozen(npc));
+    assert.equal(npc.routeLocation, 'guild_hall');
+    assert.equal(npc.authority, 'advisory-only');
+    assert.equal(npc.invokesModel, false);
+    assert.equal(npc.mayWriteCanonicalState, false);
+    assert.equal(npc.mayGrantAuthority, false);
+    assert.equal(npc.mayAwardProgress, false);
+    assert.equal(npc.mayCertifyTruthOrExecution, false);
+    assert.ok(npc.x >= 0 && npc.x <= WORLD_WIDTH);
+    assert.ok(npc.y >= 0 && npc.y <= WORLD_HEIGHT);
+    assert.equal(isWalkable(npc.x, npc.y, []), true, npc.name + ' must stand on walkable terrain');
+    assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
+      npc.name + ' must have a walkable route from Guild Hall');
+  }
+});
+
+test('quest navigation routes to each Guild Hall NPC but does not auto-interact on arrival', () => {
+  for (const npc of GUILD_NPCS) {
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = { x: 230, y: 220 };
+    view.world = { creations: [] };
+    view.route = [];
+    view.target = 'old-target';
+    view.targetType = 'place';
+
+    view.goTo(npc.id);
+
+    assert.ok(view.route.length > 0, npc.name + ' should have a route');
+    const destination = view.route[view.route.length - 1];
+    assert.ok(Math.hypot(destination.x - npc.x, destination.y - (npc.y + 12)) < 32,
+      npc.name + ' route should end beside the exact NPC');
+    assert.equal(view.target, null, 'arrival requires an explicit interact action');
+    assert.equal(view.targetType, null);
+  }
+});
+
+test('speaking to a Guild Hall NPC routes to the existing collaborator workbench without mutating the world', () => {
+  const world = {
+    id: 'guild-npc-interaction-world',
+    revision: 7,
+    xp: 100,
+    events: [],
+    creations: [],
+    drafts: []
+  };
+  const before = structuredClone(world);
+  for (const npc of GUILD_NPCS) {
+    let interaction = null;
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = { x: npc.x, y: npc.y + 10 };
+    view.world = world;
+    view.researchObjects = [];
+    view.researchActivityObjects = [];
+    view.callbacks = {
+      onInteract: value => { interaction = value; },
+      onDiscover: () => { throw new Error('Guild NPC conversation is not a discovery event'); }
+    };
+    view.route = [];
+    view.target = null;
+    view.targetType = null;
+
+    const nearest = view.nearest();
+    assert.equal(nearest.type, 'npc');
+    assert.equal(nearest.roleId, npc.roleId);
+    assert.equal(nearest.distance, 0);
+
+    view.interact();
+    assert.deepEqual(interaction, {
+      type: 'institution',
+      id: 'guild_hall',
+      npcRoleId: npc.roleId,
+      npcName: npc.name
+    });
+    assert.deepEqual(world, before, 'conversation only opens the existing Guild Hall workbench');
+  }
+});
+
+test('unregistered Guild Hall NPC targets fail closed without opening an institution', () => {
+  let interactions = 0;
+  const view = Object.create(PixelWorldView.prototype);
+  view.player = { x: 200, y: 320 };
+  view.world = { creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.callbacks = { onInteract: () => { interactions += 1; }, onDiscover: () => {} };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+
+  assert.equal(view.nearest('guild-npc-not-registered', 'npc'), null);
+  view.interact('guild-npc-not-registered', 'npc');
+  assert.equal(interactions, 0);
+});
+
+
+function guildNpcResearchWorld() {
+  const founder = { id: 'founder-1', role: 'founder' };
+  const witness = { id: 'witness-1', role: 'witness' };
+  return {
+    id: 'guild-npc-readiness-world',
+    revision: 3,
+    creations: [],
+    events: [
+      {
+        id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
+        actor: founder, at: '2026-10-29T04:00:00.000Z',
+        title: 'Bounded test', hypothesis: 'A claim holds under a stated condition.',
+        falsifier: 'A repeatable counterexample',
+        evidenceNeeded: 'An independently observed measurement',
+        sourceCreationId: null, sourceVersion: null
+      },
+      {
+        id: 'report-event-1', type: 'experiment-reported', reportId: 'report-1',
+        moonshotId: 'moonshot-1', actor: witness, at: '2026-10-29T04:01:00.000Z',
+        procedure: 'Run the stated procedure once.',
+        observation: 'The expected result did not occur.',
+        reportedOutcome: 'failed', evidenceCreationId: null, evidenceVersion: null
+      },
+      {
+        id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
+        reportId: 'report-1', moonshotId: 'moonshot-1', actor: founder,
+        at: '2026-10-29T04:02:00.000Z', challengeType: 'methodology',
+        challengeText: 'The procedure omits a control.',
+        evidenceCreationId: null, evidenceVersion: null
+      }
+    ]
+  };
+}
+
+test('Guild Hall NPC packet readiness follows sealed source-bound collaborator packets without creating activity', () => {
+  const emptyWorld = { id: 'empty-guild-world', revision: 0, events: [], creations: [] };
+  const emptyBefore = structuredClone(emptyWorld);
+  const empty = projectGuildNpcReadiness(emptyWorld);
+  assert.deepEqual(empty.map(entry => ({
+    roleId: entry.roleId, status: entry.status, label: entry.label,
+    sourceSnapshotStatus: entry.sourceSnapshotStatus, inputCount: entry.inputCount
+  })), GUILD_NPCS.map(npc => ({
+    roleId: npc.roleId, status: 'unavailable', label: 'NO PACKET',
+    sourceSnapshotStatus: 'identified', inputCount: 0
+  })));
+  assert.deepEqual(emptyWorld, emptyBefore);
+
+  const world = guildNpcResearchWorld();
+  const before = structuredClone(world);
+  const ready = projectGuildNpcReadiness(world);
+  assert.deepEqual(ready.map(entry => entry.roleId), ['archivist', 'adversary', 'synthesizer', 'tutor']);
+  assert.ok(ready.every(entry => entry.status === 'ready' && entry.label === 'PACKET READY' &&
+    entry.sourceSnapshotStatus === 'identified' && entry.inputCount > 0));
+  assert.equal(ready.find(entry => entry.roleId === 'tutor').inputCount, 1);
+  assert.ok(Object.isFrozen(ready));
+  assert.ok(ready.every(entry => Object.isFrozen(entry)));
+  assert.ok(ready.every(entry => !Object.hasOwn(entry, 'prompt') && !Object.hasOwn(entry, 'packetJson')),
+    'the map exposes readiness only, never the collaborator prompt or packet contents');
+  assert.deepEqual(world, before, 'readiness projection must not mutate retained events or progression');
+
+  const partialWorld = guildNpcResearchWorld();
+  delete partialWorld.id;
+  delete partialWorld.revision;
+  const partial = projectGuildNpcReadiness(partialWorld);
+  assert.ok(partial.every(entry => entry.status === 'partial' &&
+    entry.label === 'READY · PARTIAL' && entry.sourceSnapshotStatus === 'incomplete'),
+    'available packets with incomplete snapshot identity remain visibly qualified');
+});
+
+test('Guild Hall NPC readiness fails closed on accessor-backed world snapshots', () => {
+  let getterCalls = 0;
+  const hostile = {};
+  for (const key of ['id', 'revision', 'events', 'creations']) {
+    Object.defineProperty(hostile, key, {
+      enumerable: true,
+      get() { getterCalls += 1; return key === 'events' || key === 'creations' ? [] : key === 'id' ? 'forged-world' : 1; }
+    });
+  }
+  const readiness = projectGuildNpcReadiness(hostile);
+  assert.equal(getterCalls, 0);
+  assert.ok(readiness.every(entry => entry.status === 'unavailable' &&
+    entry.sourceSnapshotStatus === 'incomplete'));
+});
+
+test('pixel map exposes bounded Guild Hall packet status in its accessible description and NPC labels', () => {
+  const world = guildNpcResearchWorld();
+  const before = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  view.world = world;
+  view.guildNpcReadiness = projectGuildNpcReadiness(world);
+  view.sourceObservationMapCounts = projectSourceObservationMapCounts(world);
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.questAction = null;
+  view.questTarget = null;
+  const attributes = {};
+  view.canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  view.updateResearchAccessibility();
+
+  assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified/);
+  assert.match(attributes['aria-label'], /Hostile Archivist:.*source-bound packet is available with 3 retained event references/);
+  assert.match(attributes['aria-label'], /Polymath Tutor:.*source-bound packet is available with 1 retained event reference/);
+  assert.match(attributes['aria-label'], /not autonomous AI agents/);
+
+  const labels = [];
+  view.ctx = { fillStyle: '', font: '', textAlign: '', fillRect() {}, fillText() {} };
+  view.drawMapLabel = label => labels.push(label);
+  view.drawGuildNpc(GUILD_NPCS.find(npc => npc.roleId === 'archivist'));
+  assert.deepEqual(labels, ['ARCHIVIST', 'PACKET READY']);
+  assert.deepEqual(world, before);
 });

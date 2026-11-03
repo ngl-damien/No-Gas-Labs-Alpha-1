@@ -1,4 +1,5 @@
-import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from './world-view.mjs';
+import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
+import { isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
@@ -81,6 +82,105 @@ export function projectSourceObservationMapCounts(world) {
 const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
+const GUILD_NPC_POSITIONS = Object.freeze([
+  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
+  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
+  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
+  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
+]);
+const COLLABORATOR_ROLE_CATALOGUE = projectCollaboratorPackets({ events: [], creations: [] });
+const GUILD_NPC_SHORT_NAMES = Object.freeze({
+  archivist: 'ARCHIVIST',
+  adversary: 'ADVERSARY',
+  synthesizer: 'SYNTHESIS',
+  tutor: 'TUTOR'
+});
+
+// The role catalogue is the single source of names and objectives. The pixel
+// renderer contributes only map positions and visual accents.
+export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
+  const role = COLLABORATOR_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
+  return role ? [Object.freeze({
+    id: 'guild-npc-' + role.id,
+    roleId: role.id,
+    name: role.name,
+    objective: role.objective,
+    shortName: GUILD_NPC_SHORT_NAMES[role.id] || role.name.toUpperCase(),
+    routeLocation: 'guild_hall',
+    authority: 'advisory-only',
+    invokesModel: false,
+    mayWriteCanonicalState: false,
+    mayGrantAuthority: false,
+    mayAwardProgress: false,
+    mayCertifyTruthOrExecution: false,
+    ...position
+  })] : [];
+}));
+
+const GUILD_NPC_COLORS = Object.freeze({
+  archivist: Object.freeze({ H: '#536b49', F: '#e0bd96', G: '#718765', L: '#d4d8c2', T: '#765d40', B: '#343e39' }),
+  adversary: Object.freeze({ R: '#a64f3b', F: '#e0bd96', W: '#e8e6dc', B: '#343e39' }),
+  synthesizer: Object.freeze({ S: '#536b68', F: '#e0bd96', C: '#5f8873', L: '#c4d1a0', T: '#765d40', B: '#343e39' }),
+  tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' })
+});
+
+function guildNpcStatusLabel(status) {
+  return status === 'ready' ? 'PACKET READY'
+    : status === 'partial' ? 'READY · PARTIAL'
+      : 'NO PACKET';
+}
+
+/**
+ * Project each authored Guild Hall guide's current bounded hand-off availability.
+ * This reads the sealed collaborator packet projection only: it never invokes a
+ * model, mutates the world, or treats packet availability as agent execution.
+ */
+export function projectGuildNpcReadiness(world) {
+  const packets = projectCollaboratorPackets(world);
+  const byRole = new Map(packets.filter(isCollaboratorPacket).map(packet => [packet.id, packet]));
+  return Object.freeze(GUILD_NPCS.map(npc => {
+    const packet = byRole.get(npc.roleId);
+    const sourceSnapshotStatus = packet?.sourceSnapshot?.status === 'identified'
+      ? 'identified' : 'incomplete';
+    const packetAvailable = packet?.available === true;
+    const status = packetAvailable
+      ? sourceSnapshotStatus === 'identified' ? 'ready' : 'partial'
+      : 'unavailable';
+    const inputCount = packetAvailable && Array.isArray(packet.inputRefs) ? packet.inputRefs.length : 0;
+    const omittedCount = Number.isSafeInteger(packet?.omittedCount) && packet.omittedCount >= 0
+      ? packet.omittedCount : 0;
+    return Object.freeze({
+      npcId: npc.id,
+      roleId: npc.roleId,
+      status,
+      label: guildNpcStatusLabel(status),
+      sourceSnapshotStatus,
+      inputCount,
+      omittedCount,
+      reason: !packetAvailable && typeof packet?.reason === 'string' ? packet.reason : null
+    });
+  }));
+}
+
+function guildNpcAccessibilityText(readiness) {
+  const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
+  const descriptions = GUILD_NPCS.map(npc => {
+    const entry = byRole.get(npc.roleId);
+    if (!entry) return npc.name + ': packet state unavailable.';
+    const countPhrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
+    const packetState = entry.status === 'ready'
+      ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}`
+      : entry.status === 'partial'
+        ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}, but source snapshot identity is incomplete`
+        : `no bounded packet is currently available${entry.reason ? ': ' + entry.reason : ''}`;
+    const omitted = entry.omittedCount > 0
+      ? ` ${countPhrase(entry.omittedCount, 'additional eligible event reference is omitted', 'additional eligible event references are omitted')} from this bounded packet.`
+      : '';
+    return `${npc.name}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
+  });
+  return 'Guild Hall bounded collaborator guides: ' + descriptions.join(' ') +
+    ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.';
+}
 function safeQuestTargetId(value) {
   return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -123,6 +223,40 @@ export function projectMapLabelMetrics(screenFontSize, zoom, viewportWidth) {
     horizontalPadding: 8 / zoom,
     verticalPadding: 5 / zoom,
     lineWidth: 1.5 / zoom
+  });
+}
+
+/**
+ * Keep a map-label panel inside the visible viewport without pulling wholly
+ * off-screen objects into view. Inputs and outputs are in CSS pixels/world units.
+ */
+export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewportHeight, camera, zoom,
+  panelWidth, panelHeight, margin = 8) {
+  const cameraX = ownDataValue(camera, 'x');
+  const cameraY = ownDataValue(camera, 'y');
+  if (![anchorX, anchorY, viewportWidth, viewportHeight, cameraX, cameraY, zoom,
+    panelWidth, panelHeight, margin].every(Number.isFinite) ||
+      viewportWidth < 64 || viewportHeight < 64 || zoom <= 0 ||
+      panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
+      margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
+      panelWidth > viewportWidth - margin * 2 ||
+      panelHeight > viewportHeight - margin * 2) return null;
+
+  const screenX = viewportWidth / 2 + (anchorX - cameraX) * zoom;
+  const screenY = viewportHeight / 2 + (anchorY - cameraY) * zoom;
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return null;
+  const originalLeft = screenX - panelWidth / 2;
+  const originalTop = screenY - panelHeight;
+  const originalRight = originalLeft + panelWidth;
+  const originalBottom = originalTop + panelHeight;
+  if (originalRight <= margin || originalLeft >= viewportWidth - margin ||
+      originalBottom <= margin || originalTop >= viewportHeight - margin) return null;
+
+  const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, originalLeft));
+  const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, originalTop));
+  return Object.freeze({
+    x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
+    y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
   });
 }
 
@@ -365,6 +499,54 @@ export const PIXEL_SPRITES = Object.freeze({
     '..RRRR..',
     '...TT...',
     '...TT...'
+  ]),
+  archivist: Object.freeze([
+    '....HHHH....',
+    '...HHHHHH...',
+    '..HHFFFFHH..',
+    '..HFFFFFFH..',
+    '..GGGGGGGG..',
+    '..GGLGGGLG..',
+    '...GGTTGG...',
+    '...GGTTGG...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  adversary: Object.freeze([
+    '....RRRR....',
+    '...RRRRRR...',
+    '..RRFFFFRR..',
+    '..RFFFFFFR..',
+    '.RRWWWWWWRR.',
+    '.RRRWWWWRRR.',
+    '...RRRRRR...',
+    '...RRRRRR...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  synthesizer: Object.freeze([
+    '...SSSSSS...',
+    '..SSSSSSSS..',
+    '..SFFFFFFS..',
+    '..FFFFFFF...',
+    '..CCCCCCCC..',
+    '..CCLLCCLL..',
+    '...CCTTCC...',
+    '...CCCCCC...',
+    '...BBBBBB...',
+    '..BB....BB..'
+  ]),
+  tutor: Object.freeze([
+    '...HHHHHH...',
+    '..HHHHHHHH..',
+    '..HHFFFFHH..',
+    '..HFFFFFFH..',
+    '..VVVVVVVV..',
+    '..VVLLVVLL..',
+    '...VVTTVV...',
+    '...VVVVVV...',
+    '...BBBBBB...',
+    '..BB....BB..'
   ])
 });
 
@@ -482,13 +664,75 @@ function drawPixelBuilding(context, x, y, roof, wall, trim) {
   context.fillRect(x + 19, y - 12, 6, 4);
 }
 
+function institutionFeatures(rows) {
+  return Object.freeze(rows.map(([x, y, width, height, palette]) =>
+    Object.freeze({ x, y, width, height, palette })
+  ));
+}
+
+// Each landmark gets a silhouette tied to its actual institutional purpose:
+// council banner, forge chimney, archive stacks, human-gate pillars, academy
+// spire, observatory telescope, or publication press.
+const INSTITUTION_ARCHITECTURE = Object.freeze({
+  guild_hall: institutionFeatures([
+    [-48, -64, 96, 7, 'trim'], [-4, -86, 8, 22, 'trim'],
+    [-16, -82, 32, 12, 'accent'], [-42, -18, 8, 24, 'trim'], [34, -18, 8, 24, 'trim']
+  ]),
+  forge: institutionFeatures([
+    [-28, -100, 16, 46, 'trim'], [-32, -104, 24, 6, 'wall'],
+    [10, -30, 22, 18, 'accent'], [14, -26, 14, 10, 'glow'], [-12, 4, 38, 6, 'trim']
+  ]),
+  evidence_archive: institutionFeatures([
+    [-42, -92, 18, 40, 'trim'], [24, -92, 18, 40, 'trim'],
+    [-37, -84, 10, 5, 'accent'], [29, -84, 10, 5, 'accent'],
+    [-27, -14, 8, 10, 'accent'], [-9, -14, 8, 10, 'wall'],
+    [9, -14, 8, 10, 'accent'], [27, -14, 8, 10, 'wall']
+  ]),
+  decision_chamber: institutionFeatures([
+    [-44, -78, 8, 58, 'trim'], [-18, -78, 8, 58, 'trim'],
+    [10, -78, 8, 58, 'trim'], [36, -78, 8, 58, 'trim'],
+    [-50, -86, 100, 8, 'roof'], [-10, -28, 20, 28, 'accent']
+  ]),
+  academy: institutionFeatures([
+    [-12, -116, 24, 62, 'trim'], [-6, -132, 12, 16, 'roof'],
+    [-30, -82, 12, 28, 'trim'], [18, -82, 12, 28, 'trim'],
+    [-8, -56, 16, 12, 'accent'], [-3, -53, 6, 6, 'wall']
+  ]),
+  moonshot_field: institutionFeatures([
+    [-42, -74, 84, 8, 'trim'], [-34, -90, 68, 16, 'roof'],
+    [-20, -98, 40, 8, 'trim'], [28, -112, 8, 36, 'accent'],
+    [22, -114, 20, 6, 'glow'], [18, -76, 28, 6, 'wall']
+  ]),
+  publication_house: institutionFeatures([
+    [-42, -76, 84, 8, 'trim'], [-32, -90, 64, 14, 'roof'],
+    [-20, -102, 40, 10, 'trim'], [-12, -32, 24, 18, 'accent'],
+    [-34, -10, 68, 8, 'trim'], [22, -54, 12, 18, 'wall']
+  ])
+});
+const INSTITUTION_FEATURE_COLORS = Object.freeze({ accent: '#c77b48', glow: '#e0bd69' });
+
+function drawInstitutionBuilding(context, place, roof, wall, trim) {
+  const baseY = place.y + 8;
+  drawPixelBuilding(context, place.x, baseY, roof, wall, trim);
+  for (const feature of INSTITUTION_ARCHITECTURE[place.id] || []) {
+    const color = feature.palette === 'roof' ? roof
+      : feature.palette === 'wall' ? wall
+        : feature.palette === 'trim' ? trim
+          : INSTITUTION_FEATURE_COLORS[feature.palette];
+    if (!color) continue;
+    context.fillStyle = color;
+    context.fillRect(place.x + feature.x, baseY + feature.y, feature.width, feature.height);
+  }
+}
+
 const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   x: 48 + hash2(index + 11, 17) % 1504,
   y: 48 + hash2(index + 73, 29) % 904,
   type: index % 8 === 0 ? 'rock' : 'tree'
 })).filter(item =>
   classifyWorldTile(Math.floor(item.x / WORLD_TILE_SIZE), Math.floor(item.y / WORLD_TILE_SIZE)) === 'grass' &&
-  PLACES.every(place => Math.hypot(place.x - item.x, place.y - item.y) > 92)
+  PLACES.every(place => Math.hypot(place.x - item.x, place.y - item.y) > 92) &&
+  GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
 export class PixelWorldView extends WorldView {
@@ -497,9 +741,62 @@ export class PixelWorldView extends WorldView {
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+    this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
+  }
+
+  goTo(id, targetType) {
+    const npc = typeof id === 'string' ? GUILD_NPCS.find(candidate => candidate.id === id) : null;
+    if (!npc) return super.goTo(id, targetType);
+    if (targetType !== undefined && targetType !== 'npc') {
+      this.cancelRoute();
+      return;
+    }
+    const route = findRoute(this.player, { x: npc.x, y: npc.y + 12 }, this.world.creations);
+    if (!route.length) {
+      this.cancelRoute();
+      return;
+    }
+    this.route = route;
+    this.route.shift();
+    // Arrival leaves the player beside the NPC. The player must still use
+    // the explicit interact control; navigation alone is not a world event.
+    this.target = null;
+    this.targetType = null;
+  }
+
+  nearest(targetId, targetType) {
+    const ordinary = super.nearest(targetId, targetType);
+    const includeNpcs = targetType === undefined || targetType === 'npc';
+    const npcs = includeNpcs ? GUILD_NPCS.filter(npc =>
+      targetId === undefined || (typeof targetId === 'string' && npc.id === targetId)
+    ).map(npc => ({
+      ...npc,
+      type: 'npc',
+      x: npc.x,
+      y: npc.y + 10,
+      distance: Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
+    })) : [];
+    return [ordinary, ...npcs].filter(Boolean)
+      .sort((left, right) => left.distance - right.distance)[0] || null;
+  }
+
+  interact(targetId, targetType) {
+    const nearest = this.nearest(targetId, targetType);
+    if (nearest?.type === 'npc') {
+      if (nearest.distance >= 160) return;
+      if (targetId !== undefined) this.cancelRoute();
+      this.callbacks.onInteract({
+        type: 'institution',
+        id: nearest.routeLocation,
+        npcRoleId: nearest.roleId,
+        npcName: nearest.name
+      });
+      return;
+    }
+    return super.interact(targetId, targetType);
   }
 
   setWorld(world, institutionSummary = this.institutionSummary) {
@@ -507,22 +804,31 @@ export class PixelWorldView extends WorldView {
     super.setWorld(world, institutionSummary);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+      this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
     }
   }
 
   updateResearchAccessibility() {
     const counts = this.sourceObservationMapCounts;
+    const npcReadiness = Array.isArray(this.guildNpcReadiness)
+      ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
+    this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
+      `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
+    ).join(';');
+    const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
-        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity.';
+        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
+        npcAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
-        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`;
+        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
+        npcAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -594,16 +900,22 @@ export class PixelWorldView extends WorldView {
     }
     const width = Math.min(metrics.maxWidth, Math.max(metrics.minWidth,
       Math.ceil(context.measureText(label).width) + 2 * metrics.horizontalPadding));
-    const left = Math.round(x - width / 2);
-    const top = Math.round(y - metrics.fontSize - metrics.verticalPadding);
     const height = metrics.fontSize + 2 * metrics.verticalPadding;
+    const placement = projectMapLabelPosition(
+      x, y, this.width, this.height, this.camera, this.zoom, width * this.zoom, height * this.zoom
+    );
+    if (!placement) return;
+    const drawX = placement.x;
+    const drawY = placement.y;
+    const left = Math.round(drawX - width / 2);
+    const top = Math.round(drawY - metrics.fontSize - metrics.verticalPadding);
     context.fillStyle = '#0c0d0b';
     context.fillRect(left, top, width, height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = metrics.lineWidth;
     context.strokeRect(left + metrics.lineWidth / 2, top + metrics.lineWidth / 2,
       width - metrics.lineWidth, height - metrics.lineWidth);
-    this.text(label, x, y, metrics.fontSize, '#f5f1e6');
+    this.text(label, drawX, drawY, metrics.fontSize, '#f5f1e6');
   }
 
   drawResearchCounterPanel(x, y) {
@@ -680,7 +992,7 @@ export class PixelWorldView extends WorldView {
       publication_house: '#a85f42'
     };
     const roof = roofColors[place.id] || '#536d53';
-    drawPixelBuilding(this.ctx, place.x, place.y + 8, roof, '#c6c7a5', '#344638');
+    drawInstitutionBuilding(this.ctx, place, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
     this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
     this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 68, 10);
@@ -793,6 +1105,20 @@ export class PixelWorldView extends WorldView {
     else if (player.name) this.text(String(player.name).slice(0, 24), player.x, player.y + 25, 8, '#e8e6dc');
   }
 
+  drawGuildNpc(npc) {
+    const colors = GUILD_NPC_COLORS[npc.roleId];
+    const sprite = PIXEL_SPRITES[npc.roleId];
+    if (!colors || !sprite) return;
+    const context = this.ctx;
+    context.fillStyle = '#26382e66';
+    context.fillRect(npc.x - 12, npc.y + 2, 24, 5);
+    drawSprite(context, sprite, colors, npc.x, npc.y, 4);
+    this.text(npc.sigil, npc.x, npc.y - 13, 9, '#e8e6dc', 'system-ui');
+    this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
+    const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
+    this.drawMapLabel(readiness?.label ?? 'NO PACKET', npc.x, npc.y + 36, 8);
+  }
+
   drawQuestTarget() {
     const target = this.questTarget;
     if (!target) return;
@@ -884,6 +1210,9 @@ export class PixelWorldView extends WorldView {
       ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
         y: object.y, draw: () => this.drawResearchActivityObject(object)
       })),
+      ...GUILD_NPCS.map(npc => ({
+        y: npc.y, draw: () => this.drawGuildNpc(npc)
+      })),
       ...this.presence.filter(player => player.id !== this.player.id &&
         Number.isFinite(player.x) && Number.isFinite(player.y)).map(player => ({
           y: player.y, draw: () => this.drawPlayer(player, true)
@@ -894,8 +1223,14 @@ export class PixelWorldView extends WorldView {
     this.drawQuestTarget();
 
     const near = this.nearest();
+    this.canvas.dataset.nearbyNpcRole =
+      near?.type === 'npc' && near.distance < 145 ? near.roleId : 'none';
+    this.canvas.dataset.nearbyNpcPacketState = near?.type === 'npc'
+      ? this.guildNpcReadiness?.find(entry => entry.roleId === near.roleId)?.status ?? 'unavailable'
+      : 'none';
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
-      const label = near.type === 'workbench' ? 'E · Make something'
+      const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
+        : near.type === 'workbench' ? 'E · Make something'
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
