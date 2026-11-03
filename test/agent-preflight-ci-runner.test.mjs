@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createReceiptPath, runPreflightCi } from '../scripts/run-agent-preflight-ci.mjs';
 
@@ -67,4 +68,14 @@ test('CI runner preserves a blocked validator exit code instead of reporting suc
 
 test('CI runner fails closed when the validator is terminated without an exit code', () => {
   assert.equal(runPreflightCi(args, () => ({ status: null, signal: 'SIGTERM' })), 1);
+});
+
+test('Verify workflow preserves the unique preflight receipt even when verification fails', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/verify.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /- name: Preserve portable preflight receipt/);
+  assert.match(workflow, /if: always\(\)/);
+  assert.match(workflow, /uses: actions\/upload-artifact@v4/);
+  assert.match(workflow, /path: \.runtime\/agent-preflight-ci-\*\.json/);
+  assert.match(workflow, /if-no-files-found: warn/);
+  assert.match(workflow, /retention-days: 14/);
 });

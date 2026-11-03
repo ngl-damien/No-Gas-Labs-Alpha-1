@@ -24,3 +24,11 @@ jobs:
           node-version: 24
       - name: Execute tests, package and bounded institutional exercise
         run: npm run verify
+      - name: Preserve portable preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/agent-preflight-ci-*.json
+          if-no-files-found: warn
+          retention-days: 14
