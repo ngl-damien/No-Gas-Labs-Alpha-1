@@ -177,3 +177,46 @@ test('portable preflight fingerprints the recovery command and its regression te
   assert.ok(command.includes('--path scripts/recover-founder-nonce-lock.mjs'));
   assert.ok(command.includes('--path test/founder-nonce-recovery.test.mjs'));
 });
+
+
+test('orphaned pre-rename temporary files remain visible when the owner lock is already absent', async t => {
+  const value = await fixture(t, { withLock: false });
+  const temporary = join(value.directory, '.founder-nonce-' + randomUUID() + '.tmp');
+  await writeFile(temporary, 'orphaned fixture bytes', { mode: 0o600 });
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'manual-inspection-required');
+  assert.equal(result.reason, 'orphaned-temporary-files-remain-without-an-owner-lock');
+  assert.equal(result.pendingTemporaryFiles.length, 1);
+  assert.equal(await exists(value.lockPath), false);
+  assert.equal(await exists(temporary), true);
+});
+
+test('a stale lock with no ledger can be recovered without creating or inventing nonce state', async t => {
+  const value = await fixture(t, { withLedger: false });
+  const inspection = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(inspection.status, 'ready');
+  assert.equal(inspection.ledger.exists, false);
+  const result = await recoverFounderNonceLock({
+    ledgerPath: value.ledgerPath,
+    confirmOwnerStopped: true,
+    confirmSameHost: true
+  });
+  assert.equal(result.status, 'recovered');
+  assert.equal(result.ledger.exists, false);
+  assert.equal(result.ledgerModified, false);
+  assert.equal(await exists(value.ledgerPath), false);
+  assert.equal(await exists(value.lockPath), false);
+});
+
+test('an unrecognized lock schema blocks recovery instead of being treated as a Founder nonce lock', async t => {
+  const value = await fixture(t);
+  await writeFile(value.lockPath, canonical({
+    schema: 'ngl.unknown-lock.v9',
+    pid: 2147483647,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.lockFormat, 'unrecognized-json');
+  assert.equal(await exists(value.lockPath), true);
+});
