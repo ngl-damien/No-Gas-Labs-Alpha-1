@@ -1,5 +1,5 @@
 import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
-import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
@@ -88,6 +88,7 @@ const GUILD_NPC_POSITIONS = Object.freeze([
   { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
   { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
 ]);
+const COLLABORATOR_ROLE_CATALOGUE = projectCollaboratorPackets({ events: [], creations: [] });
 const GUILD_NPC_SHORT_NAMES = Object.freeze({
   archivist: 'ARCHIVIST',
   adversary: 'ADVERSARY',
@@ -98,7 +99,7 @@ const GUILD_NPC_SHORT_NAMES = Object.freeze({
 // The role catalogue is the single source of names and objectives. The pixel
 // renderer contributes only map positions and visual accents.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
-  const role = COLLABORATOR_ROLES.find(candidate => candidate.id === position.roleId);
+  const role = COLLABORATOR_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
   return role ? [Object.freeze({
     id: 'guild-npc-' + role.id,
     roleId: role.id,
