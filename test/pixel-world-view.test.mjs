@@ -395,6 +395,9 @@ test('Guild Hall NPCs are fixed, bounded guides with no model or canonical autho
     assert.equal(npc.mayCertifyTruthOrExecution, false);
     assert.ok(npc.x >= 0 && npc.x <= WORLD_WIDTH);
     assert.ok(npc.y >= 0 && npc.y <= WORLD_HEIGHT);
+    assert.equal(isWalkable(npc.x, npc.y, []), true, npc.name + ' must stand on walkable terrain');
+    assert.ok(Math.hypot(npc.x - 230, npc.y - 220) < 160,
+      npc.name + ' must be reachable from the Guild Hall interaction area');
   }
 });
 
