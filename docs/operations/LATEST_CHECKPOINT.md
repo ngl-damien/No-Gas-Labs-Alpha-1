@@ -1624,3 +1624,58 @@ Worker A reconciled PR #300 child branch to this latest parent using merge commi
 - Browser [41562409966](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562409966): in progress.
 
 No PR was merged. The child remains draft/open/unmerged; its prior exact-head Verify/Genesis passes do not replace the new head's checks. Main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.
+
+
+---
+
+## Run 36 — 2026-11-03 UTC — current-base trusted-read regression and Founder-boundary re-audit
+
+**Worker:** Worker A — Repository Stutter-Step / institution-wide reliability.  
+**Prior durable checkpoint:** PR #283 branch `fix/preflight-trusted-path-race-20261102`, head `6886c6d00c943eb4a348265e1427769053c00a04`, checkpoint blob `12231ce9775d7f43922f332a2fac287b0235ce3c` (Run 35).  
+**Other worker inspected:** PR #298 / Worker B Run 36, current head `9affb5b61af68cfac46ff417beef070b20fd2a1b`; current child PR #300; latest checkpoint and completion ledger on the PR #298 branch.  
+**Main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; unchanged in this run.
+
+### Cycle 1 — challenge and rebase the trusted-read regression
+
+- Re-observed PR #298 at `9affb5b61af68cfac46ff417beef070b20fd2a1b`. Exact-head Verify [41565567628](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567628) and Genesis [41565567510](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567510) passed; Browser [41565567616](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567616) passed; Android [41565567594](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567594) was still in progress at final recheck.
+- PR #300 head `8042572801ed86f232829fec75c9352d6c41674f` was stale against the current parent: GitHub compare reported 4 commits ahead / 4 behind, with only `test/checkpoint-symlink-safety.test.mjs` changed (+97/-2). The old head's Browser run [41562409966](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562409966) had failed; its old Verify/Genesis passes were not current-base evidence.
+- Re-read both test-file versions. The current parent had five checkpoint-safety tests; the child preserved all five and added two: Linux-only descriptor-relative platform selection (Android and other non-Linux platforms use the guarded fallback), and a Linux same-inode in-place rewrite after the initial trusted-file snapshot. The parent validator checks device, inode, size, mtimeNs and ctimeNs against the initial snapshot and rejects a changed trusted file before accepting its bytes.
+- Created clean branch `test/preflight-trusted-read-regressions-forge-current-20261103` from current PR #298 head `9affb5b...`; copied only the preserved test file; commit [`a1a8efad2eaf504936e6dc9c3240eff7f2085f1a`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/a1a8efad2eaf504936e6dc9c3240eff7f2085f1a).
+- Compare of the new head to current PR #298 base is clean: one file only, +97/-2, ahead 1 / behind 0. Opened draft PR [#301](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/301) against PR #298's branch. PR #300 remains open and unchanged; comment [6594082974](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/300#issuecomment-6594082974) marks it superseded. Do not merge both.
+- Exact-head PR #301 Verify [41567592268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592268): **passed**. Hosted preflight reported 73 targets, `warnings: []`, `failures: []`; Node 24.22.1 test command exit 0; Python inspector exit 0; game package build exit 0; institutional exercise reported `passed: true`. The new test path was present in the preflight receipt.
+- Exact-head Genesis Evidence Invariant [41567592348](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592348): **passed**.
+- Exact-head Browser Acceptance [41567592388](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592388): **in progress** at final recheck. No Browser pass is claimed. The test-only PR did not trigger Android.
+- Both registered Desktop Commander devices were offline. No local portable preflight or local test is claimed.
+
+### Cycle 2 — Founder authorization and key-startup boundary
+
+- Re-read current main `src/authority/decision.js` blob `921cc1f716cb9a50f93254d1c371b3a1833ce06b`: `authorizationEvent()` still trusts caller-supplied `verification?.valid`. This is a real helper-level trust defect.
+- Re-read current main `game/server.mjs` blob `7ff6da11877cf4c329f3438311b24b0ce2e4e1b5` and `src/institution/decisions.mjs` blob `e6493e6f3e27898cea6878c0dc9ade19b9001a3b`. The live `/api/decisions/{policy,proposals,choose}` route uses `openDecisions` behind the existing authenticated Founder session; the live server does not import the authority helper. Therefore the helper defect is not demonstrated to be a live-route exploit.
+- Current main `game/server.mjs` still creates a random local `.runtime/founder.key` on missing-key/ENOENT. Current Worker B PR #298 head carries an explicit-key startup guard in `game/server.mjs` blob `a5a328e2ebcbaaf0516cedf2fc2d129e3bad9f48`; programmatic, production and network-bound startup fail closed, and only non-production loopback CLI may generate a local key. Negative tests are present in `test/game-server.test.mjs` blob `836ceb953cdd405e32a61c8e5d31c48b48d7cc59`. This is proposed, not mainline.
+- PR #244 remains draft/unmerged. Its current head `36a5bf5fefc08961f48716d9eb4210f6a206900d` compares 8 commits ahead / 2 behind main; recorded exact-head Verify [41348372569](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41348372569), Genesis [41348372538](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41348372538), and Browser [41348372408](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41348372408) passed. This is helper-level, not live-server integration. The store schema still needs a canonical mapping from signed envelope to retained proposal/revision/action and quest/output policy; no safe mapping or Founder trust root was inferred.
+- Historical PR #16 remains closed/unmerged; PR #18 is merged. The final PR #16 patch does not contain the alleged current `demonstrate()` self-signing flow. Do not recreate it. No key was generated, read, enrolled, rotated or changed.
+- Cross-worker evidence notes were added to PR #298 [comment 6594073122](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/298#issuecomment-6594073122) and PR #244 [comment 6594073585](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/244#issuecomment-6594073585).
+
+### Cycle 3 — prior Chronicle Forge projection finding rechecked
+
+- Current PR #298 `game/chronicle.mjs` blob `f57030e47304af0cb65bfd4f8bca7f822674fe68` validates unique/earlier source event, actor ID/role, known slot, allowed source type, and canonical `projectCharacter()` inventory recognition.
+- `test/chronicle.test.mjs` blob `4eb97b7679e16cd16d32b2282258167c6a5eb8e4` now tests unknown slot, incompatible source type and chained forged source. Malformed events remain visible with warnings but are excluded from owned inventory. The earlier projector gap is addressed on this proposed head; no Worker B files were edited. Handoff comment: [6594100595](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/298#issuecomment-6594100595).
+
+### Linked-repository instruction/access blockers
+
+- `ngl-mesh`, `no-gas-labs-command-center`, and `recursive-artifact-engine`: root `AGENTS.md` returned 404; repository inspection/writes stopped.
+- `no-gas-labs-governance`: root `AGENTS.md` was read (blob `61b3dda35bb40151b33c5aba09ee2581d4b9b45b`) and requires `./init_repo.sh` before work. No authorized local execution environment was available; no further inspection or write was made.
+- `AI-BI-Intelligence-node-gate`: root `AGENTS.md` was read (blob `f76315da93c96c56049f2bcb61adde7dafe508b0`), then required `PROGRESS.md`, `SELF-EVAL.md`, and `NEXT-DIRECTIVE.md` were read. Root `init_node.sh` exists (blob `65bc52c4d3d97713f76ff61071bd80f8ddbb0ea5`), but executable mode and successful Termux execution could not be verified. It currently masks build/test failures with `|| true`; do not claim a successful bootstrap. The mandatory bootstrap/install/test sequence could not be run because both registered desktop devices were offline; no code or continuity files were changed.
+- No linked repository was modified or bootstrapped.
+
+### Authority and next ranked actions
+
+No merge, release, deployment, spending, external publication, credential/key/permission change, destructive action or Founder decision occurred. Main remains unchanged. No physical Android-device acceptance or uninterrupted between-run execution is claimed.
+
+1. Recheck PR #301 Browser [41567592388](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592388) and PR #298 Android [41565567594](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567594); inspect exact failures/artifacts if either fails.
+2. Preserve PR #301 as the clean current-base trusted-read regression; do not merge it or PR #300. Once Browser completes, append the exact final status to this checkpoint.
+3. Keep Issue #17 open. The historical PR #16 allegation is superseded; the helper-level `verification?.valid` defect, mainline implicit local key creation, and live signed-decision integration are separate boundaries. Do not generate/enroll a key or wire a verifier without Damien-controlled trust-root/custody and canonical state mapping.
+4. Continue MMORPG work only after rechecking PR #298's exact Browser/Android outcomes; retain the distinction between proposed branch capability and current main.
+5. Resume linked-repository bootstrap only when the mandatory local/authorized execution environment is available; then repair the node-gate bootstrap's failure masking before claiming install/build/test success.
+
+No merge, release, deployment, spending, external publication, credential/permission change, key operation or Founder decision occurred. No uninterrupted between-run execution is claimed.
