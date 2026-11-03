@@ -81,6 +81,51 @@ export function projectSourceObservationMapCounts(world) {
 const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
+export const GUILD_NPCS = Object.freeze([
+  Object.freeze({
+    id: 'guild-npc-archivist', role: 'archivist', name: 'Hostile Archivist',
+    shortName: 'ARCHIVIST', x: 110, y: 260,
+    objective: 'Audit identity, chronology, and evidence links; report gaps, not truth.',
+    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
+    mayWriteCanonicalState: false, mayGrantAuthority: false,
+    mayAwardProgress: false, mayCertifyTruthOrExecution: false
+  }),
+  Object.freeze({
+    id: 'guild-npc-adversary', role: 'adversary', name: 'Adversary',
+    shortName: 'ADVERSARY', x: 200, y: 320,
+    objective: 'Draft a falsifiable challenge to one retained experiment report for human review.',
+    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
+    mayWriteCanonicalState: false, mayGrantAuthority: false,
+    mayAwardProgress: false, mayCertifyTruthOrExecution: false
+  }),
+  Object.freeze({
+    id: 'guild-npc-synthesizer', role: 'synthesizer', name: 'Synthesis Clerk',
+    shortName: 'SYNTHESIS', x: 290, y: 320,
+    objective: 'Compare a bounded source slice while preserving contradictions and omissions.',
+    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
+    mayWriteCanonicalState: false, mayGrantAuthority: false,
+    mayAwardProgress: false, mayCertifyTruthOrExecution: false
+  }),
+  Object.freeze({
+    id: 'guild-npc-tutor', role: 'tutor', name: 'Polymath Tutor',
+    shortName: 'TUTOR', x: 380, y: 260,
+    objective: 'Teach prerequisites and retrieval questions without declaring mastery.',
+    routeLocation: 'guild_hall', authority: 'advisory-only', invokesModel: false,
+    mayWriteCanonicalState: false, mayGrantAuthority: false,
+    mayAwardProgress: false, mayCertifyTruthOrExecution: false
+  })
+]);
+
+const GUILD_NPC_COLORS = Object.freeze({
+  archivist: Object.freeze({ G: '#66734f', F: '#e0bd96', V: '#a88b52', L: '#e8e6dc', B: '#343e39' }),
+  adversary: Object.freeze({ G: '#9d4f3e', F: '#e0bd96', V: '#a64f3b', L: '#e8e6dc', B: '#343e39' }),
+  synthesizer: Object.freeze({ G: '#4c736d', F: '#e0bd96', V: '#5c8b7e', L: '#d7e0c2', B: '#343e39' }),
+  tutor: Object.freeze({ G: '#6b7887', F: '#e0bd96', V: '#718c98', L: '#c5cdd4', B: '#343e39' })
+});
+
+const GUILD_NPC_ACCESSIBILITY_TEXT =
+  'Guild Hall guide NPCs: Hostile Archivist audits retained event identity and evidence links; Adversary drafts falsifiable challenges; Synthesis Clerk compares bounded records while preserving dissent; Polymath Tutor teaches fundamentals and retrieval questions. These authored guides do not invoke models, write canonical state, grant authority, award progress, certify truth, or declare mastery. Speaking to one opens the existing Guild Hall collaborator workbench.';
+
 function safeQuestTargetId(value) {
   return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -502,6 +547,36 @@ export class PixelWorldView extends WorldView {
     this.updateResearchAccessibility();
   }
 
+  nearest(targetId, targetType) {
+    const ordinary = super.nearest(targetId, targetType);
+    const includeNpcs = targetType === undefined || targetType === 'npc';
+    const npcs = includeNpcs ? GUILD_NPCS.filter(npc =>
+      targetId === undefined || (typeof targetId === 'string' && npc.id === targetId)
+    ).map(npc => ({
+      ...npc,
+      type: 'npc',
+      distance: Math.hypot(npc.x - this.player.x, npc.y - this.player.y)
+    })) : [];
+    return [ordinary, ...npcs].filter(Boolean)
+      .sort((left, right) => left.distance - right.distance)[0] || null;
+  }
+
+  interact(targetId, targetType) {
+    const nearest = this.nearest(targetId, targetType);
+    if (nearest?.type === 'npc') {
+      if (nearest.distance >= 160) return;
+      if (targetId !== undefined) this.cancelRoute();
+      this.callbacks.onInteract({
+        type: 'institution',
+        id: nearest.routeLocation,
+        npcRole: nearest.role,
+        npcName: nearest.name
+      });
+      return;
+    }
+    return super.interact(targetId, targetType);
+  }
+
   setWorld(world, institutionSummary = this.institutionSummary) {
     const previousWorld = this.world;
     super.setWorld(world, institutionSummary);
@@ -516,13 +591,15 @@ export class PixelWorldView extends WorldView {
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
-        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity.';
+        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
+        GUILD_NPC_ACCESSIBILITY_TEXT;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
-        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`;
+        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
+        GUILD_NPC_ACCESSIBILITY_TEXT;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -793,6 +870,16 @@ export class PixelWorldView extends WorldView {
     else if (player.name) this.text(String(player.name).slice(0, 24), player.x, player.y + 25, 8, '#e8e6dc');
   }
 
+  drawGuildNpc(npc) {
+    const colors = GUILD_NPC_COLORS[npc.role];
+    if (!colors) return;
+    const context = this.ctx;
+    context.fillStyle = '#26382e66';
+    context.fillRect(npc.x - 12, npc.y + 2, 24, 5);
+    drawSprite(context, PIXEL_SPRITES.visitor, colors, npc.x, npc.y, 4);
+    this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
+  }
+
   drawQuestTarget() {
     const target = this.questTarget;
     if (!target) return;
@@ -884,6 +971,9 @@ export class PixelWorldView extends WorldView {
       ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
         y: object.y, draw: () => this.drawResearchActivityObject(object)
       })),
+      ...GUILD_NPCS.map(npc => ({
+        y: npc.y, draw: () => this.drawGuildNpc(npc)
+      })),
       ...this.presence.filter(player => player.id !== this.player.id &&
         Number.isFinite(player.x) && Number.isFinite(player.y)).map(player => ({
           y: player.y, draw: () => this.drawPlayer(player, true)
@@ -894,8 +984,10 @@ export class PixelWorldView extends WorldView {
     this.drawQuestTarget();
 
     const near = this.nearest();
+    this.canvas.dataset.nearbyNpcRole = near?.type === 'npc' ? near.role : 'none';
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
-      const label = near.type === 'workbench' ? 'E · Make something'
+      const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
+        : near.type === 'workbench' ? 'E · Make something'
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
