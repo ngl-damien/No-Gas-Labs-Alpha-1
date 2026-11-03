@@ -840,9 +840,18 @@ def shared(browser,url,data,out):
             'data-source-observation-counts',
             f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
         )
+        def count_phrase(count,singular,plural):
+            return f'{count} {singular if count==1 else plural}'
+        expected_map_accessibility=(
+            'Evidence Archive: '+
+            count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
+            count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
+            count_phrase(map_responses,'linked author response','linked author responses')+', '+
+            '0 pending author responses, and 0 retained records requiring review'
+        )
         expect(b.locator('#world')).to_have_attribute(
             'aria-label',
-            re.compile(r'Evidence Archive: 2 linked Source Observation notes, 1 linked dissent challenge, 1 linked author response, 0 pending author responses, and 0 retained records requiring review')
+            re.compile(re.escape(expected_map_accessibility))
         )
         close_sheet(b);b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Responder')
