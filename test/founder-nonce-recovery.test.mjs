@@ -434,3 +434,55 @@ test('read-only recovery inspection opens the nonce ledger without write access'
   assert.equal(observed.ledger.nonceCount, 1);
   assert.equal(observed.ledgerAccessMode, 0, 'read-only inspection must request O_RDONLY');
 });
+
+
+test('read-only inspection rechecks a recovery lease that appears during its snapshot', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const leaseBytes = canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  });
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalLstat = fsPromises.lstat;",
+    "const originalWriteFile = fsPromises.writeFile;",
+    "let leaseCreated = false;",
+    "fsPromises.lstat = async (target, ...args) => {",
+    "  if (!leaseCreated && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "    leaseCreated = true;",
+    "    await originalWriteFile(process.env.TEST_RECOVERY_LEASE, process.env.TEST_LEASE_BYTES, { mode: 0o600 });",
+    "  }",
+    "  return originalLstat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
+    "console.log(JSON.stringify({ status: result.status, reason: result.reason, recoveryLease: result.recoveryLease, recoveryLeaseSafeToRemove: result.recoveryLeaseSafeToRemove }));"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_OWNER_LOCK: value.lockPath,
+      TEST_RECOVERY_LEASE: value.recoveryLeasePath,
+      TEST_LEASE_BYTES: leaseBytes,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(observed.recoveryLease.owner.processProbe, 'possibly-alive');
+  assert.equal(observed.recoveryLeaseSafeToRemove, false);
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
