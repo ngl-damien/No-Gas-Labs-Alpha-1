@@ -73,6 +73,12 @@ def character_xp_components(page):
     return result
 
 
+def assert_character_xp_unchanged(page,before,action):
+    after=character_xp_from_open_sheet(page)
+    assert after==before, f'{action} changed character XP: before={before}, after={after}'
+    return after
+
+
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
@@ -1526,6 +1532,7 @@ def shared(browser,url,data,out):
         close_sheet(a)
         a.locator('#character-button').click()
         expect(a.locator('#sheet')).to_contain_text('Personal inventory · forged field items')
+        assert_character_xp_unchanged(a,character_xp_before,'Forging a field item')
         forger_skill=a.locator('#sheet [data-skill-id="forger"]')
         expect(forger_skill).to_contain_text('1 recorded actor-owned field items')
         item_card=a.locator('#sheet [data-field-item-id="'+forge_event['itemId']+'"]')
@@ -1539,7 +1546,7 @@ def shared(browser,url,data,out):
         assert item_equip_events[-1]['sourceEventId']==forge_event['id']
         assert item_equipped_state['world']['xp']==before_forge['world']['xp']
         assert armor_bearer_steps(a)==armor_bearer_before, 'Equipping an item in an already occupied slot must not mint a new Armor Bearer step'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Forging and equipping must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Equipping a forged field item')
 
         adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         source_choice=adversarial_slot.locator('select[data-equipment-choice="adversarial"]')
@@ -1556,7 +1563,7 @@ def shared(browser,url,data,out):
         assert pinned_state['world']['revision']==before_revision+1
         assert pinned_state['world']['xp']==before_xp, 'Equipping a retained source must not award XP'
         assert armor_bearer_steps(a)==armor_bearer_before, 'Pinning a different source must preserve the number of record-backed field-kit steps'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Pinning equipment must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Pinning a retained field source')
         loadout_events=[event for event in pinned_state['world']['events'] if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('role')=='founder']
         assert loadout_events and loadout_events[-1]['slotId']=='adversarial' and loadout_events[-1]['sourceEventId']==selected_source_id
         close_sheet(a)
@@ -1577,7 +1584,7 @@ def shared(browser,url,data,out):
         assert unequipped_state['world']['revision']==reset_state['world']['revision']+1
         assert unequipped_state['world']['xp']==before_xp, 'Unequipping must not award XP'
         assert armor_bearer_steps(a)==(armor_bearer_before[0]-1,armor_bearer_before[1]), 'Unequipping one occupied slot must remove exactly one Armor Bearer step'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Unequipping must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Unequipping a field slot')
         unequip_events=[event for event in unequipped_state['world']['events'] if event.get('type')=='field-item-unequipped' and event.get('actor',{}).get('role')=='founder']
         assert unequip_events and unequip_events[-1]['slotId']=='adversarial'
         adversarial_slot.get_by_role('button',name='Use newest source',exact=True).click()
@@ -1586,7 +1593,7 @@ def shared(browser,url,data,out):
         assert restored_state['world']['revision']==unequipped_state['world']['revision']+1
         assert restored_state['world']['xp']==before_xp
         assert armor_bearer_steps(a)==armor_bearer_before, 'Restoring the retained source must restore the original Armor Bearer step count'
-        assert character_xp_from_open_sheet(a)==character_xp_before, 'Restoring a field-kit source must not award character XP'
+        assert_character_xp_unchanged(a,character_xp_before,'Restoring automatic field selection')
         expect(a.locator('#sheet')).to_contain_text('Field satchel · retained work')
         dissent_card=a.locator('#sheet .field-card:not([data-equipment-slot])').filter(has_text='Challenge · missing-evidence')
         expect(dissent_card).to_have_count(1)

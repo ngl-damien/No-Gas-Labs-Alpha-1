@@ -1,5 +1,6 @@
 import { isCollaboratorResponseProjection, projectCollaboratorResponseWorldObjects } from './collaborator-world-objects.mjs';
 import { CHALLENGE_REVIEW_DISPOSITIONS } from './research-records.mjs';
+import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -226,7 +227,30 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, creations, notes, collaboratorResponse = null, worldEventSnapshots = [], worldEventPositionsById = new Map()) {
+function projectedFieldItemEventIdsByActor(world, events, collaboratorResponseObjects) {
+  const actors = new Map();
+  for (const event of events) {
+    if (event?.type !== "field-item-forged") continue;
+    const id = text(event?.actor?.id);
+    const role = text(event?.actor?.role);
+    if (!id || !["founder", "witness"].includes(role)) continue;
+    const key = JSON.stringify([id, role]);
+    if (!actors.has(key)) actors.set(key, { id, role });
+  }
+  const result = new Map();
+  for (const [key, actor] of actors) {
+    try {
+      const character = projectCharacter(world, actor, { collaboratorResponseObjects });
+      const items = Array.isArray(character?.fieldInventory) ? character.fieldInventory : [];
+      result.set(key, new Set(items.map(item => text(item?.eventId)).filter(Boolean)));
+    } catch {
+      result.set(key, new Set());
+    }
+  }
+  return result;
+}
+
+function worldEntry(event, index, creations, notes, collaboratorResponse = null, worldEventSnapshots = [], worldEventPositionsById = new Map(), fieldItemValidEventIdsByActor = new Map()) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -274,6 +298,10 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null,
     const source = sourcePosition >= 0 ? worldEventSnapshots[sourcePosition] : null;
     const eventActorId = text(event?.actor?.id);
     const eventActorRole = text(event?.actor?.role);
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === slotId);
+    const actorKey = JSON.stringify([eventActorId, eventActorRole]);
+    const validItemEventIds = fieldItemValidEventIdsByActor.get(actorKey);
+    const validatedInventoryItem = validItemEventIds?.has(id) === true;
     entry.title = "Personal field item forged";
     entry.category = "FORGE · PLAYER INVENTORY";
     entry.summary = "A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
@@ -292,7 +320,16 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null,
       entry.warning = "The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
     } else if (!eventActorId || !eventActorRole ||
                text(source?.actor?.id) !== eventActorId || text(source?.actor?.role) !== eventActorRole) {
-      entry.warning = "The referenced source event does not match the field-item actor; this record is not projected as a validated owned item.";
+      entry.warning = "The referenced source event does not match the field-item actor; this history record is not projected as a validated owned item.";
+    } else if (!slot) {
+      entry.warning = "The retained field-item event names an unknown equipment slot; no owned item is inferred.";
+    } else if (!slot.sourceTypes.includes(source.type) || !validatedInventoryItem) {
+      entry.warning = "The source does not satisfy the canonical actor-owned field-item slot/source rules; no valid inventory item is inferred.";
+    }
+    if (entry.warning) {
+      entry.title = "Unvalidated field-item event";
+      entry.category = "FORGE · RETAINED HISTORY";
+      entry.summary = "The event remains in the Chronicle, but the current character projection does not recognize it as an owned field item.";
     }
   } else if (type === "contribute" || type === "report") {
     const isReport = type === "report";
@@ -653,6 +690,9 @@ export function projectChronicle({ world = {}, kernel = null, collaboratorRespon
     positions.push(index);
     worldEventPositionsById.set(id, positions);
   }
+  const fieldItemValidEventIdsByActor = worldCollection.valid && creationsCollection.valid
+    ? projectedFieldItemEventIdsByActor(world, worldEventSnapshots, responseProjection)
+    : new Map();
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -661,7 +701,7 @@ export function projectChronicle({ world = {}, kernel = null, collaboratorRespon
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, creations, notes, collaboratorResponseByEventId.get(event.id) || null, worldEventSnapshots, worldEventPositionsById));
+    entries.push(worldEntry(event, index, creations, notes, collaboratorResponseByEventId.get(event.id) || null, worldEventSnapshots, worldEventPositionsById, fieldItemValidEventIdsByActor));
   }
 
   const kernelSnapshots = [];

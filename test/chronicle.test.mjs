@@ -6,6 +6,8 @@ import { projectInstitutionRecordWorldObjects, hasCompleteInstitutionKernelSnaps
 import { projectDecisionDocket } from "../game/quests.mjs";
 import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
 import { createHash } from "node:crypto";
+import { createWorld, applyAction } from "../game/model.mjs";
+import { projectCharacter } from "../game/character-sheet.mjs";
 
 function fixture() {
   const world = {
@@ -1209,4 +1211,79 @@ test("forged field items become Forge records with explicit source-binding limit
   mismatched.events[1].actor = { id: "another-witness", name: "Another Witness", role: "witness" };
   const rejected = projectChronicle({ world: mismatched }).entries.find(item => item.id === "world:forge-event");
   assert.match(rejected.warning, /does not match the field-item actor/);
+});
+
+
+test("Chronicle keeps ineligible Forge events as history without validating owned inventory", async () => {
+  const actor = { id: "forge-witness", name: "Witness", role: "witness" };
+  const created = createWorld({ now: "2026-10-26T10:00:00.000Z" });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, actor, {
+    now: "2026-10-26T10:01:00.000Z"
+  });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, actor, { now: "2026-10-26T10:02:00.000Z" });
+  const validForgeEvent = forged.world.events.at(-1);
+  const validEntry = projectChronicle({ world: forged.world }).entries.find(entry =>
+    entry.id === `world:${validForgeEvent.id}`
+  );
+  assert.ok(validEntry);
+  assert.equal(validEntry.category, "FORGE · PLAYER INVENTORY");
+  assert.equal(validEntry.warning, "");
+  assert.equal(projectCharacter(forged.world, actor).fieldInventory.length, 1);
+
+  const invalidCases = [
+    {
+      label: "unknown slot",
+      prepare(world) {
+        const event = world.events.find(candidate => candidate.id === validForgeEvent.id);
+        event.slotId = "unknown-slot";
+        return event;
+      }
+    },
+    {
+      label: "known slot with an incompatible source type",
+      prepare(world) {
+        const event = world.events.find(candidate => candidate.id === validForgeEvent.id);
+        event.slotId = "provenance";
+        return event;
+      }
+    },
+    {
+      label: "chained forged source",
+      prepare(world) {
+        const event = {
+          id: "field-item-forged-chain",
+          type: "field-item-forged",
+          actor: { ...actor },
+          at: "2026-10-26T10:03:00.000Z",
+          itemId: "field-item-chain",
+          slotId: "scouting",
+          sourceEventId: validForgeEvent.id
+        };
+        world.events.push(event);
+        world.revision = world.events.length;
+        world.updatedAt = event.at;
+        return event;
+      }
+    }
+  ];
+
+  for (const invalidCase of invalidCases) {
+    const candidate = structuredClone(forged.world);
+    const invalidEvent = invalidCase.prepare(candidate);
+    const entry = projectChronicle({ world: candidate }).entries.find(item =>
+      item.id === `world:${invalidEvent.id}`
+    );
+    assert.ok(entry, `${invalidCase.label}: the retained event remains visible`);
+    assert.equal(entry.title, "Unvalidated field-item event", invalidCase.label);
+    assert.equal(entry.category, "FORGE · RETAINED HISTORY", invalidCase.label);
+    assert.ok(entry.warning, `${invalidCase.label}: an explicit warning is required`);
+    assert.equal(
+      projectCharacter(candidate, actor).fieldInventory.some(item => item.eventId === invalidEvent.id),
+      false,
+      `${invalidCase.label}: no owned inventory item may be inferred`
+    );
+  }
 });

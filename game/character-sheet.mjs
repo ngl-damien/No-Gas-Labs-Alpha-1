@@ -6,7 +6,8 @@ import { projectCommonsMessages } from './social.mjs';
 
 const NON_XP_QUEST_EVENT_TYPES = new Set([
   'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded', 'message-posted',
-  'experiment-challenge-reviewed', 'field-item-forged'
+  'experiment-challenge-reviewed', 'field-item-forged',
+  'field-item-equipped', 'field-item-unequipped'
 ]);
 
 const rows = value => Array.isArray(value) ? value : [];

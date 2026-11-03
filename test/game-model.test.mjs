@@ -146,6 +146,9 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
 test('Forge creates an actor-owned field item from one earlier retained source and equips that item without XP',async()=>{
   const discovered=await applyAction(createWorld({now}),{type:'discover',locationId:'river'},witness,{now});
   const source=discovered.world.events.find(event=>event.type==='discover'&&event.locationId==='river');
+  const baselineCharacter=projectCharacter(discovered.world,witness);
+  const baselineXp=[baselineCharacter.xp,baselineCharacter.publicationXp,baselineCharacter.questXp];
+  assert.equal(baselineCharacter.questXp,25,'the retained discovery provides a non-zero XP baseline');
   const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:01.000Z'});
   const forgeEvent=forged.world.events.at(-1);
   assert.equal(forgeEvent.type,'field-item-forged');
@@ -154,6 +157,7 @@ test('Forge creates an actor-owned field item from one earlier retained source a
   await assert.doesNotReject(validateWorld(forged.world));
 
   const record=projectCharacter(forged.world,witness);
+  assert.deepEqual([record.xp,record.publicationXp,record.questXp],baselineXp,'forging cannot award character or quest XP');
   const item=record.fieldInventory[0];
   assert.equal(record.fieldInventoryTotal,1);
   assert.equal(record.fieldInventoryOmittedCount,0);
@@ -171,7 +175,9 @@ test('Forge creates an actor-owned field item from one earlier retained source a
   assert.equal(forgeObject.locationId,'forge','the Forge retains its own playable institutional record');
 
   const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:02.000Z'});
-  const equippedSlot=projectCharacter(equipped.world,witness).equipment.find(slot=>slot.id==='scouting');
+  const equippedRecord=projectCharacter(equipped.world,witness);
+  assert.deepEqual([equippedRecord.xp,equippedRecord.publicationXp,equippedRecord.questXp],baselineXp,'equipping cannot award character or quest XP');
+  const equippedSlot=equippedRecord.equipment.find(slot=>slot.id==='scouting');
   assert.equal(equippedSlot.mode,'pinned');
   assert.equal(equippedSlot.source.eventId,forgeEvent.id);
   assert.equal(equippedSlot.source.kind,'forged-field-item');
