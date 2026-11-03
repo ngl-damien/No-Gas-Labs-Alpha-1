@@ -235,18 +235,32 @@ export async function inspectFounderNonceRecovery(ledgerPath, { ignoreRecoveryLe
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
   const recoveryLeasePath = join(directory, '.founder-nonce-recovery.lock');
   if (!ignoreRecoveryLease) {
-    try {
-      await lstat(recoveryLeasePath);
+    let recoveryLease;
+    try { recoveryLease = await inspectWriterLock(recoveryLeasePath); }
+    catch { throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE'); }
+    if (recoveryLease.status !== 'missing') {
+      const recognizedRecoveryLease = recoveryLease.status === 'present' &&
+        recoveryLease.format === 'owner-metadata' &&
+        recoveryLease.owner?.schema === RECOVERY_LEASE_SCHEMA;
       return {
         status: 'blocked',
-        reason: 'recovery-in-progress',
+        reason: recognizedRecoveryLease
+          ? 'recovery-lease-present-manual-inspection-required'
+          : 'recovery-lease-requires-manual-inspection',
         recoveryLeasePath,
+        recoveryLease: {
+          status: recoveryLease.status,
+          format: recoveryLease.format ?? null,
+          reason: recoveryLease.reason ?? null,
+          owner: recoveryLease.owner ?? null,
+          file: recoveryLease.file ?? null
+        },
+        recoveryLeaseProcessProbeAdvisoryOnly: true,
+        recoveryLeaseSafeToRemove: false,
         safeToRemove: false,
         authorityGranted: false,
         warning: RECOVERY_WARNING
       };
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE');
     }
   }
   const lockPath = join(directory, '.founder-nonce.lock');
