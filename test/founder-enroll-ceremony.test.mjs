@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,6 +10,7 @@ import {
   validatePrivateKeyDestination,
   writePrivateKeyFile
 } from '../scripts/founder-enroll-ceremony.mjs';
+import { authorizationEvent, loadTrustAnchor } from '../src/authority/decision.js';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -173,4 +174,20 @@ test('private JWK file is created exclusively with private permissions and is ne
     error => error.code === 'FOUNDER_PRIVATE_KEY_DESTINATION_EXISTS'
   );
   assert.equal(await readFile(destination, 'utf8'), original);
+});
+
+test('a copied enrollment candidate still fails the real trust loader and authorization entry', async t => {
+  const directory = await temporaryDirectory(t, 'ngl-enroll-candidate-');
+  const trustPath = join(directory, 'founder.pub.json');
+  const { publicKey } = keyPair();
+  const candidate = buildEnrollmentCandidate(publicKey);
+
+  await writeFile(trustPath, JSON.stringify(candidate));
+  const trust = loadTrustAnchor(trustPath);
+  assert.equal(trust.enrolled, false);
+  assert.equal(trust.reason, 'NOT_ENROLLED');
+  assert.throws(
+    () => authorizationEvent({ signed: {}, payload: {}, trustPath }),
+    /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
+  );
 });
