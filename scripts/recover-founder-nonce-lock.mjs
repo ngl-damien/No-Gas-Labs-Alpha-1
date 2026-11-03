@@ -472,6 +472,7 @@ async function assertRecoveryLeaseIdentity(lease) {
       (before.mode & 0o777) !== 0o600 ||
       (after.mode & 0o777) !== 0o600 ||
       (uid !== null && (before.uid !== uid || after.uid !== uid)) ||
+      before.dev !== lease.identity.dev || before.ino !== lease.identity.ino ||
       !sameFileSnapshot(before, opened) ||
       !sameFileSnapshot(opened, after)) {
     throw failure('FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
