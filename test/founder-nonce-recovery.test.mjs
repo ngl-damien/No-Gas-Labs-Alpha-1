@@ -462,7 +462,7 @@ test('read-only inspection rechecks a recovery lease that appears during its sna
     "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
     "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
     "console.log(JSON.stringify({ status: result.status, reason: result.reason, recoveryLease: result.recoveryLease, recoveryLeaseSafeToRemove: result.recoveryLeaseSafeToRemove }));"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
