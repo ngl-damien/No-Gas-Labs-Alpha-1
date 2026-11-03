@@ -16,6 +16,7 @@ on:
       - 'scripts/verify-browser.py'
       - 'test/agent-governance.test.mjs'
       - 'test/android-workflow.test.mjs'
+      - 'test/game-artifacts.test.mjs'
       - 'test/game-player-position.test.mjs'
       - 'test/institution-record-preflight-contract.test.mjs'
       - '.github/workflows/android-alpha1.yml'
@@ -35,6 +36,7 @@ on:
       - 'scripts/verify-browser.py'
       - 'test/agent-governance.test.mjs'
       - 'test/android-workflow.test.mjs'
+      - 'test/game-artifacts.test.mjs'
       - 'test/game-player-position.test.mjs'
       - 'test/institution-record-preflight-contract.test.mjs'
       - '.github/workflows/android-alpha1.yml'
@@ -76,6 +78,7 @@ jobs:
             --path docs/meteor/world.md \
             --path docs/operations/MMORPG_COMPLETION_CONTRACT.md \
             --path docs/operations/MMORPG_COMPLETION_LEDGER.md \
+            --path game/artifacts.mjs \
             --path game/client.mjs \
             --path game/player-position.mjs \
             --path game/world-view.mjs \
@@ -86,6 +89,7 @@ jobs:
             --path test/agent-governance.test.mjs \
             --path test/android-workflow.test.mjs \
             --path test/game-player-position.test.mjs \
+            --path test/game-artifacts.test.mjs \
             --path test/institution-record-preflight-contract.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt ".runtime/agent-preflight-android-${GITHUB_RUN_ID}.json"
