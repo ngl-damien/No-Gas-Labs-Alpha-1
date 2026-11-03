@@ -205,7 +205,7 @@ test('preflight refuses receipt creation through an escaping directory symlink',
 test('CI preflight scopes Founder verification, live Gate regressions and unique receipts', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
-  assert.match(command, /node scripts\\/run-agent-preflight-ci\\.mjs/);
+  assert.ok(command.includes('node scripts/run-agent-preflight-ci.mjs'));
   for (const path of [
     'docs/operations/LATEST_CHECKPOINT.md',
     'authority/index.html',
@@ -221,6 +221,6 @@ test('CI preflight scopes Founder verification, live Gate regressions and unique
   ]) {
     assert.ok(command.includes('--path ' + path), 'missing preflight target: ' + path);
   }
-  assert.match(command, /--checkpoint docs\\/operations\\/LATEST_CHECKPOINT\\.md/);
-  assert.doesNotMatch(command, /--receipt/);
+  assert.ok(command.includes('--checkpoint docs/operations/LATEST_CHECKPOINT.md'));
+  assert.ok(!command.includes('--receipt'), 'the runner owns unique receipt creation');
 });
