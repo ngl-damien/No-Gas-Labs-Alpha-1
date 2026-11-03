@@ -7,7 +7,7 @@
 **Current focus:**
 
 - PR #317 — draft Source Observation event lifecycle, child of #315; exact parent head d4185da0661f165f68764238533dae6744d6e596.
-- G6 remains IN PROGRESS: actor-attributed research notes are now proposed as canonical events with version binding, idempotent retry, Chronicle/Evidence Archive projection, and actor-scoped quest/skill projections; exact-head hosted verification pending.
+- G6 remains IN PROGRESS: actor-attributed research notes are proposed as canonical events with model- and server-side SHA-256 identity checks, version binding, replay-safe retries, Chronicle/Evidence Archive projection, and actor-scoped quest/skill projections. Verify and Genesis passed on code/test head a0eefca; Browser Acceptance passed 12/12 on runtime-identical head b35866e.
 - PR #316 remains a separate Founder Gate trust-root/JWK proposal; no key enrollment or Founder identity binding is claimed.
 - PR #313's Browser run passed 12/12, but Verify failed one Decision Chamber fixture test (774/775); do not transfer its Browser result to other heads.
 - Android emulator and physical-device acceptance remain separate; no physical device is verified in this run.
@@ -15,7 +15,7 @@
 
 **Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
 
-**Next falsification targets:** exact-head Verify/Genesis/Browser on PR #317; inspect preflight target-byte receipt and all new server/model negative paths; test lost-response retry through shared Relay; reconcile PR #316 trust-root design with the live authorization routes; continue G6 research-to-evidence lifecycle without upgrading authored notes to truth; advance the top-down tile-and-sprite world renderer; obtain physical Android-device evidence.
+**Next falsification targets:** keep PR #317 exact-head Verify/Genesis green after the checkpoint-only update; inspect its preflight receipt; explicitly exercise Source Observation lost-response retry through the shared Relay UI; reconcile PR #316 trust-root design with live authorization routes; continue G6 without upgrading authored notes to truth; advance the top-down tile-and-sprite world renderer; obtain physical Android-device evidence.
 
 **Hash chain:** prevHash 0... receiptHash of this file content — blockHash Founder sealed — deterministic reconstructable
 
@@ -109,10 +109,10 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Branch: `game/source-observation-import-events-20261103`.
 - Draft child PR #317: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/317
 - Parent: PR #315 exact head `d4185da0661f165f68764238533dae6744d6e596`.
-- Code/test/browser head before this checkpoint update: `c15f7c9dde79993d42a1da6f1993ea675487eaa1`.
+- Verified code/test head before this checkpoint-only update: `a0eefca10c4ddc732cdc0b19ad5f8a2bd25e0889`.
 - Changed paths:
   - `game/research-records.mjs`: strict exact-shape parser for `ngl.source-observatory.v2`; 1–100 observations; 500 Unicode code points per field; known self-classified source kinds; explicit `NOT_PERFORMED`, `LEADS_ONLY`, and `NOT_EXECUTED` assurance; normalized actor/role/target/version/note identity; deterministic projection that fails closed on malformed, duplicate, unavailable, or ambiguous records.
-  - `game/model.mjs`: append-only `source-observation-recorded` action; requires one retained, earlier published Source Observatory version; preserves claim, source class, attribution, falsifier, uncertainty, next test, and explicit assurance; exact duplicate returns the original world/revision; conflicting reuse fails.
+  - `game/model.mjs`: append-only `source-observation-recorded` action; requires one retained, earlier published Source Observatory version; validates the normalized identity with Web Crypto SHA-256 against the authenticated actor and note fields; preserves claim, source class, attribution, falsifier, uncertainty, next test, and explicit assurance; exact duplicate returns the original world/revision; conflicting reuse fails.
   - `game/server.mjs`: exact action schema; server recomputes the SHA-256 identity from authenticated actor and note content; validates the retained version/publication chronology and event history; mismatched IDs fail; exact replay does not commit a new revision.
   - `game/client.mjs`: Evidence Archive import panel; explicit user-selected target version; 512 KiB file bound; stable deterministic request ID; reuses Relay pending-action receipt for shared-mode retry; displays attributed notes and epistemic limits.
   - `game/chronicle.mjs`: notes become visible research-note Chronicle objects linked to the selected retained version, with explicit model-assertion/tool-output warnings and no truth upgrade.
@@ -132,12 +132,14 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 
 ### Exact-head verification
 
-- PR #317 opened draft at code/test/browser head `c15f7c9dde79993d42a1da6f1993ea675487eaa1`; exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance were pending when this checkpoint was written.
-- No local Node 24 run, physical Android-device acceptance, merge, release, deployment, Founder decision, credential change, or canonical state mutation outside the proposed branch is claimed.
+- Exact-head Verify on code/test head `a0eefca10c4ddc732cdc0b19ad5f8a2bd25e0889` passed: [run 41622456233](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41622456233). Node 24.22.1 full test command, Python inspector, game package build, and bounded institutional exercise all exited 0. The hosted preflight reported `ready`, `warnings: []`, and `failures: []`; receipt artifact [13224132309](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41622456233/artifacts/13224132309), SHA-256 `f81f3501e09b8ef9d190adf9bb082782155074e7d65e5a673175bd2f73e083ac`.
+- Genesis Evidence Invariant passed on the same exact code/test head: [run 41622456248](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41622456248).
+- Browser Acceptance passed 12/12 journeys on runtime-identical head `b35866e9bff12ab7ccfcd9671fab1919efd65b27`: [run 41621670203](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41621670203). The later `a0eefca` commit changed only `test/game-server.test.mjs` to add a negative server digest test; it did not change runtime or browser code. Browser artifact [13224550449](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41621670203/artifacts/13224550449), SHA-256 `1d509396d7dfa9ad1d2f203e84de2c5481614979029972c2d3cbf7ec96999f38`.
+- This checkpoint/ledger commit is documentation-only; it changes no runtime or test code. Its exact-head Verify/Genesis checks are expected to re-run against the new checkpoint bytes. No local Node 24 run, physical Android-device acceptance, merge, release, deployment, Founder decision, credential change, or canonical state mutation outside the proposed branch is claimed.
 
 ### Gate state and handoff
 
 - G6 remains **IN PROGRESS**, not complete. The notebook now has a proposed event lifecycle and deterministic world projections, but no external source retrieval or independent verification is performed and the export origin remains user-selected/unproven.
 - PR #317 is a draft child of #315; #315 is a draft child of #314; #314 is a draft child of #312. Do not merge this child independently of its parent stack.
-- Next: inspect all three exact-head hosted workflows and the preflight target-byte receipt; repair attributable failures; then test the shared-mode lost-response/Relay retry path with a two-session browser journey. Continue to preserve dissent, falsifiers, and unknowns as authored records, not verdicts.
+- Next: explicitly test the Source Observation import through the shared-mode Relay pending receipt by committing on the server and dropping the first response, then retrying through Relay and proving one event/revision. The current browser run exercises private import/re-import; the HTTP test exercises shared idempotent replay, but the new action's combined UI/offline path is not yet independently exercised. Continue to preserve dissent, falsifiers, and unknowns as authored records, not verdicts.
 - The classic top-down tile-and-sprite world renderer and physical Android-device acceptance remain unfinished product priorities.
