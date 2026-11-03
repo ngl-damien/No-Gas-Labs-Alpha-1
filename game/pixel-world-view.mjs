@@ -60,7 +60,8 @@ export function projectSourceObservationMapCounts(world) {
     isArraySafely(record.challenges) ? record.challenges : []
   );
   const responses = challenges.reduce((total, challenge) =>
-    total + (isArraySafely(challenge.responses) ? challenge.responses.length : 0), 0);
+    total + (challenge.responseStatus === 'answered' && isArraySafely(challenge.responses)
+      ? challenge.responses.length : 0), 0);
   const pending = challenges.filter(challenge => challenge.responseStatus === 'unanswered').length;
   const review = Math.max(0, raw.notes - linkedRecords.length) +
     Math.max(0, raw.dissent - challenges.length) +
