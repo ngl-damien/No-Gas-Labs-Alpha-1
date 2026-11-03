@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>No_Gas_Labs™ Celebrity Deathmatch</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0e1a;
+      --panel: #161b2b;
+      --accent: #35f6a0;
+      --accent-2: #4a8dff;
+      --danger: #ff6161;
+      --text: #edf2ff;
+      --muted: #9fb1cc;
+      --radius: 16px;
+      --tap-min: 44px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #141b31, var(--bg));
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+    }
+
+    main {
+      width: min(100%, 980px);
+      margin: 0 auto;
+      padding: 24px 18px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 20px;
+      border: 1px solid rgba(74, 141, 255, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 16px;
+      border: 1px solid rgba(53, 246, 160, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .stat strong {
+      font-size: 1.2rem;
+      color: var(--accent);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    button {
+      min-height: var(--tap-min);
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #0b141f;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid rgba(74, 141, 255, 0.7);
+      color: var(--text);
+    }
+
+    button.danger {
+      background: var(--danger);
+      color: #1d0a0a;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--accent-2);
+      outline-offset: 2px;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .list-item small {
+      color: var(--muted);
+    }
+
+    .log {
+      min-height: 140px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--muted);
+      font-size: 0.92rem;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding-top: 4px;
+    }
+
+    @media (max-width: 600px) {
+      main {
+        padding: 18px 14px 28px;
+      }
+
+      header {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>No_Gas_Labs™ Celebrity Deathmatch</h1>
+      <p>
+        Interactive podcast battle loop. Offline-first, mobile-ready, and built for rapid iteration of fighter
+        rosters, combat logic, and XP progression.
+      </p>
+      <div class="actions" aria-label="Primary actions">
+        <button type="button" id="start-loop">Start Episode</button>
+        <button type="button" class="secondary" id="save-loop">Save Beat</button>
+        <button type="button" class="danger" id="reset-loop">Reset Loop</button>
+      </div>
+    </header>
+
+    <section class="grid" aria-label="Core status">
+      <div class="card">
+        <h2>Loop Status</h2>
+        <div class="stat">
+          <span>Episode</span>
+          <strong id="episode-count">01</strong>
+        </div>
+        <div class="stat">
+          <span>Momentum</span>
+          <strong id="momentum">+0</strong>
+        </div>
+        <div class="stat">
+          <span>XP</span>
+          <strong id="xp">0</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Celebrity Roster</h2>
+        <div class="list" id="fighter-list">
+          <div class="list-item">
+            <div>
+              <strong>Nova Flux</strong><br />
+              <small>Host: Energy Catalyst</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+          <div class="list-item">
+            <div>
+              <strong>DJ Mythos</strong><br />
+              <small>Support: Sound Surgeon</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+          <div class="list-item">
+            <div>
+              <strong>Captain Fringe</strong><br />
+              <small>Challenger: Glitch Broker</small>
+            </div>
+            <span>Lv 1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Combat Console</h2>
+        <div class="log" id="combat-log" aria-live="polite">
+          <div>Awaiting opening bell...</div>
+        </div>
+        <div class="actions" aria-label="Combat actions">
+          <button type="button" class="secondary" id="simulate-turn">Simulate Turn</button>
+          <button type="button" id="train-team">Train Roster</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="System readiness">
+      <h3>System Readiness</h3>
+      <div class="list">
+        <div class="list-item">
+          <span>Offline-ready UI shell</span>
+          <strong>Ready</strong>
+        </div>
+        <div class="list-item">
+          <span>Tap targets ≥ 44px</span>
+          <strong>Ready</strong>
+        </div>
+        <div class="list-item">
+          <span>localStorage hooks</span>
+          <strong id="storage-status">Pending</strong>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Inline CSS + vanilla JS. No external dependencies.
+    </footer>
+  </main>
+
+  <script>
+    const episodeCount = document.getElementById("episode-count");
+    const momentum = document.getElementById("momentum");
+    const xp = document.getElementById("xp");
+    const combatLog = document.getElementById("combat-log");
+    const fighterList = document.getElementById("fighter-list");
+    const storageStatus = document.getElementById("storage-status");
+
+    const STORAGE_KEY = "ngl_deathmatch_state_v1";
+    const defaultState = {
+      episode: 1,
+      momentum: 0,
+      xp: 0,
+      fighters: [
+        { name: "Nova Flux", role: "Host", tagline: "Energy Catalyst", level: 1 },
+        { name: "DJ Mythos", role: "Support", tagline: "Sound Surgeon", level: 1 },
+        { name: "Captain Fringe", role: "Challenger", tagline: "Glitch Broker", level: 1 }
+      ],
+      combatLog: ["Awaiting opening bell..."],
+      lastSavedAt: null
+    };
+
+    const storageAvailable = (() => {
+      try {
+        const testKey = "__ngl_storage_test__";
+        localStorage.setItem(testKey, "1");
+        localStorage.removeItem(testKey);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    })();
+
+    const cloneState = (value) => JSON.parse(JSON.stringify(value));
+
+    const normalizeState = (input) => {
+      const normalized = { ...cloneState(defaultState), ...(input ?? {}) };
+      normalized.episode = Number.isFinite(normalized.episode) ? normalized.episode : 1;
+      normalized.momentum = Number.isFinite(normalized.momentum) ? normalized.momentum : 0;
+      normalized.xp = Number.isFinite(normalized.xp) ? normalized.xp : 0;
+      normalized.fighters = Array.isArray(normalized.fighters)
+        ? normalized.fighters
+        : cloneState(defaultState.fighters);
+      normalized.combatLog = Array.isArray(normalized.combatLog)
+        ? normalized.combatLog
+        : cloneState(defaultState.combatLog);
+      return normalized;
+    };
+
+    let state = cloneState(defaultState);
+
+    const renderFighters = () => {
+      fighterList.innerHTML = "";
+      state.fighters.forEach((fighter) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        item.innerHTML = `
+          <div>
+            <strong>${fighter.name}</strong><br />
+            <small>${fighter.role}: ${fighter.tagline}</small>
+          </div>
+          <span>Lv ${fighter.level}</span>
+        `;
+        fighterList.appendChild(item);
+      });
+    };
+
+    const renderLog = () => {
+      combatLog.innerHTML = "";
+      state.combatLog.slice(0, 6).forEach((message) => {
+        const entry = document.createElement("div");
+        entry.textContent = message;
+        combatLog.appendChild(entry);
+      });
+    };
+
+    const persistState = () => {
+      if (!storageAvailable) {
+        storageStatus.textContent = "Unavailable";
+        return;
+      }
+      state.lastSavedAt = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      storageStatus.textContent = "Ready";
+    };
+
+    const log = (message, options = {}) => {
+      const { persist = true } = options;
+      state.combatLog.unshift(message);
+      state.combatLog = state.combatLog.slice(0, 12);
+      renderLog();
+      if (persist) {
+        persistState();
+      }
+    };
+
+    const loadState = () => {
+      if (!storageAvailable) {
+        storageStatus.textContent = "Unavailable";
+        return cloneState(defaultState);
+      }
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        storageStatus.textContent = "Ready";
+        return cloneState(defaultState);
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        return normalizeState(parsed);
+      } catch (error) {
+        storageStatus.textContent = "Corrupt";
+        return cloneState(defaultState);
+      }
+    };
+
+    const renderState = () => {
+      episodeCount.textContent = String(state.episode).padStart(2, "0");
+      momentum.textContent = `+${state.momentum}`;
+      xp.textContent = state.xp;
+      renderFighters();
+      renderLog();
+    };
+
+    state = loadState();
+    renderState();
+
+    document.getElementById("start-loop").addEventListener("click", () => {
+      state.episode += 1;
+      episodeCount.textContent = String(state.episode).padStart(2, "0");
+      log(`Episode ${state.episode} begins. Crowd hype rising.`);
+    });
+
+    document.getElementById("save-loop").addEventListener("click", () => {
+      log("Beat saved to localStorage.");
+    });
+
+    document.getElementById("reset-loop").addEventListener("click", () => {
+      state = cloneState(defaultState);
+      if (storageAvailable) {
+        localStorage.removeItem(STORAGE_KEY);
+        storageStatus.textContent = "Cleared";
+      }
+      renderState();
+      log("Loop reset. Systems idle.", { persist: false });
+    });
+
+    document.getElementById("simulate-turn").addEventListener("click", () => {
+      state.momentum += 2;
+      state.xp += 5;
+      momentum.textContent = `+${state.momentum}`;
+      xp.textContent = state.xp;
+      log("Simulated turn: momentum +2, XP +5.");
+    });
+
+    document.getElementById("train-team").addEventListener("click", () => {
+      state.xp += 10;
+      xp.textContent = state.xp;
+      log("Training complete: roster XP boosted.");
+    });
+  </script>
+</body>
+</html>

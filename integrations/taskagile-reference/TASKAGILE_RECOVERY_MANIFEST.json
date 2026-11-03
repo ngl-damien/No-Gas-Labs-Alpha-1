@@ -1,0 +1,1374 @@
+{
+  "schema": "ngl.repository-recovery.v1",
+  "source_repository": "ngl-damien/TaskAgile",
+  "source_commit": "66885999064997b332f61dac13333058c462e857",
+  "source_tree_sha": "d009d461f160956364b02adaed60cbd8708a73ea",
+  "target_repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "target_branch": "integration/taskagile-remaining-source-recovery-2026-10-26",
+  "source_license_status": "Conflict: package.json declares MIT, while LICENSE and LICENSE.md state NGL-A v1.0 with attribution, non-commercial and commercial-permission conditions, and AI-training restrictions. Preserve both claims; do not assume MIT-only rights.",
+  "verification": {
+    "source_blob_count": 169,
+    "identical_snapshot_blobs": 66,
+    "copied_to_reference_not_runtime_integrated": 100,
+    "source_blobs_identified_but_not_copied": 3,
+    "byte_identity_method": "Git blob SHA equality",
+    "credential_pattern_scan": "Applied to the newly copied text files; no configured private-key/API-key/credential patterns matched. The three large PNGs were not transferred or scanned.",
+    "build_test_performed": false,
+    "runtime_integrated": false,
+    "rollback_scripts": "Preserved as ordinary non-executable source files; do not run them in Alpha One. They contain git reset --hard and git push --force-with-lease operations."
+  },
+  "entries": [
+    {
+      "source_path": ".github/dependabot.yml",
+      "source_blob_sha": "782a0ad7588e99867b9b744e3cd7448dc20a969d",
+      "size_bytes": 205,
+      "target_path": "recovery/public-repos/TaskAgile/.github/dependabot.yml",
+      "target_blob_sha": "782a0ad7588e99867b9b744e3cd7448dc20a969d",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/ci.yml",
+      "source_blob_sha": "28b98297ba51f466fdadedfb4dd076d9c0599a01",
+      "size_bytes": 490,
+      "target_path": "recovery/public-repos/TaskAgile/.github/workflows/ci.yml",
+      "target_blob_sha": "28b98297ba51f466fdadedfb4dd076d9c0599a01",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/ip-protection.yml",
+      "source_blob_sha": "a9c913ded8ee8660a14c03d9aaa7c45a559e6791",
+      "size_bytes": 2553,
+      "target_path": "recovery/public-repos/TaskAgile/.github/workflows/ip-protection.yml",
+      "target_blob_sha": "a9c913ded8ee8660a14c03d9aaa7c45a559e6791",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/org-ci.yml",
+      "source_blob_sha": "933a4835950561afdf7bd3c6fc8c4601cf52d966",
+      "size_bytes": 460,
+      "target_path": "recovery/public-repos/TaskAgile/.github/workflows/org-ci.yml",
+      "target_blob_sha": "933a4835950561afdf7bd3c6fc8c4601cf52d966",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".github/workflows/ralph-validation.yml",
+      "source_blob_sha": "c95b343ef0beb7626b81e5772224e3cd9c56f5d4",
+      "size_bytes": 5121,
+      "target_path": "recovery/public-repos/TaskAgile/.github/workflows/ralph-validation.yml",
+      "target_blob_sha": "c95b343ef0beb7626b81e5772224e3cd9c56f5d4",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".gitignore",
+      "source_blob_sha": "f9ba7f8b4901d059a522d76272612aa2a8321bc3",
+      "size_bytes": 67,
+      "target_path": "recovery/public-repos/TaskAgile/.gitignore",
+      "target_blob_sha": "f9ba7f8b4901d059a522d76272612aa2a8321bc3",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".replit",
+      "source_blob_sha": "caa32c8c3219418d5bc5538e6ee08709c644d751",
+      "size_bytes": 813,
+      "target_path": "recovery/public-repos/TaskAgile/.replit",
+      "target_blob_sha": "caa32c8c3219418d5bc5538e6ee08709c644d751",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": ".repo-classification.json",
+      "source_blob_sha": "5c52d72658a8e24737e08156aac0ff7dd06c5614",
+      "size_bytes": 200,
+      "target_path": "recovery/public-repos/TaskAgile/.repo-classification.json",
+      "target_blob_sha": "5c52d72658a8e24737e08156aac0ff7dd06c5614",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "AGENTS.md",
+      "source_blob_sha": "7da218dce6d806e46cba5c6861ceacb9c503334b",
+      "size_bytes": 1202,
+      "target_path": "recovery/public-repos/TaskAgile/AGENTS.md",
+      "target_blob_sha": "7da218dce6d806e46cba5c6861ceacb9c503334b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "CHANGELOG.md",
+      "source_blob_sha": "ddea238f75129cddb03606a88f84de59c7a2e796",
+      "size_bytes": 129,
+      "target_path": "recovery/public-repos/TaskAgile/CHANGELOG.md",
+      "target_blob_sha": "ddea238f75129cddb03606a88f84de59c7a2e796",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "CODEOWNERS",
+      "source_blob_sha": "61c2f4f2ffa97970e23c6002abac0f7fcd81c2d2",
+      "size_bytes": 256,
+      "target_path": "recovery/public-repos/TaskAgile/CODEOWNERS",
+      "target_blob_sha": "61c2f4f2ffa97970e23c6002abac0f7fcd81c2d2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "CODE_OF_CONDUCT.md",
+      "source_blob_sha": "1c14518fead60ef42f2afd798e9897d54879bed3",
+      "size_bytes": 382,
+      "target_path": "recovery/public-repos/TaskAgile/CODE_OF_CONDUCT.md",
+      "target_blob_sha": "1c14518fead60ef42f2afd798e9897d54879bed3",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "CONTRIBUTING.md",
+      "source_blob_sha": "e30e264e20b0c64db73677a9c9b777ad0c44db21",
+      "size_bytes": 778,
+      "target_path": "recovery/public-repos/TaskAgile/CONTRIBUTING.md",
+      "target_blob_sha": "e30e264e20b0c64db73677a9c9b777ad0c44db21",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "IP-METADATA.json",
+      "source_blob_sha": "0e6b493229e9ec6f2004e364fcbf68e3d9db497f",
+      "size_bytes": 1775,
+      "target_path": "recovery/public-repos/TaskAgile/IP-METADATA.json",
+      "target_blob_sha": "0e6b493229e9ec6f2004e364fcbf68e3d9db497f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "LICENSE",
+      "source_blob_sha": "78df13c6d872efdee4bacfe3e294db99c1be1b0f",
+      "size_bytes": 2198,
+      "target_path": "recovery/public-repos/TaskAgile/LICENSE",
+      "target_blob_sha": "78df13c6d872efdee4bacfe3e294db99c1be1b0f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "LICENSE.md",
+      "source_blob_sha": "2419ce52c6615c844ee1e11593898e0d242b2660",
+      "size_bytes": 2486,
+      "target_path": "recovery/public-repos/TaskAgile/LICENSE.md",
+      "target_blob_sha": "2419ce52c6615c844ee1e11593898e0d242b2660",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "README.md",
+      "source_blob_sha": "096a064a1d57b4205201d44626c2f427fcb8124e",
+      "size_bytes": 418,
+      "target_path": "recovery/public-repos/TaskAgile/README.md",
+      "target_blob_sha": "096a064a1d57b4205201d44626c2f427fcb8124e",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "assets/icons.svg",
+      "source_blob_sha": "bdfb293737b989297cce43419bfe582991b07727",
+      "size_bytes": 15302,
+      "target_path": "recovery/public-repos/TaskAgile/assets/icons.svg",
+      "target_blob_sha": "bdfb293737b989297cce43419bfe582991b07727",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Absolutely-here-s-an-expanded-enhanced-and-more-detailed-batch-of-tasks-for-your-Replit-deployme-1754770040839_1754770040841.txt",
+      "source_blob_sha": "9471385b0e4bb9f8cfc66cfa5d97af21ab3f43e3",
+      "size_bytes": 5693,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Absolutely-here-s-an-expanded-enhanced-and-more-detailed-batch-of-tasks-for-your-Replit-deployme-1754770040839_1754770040841.txt",
+      "target_blob_sha": "9471385b0e4bb9f8cfc66cfa5d97af21ab3f43e3",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Awesome-diving-in-I-ll-deliver-the-full-project-in-manageable-production-ready-chunks-so-you-can-1754783042946_1754783042947.txt",
+      "source_blob_sha": "e446cffe142dc195273d531860a5cf9cc439ad90",
+      "size_bytes": 12829,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Awesome-diving-in-I-ll-deliver-the-full-project-in-manageable-production-ready-chunks-so-you-can-1754783042946_1754783042947.txt",
+      "target_blob_sha": "e446cffe142dc195273d531860a5cf9cc439ad90",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Fantastic-this-is-a-huge-fun-project-I-ll-deliver-a-complete-modular-production-oriented-bluep-1754782952942_1754782952945.txt",
+      "source_blob_sha": "05aa042112fb30db1869fe78feb2a51552faedf6",
+      "size_bytes": 32409,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Fantastic-this-is-a-huge-fun-project-I-ll-deliver-a-complete-modular-production-oriented-bluep-1754782952942_1754782952945.txt",
+      "target_blob_sha": "05aa042112fb30db1869fe78feb2a51552faedf6",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Got-it-Here-s-a-complete-end-to-end-web-based-multiplayer-game-called-No-Gas-Slaps-that-you-can-r-1754798400618_1754798400624.txt",
+      "source_blob_sha": "75e3527950725c7c86a73f739cae228e4f1c4e71",
+      "size_bytes": 9530,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Got-it-Here-s-a-complete-end-to-end-web-based-multiplayer-game-called-No-Gas-Slaps-that-you-can-r-1754798400618_1754798400624.txt",
+      "target_blob_sha": "75e3527950725c7c86a73f739cae228e4f1c4e71",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Got-it-I-ll-imagine-guiding-you-through-17-progressive-focused-improvement-rounds-pushing-the-pro-1754770649724_1754770649726.txt",
+      "source_blob_sha": "00760ada6f71a9014bf45076745f8b0df4c14342",
+      "size_bytes": 4432,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Got-it-I-ll-imagine-guiding-you-through-17-progressive-focused-improvement-rounds-pushing-the-pro-1754770649724_1754770649726.txt",
+      "target_blob_sha": "00760ada6f71a9014bf45076745f8b0df4c14342",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Hi-Replit-Build-an-ultra-polished-cutting-edge-production-ready-No-Gas-Slaps-Telegram-Mini-App-g-1754770867624_1754770867626.txt",
+      "source_blob_sha": "6d17dcde9271845e1dc1f60ce6ae3c2f934b2d84",
+      "size_bytes": 4635,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Hi-Replit-Build-an-ultra-polished-cutting-edge-production-ready-No-Gas-Slaps-Telegram-Mini-App-g-1754770867624_1754770867626.txt",
+      "target_blob_sha": "6d17dcde9271845e1dc1f60ce6ae3c2f934b2d84",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Sure-Here-is-the-full-one-shot-prompt-with-all-the-code-files-embedded-directly-inside-it-ready-to-1754764228785_1754764228788.txt",
+      "source_blob_sha": "7942b2f2014ebb69dce50b73ffe3cad175c7df80",
+      "size_bytes": 12769,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Sure-Here-is-the-full-one-shot-prompt-with-all-the-code-files-embedded-directly-inside-it-ready-to-1754764228785_1754764228788.txt",
+      "target_blob_sha": "7942b2f2014ebb69dce50b73ffe3cad175c7df80",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-Understood-Here-s-a-focused-constructive-master-prompt-you-can-give-to-Replit-to-fix-the-app-not--1754771037791_1754771037794.txt",
+      "source_blob_sha": "4818f11e086d0db4303aacf5cf027aba9cbfaf4a",
+      "size_bytes": 3100,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-Understood-Here-s-a-focused-constructive-master-prompt-you-can-give-to-Replit-to-fix-the-app-not--1754771037791_1754771037794.txt",
+      "target_blob_sha": "4818f11e086d0db4303aacf5cf027aba9cbfaf4a",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-You-are-GPT-5-an-unparalleled-expert-in-full-stack-game-development-software-architecture-and-qua-1754800155752_1754800155758.txt",
+      "source_blob_sha": "3c7c5aec90eb87515044e47411b4f926b6822871",
+      "size_bytes": 2518,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-You-are-GPT-5-an-unparalleled-expert-in-full-stack-game-development-software-architecture-and-qua-1754800155752_1754800155758.txt",
+      "target_blob_sha": "3c7c5aec90eb87515044e47411b4f926b6822871",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Pasted-You-asked-me-to-prove-it-I-ll-prove-it-by-doing-right-now-by-delivering-a-clean-production-rea-1754769784376_1754769784378.txt",
+      "source_blob_sha": "7b454c3c6ceadf2bfc3a7793e08a7500efde2d8f",
+      "size_bytes": 16127,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Pasted-You-asked-me-to-prove-it-I-ll-prove-it-by-doing-right-now-by-delivering-a-clean-production-rea-1754769784376_1754769784378.txt",
+      "target_blob_sha": "7b454c3c6ceadf2bfc3a7793e08a7500efde2d8f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Relic_Drop_Inventory_1754800281205.csv",
+      "source_blob_sha": "749ee3dc6d30f6135baf6cb9f3fe84f2abd12979",
+      "size_bytes": 511,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Relic_Drop_Inventory_1754800281205.csv",
+      "target_blob_sha": "749ee3dc6d30f6135baf6cb9f3fe84f2abd12979",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/Shrine_of_TONX_v1_LIVE_1754800281252.html",
+      "source_blob_sha": "5782af5d55fe76981674ceeb1c665ef72d669e39",
+      "size_bytes": 4019,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/Shrine_of_TONX_v1_LIVE_1754800281252.html",
+      "target_blob_sha": "5782af5d55fe76981674ceeb1c665ef72d669e39",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/build-log (1)_1754800281099.txt",
+      "source_blob_sha": "6c2a14bfef47f2a06a789b7d117e98c2c96cb321",
+      "size_bytes": 33,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/build-log (1)_1754800281099.txt",
+      "target_blob_sha": "6c2a14bfef47f2a06a789b7d117e98c2c96cb321",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "attached_assets/index_1754800238458.html",
+      "source_blob_sha": "1fbb8afe6cda6f139a11849741365e70e2948328",
+      "size_bytes": 518,
+      "target_path": "recovery/public-repos/TaskAgile/attached_assets/index_1754800238458.html",
+      "target_blob_sha": "1fbb8afe6cda6f139a11849741365e70e2948328",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/assets/icons.svg",
+      "source_blob_sha": "bdfb293737b989297cce43419bfe582991b07727",
+      "size_bytes": 15302,
+      "target_path": "recovery/public-repos/TaskAgile/client/assets/icons.svg",
+      "target_blob_sha": "bdfb293737b989297cce43419bfe582991b07727",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/index-phaser.html",
+      "source_blob_sha": "cafd77adf75d0e88b19225e76d62805265243f4b",
+      "size_bytes": 4141,
+      "target_path": "recovery/public-repos/TaskAgile/client/index-phaser.html",
+      "target_blob_sha": "cafd77adf75d0e88b19225e76d62805265243f4b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/index.html",
+      "source_blob_sha": "19ed4225abd0bc82d4592789ffccdf34c4e1f626",
+      "size_bytes": 7401,
+      "target_path": "recovery/public-repos/TaskAgile/client/index.html",
+      "target_blob_sha": "19ed4225abd0bc82d4592789ffccdf34c4e1f626",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/localization/en.js",
+      "source_blob_sha": "adb36229334f870e026ab0e7e7824e4ea902bf45",
+      "size_bytes": 14702,
+      "target_path": "recovery/public-repos/TaskAgile/client/localization/en.js",
+      "target_blob_sha": "adb36229334f870e026ab0e7e7824e4ea902bf45",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/main.js",
+      "source_blob_sha": "88f427e54ab9c23c0642d039757854915b833dd0",
+      "size_bytes": 14993,
+      "target_path": "recovery/public-repos/TaskAgile/client/main.js",
+      "target_blob_sha": "88f427e54ab9c23c0642d039757854915b833dd0",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/animations.js",
+      "source_blob_sha": "dce32994d9808136105c19a232e8de413bfa57d1",
+      "size_bytes": 18856,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/animations.js",
+      "target_blob_sha": "dce32994d9808136105c19a232e8de413bfa57d1",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/audio.js",
+      "source_blob_sha": "144d28acea508829ced6c94583172eed99ff3e6d",
+      "size_bytes": 13556,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/audio.js",
+      "target_blob_sha": "144d28acea508829ced6c94583172eed99ff3e6d",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/error.js",
+      "source_blob_sha": "6ef32217a6bc56e8cf6797733372df2cb5fa5c5f",
+      "size_bytes": 10998,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/error.js",
+      "target_blob_sha": "6ef32217a6bc56e8cf6797733372df2cb5fa5c5f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/leaderboard-api.js",
+      "source_blob_sha": "e32a36ac75e8de6368b976a6e758b15312c1d2e5",
+      "size_bytes": 11788,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/leaderboard-api.js",
+      "target_blob_sha": "e32a36ac75e8de6368b976a6e758b15312c1d2e5",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/multiplayer.js",
+      "source_blob_sha": "0fe600c4bd7d9ac3111e9672f45c60fe6d8a6422",
+      "size_bytes": 10903,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/multiplayer.js",
+      "target_blob_sha": "0fe600c4bd7d9ac3111e9672f45c60fe6d8a6422",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/persistence.js",
+      "source_blob_sha": "60a93b096995de36cdecfe66603062d1ae5c758f",
+      "size_bytes": 15412,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/persistence.js",
+      "target_blob_sha": "60a93b096995de36cdecfe66603062d1ae5c758f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/security.js",
+      "source_blob_sha": "eab12da7675bb4af27e7dacc3845f661d132283f",
+      "size_bytes": 14903,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/security.js",
+      "target_blob_sha": "eab12da7675bb4af27e7dacc3845f661d132283f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/state.js",
+      "source_blob_sha": "6121c630c50e44edb1026b06f4e9862febed2967",
+      "size_bytes": 15770,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/state.js",
+      "target_blob_sha": "6121c630c50e44edb1026b06f4e9862febed2967",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/telegram-api.js",
+      "source_blob_sha": "d5fcd29040670c427eb3bebc66cbca522d35a2b6",
+      "size_bytes": 8422,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/telegram-api.js",
+      "target_blob_sha": "d5fcd29040670c427eb3bebc66cbca522d35a2b6",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/testing.js",
+      "source_blob_sha": "ab57a2739e52e78540490fc735b73d51996a3abc",
+      "size_bytes": 17138,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/testing.js",
+      "target_blob_sha": "ab57a2739e52e78540490fc735b73d51996a3abc",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/modules/ui.js",
+      "source_blob_sha": "a2ae11933cbcc705fa9ff04df139453283926be3",
+      "size_bytes": 22435,
+      "target_path": "recovery/public-repos/TaskAgile/client/modules/ui.js",
+      "target_blob_sha": "a2ae11933cbcc705fa9ff04df139453283926be3",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/phaser-game.js",
+      "source_blob_sha": "61a8c3c58f76b5c8656b13c0a13fd45af265c048",
+      "size_bytes": 15178,
+      "target_path": "recovery/public-repos/TaskAgile/client/phaser-game.js",
+      "target_blob_sha": "61a8c3c58f76b5c8656b13c0a13fd45af265c048",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/public/fonts/inter.json",
+      "source_blob_sha": "9d03a1fceb1315230796837211a9d1da1ee724a2",
+      "size_bytes": 785,
+      "target_path": "recovery/public-repos/TaskAgile/client/public/fonts/inter.json",
+      "target_blob_sha": "9d03a1fceb1315230796837211a9d1da1ee724a2",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/public/geometries/heart.gltf",
+      "source_blob_sha": "2feb70c4df1c8db588435265ec5a70bebbdcfc94",
+      "size_bytes": 167285,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/geometries/heart.gltf",
+      "target_blob_sha": "2feb70c4df1c8db588435265ec5a70bebbdcfc94",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/main.js",
+      "source_blob_sha": "a2b77c5fd99a4a6cb857ded24b490558446b1c5b",
+      "size_bytes": 17431,
+      "target_path": "recovery/public-repos/TaskAgile/client/public/main.js",
+      "target_blob_sha": "a2b77c5fd99a4a6cb857ded24b490558446b1c5b",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/public/sounds/background.mp3",
+      "source_blob_sha": "9f6d19bb4b734db165fc4388a0b4438647e087f4",
+      "size_bytes": 854493,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/sounds/background.mp3",
+      "target_blob_sha": "9f6d19bb4b734db165fc4388a0b4438647e087f4",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/sounds/hit.mp3",
+      "source_blob_sha": "fb90b35d96dc824ce024ed7c17507080986279c1",
+      "size_bytes": 1197,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/sounds/hit.mp3",
+      "target_blob_sha": "fb90b35d96dc824ce024ed7c17507080986279c1",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/sounds/success.mp3",
+      "source_blob_sha": "1406abdbd31e079e34d42fca2ca9acddae3c50bd",
+      "size_bytes": 12165,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/sounds/success.mp3",
+      "target_blob_sha": "1406abdbd31e079e34d42fca2ca9acddae3c50bd",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/textures/asphalt.png",
+      "source_blob_sha": "39f5d177c1523caca91491bb94de2b252da91ec6",
+      "size_bytes": 122625,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/textures/asphalt.png",
+      "target_blob_sha": "39f5d177c1523caca91491bb94de2b252da91ec6",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/textures/grass.png",
+      "source_blob_sha": "e099328412e1470df2be29f6b0eb2cf683ead485",
+      "size_bytes": 192833,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/textures/grass.png",
+      "target_blob_sha": "e099328412e1470df2be29f6b0eb2cf683ead485",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/textures/sand.jpg",
+      "source_blob_sha": "41beea14adeac5b5ddedf25d0e04026cbed117a3",
+      "size_bytes": 3973,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/textures/sand.jpg",
+      "target_blob_sha": "41beea14adeac5b5ddedf25d0e04026cbed117a3",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/textures/sky.png",
+      "source_blob_sha": "97379fdb22fe538fa41a58b20f3e2ae91da2d399",
+      "size_bytes": 28791,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/textures/sky.png",
+      "target_blob_sha": "97379fdb22fe538fa41a58b20f3e2ae91da2d399",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/public/textures/wood.jpg",
+      "source_blob_sha": "2cbb3d327b1d44f46b766b712113b47b253f34b0",
+      "size_bytes": 48455,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/public/textures/wood.jpg",
+      "target_blob_sha": "2cbb3d327b1d44f46b766b712113b47b253f34b0",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/App.tsx",
+      "source_blob_sha": "4f382c506adb437d5c6c5f9ecca3a0f749f8444e",
+      "size_bytes": 15421,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/App.tsx",
+      "target_blob_sha": "4f382c506adb437d5c6c5f9ecca3a0f749f8444e",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/GameCanvas.tsx",
+      "source_blob_sha": "529e6fa839904cd15a603e1da796b335e3d2dfc7",
+      "size_bytes": 4993,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/GameCanvas.tsx",
+      "target_blob_sha": "529e6fa839904cd15a603e1da796b335e3d2dfc7",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/MobileGame.tsx",
+      "source_blob_sha": "19ebc309d7edf872d2ffc5e4642bef0f57a1a35e",
+      "size_bytes": 8077,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/MobileGame.tsx",
+      "target_blob_sha": "19ebc309d7edf872d2ffc5e4642bef0f57a1a35e",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/accordion.tsx",
+      "source_blob_sha": "e1797c93458f3751a2e0f1189ff50d77f20ae3ed",
+      "size_bytes": 2001,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/accordion.tsx",
+      "target_blob_sha": "e1797c93458f3751a2e0f1189ff50d77f20ae3ed",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/alert-dialog.tsx",
+      "source_blob_sha": "fa2b4429f4303210462ad03f9f49280ac5ae07ce",
+      "size_bytes": 4419,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/alert-dialog.tsx",
+      "target_blob_sha": "fa2b4429f4303210462ad03f9f49280ac5ae07ce",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/alert.tsx",
+      "source_blob_sha": "5afd41d142c95c74069ebb5460117e74ead3b9df",
+      "size_bytes": 1598,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/alert.tsx",
+      "target_blob_sha": "5afd41d142c95c74069ebb5460117e74ead3b9df",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/aspect-ratio.tsx",
+      "source_blob_sha": "c4abbf37f217c715a0eaade7f45ac78600df419f",
+      "size_bytes": 140,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/aspect-ratio.tsx",
+      "target_blob_sha": "c4abbf37f217c715a0eaade7f45ac78600df419f",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/avatar.tsx",
+      "source_blob_sha": "51e507ba9d08bcdbb1fb630498f1cbdf2bf50093",
+      "size_bytes": 1419,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/avatar.tsx",
+      "target_blob_sha": "51e507ba9d08bcdbb1fb630498f1cbdf2bf50093",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/badge.tsx",
+      "source_blob_sha": "e87d62bf1a2b2a0e1cf0b0dc94c2836525f40b67",
+      "size_bytes": 1140,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/badge.tsx",
+      "target_blob_sha": "e87d62bf1a2b2a0e1cf0b0dc94c2836525f40b67",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/breadcrumb.tsx",
+      "source_blob_sha": "60e6c96f72f0350d08b47e4730cab8f3975dc853",
+      "size_bytes": 2712,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/breadcrumb.tsx",
+      "target_blob_sha": "60e6c96f72f0350d08b47e4730cab8f3975dc853",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/button.tsx",
+      "source_blob_sha": "65d4fcd9ca74240125c5f72cf84c873781141fea",
+      "size_bytes": 1902,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/button.tsx",
+      "target_blob_sha": "65d4fcd9ca74240125c5f72cf84c873781141fea",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/calendar.tsx",
+      "source_blob_sha": "804fe21009e9fbd9682f836f71a22200b1ad99c8",
+      "size_bytes": 2935,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/calendar.tsx",
+      "target_blob_sha": "804fe21009e9fbd9682f836f71a22200b1ad99c8",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/card.tsx",
+      "source_blob_sha": "cabfbfc59d955db9efc2049783cad4a71db55442",
+      "size_bytes": 1828,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/card.tsx",
+      "target_blob_sha": "cabfbfc59d955db9efc2049783cad4a71db55442",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/carousel.tsx",
+      "source_blob_sha": "9c2b9bf3705d8421bef00704c0c52e83d371ca11",
+      "size_bytes": 6210,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/carousel.tsx",
+      "target_blob_sha": "9c2b9bf3705d8421bef00704c0c52e83d371ca11",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/chart.tsx",
+      "source_blob_sha": "39fba6d6fc8509b968824b5076a8791c46650294",
+      "size_bytes": 10481,
+      "target_path": "recovery/public-repos/TaskAgile/client/src/components/ui/chart.tsx",
+      "target_blob_sha": "39fba6d6fc8509b968824b5076a8791c46650294",
+      "status": "IDENTICAL_BLOB"
+    },
+    {
+      "source_path": "client/src/components/ui/checkbox.tsx",
+      "source_blob_sha": "0a6a9a5b96703212367400ada73d0acd02cac028",
+      "size_bytes": 1012,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/checkbox.tsx",
+      "target_blob_sha": "0a6a9a5b96703212367400ada73d0acd02cac028",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/collapsible.tsx",
+      "source_blob_sha": "9fa48946afd1eb56bd932377fd888e3986304676",
+      "size_bytes": 329,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/collapsible.tsx",
+      "target_blob_sha": "9fa48946afd1eb56bd932377fd888e3986304676",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/command.tsx",
+      "source_blob_sha": "0db642a6e97255f177a9ce03df6340cca678f0ea",
+      "size_bytes": 4873,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/command.tsx",
+      "target_blob_sha": "0db642a6e97255f177a9ce03df6340cca678f0ea",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/context-menu.tsx",
+      "source_blob_sha": "67bbd2804c7aabc16122028924d91ead77a49c5b",
+      "size_bytes": 7224,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/context-menu.tsx",
+      "target_blob_sha": "67bbd2804c7aabc16122028924d91ead77a49c5b",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/dialog.tsx",
+      "source_blob_sha": "1647513eced8f9e788c0e8b63c99654d3a542a9c",
+      "size_bytes": 3849,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/dialog.tsx",
+      "target_blob_sha": "1647513eced8f9e788c0e8b63c99654d3a542a9c",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/drawer.tsx",
+      "source_blob_sha": "6a0ef53dde8991d3adeadd791cd262808aaf9ac0",
+      "size_bytes": 3021,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/drawer.tsx",
+      "target_blob_sha": "6a0ef53dde8991d3adeadd791cd262808aaf9ac0",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/dropdown-menu.tsx",
+      "source_blob_sha": "77f88a532c0bb98fdd3b00a878aa4edc8fa655c3",
+      "size_bytes": 7480,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/dropdown-menu.tsx",
+      "target_blob_sha": "77f88a532c0bb98fdd3b00a878aa4edc8fa655c3",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/form.tsx",
+      "source_blob_sha": "ad1ae028b1ba82279377c39ae9b62d2498eef830",
+      "size_bytes": 4132,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/form.tsx",
+      "target_blob_sha": "ad1ae028b1ba82279377c39ae9b62d2498eef830",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/hover-card.tsx",
+      "source_blob_sha": "e54d91cf81f48462887825698166393764c4251f",
+      "size_bytes": 1198,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/hover-card.tsx",
+      "target_blob_sha": "e54d91cf81f48462887825698166393764c4251f",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/input-otp.tsx",
+      "source_blob_sha": "f7891c9cc8ba7868f4b5bdb67dc883b1880ade9f",
+      "size_bytes": 2143,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/input-otp.tsx",
+      "target_blob_sha": "f7891c9cc8ba7868f4b5bdb67dc883b1880ade9f",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/input.tsx",
+      "source_blob_sha": "69b64fb2455114c3eeda2d18741af0027b3c5e89",
+      "size_bytes": 768,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/input.tsx",
+      "target_blob_sha": "69b64fb2455114c3eeda2d18741af0027b3c5e89",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/interface.tsx",
+      "source_blob_sha": "d48714a20e588018294373e088969978eec5e444",
+      "size_bytes": 3180,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/interface.tsx",
+      "target_blob_sha": "d48714a20e588018294373e088969978eec5e444",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/label.tsx",
+      "source_blob_sha": "683faa793819982d64e21cb2939666fd6d4a7b13",
+      "size_bytes": 710,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/label.tsx",
+      "target_blob_sha": "683faa793819982d64e21cb2939666fd6d4a7b13",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/menubar.tsx",
+      "source_blob_sha": "20f4d5ccab1e4a5ef9f17518b4fd539f19e45fe8",
+      "size_bytes": 8522,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/menubar.tsx",
+      "target_blob_sha": "20f4d5ccab1e4a5ef9f17518b4fd539f19e45fe8",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/navigation-menu.tsx",
+      "source_blob_sha": "056354bf824bf1f06e9dbceeacad512ce21b03d1",
+      "size_bytes": 5124,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/navigation-menu.tsx",
+      "target_blob_sha": "056354bf824bf1f06e9dbceeacad512ce21b03d1",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/pagination.tsx",
+      "source_blob_sha": "d3311054cd07a90d130f7996c79b3fc0feeede39",
+      "size_bytes": 2751,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/pagination.tsx",
+      "target_blob_sha": "d3311054cd07a90d130f7996c79b3fc0feeede39",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/popover.tsx",
+      "source_blob_sha": "d82e714959e16153e9b2af12cb24707ee48efdc8",
+      "size_bytes": 1292,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/popover.tsx",
+      "target_blob_sha": "d82e714959e16153e9b2af12cb24707ee48efdc8",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/progress.tsx",
+      "source_blob_sha": "4fc3b473e6f51afa972f840fb0f4476f8663c256",
+      "size_bytes": 792,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/progress.tsx",
+      "target_blob_sha": "4fc3b473e6f51afa972f840fb0f4476f8663c256",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/radio-group.tsx",
+      "source_blob_sha": "9d3a26e6ec5d8647f22d754be5affd9e8eba1ec5",
+      "size_bytes": 1410,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/radio-group.tsx",
+      "target_blob_sha": "9d3a26e6ec5d8647f22d754be5affd9e8eba1ec5",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/resizable.tsx",
+      "source_blob_sha": "f4bc5586b67f45d3cc35f228e8bac2e4bc2cea16",
+      "size_bytes": 1723,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/resizable.tsx",
+      "target_blob_sha": "f4bc5586b67f45d3cc35f228e8bac2e4bc2cea16",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/scroll-area.tsx",
+      "source_blob_sha": "cf253cf17056ce04827219643e484ea99c77cf6b",
+      "size_bytes": 1642,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/scroll-area.tsx",
+      "target_blob_sha": "cf253cf17056ce04827219643e484ea99c77cf6b",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/select.tsx",
+      "source_blob_sha": "cd3c745e336cd243b48a17bbeeaf7e2b495f0a3e",
+      "size_bytes": 5639,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/select.tsx",
+      "target_blob_sha": "cd3c745e336cd243b48a17bbeeaf7e2b495f0a3e",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/separator.tsx",
+      "source_blob_sha": "6d7f12265ba0338704f013930ce4d52c56527dd1",
+      "size_bytes": 756,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/separator.tsx",
+      "target_blob_sha": "6d7f12265ba0338704f013930ce4d52c56527dd1",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/sheet.tsx",
+      "source_blob_sha": "272cb721eb48b7a5833ccd51f940a8830d85b64e",
+      "size_bytes": 4280,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/sheet.tsx",
+      "target_blob_sha": "272cb721eb48b7a5833ccd51f940a8830d85b64e",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/sidebar.tsx",
+      "source_blob_sha": "03b4a83e7e581b94d1672e32dd2d24a457cc477b",
+      "size_bytes": 23790,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/sidebar.tsx",
+      "target_blob_sha": "03b4a83e7e581b94d1672e32dd2d24a457cc477b",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/skeleton.tsx",
+      "source_blob_sha": "d7e45f7bd315f86eabf32f2c9425223417920e60",
+      "size_bytes": 266,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/skeleton.tsx",
+      "target_blob_sha": "d7e45f7bd315f86eabf32f2c9425223417920e60",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/slider.tsx",
+      "source_blob_sha": "9398b331513e9668b8d76f2905d570c34d080fd2",
+      "size_bytes": 1037,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/slider.tsx",
+      "target_blob_sha": "9398b331513e9668b8d76f2905d570c34d080fd2",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/sonner.tsx",
+      "source_blob_sha": "452f4d9f0dde88611113632c1d759d60155fe4d3",
+      "size_bytes": 894,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/sonner.tsx",
+      "target_blob_sha": "452f4d9f0dde88611113632c1d759d60155fe4d3",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/switch.tsx",
+      "source_blob_sha": "455c23b6cd5adcb0278792568cdddf084a4a37c9",
+      "size_bytes": 1148,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/switch.tsx",
+      "target_blob_sha": "455c23b6cd5adcb0278792568cdddf084a4a37c9",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/table.tsx",
+      "source_blob_sha": "c0df655c0bf26af1148d038e1d013e884663b240",
+      "size_bytes": 2859,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/table.tsx",
+      "target_blob_sha": "c0df655c0bf26af1148d038e1d013e884663b240",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/tabs.tsx",
+      "source_blob_sha": "85d83beab3224580318b1dd85f93e9294fae32c0",
+      "size_bytes": 1877,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/tabs.tsx",
+      "target_blob_sha": "85d83beab3224580318b1dd85f93e9294fae32c0",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/textarea.tsx",
+      "source_blob_sha": "e56b0affd7e03bd8359092a81d81c606ab09972d",
+      "size_bytes": 649,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/textarea.tsx",
+      "target_blob_sha": "e56b0affd7e03bd8359092a81d81c606ab09972d",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/toggle-group.tsx",
+      "source_blob_sha": "1c876bbeecabe59b684719afe58e684f34cdecbf",
+      "size_bytes": 1753,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/toggle-group.tsx",
+      "target_blob_sha": "1c876bbeecabe59b684719afe58e684f34cdecbf",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/toggle.tsx",
+      "source_blob_sha": "ab0a30fb3daa5b3fe5a4158ee1372405aac50aba",
+      "size_bytes": 1486,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/toggle.tsx",
+      "target_blob_sha": "ab0a30fb3daa5b3fe5a4158ee1372405aac50aba",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/components/ui/tooltip.tsx",
+      "source_blob_sha": "a66b3f22019c44e790760ecd218c288eac2af7eb",
+      "size_bytes": 1217,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/components/ui/tooltip.tsx",
+      "target_blob_sha": "a66b3f22019c44e790760ecd218c288eac2af7eb",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/hooks/use-is-mobile.tsx",
+      "source_blob_sha": "d49230f8f0e4d4f2592700dbb92509345f36de41",
+      "size_bytes": 2327,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/hooks/use-is-mobile.tsx",
+      "target_blob_sha": "d49230f8f0e4d4f2592700dbb92509345f36de41",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/index.css",
+      "source_blob_sha": "f2d258cdfcc039c6b92b5a953c1838af941d94ce",
+      "size_bytes": 4540,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/index.css",
+      "target_blob_sha": "f2d258cdfcc039c6b92b5a953c1838af941d94ce",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/lib/queryClient.ts",
+      "source_blob_sha": "a8b3fc1dad0c6038f92144938cccff47f6ed1003",
+      "size_bytes": 1376,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/lib/queryClient.ts",
+      "target_blob_sha": "a8b3fc1dad0c6038f92144938cccff47f6ed1003",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/lib/stores/useAudio.tsx",
+      "source_blob_sha": "64444fdd24d080bf9688ea79910dc329ae5252fd",
+      "size_bytes": 2025,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/lib/stores/useAudio.tsx",
+      "target_blob_sha": "64444fdd24d080bf9688ea79910dc329ae5252fd",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/lib/stores/useGame.tsx",
+      "source_blob_sha": "2e42fee48b5584038fd1dab1d02ed362cc6f6f53",
+      "size_bytes": 893,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/lib/stores/useGame.tsx",
+      "target_blob_sha": "2e42fee48b5584038fd1dab1d02ed362cc6f6f53",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/lib/utils.ts",
+      "source_blob_sha": "d4d33e1330adf9d358a573cf04fc4f7758c5b0e1",
+      "size_bytes": 438,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/lib/utils.ts",
+      "target_blob_sha": "d4d33e1330adf9d358a573cf04fc4f7758c5b0e1",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/main.tsx",
+      "source_blob_sha": "696e0d2b94fbc09e5bf2378678cfe86625c2f15c",
+      "size_bytes": 157,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/main.tsx",
+      "target_blob_sha": "696e0d2b94fbc09e5bf2378678cfe86625c2f15c",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/src/pages/not-found.tsx",
+      "source_blob_sha": "dba9f8316f8e796e2808090c4f6cf770e6b90c4a",
+      "size_bytes": 711,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/src/pages/not-found.tsx",
+      "target_blob_sha": "dba9f8316f8e796e2808090c4f6cf770e6b90c4a",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "client/styles.css",
+      "source_blob_sha": "6f2eecb6f452edbdf9f66a8f8dcd1325de9067d4",
+      "size_bytes": 26535,
+      "target_path": "integrations/taskagile-reference/recovered-source/client/styles.css",
+      "target_blob_sha": "6f2eecb6f452edbdf9f66a8f8dcd1325de9067d4",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "drizzle.config.ts",
+      "source_blob_sha": "4cd7b4cb3770a444d70ce72acabcb58e4e3ab18a",
+      "size_bytes": 325,
+      "target_path": "integrations/taskagile-reference/recovered-source/drizzle.config.ts",
+      "target_blob_sha": "4cd7b4cb3770a444d70ce72acabcb58e4e3ab18a",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "index.html",
+      "source_blob_sha": "8e8f08e78dcea8bee4554641068ead6bc9aaf8b6",
+      "size_bytes": 7601,
+      "target_path": "integrations/taskagile-reference/recovered-source/index.html",
+      "target_blob_sha": "8e8f08e78dcea8bee4554641068ead6bc9aaf8b6",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "localization/en.js",
+      "source_blob_sha": "db06af1ab68904e4c16a084a1b04cf052da16528",
+      "size_bytes": 9473,
+      "target_path": "integrations/taskagile-reference/recovered-source/localization/en.js",
+      "target_blob_sha": "db06af1ab68904e4c16a084a1b04cf052da16528",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "main.js",
+      "source_blob_sha": "46613d8d4200c158ba0affb401fa12ed499cefb6",
+      "size_bytes": 20066,
+      "target_path": "integrations/taskagile-reference/main.js",
+      "target_blob_sha": "46613d8d4200c158ba0affb401fa12ed499cefb6",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/animations.js",
+      "source_blob_sha": "c6f55f14840ae35f68a3b694f8d356d27b7420fe",
+      "size_bytes": 16707,
+      "target_path": "integrations/taskagile-reference/modules/animations.js",
+      "target_blob_sha": "c6f55f14840ae35f68a3b694f8d356d27b7420fe",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/audio.js",
+      "source_blob_sha": "a2d8f5e50d9df7dfef17db6dbbe0aab659eeb75a",
+      "size_bytes": 15200,
+      "target_path": "integrations/taskagile-reference/modules/audio.js",
+      "target_blob_sha": "a2d8f5e50d9df7dfef17db6dbbe0aab659eeb75a",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/error.js",
+      "source_blob_sha": "6ef32217a6bc56e8cf6797733372df2cb5fa5c5f",
+      "size_bytes": 10998,
+      "target_path": "integrations/taskagile-reference/modules/error.js",
+      "target_blob_sha": "6ef32217a6bc56e8cf6797733372df2cb5fa5c5f",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/leaderboard-api.js",
+      "source_blob_sha": "e32a36ac75e8de6368b976a6e758b15312c1d2e5",
+      "size_bytes": 11788,
+      "target_path": "integrations/taskagile-reference/modules/leaderboard-api.js",
+      "target_blob_sha": "e32a36ac75e8de6368b976a6e758b15312c1d2e5",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/persistence.js",
+      "source_blob_sha": "60a93b096995de36cdecfe66603062d1ae5c758f",
+      "size_bytes": 15412,
+      "target_path": "integrations/taskagile-reference/modules/persistence.js",
+      "target_blob_sha": "60a93b096995de36cdecfe66603062d1ae5c758f",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/security.js",
+      "source_blob_sha": "cabfd725f3d41c580fc5f211616389a6b5d412e3",
+      "size_bytes": 15157,
+      "target_path": "integrations/taskagile-reference/modules/security.js",
+      "target_blob_sha": "cabfd725f3d41c580fc5f211616389a6b5d412e3",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/state.js",
+      "source_blob_sha": "6121c630c50e44edb1026b06f4e9862febed2967",
+      "size_bytes": 15770,
+      "target_path": "integrations/taskagile-reference/modules/state.js",
+      "target_blob_sha": "6121c630c50e44edb1026b06f4e9862febed2967",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/telegram-api.js",
+      "source_blob_sha": "d5fcd29040670c427eb3bebc66cbca522d35a2b6",
+      "size_bytes": 8422,
+      "target_path": "integrations/taskagile-reference/modules/telegram-api.js",
+      "target_blob_sha": "d5fcd29040670c427eb3bebc66cbca522d35a2b6",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/testing.js",
+      "source_blob_sha": "ab57a2739e52e78540490fc735b73d51996a3abc",
+      "size_bytes": 17138,
+      "target_path": "integrations/taskagile-reference/modules/testing.js",
+      "target_blob_sha": "ab57a2739e52e78540490fc735b73d51996a3abc",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "modules/ui.js",
+      "source_blob_sha": "0397dab902c852297c8c22291e855c32a2f0c402",
+      "size_bytes": 27231,
+      "target_path": "integrations/taskagile-reference/modules/ui.js",
+      "target_blob_sha": "0397dab902c852297c8c22291e855c32a2f0c402",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "package-lock.json",
+      "source_blob_sha": "8d16d6d93493e9c38cbf761bef1103ffdabe62cb",
+      "size_bytes": 395635,
+      "target_path": "integrations/taskagile-reference/recovered-source/package-lock.json",
+      "target_blob_sha": "8d16d6d93493e9c38cbf761bef1103ffdabe62cb",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "package.json",
+      "source_blob_sha": "54b6f6fcc403d0224fccf112b08793a0b1f6f451",
+      "size_bytes": 4173,
+      "target_path": "integrations/taskagile-reference/package.json",
+      "target_blob_sha": "54b6f6fcc403d0224fccf112b08793a0b1f6f451",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "postcss.config.js",
+      "source_blob_sha": "2e7af2b7f1a6f391da1631d93968a9d487ba977d",
+      "size_bytes": 80,
+      "target_path": "integrations/taskagile-reference/recovered-source/postcss.config.js",
+      "target_blob_sha": "2e7af2b7f1a6f391da1631d93968a9d487ba977d",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/assets/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/assets/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/assets/arena_bg.png",
+      "source_blob_sha": "1483fef191789e10050ce3d37f2f9ed238d904ea",
+      "size_bytes": 2970258,
+      "target_path": null,
+      "target_blob_sha": null,
+      "status": "SOURCE_BLOB_IDENTIFIED_COPY_BLOCKED_BY_WRITE_LIMIT"
+    },
+    {
+      "source_path": "production/deathmatch/assets/musk_fighter.png",
+      "source_blob_sha": "311355cad4ece11f32bfc54fa08ce49db02b56bd",
+      "size_bytes": 2252505,
+      "target_path": null,
+      "target_blob_sha": null,
+      "status": "SOURCE_BLOB_IDENTIFIED_COPY_BLOCKED_BY_WRITE_LIMIT"
+    },
+    {
+      "source_path": "production/deathmatch/assets/trump_fighter.png",
+      "source_blob_sha": "44f7206271f00c393bc601780a613d48cde58371",
+      "size_bytes": 2401820,
+      "target_path": null,
+      "target_blob_sha": null,
+      "status": "SOURCE_BLOB_IDENTIFIED_COPY_BLOCKED_BY_WRITE_LIMIT"
+    },
+    {
+      "source_path": "production/deathmatch/deathmatch_interactive.html",
+      "source_blob_sha": "a8e74edb19b5e527f1b844f189f6dff5eaae3e37",
+      "size_bytes": 8605,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/deathmatch_interactive.html",
+      "target_blob_sha": "a8e74edb19b5e527f1b844f189f6dff5eaae3e37",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/deathmatch_player.html",
+      "source_blob_sha": "10b9cce7e16629ed79f8bc37b111ad2a7bd4bc2a",
+      "size_bytes": 6081,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/deathmatch_player.html",
+      "target_blob_sha": "10b9cce7e16629ed79f8bc37b111ad2a7bd4bc2a",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/deathmatch_script.md",
+      "source_blob_sha": "e3ff88627b82648059d470d66a43fbf770f291bb",
+      "size_bytes": 5610,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/deathmatch_script.md",
+      "target_blob_sha": "e3ff88627b82648059d470d66a43fbf770f291bb",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/index.html",
+      "source_blob_sha": "a8e74edb19b5e527f1b844f189f6dff5eaae3e37",
+      "size_bytes": 8605,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/index.html",
+      "target_blob_sha": "a8e74edb19b5e527f1b844f189f6dff5eaae3e37",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/iterations/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/iterations/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/research_deathmatch.md",
+      "source_blob_sha": "b787794c91a21367f35ef251178f3e8e36c00caa",
+      "size_bytes": 1826,
+      "target_path": "integrations/taskagile-reference/production/deathmatch/research_deathmatch.md",
+      "target_blob_sha": "b787794c91a21367f35ef251178f3e8e36c00caa",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "production/deathmatch/scripts/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/production/deathmatch/scripts/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "replit.md",
+      "source_blob_sha": "0c5ad0e9f3e3f42e2e3b62f125573d350e0cd71c",
+      "size_bytes": 4690,
+      "target_path": "integrations/taskagile-reference/recovered-source/replit.md",
+      "target_blob_sha": "0c5ad0e9f3e3f42e2e3b62f125573d350e0cd71c",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "rpg.html",
+      "source_blob_sha": "5379d8f7be2edf9f30893bc53361844d26312787",
+      "size_bytes": 10871,
+      "target_path": "integrations/taskagile-reference/rpg.html",
+      "target_blob_sha": "5379d8f7be2edf9f30893bc53361844d26312787",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "server/index.ts",
+      "source_blob_sha": "e8ed0c2707e176dc567d3e99dc7e27582427efb1",
+      "size_bytes": 7017,
+      "target_path": "integrations/taskagile-reference/recovered-source/server/index.ts",
+      "target_blob_sha": "e8ed0c2707e176dc567d3e99dc7e27582427efb1",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "server/routes.ts",
+      "source_blob_sha": "9da3a816d5f1b16686e2218d77f25f5f6a9d1140",
+      "size_bytes": 473,
+      "target_path": "integrations/taskagile-reference/recovered-source/server/routes.ts",
+      "target_blob_sha": "9da3a816d5f1b16686e2218d77f25f5f6a9d1140",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "server/storage.ts",
+      "source_blob_sha": "e01abec75c37f40e1e8d69971e0c9407d8822c01",
+      "size_bytes": 1012,
+      "target_path": "integrations/taskagile-reference/recovered-source/server/storage.ts",
+      "target_blob_sha": "e01abec75c37f40e1e8d69971e0c9407d8822c01",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "server/vite.ts",
+      "source_blob_sha": "7bfa2a115b01aa33112c37d1bfcd170eddec1895",
+      "size_bytes": 2409,
+      "target_path": "integrations/taskagile-reference/recovered-source/server/vite.ts",
+      "target_blob_sha": "7bfa2a115b01aa33112c37d1bfcd170eddec1895",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "shared/schema.ts",
+      "source_blob_sha": "e58e0afcac818f8a410170f9bcebfa2d0a5c3e64",
+      "size_bytes": 533,
+      "target_path": "integrations/taskagile-reference/recovered-source/shared/schema.ts",
+      "target_blob_sha": "e58e0afcac818f8a410170f9bcebfa2d0a5c3e64",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "shrine.html",
+      "source_blob_sha": "957dc661f67ed58eb4ca4533584338ba5cb9832c",
+      "size_bytes": 10410,
+      "target_path": "integrations/taskagile-reference/shrine.html",
+      "target_blob_sha": "957dc661f67ed58eb4ca4533584338ba5cb9832c",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/artifacts/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/artifacts/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/artifacts/deathmatch.html",
+      "source_blob_sha": "6ab78b7f50552feda2c1d3a4dea6c4f82ede9673",
+      "size_bytes": 11859,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/artifacts/deathmatch.html",
+      "target_blob_sha": "6ab78b7f50552feda2c1d3a4dea6c4f82ede9673",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/artifacts/ralph-core.html",
+      "source_blob_sha": "49d22d1d603e8384a857f0409e1d37fd1a4a0e0e",
+      "size_bytes": 7993,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/artifacts/ralph-core.html",
+      "target_blob_sha": "49d22d1d603e8384a857f0409e1d37fd1a4a0e0e",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/backups/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/backups/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/logs/.gitkeep",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/logs/.gitkeep",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/logs/iteration_report.md",
+      "source_blob_sha": "22ea9fe2495aa7d3e4b9f9fff7435c16e43363d0",
+      "size_bytes": 630,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/logs/iteration_report.md",
+      "target_blob_sha": "22ea9fe2495aa7d3e4b9f9fff7435c16e43363d0",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/ralph_state.json",
+      "source_blob_sha": "3d7eb2a7287ebbef15b2c75d4a0ebe380e697120",
+      "size_bytes": 1444,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/ralph_state.json",
+      "target_blob_sha": "3d7eb2a7287ebbef15b2c75d4a0ebe380e697120",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/rollback-codex.sh",
+      "source_blob_sha": "87413990f2afcb83ca287321b4b858d9e6fd67b7",
+      "size_bytes": 833,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/rollback-codex.sh",
+      "target_blob_sha": "87413990f2afcb83ca287321b4b858d9e6fd67b7",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "staging/rollback.sh",
+      "source_blob_sha": "007fbb6d897a1ba25d904c8064e74c1c93272534",
+      "size_bytes": 3548,
+      "target_path": "integrations/taskagile-reference/recovered-source/staging/rollback.sh",
+      "target_blob_sha": "007fbb6d897a1ba25d904c8064e74c1c93272534",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "styles.css",
+      "source_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size_bytes": 0,
+      "target_path": "integrations/taskagile-reference/recovered-source/styles.css",
+      "target_blob_sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "tailwind.config.ts",
+      "source_blob_sha": "22ccd6cbe43a2d802f5b9b99d7069896127dc37a",
+      "size_bytes": 2787,
+      "target_path": "integrations/taskagile-reference/recovered-source/tailwind.config.ts",
+      "target_blob_sha": "22ccd6cbe43a2d802f5b9b99d7069896127dc37a",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "tsconfig.json",
+      "source_blob_sha": "a0203eefcb88d0dcf5e5ff0e2f90150a1b46ee05",
+      "size_bytes": 657,
+      "target_path": "integrations/taskagile-reference/recovered-source/tsconfig.json",
+      "target_blob_sha": "a0203eefcb88d0dcf5e5ff0e2f90150a1b46ee05",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    },
+    {
+      "source_path": "vite.config.ts",
+      "source_blob_sha": "61914d0188b9102442ecfeb0fcd71584d8804a64",
+      "size_bytes": 896,
+      "target_path": "integrations/taskagile-reference/recovered-source/vite.config.ts",
+      "target_blob_sha": "61914d0188b9102442ecfeb0fcd71584d8804a64",
+      "status": "COPIED_TO_REFERENCE_NOT_RUNTIME_INTEGRATED"
+    }
+  ]
+}

@@ -1,21 +1,20 @@
-# TaskAgile recovered server/config source
+# TaskAgile recovered source reference
 
-This directory preserves eight additional text files from `ngl-damien/TaskAgile` at source commit `66885999064997b332f61dac13333058c462e857`. The files were absent from the prior 15-file selected reference tranche and are copied without runtime wiring.
+This directory now preserves **85 source files** from `ngl-damien/TaskAgile` that were absent from the original Alpha One recovery snapshot, including the 8-file server/config tranche and 77 additional source/assets. The 15-file selected tranche is preserved under the parent `integrations/taskagile-reference/` path. The complete 169-file disposition is recorded in `TASKAGILE_RECOVERY_MANIFEST.json` at the parent folder and in the file-level reconciliation ledger.
 
-## Contents
+## Current accounting
 
-- Express/WebSocket server entry point and route/storage stubs
-- Vite development/static server helper
-- Shared database schema
-- Vite, Tailwind and TypeScript configuration
+- 66 source blobs match the original recovery snapshot exactly.
+- 100 source files from the original snapshot gap are preserved in the reference area (15 selected files + 8 initial recovery files + 77 additional files).
+- Three source PNG blobs remain identified but not copied because the GitHub content interface returned empty content for these multi-megabyte binary files: `production/deathmatch/assets/arena_bg.png`, `musk_fighter.png`, and `trump_fighter.png`. Their source blob SHAs and sizes remain in the manifest/ledger.
+- Source code is preserved, not runtime-integrated. The TaskAgile app has not been built or tested by this import.
 
-## Evidence and limits
+## License discrepancy
 
-- Each source blob SHA is recorded in the parent `SOURCE_MANIFEST.json`.
-- Source bytes were retrieved from the exact source commit above.
-- No build or tests were run for this tranche.
-- This is not a standalone runnable application: the original client tree, dependency graph, environment, and other assets are not all present in this directory.
-- **Do not execute or expose this code as an Alpha One service.** The source server accepts WebSocket clients without an evident identity/authorization layer, processes client-provided movement/combat messages, keeps multiplayer state in memory, binds to `0.0.0.0:5000`, and configures Vite `allowedHosts: true`. These are prototype-level behaviors requiring threat review before any adaptation.
-- The storage schema includes a password field; no authentication implementation is supplied by the included route stub. Do not infer secure authentication from the schema.
+TaskAgile `package.json` declares `MIT`, but the root `LICENSE` and `LICENSE.md` state NGL-A v1.0 with attribution, non-commercial reuse conditions, commercial permission/payment requirements, and AI-training restrictions. This is a material inconsistency. Preserve both files and treat reuse as blocked for commercial deployment until the rights are resolved; do not silently assume MIT-only rights.
 
-The original TaskAgile repository remains untouched. This import is recovery/provenance only, not integration or a security approval.
+## Safety boundary
+
+- `staging/rollback.sh` and `staging/rollback-codex.sh` are preserved as ordinary non-executable source files. They contain `git reset --hard` and `git push --force-with-lease`; do not execute them as part of recovery.
+- Prototype server code includes WebSocket/client-action and host-configuration risks documented in the prior tranche README. No service is launched by this import.
+- No credentials were copied. Source presence and SHA identity do not establish runtime safety, license clearance, or product readiness.
