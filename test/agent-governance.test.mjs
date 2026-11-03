@@ -224,3 +224,12 @@ test('CI preflight scopes Founder verification, live Gate regressions and unique
   assert.ok(command.includes('--checkpoint docs/operations/LATEST_CHECKPOINT.md'));
   assert.ok(!command.includes('--receipt'), 'the runner owns unique receipt creation');
 });
+
+test('Verify workflow uploads the unique hidden preflight receipt even after failure', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/verify.yml', import.meta.url), 'utf8');
+  assert.ok(workflow.includes('name: Preserve portable preflight receipt'));
+  assert.ok(workflow.includes('if: always()'));
+  assert.ok(workflow.includes('uses: actions/upload-artifact@v4'));
+  assert.ok(workflow.includes('path: .runtime/agent-preflight-ci-*.json'));
+  assert.ok(workflow.includes('include-hidden-files: true'));
+});
