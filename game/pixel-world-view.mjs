@@ -276,7 +276,7 @@ export function projectMapLabelMetrics(screenFontSize, zoom, viewportWidth) {
  * off-screen objects into view. Inputs and outputs are in CSS pixels/world units.
  */
 export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewportHeight, camera, zoom,
-  panelWidth, panelHeight, margin = 8) {
+  panelWidth, panelHeight, margin = 8, avoidRects = []) {
   const cameraX = ownDataValue(camera, 'x');
   const cameraY = ownDataValue(camera, 'y');
   if (![anchorX, anchorY, viewportWidth, viewportHeight, cameraX, cameraY, zoom,
@@ -285,7 +285,22 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
       panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
       margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
       panelWidth > viewportWidth - margin * 2 ||
-      panelHeight > viewportHeight - margin * 2) return null;
+      panelHeight > viewportHeight - margin * 2 ||
+      !isArraySafely(avoidRects)) return null;
+
+  const obstacleCount = ownDataValue(avoidRects, 'length');
+  if (!Number.isSafeInteger(obstacleCount) || obstacleCount < 0 || obstacleCount > 128) return null;
+  const obstacles = [];
+  for (let index = 0; index < obstacleCount; index += 1) {
+    const obstacle = ownDataValue(avoidRects, String(index));
+    if (!obstacle || typeof obstacle !== 'object' || isArraySafely(obstacle)) return null;
+    const left = ownDataValue(obstacle, 'left');
+    const top = ownDataValue(obstacle, 'top');
+    const right = ownDataValue(obstacle, 'right');
+    const bottom = ownDataValue(obstacle, 'bottom');
+    if (![left, top, right, bottom].every(Number.isFinite) || right < left || bottom < top) return null;
+    if (right > left && bottom > top) obstacles.push({ left, top, right, bottom });
+  }
 
   const screenX = viewportWidth / 2 + (anchorX - cameraX) * zoom;
   const screenY = viewportHeight / 2 + (anchorY - cameraY) * zoom;
@@ -297,12 +312,30 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
   if (originalRight <= margin || originalLeft >= viewportWidth - margin ||
       originalBottom <= margin || originalTop >= viewportHeight - margin) return null;
 
-  const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, originalLeft));
-  const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, originalTop));
-  return Object.freeze({
-    x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
-    y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
-  });
+  const candidates = [
+    { left: originalLeft, top: originalTop },
+    { left: originalLeft, top: screenY + 4 },
+    { left: screenX + 4, top: screenY - panelHeight / 2 },
+    { left: screenX - panelWidth - 4, top: screenY - panelHeight / 2 },
+    { left: originalLeft + panelWidth / 2 + 4, top: originalTop },
+    { left: originalLeft - panelWidth / 2 - 4, top: originalTop }
+  ];
+  for (const candidate of candidates) {
+    const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, candidate.left));
+    const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, candidate.top));
+    const right = left + panelWidth;
+    const bottom = top + panelHeight;
+    const blocked = obstacles.some(obstacle =>
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
+    );
+    if (blocked) continue;
+    return Object.freeze({
+      x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
+      y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
+    });
+  }
+  return null;
 }
 
 /**
@@ -785,6 +818,8 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
+const MAP_OVERLAY_SELECTOR = '#quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, #sheet-backdrop, #sheet, #portal, #toast';
+
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
@@ -799,6 +834,56 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
+    this.observeMapOverlays();
+  }
+
+  resize() {
+    super.resize();
+    this.mapOverlayRects = this.measureMapOverlayRects();
+  }
+
+  measureMapOverlayRects() {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function' ||
+        typeof this.canvas?.getBoundingClientRect !== 'function') return Object.freeze([]);
+    let canvasRect, elements;
+    try {
+      canvasRect = this.canvas.getBoundingClientRect();
+      elements = document.querySelectorAll(MAP_OVERLAY_SELECTOR);
+    } catch {
+      return Object.freeze([]);
+    }
+    const originX = canvasRect?.left;
+    const originY = canvasRect?.top;
+    if (![originX, originY, this.width, this.height].every(Number.isFinite)) return Object.freeze([]);
+
+    const overlays = [];
+    try {
+      for (const element of elements) {
+        try {
+          if (!element || typeof element.getBoundingClientRect !== 'function') continue;
+          const rect = element.getBoundingClientRect();
+          const left = Math.max(0, rect.left - originX);
+          const top = Math.max(0, rect.top - originY);
+          const right = Math.min(this.width, rect.right - originX);
+          const bottom = Math.min(this.height, rect.bottom - originY);
+          if (![left, top, right, bottom].every(Number.isFinite) ||
+              right <= left || bottom <= top) continue;
+          overlays.push(Object.freeze({ left, top, right, bottom }));
+        } catch {}
+      }
+    } catch {}
+    return Object.freeze(overlays);
+  }
+
+  observeMapOverlays() {
+    if (!this.resizeObserver?.observe || typeof document === 'undefined' ||
+        typeof document.querySelectorAll !== 'function') return;
+    try {
+      for (const element of document.querySelectorAll(MAP_OVERLAY_SELECTOR)) {
+        try { this.resizeObserver.observe(element); } catch {}
+      }
+    } catch {}
+    this.mapOverlayRects = this.measureMapOverlayRects();
   }
 
   handlePointer(event, fallback) {
@@ -983,21 +1068,34 @@ export class PixelWorldView extends WorldView {
     const width = Math.min(metrics.maxWidth, Math.max(metrics.minWidth,
       Math.ceil(context.measureText(label).width) + 2 * metrics.horizontalPadding));
     const height = metrics.fontSize + 2 * metrics.verticalPadding;
+    if (!Array.isArray(this.mapAvoidRects)) this.mapAvoidRects = [];
     const placement = projectMapLabelPosition(
-      x, y, this.width, this.height, this.camera, this.zoom, width * this.zoom, height * this.zoom
+      x, y, this.width, this.height, this.camera, this.zoom,
+      width * this.zoom, height * this.zoom, 8, this.mapAvoidRects
     );
     if (!placement) return;
     const drawX = placement.x;
     const drawY = placement.y;
     const left = Math.round(drawX - width / 2);
-    const top = Math.round(drawY - metrics.fontSize - metrics.verticalPadding);
+    const top = Math.round(drawY - height);
     context.fillStyle = '#0c0d0b';
     context.fillRect(left, top, width, height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = metrics.lineWidth;
     context.strokeRect(left + metrics.lineWidth / 2, top + metrics.lineWidth / 2,
       width - metrics.lineWidth, height - metrics.lineWidth);
-    this.text(label, drawX, drawY, metrics.fontSize, '#f5f1e6');
+    this.text(label, drawX, drawY - metrics.verticalPadding, metrics.fontSize, '#f5f1e6');
+
+    const screenCenterX = this.width / 2 + (drawX - this.camera.x) * this.zoom;
+    const screenBottom = this.height / 2 + (drawY - this.camera.y) * this.zoom;
+    const screenWidth = width * this.zoom;
+    const screenHeight = height * this.zoom;
+    this.mapAvoidRects.push(Object.freeze({
+      left: screenCenterX - screenWidth / 2,
+      top: screenBottom - screenHeight,
+      right: screenCenterX + screenWidth / 2,
+      bottom: screenBottom
+    }));
   }
 
   drawResearchCounterPanel(x, y) {
@@ -1260,6 +1358,7 @@ export class PixelWorldView extends WorldView {
   }
 
   render() {
+    this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     context.clearRect(0, 0, this.width, this.height);
