@@ -1026,3 +1026,87 @@ test("Founder nonce ledger rejects a private leaf below a writable non-sticky an
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("a pre-existing recovery lease blocks nonce writes before lock acquisition", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-recovery-lease-existing-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
+    writeFileSync(recoveryLeasePath, canonical({
+      schema: "ngl.founder-nonce-recovery.v1",
+      pid: process.pid,
+      openedAt: new Date().toISOString(),
+    }), { mode: 0o600 });
+
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_NONCE_RECOVERY_IN_PROGRESS/
+    ));
+
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
+    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a recovery lease appearing after writer lock creation fences nonce mutation and releases only the writer lock", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-recovery-lease-race-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
+    const childSource = [
+      "import fs from 'node:fs';",
+      "import { syncBuiltinESMExports } from 'node:module';",
+      "const originalOpenSync = fs.openSync;",
+      "let injected = false;",
+      "fs.openSync = (target, ...args) => {",
+      "  const descriptor = originalOpenSync(target, ...args);",
+      "  if (!injected && String(target).endsWith('.founder-nonce.lock')) {",
+      "    injected = true;",
+      "    const lease = originalOpenSync(process.env.TEST_RECOVERY_LEASE, 'wx', 0o600);",
+      "    fs.writeFileSync(lease, JSON.stringify({ schema: 'ngl.founder-nonce-recovery.v1', pid: process.pid, openedAt: new Date().toISOString() }));",
+      "    fs.fsyncSync(lease);",
+      "    fs.closeSync(lease);",
+      "  }",
+      "  return descriptor;",
+      "};",
+      "syncBuiltinESMExports();",
+      "const { authorizationEvent } = await import(" + JSON.stringify(fixture.moduleUrl) + ");",
+      "try {",
+      "  authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) });",
+      "  console.log('UNEXPECTED_AUTHORIZATION');",
+      "  process.exitCode = 1;",
+      "} catch (error) {",
+      "  console.log('ERROR:' + (error && error.message ? error.message : String(error)));",
+      "}",
+    ].join("\n");
+    const child = spawnSync(process.execPath, ["--input-type=module", "-e", childSource], {
+      encoding: "utf8",
+      timeout: 10000,
+      env: {
+        ...process.env,
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+        TEST_RECOVERY_LEASE: recoveryLeasePath,
+        TEST_SIGNED: JSON.stringify(signed),
+        TEST_PAYLOAD: JSON.stringify(fixture.payload),
+      },
+    });
+    assert.equal(child.status, 0, child.stderr);
+    assert.match(child.stdout, /ERROR:FOUNDER_NONCE_RECOVERY_IN_PROGRESS/);
+    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
+    assert.equal(existsSync(recoveryLeasePath), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
