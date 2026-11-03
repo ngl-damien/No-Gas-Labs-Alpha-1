@@ -470,8 +470,22 @@ export function getQuestTrail(world, viewer) {
   );
   const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
   const nextSourceObservationTarget = publishedObservatoryVersions.at(-1) || null;
-  const sourceObservationRecords = projectSourceObservationRecords(events, world?.creations)
-    .filter(record => record.projectionStatus === 'linked' && record.actor?.id === actorId && record.actor?.role === actorRole);
+  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked');
+  const sourceObservationRecords = allSourceObservationRecords
+    .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
+  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+    .filter(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole);
+  const nextSourceObservationChallengeTarget = sourceObservationChallenges.length ? null :
+    allSourceObservationRecords.find(record => record.actor?.id !== actorId &&
+      !record.challenges.some(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole)) || null;
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === actorId && response.actor?.role === actorRole);
+  const nextSourceObservationResponseTarget = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).filter(challenge => challenge.responseStatus === 'unanswered')
+      .map(challenge => ({ record, challenge }))
+  )[0] || null;
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
   ));
@@ -724,6 +738,20 @@ export function getQuestTrail(world, viewer) {
         'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
       ),
       trailMilestone(
+        'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
+        sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
+        nextSourceObservationChallengeTarget ? { type: 'creation', id: nextSourceObservationChallengeTarget.creationId, version: nextSourceObservationChallengeTarget.version } : null,
+        !nextSourceObservationChallengeTarget && !sourceObservationChallenges.length ? 'Another actor must first retain a linked Source Observation that you have not challenged.' : null,
+        'A challenge preserves attributed dissent; it does not decide truth, certify evidence, or alter the original note.'
+      ),
+      trailMilestone(
+        'founder-source-observation-response', 'Respond to a challenge against your observation', 1,
+        sourceObservationResponses.map(event => event.id), sourceObservationResponses,
+        nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
+        !nextSourceObservationResponseTarget && !sourceObservationResponses.length ? 'Another actor must challenge one of your linked observations before you can respond.' : null,
+        'The original author’s reply is retained beside the challenge. It is not independent evidence, adjudication, a truth verdict, or approval.'
+      ),
+      trailMilestone(
         'founder-research-report', 'Record a version-bound research report', 1,
         researchReports.map(match => match.event.id), researchReports.map(match => match.event),
         hasObservatory && !hasResearchReport && latestObservatoryPublication
@@ -858,6 +886,20 @@ export function getQuestTrail(world, viewer) {
       nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'creation', id: nextSourceObservationTarget.creationId, version: nextSourceObservationTarget.version } : null,
       !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before recording an observation.' : null,
       'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
+    ),
+    trailMilestone(
+      'witness-source-observation-challenge', 'Challenge another actor’s source observation', 1,
+      sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
+      nextSourceObservationChallengeTarget ? { type: 'creation', id: nextSourceObservationChallengeTarget.creationId, version: nextSourceObservationChallengeTarget.version } : null,
+      !nextSourceObservationChallengeTarget && !sourceObservationChallenges.length ? 'Another actor must first retain a linked Source Observation that you have not challenged.' : null,
+      'A challenge preserves attributed dissent; it does not decide truth, certify evidence, or alter the original note.'
+    ),
+    trailMilestone(
+      'witness-source-observation-response', 'Respond to a challenge against your observation', 1,
+      sourceObservationResponses.map(event => event.id), sourceObservationResponses,
+      nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
+      !nextSourceObservationResponseTarget && !sourceObservationResponses.length ? 'Another actor must challenge one of your linked observations before you can respond.' : null,
+      'The original author’s reply is retained beside the challenge. It is not independent evidence, adjudication, a truth verdict, or approval.'
     ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,

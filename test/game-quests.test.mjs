@@ -685,3 +685,80 @@ test('Source Observation quest progress is actor-scoped and routes an unfinished
   assert.deepEqual(witnessObjective.action, { type: 'creation', id: creationId, version: 2 });
   assert.match(witnessObjective.interpretation, /NOT_PERFORMED/);
 });
+
+test('Founder and Witness challenge quests count only a different actor’s linked Source Observation dissent', () => {
+  const creationId = 'quest-observatory';
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const creation = {
+    id: creationId, kind: 'observatory', title: 'Source Observatory',
+    version: 1, publishedAt, versions: []
+  };
+  const observation = (actor, at, claim) => {
+    const note = {
+      claim, sourceKind: 'model-assertion',
+      source: 'A model response; no primary source retrieved.',
+      falsifier: 'A direct inspection contradicts the claim.',
+      uncertainty: 'Independent observation is absent.',
+      nextTest: 'Inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    const observationId = 'source-observation-' + digest;
+    return {
+      id: 'note-event-' + actor.id, type: 'source-observation-recorded',
+      observationId, creationId, version: 1, actor, at, ...note,
+      originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
+    };
+  };
+  const founderNote = observation(founder, '2026-10-28T17:01:00.000Z', 'Founder claim');
+  const witnessChallenge = {
+    id: 'witness-challenge-event', type: 'source-observation-challenged',
+    challengeId: 'witness-challenge', observationId: founderNote.observationId,
+    creationId, version: 1, actor: witness, at: '2026-10-28T17:02:00.000Z',
+    challengeType: 'contradiction', challengeText: 'The note has no independent source.'
+  };
+  const witnessNote = observation(witness, '2026-10-28T17:03:00.000Z', 'Witness claim');
+  const founderChallenge = {
+    id: 'founder-challenge-event', type: 'source-observation-challenged',
+    challengeId: 'founder-challenge', observationId: witnessNote.observationId,
+    creationId, version: 1, actor: founder, at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology', challengeText: 'The cited method is not reproducible.'
+  };
+  const founderResponse = {
+    id: 'founder-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'founder-response', challengeId: 'witness-challenge', observationId: founderNote.observationId,
+    creationId, version: 1, actor: founder, at: '2026-10-28T17:02:30.000Z',
+    responseText: 'The note is a lead only; retrieval is still required.'
+  };
+  const witnessResponse = {
+    id: 'witness-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'witness-response', challengeId: 'founder-challenge', observationId: witnessNote.observationId,
+    creationId, version: 1, actor: witness, at: '2026-10-28T17:04:30.000Z',
+    responseText: 'The method is a proposal, not an executed procedure.'
+  };
+  const world = {
+    creations: [creation],
+    events: [
+      { id: 'publish-observatory', type: 'publish', creationId, version: 1, actor: founder, at: publishedAt, reward: 100 },
+      founderNote, witnessChallenge, founderResponse, witnessNote, founderChallenge, witnessResponse
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const founderQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-source-observation-challenge');
+  const witnessQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation-challenge');
+  assert.equal(founderQuest.complete, true);
+  assert.equal(founderQuest.progress, 1);
+  assert.deepEqual(founderQuest.evidence.map(item => item.id), ['founder-challenge-event']);
+  assert.equal(witnessQuest.complete, true);
+  assert.equal(witnessQuest.progress, 1);
+  assert.deepEqual(witnessQuest.evidence.map(item => item.id), ['witness-challenge-event']);
+  const founderResponseQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-source-observation-response');
+  const witnessResponseQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation-response');
+  assert.equal(founderResponseQuest.complete, true);
+  assert.deepEqual(founderResponseQuest.evidence.map(item => item.id), ['founder-response-event']);
+  assert.equal(witnessResponseQuest.complete, true);
+  assert.deepEqual(witnessResponseQuest.evidence.map(item => item.id), ['witness-response-event']);
+});

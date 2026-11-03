@@ -176,3 +176,75 @@ test('Source Observatory notes are actor-attributed, version-bound, idempotent a
   await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
   await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
 });
+
+test('Source Observation challenges preserve attributed dissent without changing the original note, XP, or authority',async()=>{
+  const start=createWorld({id:'source-observation-challenge-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The bridge is open.',sourceKind:'model-assertion',source:'A model response; no source retrieved.',falsifier:'Direct inspection finds the bridge closed.',uncertainty:'No independent observation.',nextTest:'Inspect the primary source.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const beforeXp=recorded.world.xp;
+  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},witness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'source-observation-challenged');
+  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.actor.role,'witness');
+  assert.equal(event.observationId,observationId);
+  assert.equal(event.creationId,creationId);
+  assert.equal(event.version,1);
+  assert.equal(event.challengeType,'contradiction');
+  assert.equal(event.challengeText,'The note cites a model assertion but identifies no retrievable primary source.');
+  assert.deepEqual(challenged.result,{challengeId:event.challengeId});
+  assert.equal(challenged.world.xp,beforeXp);
+  assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  await validateWorld(challenged.world);
+  const responseAction={type:'respond-source-observation-challenge',challengeId:event.challengeId,responseText:'The note is a lead only; source retrieval remains outstanding.'};
+  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z',requestId:'source-response-1',actionFingerprint:'e'.repeat(64)});
+  const response=responded.world.events.at(-1);
+  assert.equal(response.type,'source-observation-challenge-responded');
+  assert.equal(response.actor.id,founder.id);
+  assert.equal(response.challengeId,event.challengeId);
+  assert.equal(response.observationId,observationId);
+  assert.equal(response.creationId,creationId);
+  assert.equal(response.version,1);
+  assert.equal(response.responseText,responseAction.responseText);
+  assert.deepEqual(response.actionResult,{responseId:response.responseId});
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.events.filter(item=>item.type==='source-observation-challenge-responded').length,1);
+  await validateWorld(responded.world);
+  await assert.rejects(applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403);
+  await assert.rejects(applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),error=>error.code==='CHALLENGE_ALREADY_ANSWERED'&&error.status===409);
+  const tamperedResponse=structuredClone(responded.world);
+  tamperedResponse.events.at(-1).actor=witness;
+  await assert.rejects(validateWorld(tamperedResponse),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId,challengeType:'other',challengeText:'Self-challenge.'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='SELF_CHALLENGE');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId:'missing-observation',challengeType:'other',challengeText:'No target.'},witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='NOT_FOUND');
+  const tampered=structuredClone(challenged.world);
+  tampered.events.at(-1).version=2;
+  await assert.rejects(validateWorld(tampered));
+
+  const proposal=await applyAction(responded.world,{
+    type:'propose-moonshot',title:'A bounded test',hypothesis:'A source can be inspected.',
+    falsifier:'The source cannot be retrieved.',evidenceNeeded:'A retained primary-source capture.'
+  },founder,{now:'2026-10-17T12:00:05.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Attempt a bounded retrieval.',observation:'The outcome remains inconclusive.',
+    reportedOutcome:'inconclusive'
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
+  const malformed=structuredClone(report.world);
+  malformed.events.push({
+    id:'cross-kind-challenge-test',type:'experiment-challenged',actor:witness,
+    at:'2026-10-17T12:00:07.000Z',semantics:'Attributed challenge; not adjudicated.',
+    challengeId:event.challengeId,reportId:report.result.reportId,
+    moonshotId:proposal.result.moonshotId,challengeType:'contradiction',
+    challengeText:'This challenge must have a unique identity.',
+    evidenceCreationId:null,evidenceVersion:null
+  });
+  malformed.revision+=1;
+  malformed.updatedAt='2026-10-17T12:00:07.000Z';
+  await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
+});

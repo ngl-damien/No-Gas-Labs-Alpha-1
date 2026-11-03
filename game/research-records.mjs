@@ -368,6 +368,7 @@ export const SOURCE_OBSERVATION_SOURCE_KINDS = Object.freeze([
   'model-assertion'
 ]);
 const sourceObservationSourceKinds = new Set(SOURCE_OBSERVATION_SOURCE_KINDS);
+const sourceObservationChallengeTypes = new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
 const sourceObservationExportKeys = ['assurance', 'observations', 'schema'];
 const sourceObservationAssuranceKeys = ['execution', 'independentVerification', 'modelAssertions', 'sourceRetrieval'];
 const sourceObservationNoteKeys = ['claim', 'falsifier', 'nextTest', 'source', 'sourceKind', 'uncertainty'];
@@ -490,6 +491,24 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
   const eventIdCounts = countBy(events, 'id', hasText);
   const observationEvents = events.filter(event => event?.type === 'source-observation-recorded');
   const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
+  const sourceObservationChallengeEvents = events.filter(event => event?.type === 'source-observation-challenged');
+  const challengeIdCounts = countBy(sourceObservationChallengeEvents, 'challengeId', hasText);
+  const sourceObservationResponseEvents = events.filter(event => event?.type === 'source-observation-challenge-responded');
+  const responseIdCounts = countBy(sourceObservationResponseEvents, 'responseId', hasText);
+  const challengesByObservation = new Map();
+  events.forEach((event, index) => {
+    if (event?.type !== 'source-observation-challenged' || !hasText(event.observationId)) return;
+    const rowsForObservation = challengesByObservation.get(event.observationId) || [];
+    rowsForObservation.push({ event, index });
+    challengesByObservation.set(event.observationId, rowsForObservation);
+  });
+  const responsesByChallenge = new Map();
+  events.forEach((event, index) => {
+    if (event?.type !== 'source-observation-challenge-responded' || !hasText(event.challengeId)) return;
+    const rowsForChallenge = responsesByChallenge.get(event.challengeId) || [];
+    rowsForChallenge.push({ event, index });
+    responsesByChallenge.set(event.challengeId, rowsForChallenge);
+  });
   const versions = new Map();
   for (const creation of creations) {
     if (!creation || unsafeCreations.has(creation) || typeof creation.id !== 'string' || !creation.id) continue;
@@ -570,6 +589,41 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus = 'unavailable';
       projectionReason = 'The source publication does not precede this note with a matching retained timestamp.';
     }
+    const challenges = (challengesByObservation.get(event.observationId) || []).filter(({ event: challenge, index: challengeIndex }) =>
+      projectionStatus === 'linked' && !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
+      typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
+      typeof challenge.actor?.id === 'string' && challenge.actor.id && ['founder', 'witness'].includes(challenge.actor.role) &&
+      challenge.actor.id !== event.actor?.id && challenge.creationId === event.creationId && challenge.version === event.version &&
+      sourceObservationChallengeTypes.has(challenge.challengeType) && typeof challenge.challengeText === 'string' &&
+      challenge.challengeText.trim() && Array.from(challenge.challengeText).length <= 1000 &&
+      isStrictTimestamp(challenge.at) && challengeIndex > index && Date.parse(event.at) <= Date.parse(challenge.at)
+    ).map(({ event: challenge, index: challengeIndex }) => {
+      const responseRows = responsesByChallenge.get(challenge.challengeId) || [];
+      const responses = responseRows.filter(({ event: response, index: responseIndex }) =>
+        !unsafeEvents.has(response) && typeof response.id === 'string' && eventIdCounts.get(response.id) === 1 &&
+        typeof response.responseId === 'string' && responseIdCounts.get(response.responseId) === 1 &&
+        response.challengeId === challenge.challengeId && response.observationId === event.observationId &&
+        response.creationId === event.creationId && response.version === event.version &&
+        response.actor?.id === event.actor?.id && response.actor?.role === event.actor?.role &&
+        typeof response.responseText === 'string' && response.responseText.trim() &&
+        Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
+        responseIndex > challengeIndex && Date.parse(challenge.at) < Date.parse(response.at) &&
+        Date.parse(event.at) < Date.parse(response.at)
+      ).map(({ event: response }) => Object.freeze({
+        id: response.id, type: response.type, responseId: response.responseId,
+        challengeId: response.challengeId, observationId: response.observationId,
+        creationId: response.creationId, version: response.version,
+        responseText: response.responseText, actor: response.actor, at: response.at
+      }));
+      const responseStatus = responseRows.length === 0 ? 'unanswered' :
+        responseRows.length === 1 && responses.length === 1 ? 'answered' : 'ambiguous';
+      return Object.freeze({
+        id: challenge.id, challengeId: challenge.challengeId, observationId: challenge.observationId,
+        creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
+        challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at,
+        responseStatus, responses: Object.freeze(responses)
+      });
+    });
     const warning = event.sourceKind === 'model-assertion'
       ? 'Model assertions are leads only, not evidence.'
       : event.sourceKind === 'tool-output'
@@ -595,6 +649,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       modelAssertions: event.modelAssertions,
       execution: event.execution,
       normalizedRecordDigest: event.normalizedRecordDigest,
+      challenges: Object.freeze(challenges),
       targetTitle: target?.version?.title || target?.creation?.title || null,
       projectionStatus,
       projectionReason,

@@ -131,7 +131,7 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
-    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['source-responder', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
     ['questkeeper', 3], ['restorer', 0]
   ]);
   assert.equal(record.xp, 100);
@@ -782,4 +782,54 @@ test('Source Recorder skill counts only the actor\'s uniquely linked notes and g
   const witnessRecord = projectCharacter(world, witness);
   assert.equal(witnessRecord.xp, 0);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-recorder').count, 0);
+});
+
+test('Challenger skill counts a different actor’s retained Source Observation challenge without awarding XP', () => {
+  const creationId = 'observatory-challenge';
+  const note = {
+    claim: 'The bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'A model response; no primary source retrieved.',
+    falsifier: 'Direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const world = {
+    xp: 100,
+    creations: [publishedCreation(creationId, [t1])],
+    events: [
+      publication('challenge-publish', founder, creationId, 1, t1),
+      event('challenge-source-note', 'source-observation-recorded', founder, t2, {
+        observationId, creationId, version: 1, ...note,
+        originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+        modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
+      }),
+      event('challenge-source-dissent', 'source-observation-challenged', witness, t3, {
+        challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+        challengeType: 'missing-evidence',
+        challengeText: 'The source is not independently retrievable.'
+      }),
+      event('challenge-source-response', 'source-observation-challenge-responded', founder, t4, {
+        responseId: 'source-response-1', challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+        responseText: 'The note is a lead only; source retrieval remains outstanding.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'challenger').count, 1);
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'challenger').count, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-responder').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-responder').count, 0);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(witnessRecord.xp, 0);
 });

@@ -190,3 +190,51 @@ The runtime feature already present in PR #320 remains a direct in-world form on
 - G6 remains **IN PROGRESS**. Main has not received this stack. Source retrieval, independent verification, and execution remain NOT_PERFORMED / NOT_EXECUTED; user/model-authored notes do not establish the truth of claims.
 - No physical Android-device acceptance is claimed. Browser acceptance is hosted Chromium on Ubuntu, not an Android device. The classic top-down tile-and-sprite world renderer remains unfinished, as does live Founder identity/key custody and cryptographic authorization integration.
 - Next: reconcile the parent stack and exact-head evidence before any integration; then build an actual source-retrieval/inspection path that preserves origin, retrieved bytes, independent verification, falsifiers, and dissent as separate states. Keep the pixel-art world renderer and physical Android acceptance as distinct product gates.
+
+
+---
+
+## Run 41 — 2026-11-03 — Worker B — Source Observation dissent and exact Relay retry verification
+
+**Repository:** ngl-damien/No-Gas-Labs-Alpha-1  
+**Main baseline observed:** `cc317d49c8fdf003c78aa40f38a177095019066e`  
+**Proposed stack:** PR #323, branch `game/source-observation-dissent-20261103`, code/test head `9074aaaa7642ec9b205cc5aee742a00db3022224`; child of PR #320 exact parent head `887c81272df8bf11ebe8b39c49bfbc354fd35dac` → #317 → #315 → #314 → #312.
+
+### Rehydration and coordination
+
+- Read root `AGENTS.md` and the complete canonical shared protocol sequentially on this branch; the GitHub blob identities match the mainline copies. Read the Run 40 checkpoint, the full MMORPG completion ledger and contract.
+- Checked nested instructions for `game/`, `test/`, `scripts/`, `docs/`, and `docs/operations/`; all returned 404. Root instructions remain applicable.
+- Local preflight and local Node 24 tests were unavailable: no Remote Desktop Commander device was online, and the container has Node 22 while the repository requires Node 24. The manual instruction sequence was followed. The exact-head hosted preflight ran after the edits and is recorded below; it is post-change evidence, not a pre-edit receipt.
+- Rechecked Worker A's latest relevant work: PR #321 exact head `67a2534a5a266905870036593388e55479c5ee53` had Verify, Genesis and Browser all successful; PR #316 exact head `206e617510f63098018513c77621be673dc92f2c` had Genesis successful while Verify/Browser were still running/pending at last inspection; PR #309 exact head `9de3c5617f9dc0ebfe9211ed62489003b4b4032e` had its emulator Android workflow pass 7/7, but this is not physical-device acceptance. PR #313's Browser passed while its Verify had a separate 774/775 Decision Chamber fixture failure.
+- Rechecked PR #320 as the direct parent and PR #323's changed paths before editing. No other active PR owned the browser script or the two model/test paths changed in this run.
+
+### Selected defect and changes
+
+The initial PR #323 head `08376e7b0c47d1d64751d2524169b7558c9765ff` had Verify and Genesis pass, but Browser Acceptance failed in the shared two-session journey. The route handler was still awaiting `route.fetch()` when the test immediately read canonical state and asserted that no event existed. That assertion unwound the browser context while the simulated response-loss handler was still running, producing a secondary Playwright `TargetClosed` error. The failure did not establish a server-side commit defect.
+
+This run made three bounded changes:
+
+1. `scripts/verify-browser.py`: after submitting the Source Observation challenge with a simulated post-commit response loss, the test now waits for the explicit `Challenge response lost after commit` toast and confirms the route handler has completed before making the independent server-state read. It then retries the exact pending action through The Relay and checks that the already-committed event/revision are not duplicated.
+2. `game/model.mjs`: the Source Observation challenge validator now also registers challenge IDs in the same cross-event challenge identity set used by experiment challenges. The existing global identity validator already rejects duplicate IDs; this makes the shared challenge namespace explicit as defense in depth.
+3. `test/game-model.test.mjs`: add an imported-world regression that reuses a Source Observation challenge ID on an experiment-challenge event and requires `INVALID_WORLD`.
+
+No new truth verdict, source retrieval, independent verification, XP, authority, approval, Founder identity, or canonical state was created by this validation work.
+
+### Exact code/test-head verification — `9074aaaa7642ec9b205cc5aee742a00db3022224`
+
+- Verify [41638571002](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638571002): **success**. Hosted preflight artifact [13231916319](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638571002/artifacts/13231916319) reported `ready`, 45 targets, 48 file records, zero warnings and zero failures. The receipt JSON SHA-256 is `063553ffe4f86a057562d52531c26a63f6b48c92cb500c2d747ad305e7b1d778`; the artifact ZIP SHA-256 is `ea06405728267f74b0475324587e2ef601cdb38d7d3e23418cbe9fb3a7615cba`.
+- Hosted Node 24.22.1 full `node --test`: exit 0, 13.84 s. Python inspector: exit 0, 1.07 s. Game package build: exit 0, 0.87 s. Bounded institutional exercise: `passed: true`, 15.59 s.
+- Genesis Evidence Invariant [41638570793](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570793): **success**.
+- Browser Acceptance [41638570851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570851): **success**, 12/12 journeys. The shared two-session journey passed with the new post-commit response-loss wait and exact Relay retry. Other observed journeys: desktop, phone, five institutional locations, 320/360/412 px toolbar layouts with 44 px minimum targets, one-button launch at 320/412 px, standalone file export and exact-byte checks, and shared-service restart.
+- Browser artifact [13231309227](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570851/artifacts/13231309227): 5,313,038 bytes; ZIP SHA-256 `dd6ef746f938979641d0101d75baead387a78c2208ee06f4e76fac60d37c8063`.
+- Browser logs still contain Node 20 action deprecation and Node `punycode`/`url.parse` deprecation warnings. They did not fail the 12 journeys.
+
+### Gate state, limits and next work
+
+- PR #323 remains draft and must travel with its parent stack. Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`; no merge, release, deployment, credential/permission change, external publication, Founder decision, or physical-device test occurred.
+- G6 remains **IN PROGRESS**. Source Observation challenges are attributed dissent against an exact earlier note/version, not independent evidence that the note is false, not an adjudication, and not a truth verdict. The actor-ID distinction does not prove distinct real-world human identity. Source retrieval and independent verification remain `NOT_PERFORMED`; no XP or authority is awarded for a challenge.
+- The new Source Observation and challenge event types are not yet included in the Evidence Archive/TownSquare map activity counters. `game/world-view.mjs` is owned by the separate PR #309 lifecycle change; do not edit that shared file concurrently. Reconcile that branch before adding the missing map projection.
+- The world renderer remains painterly/vector rather than the requested top-down tile-and-sprite RuneScape/Endless Online direction. Physical Android-device acceptance remains unverified; the PR #309 emulator pass is not a physical-device result.
+- Next ranked actions: (1) after reconciling PR #309, project Source Observation and dissent counts at the Evidence Archive/TownSquare world locations; (2) deliver the first real top-down tile/sprite renderer slice; (3) add actual source retrieval with origin, captured bytes, independent verification, falsifier and dissent as distinct states; (4) establish physical Android-device acceptance.
+
+No merge or deployment was performed.
