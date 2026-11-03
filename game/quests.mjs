@@ -379,6 +379,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'collaborator-response-recorded' ? {
+        collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {})
     }));
   }
   const complete = evidence.length >= target;
@@ -519,6 +524,14 @@ export function getQuestTrail(world, viewer) {
   const studyReviews = allStudyReviews.filter(event => event.actor.id === actorId && event.actor.role === actorRole);
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
+  const collaboratorResponseIdCounts = new Map();
+  for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
+    collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
+  const collaboratorResponses = events.filter(event => event?.type === 'collaborator-response-recorded' &&
+    typeof event.id === 'string' && uniqueMoonshotEventIds.has(event.id) &&
+    typeof event.responseId === 'string' && collaboratorResponseIdCounts.get(event.responseId) === 1 &&
+    event.actor?.id === actorId && event.actor?.role === actorRole);
+  const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const moonshotProposals = events.filter(event =>
     isValidMoonshotProposal(event) && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
@@ -747,6 +760,12 @@ export function getQuestTrail(world, viewer) {
         !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
         !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
       ),
+      trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
+        collaboratorResponses.map(event => event.id), collaboratorResponses,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
+        'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
     ]);
   }
 
@@ -822,6 +841,12 @@ export function getQuestTrail(world, viewer) {
       studyReviews.map(event => event.id), studyReviews,
       !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
       !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
+    ),
+    trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
+      collaboratorResponses.map(event => event.id), collaboratorResponses,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
+      'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
     ),
   ]);
 }

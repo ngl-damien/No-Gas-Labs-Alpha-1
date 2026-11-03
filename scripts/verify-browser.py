@@ -273,6 +273,63 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        for role in ('archivist','adversary','synthesizer','tutor'):
+            expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
+        packet=page.locator('[data-collaborator-role="adversary"]')
+        packet.locator('details.collaborator-packet summary').click()
+        prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        target_event=next(record['eventId'] for record in packet_payload['inputRecords'] if record['type']=='experiment-reported')
+        response={
+            'targetEventId':target_event,
+            'challengeType':'methodology',
+            'challengeDraft':'The procedure does not specify a control condition.',
+            'distinctnessAssessment':'This is a draft for human review against the supplied challenge.',
+            'duplicateOfEventIds':[],
+            'counterexample':'A controlled comparison could produce a different result.',
+            'evidenceNeeded':['A retained controlled replication.'],
+            'unknowns':['No independent measurement is supplied.']
+        }
+        valid_response_text=json.dumps(response)
+        response_details=packet.locator('details.collaborator-response')
+        response_details.locator('summary').click()
+        response_field=response_details.locator('textarea[aria-label="Adversary response JSON"]')
+        expect(response_field).to_be_visible()
+        response_field.fill(valid_response_text)
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+        response['targetEventId']='event-not-in-packet'
+        response_field.fill(json.dumps(response))
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('RESPONSE_SCHEMA_OR_SCOPE_INVALID')
+        response_field.fill(valid_response_text)
+        packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        world_before_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY')
+        world_after_archive=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_archive['revision']==world_before_archive['revision']+1
+        assert world_after_archive['events'][:-1]==world_before_archive['events']
+        archived_response=world_after_archive['events'][-1]
+        assert archived_response['type']=='collaborator-response-recorded'
+        assert archived_response['validationStatus']=='valid-for-human-review'
+        assert archived_response['responseText']==valid_response_text
+        assert world_after_archive['xp']==world_before_archive['xp']==0
+        expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
+        expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+        page.locator('details.collaborator-response summary').click()
+        archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(archived_field).to_have_count(1)
+        assert archived_field.input_value()==valid_response_text
+        close_sheet(page)
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
         attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
