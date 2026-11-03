@@ -484,3 +484,60 @@ Implementation:
 - The classic top-down renderer is still an early slice; distinct institution silhouettes, narrow-width label contrast, full NPC/quest/encounter systems, actual source retrieval, independent verification, physical Android-device acceptance, and live Founder key enrollment remain unfinished.
 - Next highest-value work: improve pixel-world location readability and distinct institutional silhouettes without editing the lifecycle-owned `game/world-view.mjs`; then reconcile Android lifecycle changes with the current authority verifier and obtain physical-device evidence.
 - No merge, release, deployment, spending, external publication, key/credential/permission change, Founder decision, canonical world-state mutation, or XP award occurred.
+
+---
+
+## Run 47 — 2026-11-03 — Worker B — mobile wayfinding: legible map labels and off-screen quest compass
+
+**Objective:** address the screenshot-observed mobile readability gap and make the active quest destination useful when it lies outside the current camera viewport, without changing canonical quest progression.
+
+### Rehydration, ownership, and preflight
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current `main` was re-resolved through GitHub to `cc317d49c8fdf003c78aa40f38a177095019066e`. Main's checkpoint still names `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; its G0–G9 ledger remains `NOT ASSESSED`. Main was not changed.
+- Read root `AGENTS.md`, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` before repository inspection. Re-read the proposed Run 46 checkpoint, MMORPG completion contract, and ledger.
+- Both registered Desktop Commander devices remained offline and no local checkout/runtime was available. Followed the manual preflight sequence; local tests/preflight are not claimed. Hosted exact-head preflight is the executable preflight evidence.
+- Checked nested `AGENTS.md` under `game/`, `test/`, `scripts/`, `docs/`, and `docs/operations/`; all returned 404. Root instructions remain applicable.
+- Re-observed PR #326 exact head `60349b68f1b700acab66a359478416767f016d14`, PR #329 exact head `5ee7856f8cf44a971c95be0f6071fc18388399c0`, PR #331 pre-run head `f9cc158d0604533c80f8deb7c401449919ce7238`, and PR #330 exact head `20b636678c476d71ec8d027c475e608b32f94147`. The #331 branch's Run 46 follow-up `f9cc158` widened the bounded prefixed quest-target ID allowance and added long-ID regressions; its Verify 41694155430, Genesis 41694155564, and Browser 41694155399 all passed (12/12).
+- Re-observed Worker A PR #332 at exact head `a036e5c4f8e0d92199eb94f245c4f8613129fc8e`. It adds explicit device/inode comparison against the captured recovery-lease identity and a release-path replacement regression. Its Verify 41698188063, Genesis 41698188231, and Browser 41698188134 all passed. This remains separate security work; no files were shared with this game change.
+- PR #313's Node 24 Browser-action modernization remains a separate draft despite all three of its checks passing; the current game branch still emits existing Node 20 action/deprecation warnings.
+
+### Donor and mechanism reinspection
+
+- `src/world/guild-hall.js`: a proposal becomes `AUTHORIZED` only when `isVerifiedAuthorization` verifies the matching authorization event.
+- `src/evidence/content-addressed.js`: SHA-256 plus byte size establishes byte identity, not truth or authorship.
+- `game/client.mjs`: The Relay retains the exact pending action, actor, and request ID and retries that same action; this renderer work does not alter that flow.
+- No donor code was copied. The map labels and compass are presentation/navigation only.
+
+### Change delivered
+
+- Draft child PR #331: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/331
+- Branch: `game/evidence-archive-map-projection-20261103`.
+- Parent: PR #329 exact head `5ee7856f8cf44a971c95be0f6071fc18388399c0`; PR #329 remains a child of PR #326.
+- Verified code/test head: `3fb0c4a5d11734c0b70ebcd8015840d658935c5d`.
+
+Implementation:
+- `game/pixel-world-view.mjs` now uses `projectMapLabelMetrics` so map labels preserve their intended CSS-pixel font, panel width, padding, and border width across the world zoom. Institution labels default to 11 CSS px; TownSquare's title is 12 CSS px. Panels use the established dark/cream palette and are bounded to 220 CSS px.
+- Institutional record/research counters have more vertical spacing to avoid colliding with their label panels. Discovery-place, workbench, creation, moonshot, research-activity, and quest labels use the same screen-space sizing helper where appropriate.
+- `projectQuestCompassIndicator` is a pure deterministic projection from the exact projected target and camera to a safe viewport edge. It returns null for a visible target or malformed/unsafe inputs; otherwise it returns an edge coordinate, direction angle, and bounded target label.
+- `drawQuestCompass` draws an edge arrow and a compact `NEXT · <destination>` badge only while the active target is off-screen. The canvas exposes `data-quest-compass=none|onscreen|offscreen`; the accessible label explains that the compass is read-only.
+- The in-world target marker remains at the actual target location when visible. The compass is only a navigation cue: it cannot record progress, complete an objective, create a canonical event, award XP, or grant authority.
+- `test/pixel-world-view.test.mjs` adds three tests for zoom-compensated CSS sizing, visible/off-screen target projection in right and upper-left directions, bounded edge coordinates, frozen output, malformed viewport rejection, and hostile getter non-invocation.
+- `scripts/verify-browser.py` now asserts the target is on-screen at the 1440 px desktop viewport and off-screen at the phone viewport, proving the edge-compass state in the actual browser journey.
+
+### Exact code/test-head verification — 3fb0c4a5d11734c0b70ebcd8015840d658935c5d
+
+- Verify [41698056791](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41698056791): **success**. Hosted Node `v24.22.1`; full `node --test` exited 0 (12.48 s), Python inspector exited 0, game package build exited 0, bounded institutional exercise exited 0 with `passed: true`. Hosted preflight `ready`: 49 targets, 52 file records, zero warnings and zero failures. Preflight artifact [13261038195](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41698056791/artifacts/13261038195), uploaded ZIP SHA-256 `b8561604671914df8f0007eff3604f3331cacd644dc7de4e812e8e148753ae03`.
+- Genesis Evidence Invariant [41698056080](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41698056080): **success**.
+- Browser Acceptance [41698056359](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41698056359): **success, 12/12 journeys**. The browser results record desktop, phone, five institutional-location actions, two-session shared play, 320/360/412 px phone toolbars (five controls, 44 px minimum targets), 320/412 px one-button layouts, standalone file, standalone exact bytes, and shared restart. The institutional exercise observed one moonshot proposal/world object, two experiment reports, two research activity objects, one creation, and 100 publication XP from the existing event-backed flow; the renderer created none of those rewards. Browser artifact [13261463040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41698056359/artifacts/13261463040), 5,595,355 bytes, uploaded ZIP SHA-256 `76508f2dc0d4e2a45ac44d951a005ae6ebb30000e6ffa143cac6d3a9452dc639`.
+- Downloaded and visually inspected `desktop.png`, `phone.png`, `shared-desktop.png`, `shared-phone.png`, and `institutional-locations.png` from the Browser artifact. High-contrast labels are more legible at mobile scale; long dynamic names remain intentionally ellipsized to fit their bounded panels. These are hosted browser screenshots, not physical Android-device evidence.
+- First Browser run [41697851160](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41697851160) on earlier head `0e7ecd26859aefe6e43338e878ebd87da6395adf` failed because the new assertion incorrectly expected the relay destination to be off-screen on desktop. The observed 1440 px canvas correctly reported `onscreen`. The assertion was repaired to branch on viewport width; the final exact-head Browser run above passed with desktop `onscreen` and phone `offscreen`.
+
+### State, limitations, and next action
+
+- PR #331 remains a draft child of PR #329; no merge, release, or deployment occurred. Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`.
+- G6 remains **IN PROGRESS**: the map is more usable, but the full content/runtime integration is still a proposed stack. Main's checkpoint/ledger divergence remains unresolved.
+- G7 remains **IN PROGRESS**. Emulator instrumentation is not physical Android-device acceptance. No physical device model, OS build, install, or device journey was observed in this run.
+- The world remains an early pixel-art slice. Distinctive institutional silhouettes, actual NPC/agent capabilities and encounters, richer quest/objective interactions, source retrieval, independent verification, live Founder identity/key custody, and physical Android acceptance remain unfinished.
+- Some long map labels still truncate with an ellipsis; further visual work should preserve mobile legibility without letting label panels obscure the world.
+- No canonical event, XP, inventory, quest completion, truth verdict, approval, evidence, authority, Founder state, or production data was changed. No merge, release, deployment, credential/key change, or Founder decision occurred.
