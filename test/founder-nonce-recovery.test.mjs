@@ -868,7 +868,7 @@ test('offline recovery revalidates owner-lock contents after the final temporary
     "} catch (error) {",
     "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), directoryReads, replaced, pid: process.pid }));",
     "}"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
