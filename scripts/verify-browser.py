@@ -842,7 +842,7 @@ def shared(browser,url,data,out):
         )
         expect(b.locator('#world')).to_have_attribute(
             'aria-label',
-            re.compile(r'Evidence Archive: 2 linked Source Observation notes, 1 linked dissent challenges, 1 linked author responses, 0 pending author responses, and 0 retained records requiring review')
+            re.compile(r'Evidence Archive: 2 linked Source Observation notes, 1 linked dissent challenge, 1 linked author response, 0 pending author responses, and 0 retained records requiring review')
         )
         close_sheet(b);b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Responder')
