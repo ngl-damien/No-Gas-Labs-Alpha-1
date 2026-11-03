@@ -176,3 +176,33 @@ test('Source Observatory notes are actor-attributed, version-bound, idempotent a
   await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
   await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
 });
+
+test('Source Observation challenges preserve attributed dissent without changing the original note, XP, or authority',async()=>{
+  const start=createWorld({id:'source-observation-challenge-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The bridge is open.',sourceKind:'model-assertion',source:'A model response; no source retrieved.',falsifier:'Direct inspection finds the bridge closed.',uncertainty:'No independent observation.',nextTest:'Inspect the primary source.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const beforeXp=recorded.world.xp;
+  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},witness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'source-observation-challenged');
+  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.actor.role,'witness');
+  assert.equal(event.observationId,observationId);
+  assert.equal(event.creationId,creationId);
+  assert.equal(event.version,1);
+  assert.equal(event.challengeType,'contradiction');
+  assert.deepEqual(challenged.result,{challengeId:event.challengeId});
+  assert.equal(challenged.world.xp,beforeXp);
+  assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  await validateWorld(challenged.world);
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId,challengeType:'other',challengeText:'Self-challenge.'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='SELF_CHALLENGE');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId:'missing-observation',challengeType:'other',challengeText:'No target.'},witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='NOT_FOUND');
+  const tampered=structuredClone(challenged.world);
+  tampered.events.at(-1).version=2;
+  await assert.rejects(validateWorld(tampered));
+});
