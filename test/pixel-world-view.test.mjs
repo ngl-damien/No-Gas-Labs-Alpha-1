@@ -14,7 +14,9 @@ import {
   projectSourceObservationMapCounts,
   projectQuestMapTarget,
   projectMapLabelMetrics,
-  projectQuestCompassIndicator
+  projectQuestCompassIndicator,
+  PixelWorldView,
+  GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
@@ -369,4 +371,87 @@ test('quest compass rejects malformed viewport and hostile target accessors with
   });
   assert.equal(projectQuestCompassIndicator(hostile, { x: 700, y: 500 }, 390, 844, 0.78), null);
   assert.equal(reads, 0);
+});
+
+
+test('Guild Hall NPCs are fixed, bounded guides with no model or canonical authority', () => {
+  assert.deepEqual(GUILD_NPCS.map(npc => npc.role), [
+    'archivist', 'adversary', 'synthesizer', 'tutor'
+  ]);
+  assert.deepEqual(GUILD_NPCS.map(npc => npc.name), [
+    'Hostile Archivist', 'Adversary', 'Synthesis Clerk', 'Polymath Tutor'
+  ]);
+  assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
+  assert.equal(new Set(GUILD_NPCS.map(npc => npc.role)).size, GUILD_NPCS.length);
+  assert.ok(Object.isFrozen(GUILD_NPCS));
+  for (const npc of GUILD_NPCS) {
+    assert.ok(Object.isFrozen(npc));
+    assert.equal(npc.routeLocation, 'guild_hall');
+    assert.equal(npc.authority, 'advisory-only');
+    assert.equal(npc.invokesModel, false);
+    assert.equal(npc.mayWriteCanonicalState, false);
+    assert.equal(npc.mayGrantAuthority, false);
+    assert.equal(npc.mayAwardProgress, false);
+    assert.equal(npc.mayCertifyTruthOrExecution, false);
+    assert.ok(npc.x >= 0 && npc.x <= WORLD_WIDTH);
+    assert.ok(npc.y >= 0 && npc.y <= WORLD_HEIGHT);
+  }
+});
+
+test('speaking to a Guild Hall NPC routes to the existing collaborator workbench without mutating the world', () => {
+  const world = {
+    id: 'guild-npc-interaction-world',
+    revision: 7,
+    xp: 100,
+    events: [],
+    creations: [],
+    drafts: []
+  };
+  const before = structuredClone(world);
+  for (const npc of GUILD_NPCS) {
+    let interaction = null;
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = { x: npc.x, y: npc.y };
+    view.world = world;
+    view.researchObjects = [];
+    view.researchActivityObjects = [];
+    view.callbacks = {
+      onInteract: value => { interaction = value; },
+      onDiscover: () => { throw new Error('Guild NPC conversation is not a discovery event'); }
+    };
+    view.route = [];
+    view.target = null;
+    view.targetType = null;
+
+    const nearest = view.nearest();
+    assert.equal(nearest.type, 'npc');
+    assert.equal(nearest.role, npc.role);
+    assert.equal(nearest.distance, 0);
+
+    view.interact();
+    assert.deepEqual(interaction, {
+      type: 'institution',
+      id: 'guild_hall',
+      npcRole: npc.role,
+      npcName: npc.name
+    });
+    assert.deepEqual(world, before, 'conversation only opens the existing Guild Hall workbench');
+  }
+});
+
+test('unregistered Guild Hall NPC targets fail closed without opening an institution', () => {
+  let interactions = 0;
+  const view = Object.create(PixelWorldView.prototype);
+  view.player = { x: 200, y: 320 };
+  view.world = { creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.callbacks = { onInteract: () => { interactions += 1; }, onDiscover: () => {} };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+
+  assert.equal(view.nearest('guild-npc-not-registered', 'npc'), null);
+  view.interact('guild-npc-not-registered', 'npc');
+  assert.equal(interactions, 0);
 });
