@@ -359,7 +359,7 @@ export async function validateWorld(raw) {
     if(Object.keys(e).some(key=>!allowedSourceObservationChallengeKeys.has(key)))invalid('Source observation challenge contains unsupported canonical fields.');
     unique(e.challengeId);
     const target=sourceObservationById.get(e.observationId),targetIndex=target?eventPositions.get(target):-1;
-    if(typeof e.challengeId!=='string'||!e.challengeId||sourceObservationChallengeIds.has(e.challengeId)||
+    if(typeof e.challengeId!=='string'||!e.challengeId||sourceObservationChallengeIds.has(e.challengeId)||challengeIds.has(e.challengeId)||
        typeof e.observationId!=='string'||!e.observationId||!target||
        typeof e.creationId!=='string'||e.creationId!==target.creationId||
        !Number.isSafeInteger(e.version)||e.version!==target.version||
@@ -367,6 +367,7 @@ export async function validateWorld(raw) {
        target.actor.id===e.actor.id||targetIndex<0||targetIndex>=index||Date.parse(target.at)>Date.parse(e.at)||
        (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='challengeId'||e.actionResult.challengeId!==e.challengeId)))invalid('Malformed source-observation challenge or target is not an earlier note from another actor.');
     sourceObservationChallengeIds.add(e.challengeId);
+    challengeIds.add(e.challengeId);
   }
   const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
   for(let index=0;index<raw.events.length;index++){
