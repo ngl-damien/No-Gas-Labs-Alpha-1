@@ -381,7 +381,7 @@ test('Guild Hall NPCs are fixed, bounded guides with no model or canonical autho
     COLLABORATOR_ROLES
   );
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
-  assert.equal(new Set(GUILD_NPCS.map(npc => npc.role)).size, GUILD_NPCS.length);
+  assert.equal(new Set(GUILD_NPCS.map(npc => npc.roleId)).size, GUILD_NPCS.length);
   assert.ok(Object.isFrozen(GUILD_NPCS));
   for (const npc of GUILD_NPCS) {
     assert.ok(Object.isFrozen(npc));
