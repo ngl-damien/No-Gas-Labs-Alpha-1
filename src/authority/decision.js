@@ -1,12 +1,13 @@
-import { createHash, createPublicKey, verify as verifySignature, randomBytes } from "node:crypto";
-import { readFileSync, existsSync, lstatSync } from "node:fs";
+import { createHash, createPublicKey, verify as verifySignature, randomBytes, randomUUID } from "node:crypto";
+import { constants as fsConstants, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.json");
-const consumedNonces = new Set();
-const MAX_AUTHORIZATION_NONCES = 100_000;
+const NONCE_LEDGER_SCHEMA = "ngl.founder-nonce-ledger.v1";
+const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
+const MAX_NONCE_COUNT = 100_000;
 
 function snapshotJsonData(value, limits = {}) {
   const maxDepth = limits.maxDepth ?? 32;
@@ -93,6 +94,225 @@ function canonical(value) {
     return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
   }
   return JSON.stringify(value);
+}
+
+
+function assertNoSymlinkPathComponents(targetPath, code) {
+  const absolute = path.resolve(targetPath);
+  const root = path.parse(absolute).root;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    let stat;
+    try { stat = lstatSync(current); }
+    catch { throw new Error(code); }
+    if (stat.isSymbolicLink()) throw new Error(code);
+  }
+  return absolute;
+}
+
+function assertPrivateDirectory(directory, code) {
+  let stat;
+  try { stat = lstatSync(directory); }
+  catch { throw new Error(code); }
+  if (stat.isSymbolicLink() || !stat.isDirectory() ||
+      (stat.mode & 0o777) !== 0o700 ||
+      (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
+    throw new Error(code);
+  }
+  return { dev: stat.dev, ino: stat.ino };
+}
+
+function assertPrivateDirectoryIdentity(directory, identity, code) {
+  const current = assertPrivateDirectory(directory, code);
+  if (current.dev !== identity.dev || current.ino !== identity.ino) throw new Error(code);
+}
+
+function sameFileSnapshot(left, right) {
+  return left.dev === right.dev && left.ino === right.ino &&
+    left.uid === right.uid && left.mode === right.mode &&
+    left.size === right.size && left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs;
+}
+
+function syncDirectory(directory) {
+  const descriptor = openSync(directory, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+  try { fsyncSync(descriptor); }
+  finally { closeSync(descriptor); }
+}
+
+function loadHostTrustAnchor() {
+  const trustPath = process.env.NGL_FOUNDER_TRUST_ANCHOR_PATH;
+  if (!trustPath || !path.isAbsolute(trustPath)) {
+    throw new Error("FOUNDER_TRUST_ROOT_UNCONFIGURED");
+  }
+  assertNoSymlinkPathComponents(trustPath, "FOUNDER_TRUST_ROOT_UNSAFE");
+  assertPrivateDirectory(path.dirname(path.resolve(trustPath)), "FOUNDER_TRUST_ROOT_UNSAFE");
+  let stat;
+  try { stat = lstatSync(trustPath); }
+  catch { throw new Error("FOUNDER_TRUST_ROOT_UNAVAILABLE"); }
+  if (stat.isSymbolicLink() || !stat.isFile() ||
+      (stat.mode & 0o777) !== 0o600 || stat.size > 16_384 ||
+      (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
+    throw new Error("FOUNDER_TRUST_ROOT_UNSAFE");
+  }
+  return loadTrustAnchor(trustPath);
+}
+
+function readNonceLedger(filePath) {
+  let before;
+  try { before = lstatSync(filePath); }
+  catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw new Error("FOUNDER_NONCE_LEDGER_UNAVAILABLE");
+  }
+  if (before.isSymbolicLink() || !before.isFile() ||
+      (before.mode & 0o777) !== 0o600 ||
+      (typeof process.getuid === "function" && before.uid !== process.getuid()) ||
+      before.size > MAX_NONCE_LEDGER_BYTES) {
+    throw new Error("FOUNDER_NONCE_LEDGER_UNSAFE");
+  }
+  let descriptor;
+  try {
+    descriptor = openSync(filePath, fsConstants.O_RDONLY |
+      (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+    const opened = fstatSync(descriptor);
+    if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
+      throw new Error("FOUNDER_NONCE_LEDGER_CHANGED");
+    }
+    const bytes = readFileSync(descriptor);
+    const after = lstatSync(filePath);
+    const afterDescriptor = fstatSync(descriptor);
+    if (after.isSymbolicLink() || !after.isFile() ||
+        !sameFileSnapshot(opened, after) ||
+        !sameFileSnapshot(opened, afterDescriptor) ||
+        bytes.length !== opened.size || bytes.length > MAX_NONCE_LEDGER_BYTES) {
+      throw new Error("FOUNDER_NONCE_LEDGER_CHANGED");
+    }
+    const serialized = bytes.toString("utf8");
+    if (!Buffer.from(serialized, "utf8").equals(bytes)) {
+      throw new Error("FOUNDER_NONCE_LEDGER_TAMPERED");
+    }
+    let saved;
+    try { saved = JSON.parse(serialized); }
+    catch { throw new Error("FOUNDER_NONCE_LEDGER_TAMPERED"); }
+    if (!saved || typeof saved !== "object" || Array.isArray(saved) ||
+        Object.keys(saved).sort().join(",") !== "nonces,schema" ||
+        saved.schema !== NONCE_LEDGER_SCHEMA ||
+        !Array.isArray(saved.nonces) || saved.nonces.length > MAX_NONCE_COUNT ||
+        saved.nonces.some(value => typeof value !== "string" || !/^[a-f0-9]{32}$/.test(value)) ||
+        new Set(saved.nonces).size !== saved.nonces.length ||
+        canonical(saved) !== serialized) {
+      throw new Error("FOUNDER_NONCE_LEDGER_TAMPERED");
+    }
+    return saved.nonces;
+  } catch (error) {
+    if (String(error?.message || "").startsWith("FOUNDER_NONCE_LEDGER_")) throw error;
+    throw new Error("FOUNDER_NONCE_LEDGER_UNAVAILABLE");
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function releaseNonceLock(lockPath, identity, directory) {
+  let current;
+  try { current = lstatSync(lockPath); }
+  catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (current.isSymbolicLink() || !current.isFile() ||
+      current.dev !== identity.dev || current.ino !== identity.ino) {
+    throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
+  }
+  unlinkSync(lockPath);
+  syncDirectory(directory);
+}
+
+function consumeFounderNonce(nonce) {
+  const configuredPath = process.env.NGL_FOUNDER_NONCE_LEDGER_PATH;
+  if (!configuredPath || !path.isAbsolute(configuredPath)) {
+    throw new Error("FOUNDER_NONCE_LEDGER_UNCONFIGURED");
+  }
+  if (typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)) {
+    throw new Error("FOUNDER_NONCE_INVALID");
+  }
+  const ledgerPath = path.resolve(configuredPath);
+  const directory = path.dirname(ledgerPath);
+  const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
+  assertNoSymlinkPathComponents(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
+  const lockPath = path.join(directory, ".founder-nonce.lock");
+  if (ledgerPath === lockPath) throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+
+  let lockDescriptor;
+  let lockIdentity;
+  let temporaryPath = null;
+  let keepLock = false;
+  try {
+    try { lockDescriptor = openSync(lockPath, "wx", 0o600); }
+    catch (error) {
+      if (error.code === "EEXIST") throw new Error("FOUNDER_NONCE_LEDGER_LOCKED");
+      throw new Error("FOUNDER_NONCE_LEDGER_UNAVAILABLE");
+    }
+    const lockStat = fstatSync(lockDescriptor);
+    if (!lockStat.isFile() || (lockStat.mode & 0o777) !== 0o600 ||
+        (typeof process.getuid === "function" && lockStat.uid !== process.getuid())) {
+      throw new Error("FOUNDER_NONCE_LEDGER_UNSAFE");
+    }
+    lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+    writeFileSync(lockDescriptor, canonical({
+      schema: "ngl.ledger-lock.v1",
+      pid: process.pid,
+      openedAt: new Date().toISOString(),
+    }));
+    fsyncSync(lockDescriptor);
+    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
+    try { syncDirectory(directory); }
+    catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
+
+    const nonces = readNonceLedger(ledgerPath);
+    if (nonces.includes(nonce)) throw new Error("FOUNDER_NONCE_REPLAY");
+    if (nonces.length >= MAX_NONCE_COUNT) throw new Error("FOUNDER_NONCE_LEDGER_FULL");
+    const next = canonical({ schema: NONCE_LEDGER_SCHEMA, nonces: [...nonces, nonce] });
+    if (Buffer.byteLength(next, "utf8") > MAX_NONCE_LEDGER_BYTES) {
+      throw new Error("FOUNDER_NONCE_LEDGER_FULL");
+    }
+
+    temporaryPath = path.join(directory, ".founder-nonce-" + randomUUID() + ".tmp");
+    let temporaryDescriptor;
+    try {
+      temporaryDescriptor = openSync(temporaryPath, "wx", 0o600);
+      writeFileSync(temporaryDescriptor, next, "utf8");
+      fsyncSync(temporaryDescriptor);
+    } finally {
+      if (temporaryDescriptor !== undefined) closeSync(temporaryDescriptor);
+    }
+    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
+    renameSync(temporaryPath, ledgerPath);
+    temporaryPath = null;
+    try { syncDirectory(directory); }
+    catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
+    try {
+      releaseNonceLock(lockPath, lockIdentity, directory);
+      lockIdentity = null;
+    } catch {
+      keepLock = true;
+      throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN");
+    }
+  } catch (error) {
+    if (temporaryPath) {
+      try { unlinkSync(temporaryPath); } catch {}
+    }
+    if (lockIdentity && !keepLock) {
+      try { releaseNonceLock(lockPath, lockIdentity, directory); } catch {}
+    }
+    if (error?.message === "FOUNDER_NONCE_REPLAY") {
+      throw new Error("FOUNDER_DECISION_INVALID:NONCE_REPLAY");
+    }
+    throw error;
+  } finally {
+    if (lockDescriptor !== undefined) closeSync(lockDescriptor);
+  }
 }
 
 export const decisionDigest = payload =>
@@ -237,7 +457,7 @@ export function verifyFounderDecision({
   if (!Number.isFinite(expiry) || now >= expiry) {
     return Object.freeze({ valid: false, reason: "DECISION_EXPIRED" });
   }
-  if (typeof safeSigned.nonce !== "string" || safeSigned.nonce.length < 16 || safeSigned.nonce.length > 256) {
+  if (typeof safeSigned.nonce !== "string" || !/^[a-f0-9]{32}$/.test(safeSigned.nonce)) {
     return Object.freeze({ valid: false, reason: "NONCE_INVALID" });
   }
   if (consumed_nonces && typeof consumed_nonces.has === "function" && consumed_nonces.has(safeSigned.nonce)) {
@@ -291,26 +511,24 @@ function exactAuthorizationInput(input) {
 }
 
 /**
- * The only authority-producing entry point. It always loads the repository trust
- * anchor, uses process time and a private in-process replay set, and accepts no
- * caller-supplied trust path, clock, nonce ledger, or verification result.
+ * The only authority-producing entry point. Trust and replay paths come only from
+ * host environment configuration; a durable single-writer nonce ledger fails closed
+ * on contention or uncertain durability. A stale lock requires offline recovery.
  */
 export function authorizationEvent(input) {
   const { signed, payload } = exactAuthorizationInput(input);
-  const trust = loadTrustAnchor();
+  const trust = loadHostTrustAnchor();
   if (!trust.enrolled) throw new Error("FOUNDER_NOT_ENROLLED:" + trust.reason);
   if (trust.mode !== "PRODUCTION") throw new Error("FOUNDER_TRUST_MODE_INVALID");
-  if (consumedNonces.size >= MAX_AUTHORIZATION_NONCES) throw new Error("FOUNDER_NONCE_LEDGER_FULL");
   const verification = verifyFounderDecision({
     signed,
     payload,
     public_key_jwk: trust.public_key_jwk,
     expected_fingerprint: trust.fingerprint,
     now: Date.now(),
-    consumed_nonces: consumedNonces,
   });
   if (!verification.valid) throw new Error("FOUNDER_DECISION_INVALID:" + verification.reason);
-  consumedNonces.add(signed.nonce);
+  consumeFounderNonce(signed.nonce);
   return deepFreeze({
     event_id: "authorize:" + payload.proposal_id + ":" + signed.payload_sha256,
     type: "QUEST_AUTHORIZED",
