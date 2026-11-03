@@ -832,6 +832,18 @@ def shared(browser,url,data,out):
         visit(b,'The shared observatory')
         expect(b.locator('#source-observations')).to_contain_text(response_text)
         expect(b.locator('[data-source-observation-response]')).to_have_count(1)
+        map_events=after_author_response_retry['world']['events']
+        map_notes=sum(event.get('type')=='source-observation-recorded' for event in map_events)
+        map_dissent=sum(event.get('type')=='source-observation-challenged' for event in map_events)
+        map_responses=sum(event.get('type')=='source-observation-challenge-responded' for event in map_events)
+        expect(b.locator('#world')).to_have_attribute(
+            'data-source-observation-counts',
+            f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
+        )
+        expect(b.locator('#world')).to_have_attribute(
+            'aria-label',
+            re.compile(r'Evidence Archive: 2 linked Source Observation notes, 1 linked dissent challenges, 1 linked author responses, 0 pending author responses, and 0 retained records requiring review')
+        )
         close_sheet(b);b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Responder')
         expect(b.locator('#sheet')).to_contain_text('1 recorded')
