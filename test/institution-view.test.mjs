@@ -174,9 +174,9 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   assert.match(output, /No independent observation\./);
   assert.match(output, /Inspect the bridge\./);
   assert.match(output, /Source retrieval NOT_PERFORMED/);
-  assert.match(output, /independent verification NOT_PERFORMED/);
-  assert.match(output, /model assertions LEADS_ONLY/);
-  assert.match(output, /execution NOT_EXECUTED/);
+  assert.match(output, /Independent verification NOT_PERFORMED/);
+  assert.match(output, /Model assertions LEADS_ONLY/);
+  assert.match(output, /Execution NOT_EXECUTED/);
   assert.match(output, /1 uniquely linked challenge\(s\) await an author response/);
   assert.match(output, /Only the original note author can respond/);
   assert.match(output, /not a verdict, independent evidence, or authority/);
