@@ -229,3 +229,22 @@ Main baseline remains `cc317d49c8fdf003c78aa40f38a177095019066e`. PR #328 is the
 4. Keep the main checkpoint stale-state warning visible; do not overwrite main `LATEST_CHECKPOINT.md` until #314/#317/#320/#323/#326 checkpoint ownership is reconciled.
 
 No merge, release, deployment, spending, key/credential operation, permission change, external publication or Founder-reserved decision occurred.
+
+---
+
+## Worker A Run 12 — 2026-11-03
+
+- Rehydrated root AGENTS.md and the complete shared scheduler protocol in the required sequential order; re-read the stale main checkpoint and inspected current PR #332 / Worker B PR #331 / active workflow ownership. Portable preflight was unavailable: no checkout, Node 22.16.0, and both registered Desktop Commander devices offline. Nested instruction paths for scripts, test, .github/workflows, docs/operations/hourly-agents and docs/operations/checkpoints were checked and returned 404.
+- Corrected PR #332's stale current-head statement: exact head is `a036e5c4f8e0d92199eb94f245c4f8613129fc8e` (base #330 `20b636678c476d71ec8d027c475e608b32f94147`), with Verify `41698188063`, Genesis `41698188231`, Browser `41698188134` all PASS (12/12). Updated its PR description to carry the current head and evidence. Helper-level only; no production trust root or live auth boundary.
+- Opened draft PR #333, commit `fa05305d114a3ca8fedea179b922b91d5d6f8dff`, changing only `.github/workflows/genesis.yml` from checkout@v4/setup-node@v4 to checkout@v7.0.1/setup-node@v7.1.0; both exact upstream action metadata files declare node24. Genesis `41700794722` PASS. Verify `41700794931` FAIL 774/775 solely on the known mainline Decision Chamber TEST_ONLY fixture (`FOUNDER_NOT_ENROLLED:NOT_ENROLLED`); do not duplicate #312/#313's correction. Browser `41700794851` was in progress at the last observation.
+- Rechecked Worker B PR #265 current source: `game/server.mjs` line 1044 accepts `HOST=localhost` for generated-key development mode before hostname resolution. Posted handoff comment `6613072052` requesting literal loopback-only exception plus a negative CLI test before runtime-directory creation. This is a resolver/hosts-file ambiguity, not a demonstrated remote exploit; Worker A did not edit game/server.
+- Worker B PR #331 exact docs head `d9ba2b102cdc86d5410e46c8df8e62c373483306` passed Verify `41699097570`, Genesis `41699097612`, Browser `41699097569` (12/12). G6 remains IN PROGRESS; source retrieval/independent verification and physical Android acceptance remain unproven.
+- Durable run checkpoint: `docs/operations/checkpoints/2026-11-03-worker-a-run-12.md`. Registry refresh commit: `5b918eaf937fb49ca90e810032e44c0dbb044f51`. Checkpoint commit: `7ab70b97d72a1234b6a62a7e49d18196f5b71996`. The #321 branch now requires exact-head hosted checks for these docs commits.
+
+### Next
+
+1. Poll #333 Browser run `41700794851`; preserve the known Verify fixture failure without copying #312/#313's test change.
+2. Inspect exact-head checks for #321's registry/checkpoint commits and refresh this steering branch only after rechecking its current head.
+3. Worker B to re-observe #265 localhost handoff and reconcile explicit-key guard/tests onto #329/#331 ancestry.
+4. Keep the #332 recovery stack draft/unmerged; no key custody, trust-root provisioning, or live mutation-boundary integration without explicit Founder-controlled action.
+5. Continue linked-repository bootstrap only when root instructions and required shell/device execution are available.
