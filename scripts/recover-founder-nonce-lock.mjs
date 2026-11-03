@@ -108,7 +108,8 @@ async function readNonceLedger(ledgerPath, { sync = false } = {}) {
 
   let handle;
   try {
-    handle = await open(ledgerPath, fsConstants.O_RDWR |
+    const accessMode = sync ? fsConstants.O_RDWR : fsConstants.O_RDONLY;
+    handle = await open(ledgerPath, accessMode |
       (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
