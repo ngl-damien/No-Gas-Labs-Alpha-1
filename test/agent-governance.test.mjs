@@ -853,12 +853,14 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/quests.mjs',
     'game/chronicle.mjs',
     'game/institution-view.mjs',
+    'game/pixel-world-view.mjs',
     'test/game-model.test.mjs',
     'test/game-server.test.mjs',
     'test/game-character-sheet.test.mjs',
     'test/game-quests.test.mjs',
     'test/chronicle.test.mjs',
     'test/institution-view.test.mjs',
+    'test/pixel-world-view.test.mjs',
     'scripts/verify-browser.py'
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
