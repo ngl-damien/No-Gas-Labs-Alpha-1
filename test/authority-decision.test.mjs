@@ -783,3 +783,66 @@ test("process death after nonce-ledger rename retains the nonce and blocks repla
     await Promise.allSettled([worker.exit]);
   }
 });
+
+
+test("post-rename directory-sync failure preserves explicit nonce durability uncertainty and fences replay", { timeout: 30000 }, async t => {
+  const dir = path.join(tmpdir(), "ngl-auth-durability-uncertain-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalFsyncSync = fs.fsyncSync;",
+    "let directorySyncs = 0;",
+    "fs.fsyncSync = descriptor => {",
+    "  if (fs.fstatSync(descriptor).isDirectory()) {",
+    "    directorySyncs += 1;",
+    "    if (directorySyncs === 2) throw Object.assign(new Error('injected post-rename directory sync failure'), { code: 'EIO' });",
+    "  }",
+    "  return originalFsyncSync(descriptor);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { authorizationEvent } = await import(" + JSON.stringify(fixture.moduleUrl) + ");",
+    "try {",
+    "  authorizationEvent({ signed: JSON.parse(process.env.TEST_SIGNED), payload: JSON.parse(process.env.TEST_PAYLOAD) });",
+    "  console.log('UNEXPECTED_AUTHORIZATION');",
+    "  process.exitCode = 1;",
+    "} catch (error) {",
+    "  console.log('ERROR:' + (error && error.message ? error.message : String(error)));",
+    "}",
+  ].join("\n");
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", childSource], {
+    encoding: "utf8",
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      TEST_SIGNED: JSON.stringify(signed),
+      TEST_PAYLOAD: JSON.stringify(fixture.payload),
+    },
+  });
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /ERROR:FOUNDER_NONCE_DURABILITY_UNCERTAIN/);
+
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+  assert.equal(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces[0], signed.nonce);
+  assert.equal(existsSync(lockPath), true, "uncertain directory durability must retain the owner lock");
+  const inspection = await inspectWriterLock(lockPath);
+  assert.equal(inspection.owner.processProbe, "not-found");
+  assert.equal(inspection.safeToRemove, false);
+
+  // Test-only offline recovery after the child exited and the durable ledger was inspected.
+  unlinkSync(lockPath);
+  withEnvironment({
+    NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+    NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+  }, () => assert.throws(
+    () => authorizationEvent({ signed, payload: fixture.payload }),
+    /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
+  ));
+  assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
+  assert.equal(existsSync(lockPath), false);
+});
