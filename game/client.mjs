@@ -7,6 +7,8 @@ import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords} from './research-records.mjs';
+import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
+import {validateCollaboratorResponse} from './collaborator-response.mjs';
 
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 async function openInstitution(locationId = null) {
@@ -129,10 +131,10 @@ function followQuestAction(action){
     if(object?.mapVisible){followResearchTarget(object,()=>openMoonshotField(action.moonshotId,action.activityId),'research-activity');return}
     openMoonshotField(action.moonshotId,action.activityId);return;
   }
-  if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field','academy'].includes(action.id)){closeSheet();view.goTo(action.id);return}
+  if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field','academy','guild_hall'].includes(action.id)){closeSheet();view.goTo(action.id);return}
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
-function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
+function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
 const proposalObject=evidence.type==='moonshot-proposed'?view.researchObjects.find(object=>object.eventId===evidence.id):null;
 if(proposalObject){
  entry.append(button('Inspect moonshot proposal →',()=>followResearchTarget(proposalObject,()=>openMoonshotField(proposalObject.moonshotId),'research-object'),{class:'text-button quest-evidence-open quest-evidence-world-object'}));
@@ -336,15 +338,88 @@ function appendContradictionClerk(content){
     clerk.append(button('Challenge '+creation.title+' · v'+creation.version+' →',()=>openCreation(creation.id,creation.version,true),{class:'list-button'}));
   }
 }
+function appendCollaboratorContracts(content, sourceWorld){
+  content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR CONTRACTS'}));
+  content.append(paragraph('Prepare source-bound work packets for an external AI collaborator. Preparing or copying does not call a model or change the world. Only the explicit archive action appends an attributed record. Pasted text remains untrusted even after structural validation; archiving preserves its exact bytes and source packet without endorsing claims.','form-help'));
+  const packets=projectCollaboratorPackets(sourceWorld);
+  for(const packet of packets){
+    const card=node('article',{class:'field-card','data-collaborator-role':packet.id},[
+      node('h3',{text:packet.name}),
+      paragraph(packet.objective),
+      paragraph(packet.available?'Inputs: '+packet.inputRefs.join(' · '):packet.reason,packet.available?'form-help':'empty-note'),
+      paragraph(packet.sourceSnapshot?.status==='identified'
+        ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
+        : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
+    ]);
+    if(packet.available){
+      const details=node('details',{class:'collaborator-packet'},[
+        node('summary',{text:'Inspect hand-off packet'}),
+        node('textarea',{readonly:'',rows:'8','aria-label':packet.name+' hand-off packet',value:packet.prompt})
+      ]);
+      card.append(details);
+      card.append(button('Copy hand-off packet',guarded(async()=>{
+        try{
+          await navigator.clipboard.writeText(packet.prompt);
+          toast('Bounded packet copied. No model was called and no world state changed.');
+        }catch{
+          const field=details.querySelector('textarea');
+          field.focus();field.select();
+          toast('Packet selected. Use your device’s Copy action.');
+        }
+      }),{class:'secondary-button','data-copy-collaborator':packet.id}));
+      const responseDetails=node('details',{class:'collaborator-response'},[
+        node('summary',{text:'Validate returned response'})
+      ]);
+      const responseField=node('textarea',{rows:'8','aria-label':packet.name+' response JSON',placeholder:'Paste the external collaborator JSON response.'});
+      responseDetails.append(responseField);
+      const responseStatus=paragraph('Pasted output remains untrusted. Validation checks structure and packet references only.','form-help');
+      responseStatus.setAttribute('data-collaborator-response-status',packet.id);
+      const responsePreview=node('pre',{class:'collaborator-response-preview','data-collaborator-response-preview':packet.id});
+      card.append(responseDetails);
+      card.append(button('Validate response for review',()=>{
+        const result=validateCollaboratorResponse(packet,responseField.value);
+        responseStatus.textContent=result.valid
+          ? 'STRUCTURE VALID · FOR HUMAN REVIEW ONLY. No claim, execution, world change, XP, or authority was verified.'
+          : 'Response rejected: '+result.reason;
+        responseStatus.className=result.valid?'form-help':'empty-note';
+        responsePreview.textContent=result.valid?JSON.stringify(result.response,null,2):'';
+      },{class:'secondary-button','data-validate-collaborator':packet.id}));
+      card.append(responseStatus,responsePreview);
+      const archiveButton=button('Archive exact response as untrusted history →',guarded(async()=>{
+        const result=await act({type:'record-collaborator-response',role:packet.id,moonshotId:packet.moonshotId,packetJson:packet.packetJson,sourceEventIds:[...packet.inputRefs],responseText:responseField.value});
+        responseStatus.textContent=result.validationStatus==='valid-for-human-review'
+          ? 'ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY. No claim, evidence, execution, approval, mastery, XP, or authority was verified.'
+          : 'ARCHIVED · REJECTED RESPONSE PRESERVED. '+String(result.validationStatus||'rejected')+'; inspect the exact text and packet in the Evidence Archive.';
+        responseStatus.className=result.validationStatus==='valid-for-human-review'?'form-help':'empty-note';
+        responseStatus.dataset.responseId=result.responseId;
+        responseField.disabled=true;
+        archiveButton.disabled=true;
+        archiveButton.textContent='Response archived';
+        toast('Untrusted collaborator response preserved in world history · no XP or authority awarded.');
+      }),{class:'secondary-button','data-archive-collaborator':packet.id});
+      card.append(archiveButton);
+      card.append(button('Open related Moonshot →',()=>openMoonshotField(packet.moonshotId),{class:'list-button'}));
+    }else{
+      card.append(button('Visit Moonshot Field →',()=>openMoonshotField(),{class:'list-button'}));
+    }
+    content.append(card);
+  }
+}
+
+
 async function openGuildHall(){
   if(mode==='shared'){
     await openInstitution('guild_hall');
-    if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE')appendContradictionClerk($('sheet-content'));
+    if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
+      appendContradictionClerk($('sheet-content'));
+      appendCollaboratorContracts($('sheet-content'),world);
+    }
     return;
   }
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   appendContradictionClerk(content);
+  appendCollaboratorContracts(content,world);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
 function openForge(){
@@ -356,7 +431,7 @@ function openForge(){
 function openEvidenceArchive(){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes against published versions and includes Moonshot proposals, self-reported experiment attempts, and challenges. Receipts identify bytes; they do not establish truth. Research records remain proposals, reports, or dissent—not independent verification or verdicts.','form-help'));
+  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
@@ -472,6 +547,32 @@ function openEvidenceArchive(){
         typeof entry.moonshotId==='string' && entry.moonshotId.trim()){
       card.append(button('Open Moonshot Field →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
     }
+    content.append(card);
+  }
+
+const collaboratorResponses=events.filter(event=>event?.type==='collaborator-response-recorded').slice().reverse();
+  content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR RESPONSES'}));
+  if(!collaboratorResponses.length)content.append(paragraph('No external collaborator responses have been preserved yet. A returned answer remains untrusted until a human explicitly archives it; archiving does not endorse its claims.','empty-note'));
+  const collaboratorNames={archivist:'Hostile Archivist',adversary:'Adversary',synthesizer:'Synthesis Clerk',tutor:'Polymath Tutor'};
+  for(const entry of collaboratorResponses){
+    const valid=entry.validationStatus==='valid-for-human-review';
+    const card=node('article',{class:'field-card','data-collaborator-response-id':entry.responseId},[
+      node('h3',{text:(collaboratorNames[entry.role]||entry.role)+' · '+(valid?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED')}),
+      paragraph('Moonshot '+entry.moonshotId+' · actor '+(entry.actor?.name||entry.actor?.id||'Unknown actor')+' · '+entry.at,'attribution'),
+      paragraph('Source events: '+entry.sourceEventIds.join(' · ')),
+      paragraph('Packet SHA-256 '+entry.packetReceipt.digest+' · '+entry.packetReceipt.size+' bytes'),
+      paragraph('Response SHA-256 '+entry.responseReceipt.digest+' · '+entry.responseReceipt.size+' bytes'),
+      paragraph(entry.validationReason?'Structural validator result: '+entry.validationReason:'Structural validator result: valid for human review only; no truth or authority was verified.','form-help')
+    ]);
+    const packetDetails=node('details',{class:'collaborator-packet'},[
+      node('summary',{text:'Inspect exact archived packet'}),
+      node('textarea',{readonly:'',rows:'8','aria-label':'Archived collaborator packet',value:entry.packetJson})
+    ]);
+    const responseDetails=node('details',{class:'collaborator-response'},[
+      node('summary',{text:'Inspect exact pasted response'}),
+      node('textarea',{readonly:'',rows:'8','aria-label':'Archived collaborator response',value:entry.responseText})
+    ]);
+    card.append(packetDetails,responseDetails,button('Open related Moonshot →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
     content.append(card);
   }
 

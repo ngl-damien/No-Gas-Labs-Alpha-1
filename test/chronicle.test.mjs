@@ -622,3 +622,49 @@ test("duplicate historical version entries do not select an arbitrary title", ()
   assert.equal(report.targetTitle, "");
   assert.match(report.warning, /artifact version is unavailable/i);
 });
+
+
+test("collaborator responses and experiment challenges remain visible as untrusted chronicle objects", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "challenge-v1",
+      type: "experiment-challenged",
+      reportId: "report-v1",
+      moonshotId: "moonshot-1",
+      challengeType: "methodology",
+      challengeText: "The report does not state the control condition.",
+      actor: { id: "witness-2", name: "Second Witness" },
+      at: "2026-10-26T10:07:00.000Z",
+      evidenceCreationId: null,
+      evidenceVersion: null,
+    },
+    {
+      id: "collaborator-response-v1",
+      type: "collaborator-response-recorded",
+      responseId: "collaborator-response-1",
+      role: "adversary",
+      moonshotId: "moonshot-1",
+      sourceEventIds: ["proposal-v1", "report-v1"],
+      packetJson: "{}",
+      packetReceipt: { algorithm: "sha256", digest: "a".repeat(64), size: 2 },
+      responseText: "{\"challengeDraft\":\"Preserved dissent\"}",
+      responseReceipt: { algorithm: "sha256", digest: "b".repeat(64), size: 38 },
+      validationStatus: "rejected",
+      validationReason: "RESPONSE_SCHEMA_OR_SCOPE_INVALID",
+      validator: "ngl.collaborator-response.v1",
+      actor: { id: "witness-2", name: "Second Witness" },
+      at: "2026-10-26T10:08:00.000Z",
+    },
+  );
+  const chronicle = projectChronicle({ world, kernel });
+  const challenge = chronicle.entries.find(entry => entry.id === "world:challenge-v1");
+  const response = chronicle.entries.find(entry => entry.id === "world:collaborator-response-v1");
+  assert.equal(challenge.category, "DISSENT & CHALLENGE");
+  assert.match(challenge.summary, /does not adjudicate/i);
+  assert.equal(response.category, "GUILD HALL");
+  assert.match(response.title, /REJECTED · PRESERVED/);
+  assert.match(response.detail, /Packet SHA-256/);
+  assert.match(response.detail, /Response SHA-256/);
+  assert.match(response.warning, /untrusted text/i);
+});
