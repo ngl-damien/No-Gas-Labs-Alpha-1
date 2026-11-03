@@ -7,7 +7,7 @@ import {
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
 import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
-import { COLLABORATOR_ROLES } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -378,7 +378,8 @@ test('quest compass rejects malformed viewport and hostile target accessors with
 test('Guild Hall NPCs are fixed, bounded guides with no model or canonical authority', () => {
   assert.deepEqual(
     GUILD_NPCS.map(({ roleId, name, objective }) => ({ id: roleId, name, objective })),
-    COLLABORATOR_ROLES
+    projectCollaboratorPackets({ events: [], creations: [] })
+      .map(({ id, name, objective }) => ({ id, name, objective }))
   );
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.roleId)).size, GUILD_NPCS.length);
