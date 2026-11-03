@@ -608,6 +608,11 @@ def shared(browser,url,data,out):
         assert pending_observation['action']['type']=='record-source-observation'
         assert pending_observation['requestId']==pending_observation['action']['observationId']
         assert pending_observation['requestId'].startswith('source-observation-')
+        committed_before_retry=visitor.request.get(url+'api/state').json()
+        committed_events=[event for event in committed_before_retry['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(committed_events)==2 and committed_events[-1]['claim']==source_claim, 'The independent state read must observe the second committed note before Relay retry'
+        assert committed_before_retry['world']['revision']==before_observation_revision+2
+        assert committed_before_retry['world']['xp']==before_observation['world']['xp']==100
         close_sheet(b);b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to The Relay',exact=True).click()
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
