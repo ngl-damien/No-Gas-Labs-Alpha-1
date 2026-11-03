@@ -211,6 +211,9 @@ function sameLockObservation(left, right) {
     left.file?.device === right.file?.device &&
     left.file?.inode === right.file?.inode &&
     left.file?.uid === right.file?.uid &&
+    left.file?.mode === right.file?.mode &&
+    left.file?.size === right.file?.size &&
+    left.owner?.processProbe === 'not-found' &&
     right.owner.processProbe === 'not-found';
 }
 
