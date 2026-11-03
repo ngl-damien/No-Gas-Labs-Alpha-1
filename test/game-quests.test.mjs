@@ -727,11 +727,23 @@ test('Founder and Witness challenge quests count only a different actor’s link
     creationId, version: 1, actor: founder, at: '2026-10-28T17:04:00.000Z',
     challengeType: 'methodology', challengeText: 'The cited method is not reproducible.'
   };
+  const founderResponse = {
+    id: 'founder-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'founder-response', challengeId: 'witness-challenge', observationId: founderNote.observationId,
+    creationId, version: 1, actor: founder, at: '2026-10-28T17:02:30.000Z',
+    responseText: 'The note is a lead only; retrieval is still required.'
+  };
+  const witnessResponse = {
+    id: 'witness-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'witness-response', challengeId: 'founder-challenge', observationId: witnessNote.observationId,
+    creationId, version: 1, actor: witness, at: '2026-10-28T17:04:30.000Z',
+    responseText: 'The method is a proposal, not an executed procedure.'
+  };
   const world = {
     creations: [creation],
     events: [
       { id: 'publish-observatory', type: 'publish', creationId, version: 1, actor: founder, at: publishedAt, reward: 100 },
-      founderNote, witnessChallenge, witnessNote, founderChallenge
+      founderNote, witnessChallenge, founderResponse, witnessNote, founderChallenge, witnessResponse
     ],
     discoveries: [], contributions: [], reports: [], methods: []
   };
@@ -743,4 +755,10 @@ test('Founder and Witness challenge quests count only a different actor’s link
   assert.equal(witnessQuest.complete, true);
   assert.equal(witnessQuest.progress, 1);
   assert.deepEqual(witnessQuest.evidence.map(item => item.id), ['witness-challenge-event']);
+  const founderResponseQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-source-observation-response');
+  const witnessResponseQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation-response');
+  assert.equal(founderResponseQuest.complete, true);
+  assert.deepEqual(founderResponseQuest.evidence.map(item => item.id), ['founder-response-event']);
+  assert.equal(witnessResponseQuest.complete, true);
+  assert.deepEqual(witnessResponseQuest.evidence.map(item => item.id), ['witness-response-event']);
 });

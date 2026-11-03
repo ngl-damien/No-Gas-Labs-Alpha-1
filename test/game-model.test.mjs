@@ -201,31 +201,50 @@ test('Source Observation challenges preserve attributed dissent without changing
   assert.equal(challenged.world.xp,beforeXp);
   assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
   await validateWorld(challenged.world);
+  const responseAction={type:'respond-source-observation-challenge',challengeId:event.challengeId,responseText:'The note is a lead only; source retrieval remains outstanding.'};
+  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z',requestId:'source-response-1',actionFingerprint:'e'.repeat(64)});
+  const response=responded.world.events.at(-1);
+  assert.equal(response.type,'source-observation-challenge-responded');
+  assert.equal(response.actor.id,founder.id);
+  assert.equal(response.challengeId,event.challengeId);
+  assert.equal(response.observationId,observationId);
+  assert.equal(response.creationId,creationId);
+  assert.equal(response.version,1);
+  assert.equal(response.responseText,responseAction.responseText);
+  assert.deepEqual(response.actionResult,{responseId:response.responseId});
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.events.filter(item=>item.type==='source-observation-challenge-responded').length,1);
+  await validateWorld(responded.world);
+  await assert.rejects(applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403);
+  await assert.rejects(applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),error=>error.code==='CHALLENGE_ALREADY_ANSWERED'&&error.status===409);
+  const tamperedResponse=structuredClone(responded.world);
+  tamperedResponse.events.at(-1).actor=witness;
+  await assert.rejects(validateWorld(tamperedResponse),error=>error.code==='INVALID_WORLD');
   await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId,challengeType:'other',challengeText:'Self-challenge.'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='SELF_CHALLENGE');
   await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId:'missing-observation',challengeType:'other',challengeText:'No target.'},witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='NOT_FOUND');
   const tampered=structuredClone(challenged.world);
   tampered.events.at(-1).version=2;
   await assert.rejects(validateWorld(tampered));
 
-  const proposal=await applyAction(challenged.world,{
+  const proposal=await applyAction(responded.world,{
     type:'propose-moonshot',title:'A bounded test',hypothesis:'A source can be inspected.',
     falsifier:'The source cannot be retrieved.',evidenceNeeded:'A retained primary-source capture.'
-  },founder,{now:'2026-10-17T12:00:04.000Z'});
+  },founder,{now:'2026-10-17T12:00:05.000Z'});
   const report=await applyAction(proposal.world,{
     type:'report-experiment',moonshotId:proposal.result.moonshotId,
     procedure:'Attempt a bounded retrieval.',observation:'The outcome remains inconclusive.',
     reportedOutcome:'inconclusive'
-  },founder,{now:'2026-10-17T12:00:05.000Z'});
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
   const malformed=structuredClone(report.world);
   malformed.events.push({
     id:'cross-kind-challenge-test',type:'experiment-challenged',actor:witness,
-    at:'2026-10-17T12:00:06.000Z',semantics:'Attributed challenge; not adjudicated.',
+    at:'2026-10-17T12:00:07.000Z',semantics:'Attributed challenge; not adjudicated.',
     challengeId:event.challengeId,reportId:report.result.reportId,
     moonshotId:proposal.result.moonshotId,challengeType:'contradiction',
     challengeText:'This challenge must have a unique identity.',
     evidenceCreationId:null,evidenceVersion:null
   });
   malformed.revision+=1;
-  malformed.updatedAt='2026-10-17T12:00:06.000Z';
+  malformed.updatedAt='2026-10-17T12:00:07.000Z';
   await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
 });

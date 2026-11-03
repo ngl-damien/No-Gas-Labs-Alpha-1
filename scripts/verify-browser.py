@@ -720,10 +720,74 @@ def shared(browser,url,data,out):
         assert len([event for event in after_challenge_retry['world']['events'] if event['type']=='source-observation-challenged'])==1
         assert after_challenge_retry['world']['revision']==committed_challenge['world']['revision'], 'Exact retry must not append a second challenge'
         assert after_challenge_retry['world']['xp']==before_challenge['world']['xp']==100
+        # The original Witness author can answer the Founder challenge without editing the note.
+        response_text='The note is a lead only; source retrieval remains outstanding.'
+        before_author_response=visitor.request.get(url+'api/state').json()
+        lost_author_response={'remaining':True}
+        def lose_source_author_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_author_response['remaining'] and payload.get('type')=='respond-source-observation-challenge':
+                lost_author_response['payload']=payload
+                committed=route.fetch()
+                lost_author_response['response']=committed.json()
+                assert committed.status==200, 'The author response must commit before the simulated response loss'
+                lost_author_response['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Author response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        b.route('**/api/action',lose_source_author_response)
+        response_card=b.locator(f'[data-source-observation-card][data-observation-id="{source_observation["observationId"]}"]')
+        response_details=response_card.locator('[data-source-observation-response-details]')
+        expect(response_details).to_have_count(1)
+        response_details.locator('summary').click()
+        response_details.locator('textarea').fill(response_text)
+        response_details.get_by_role('button',name='Preserve author response',exact=True).click()
+        expect(b.locator('#toast')).to_contain_text('Author response lost after commit')
+        assert lost_author_response['remaining'] is False, 'The simulated author-response loss must finish after the server commit'
+        pending_author_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_author_raw, 'A committed author response with a lost response must leave a local Relay receipt'
+        pending_author=json.loads(pending_author_raw)
+        assert pending_author['actorId']==witness_id
+        assert pending_author['action']['type']=='respond-source-observation-challenge'
+        assert pending_author['action']['challengeId']==challenge_events[0]['challengeId']
+        committed_author_response=visitor.request.get(url+'api/state').json()
+        author_response_events=[event for event in committed_author_response['world']['events'] if event['type']=='source-observation-challenge-responded']
+        assert len(author_response_events)==1 and author_response_events[0]['responseText']==response_text
+        assert author_response_events[0]['actor']['id']==witness_id and author_response_events[0]['actor']['role']=='witness'
+        assert author_response_events[0]['observationId']==source_observation['observationId']
+        assert author_response_events[0]['creationId']==source_observation['creationId'] and author_response_events[0]['version']==source_observation['version']
+        assert committed_author_response['world']['revision']==before_author_response['world']['revision']+1
+        assert committed_author_response['world']['xp']==before_author_response['world']['xp']==100
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-SOURCE-OBSERVATION-CHALLENGE')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact author-response retry must clear the pending receipt'
+        after_author_response_retry=visitor.request.get(url+'api/state').json()
+        assert len([event for event in after_author_response_retry['world']['events'] if event['type']=='source-observation-challenge-responded'])==1
+        assert after_author_response_retry['world']['revision']==committed_author_response['world']['revision'], 'Exact author-response retry must not append a second response'
+        assert after_author_response_retry['world']['xp']==before_author_response['world']['xp']==100
+        b.unroute('**/api/action',lose_source_author_response)
+        visit(b,'The shared observatory')
+        expect(b.locator('#source-observations')).to_contain_text(response_text)
+        expect(b.locator('[data-source-observation-response]')).to_have_count(1)
+        close_sheet(b);b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('Source Responder')
+        expect(b.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(b)
+        expect(b.locator('[data-objective-id="witness-source-observation-response"]')).to_contain_text('RECORDED')
         visit(a,'The shared observatory')
         visit(b,'The shared observatory')
         expect(a.locator('#source-observations')).to_contain_text(challenge_text)
+        expect(a.locator('#source-observations')).to_contain_text(response_text)
         expect(a.locator('[data-source-observation-challenge]')).to_have_count(1)
+        expect(a.locator('[data-source-observation-response]')).to_have_count(1)
         expect(b.locator('#source-observations')).to_contain_text(challenge_text)
         close_sheet(a);a.locator('#character-button').click()
         expect(a.locator('#sheet')).to_contain_text('Challenger')
@@ -733,6 +797,8 @@ def shared(browser,url,data,out):
         a.locator('#institution-projects').click()
         expect(a.locator('#sheet')).to_contain_text('DISSENT & CHALLENGE')
         expect(a.locator('#sheet')).to_contain_text('Source observation challenged')
+        expect(a.locator('#sheet')).to_contain_text('Author response to source challenge')
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & RESPONSE')
         close_sheet(a)
         visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'

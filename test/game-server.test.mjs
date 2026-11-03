@@ -1322,6 +1322,40 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   assert.equal(afterReplay.body.world.revision, revision);
   assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
   assert.equal(afterReplay.body.world.xp, before.body.world.xp);
+  const challengeId = challenges[0].challengeId;
+  const responseAction = {
+    type: 'respond-source-observation-challenge', requestId: 'source-response-1',
+    challengeId, responseText: 'The note is a lead only; source retrieval remains outstanding.'
+  };
+  const beforeResponse = await founder.request('/api/state');
+  const response = await founder.request('/api/action', responseAction);
+  assert.equal(response.response.status, 200, JSON.stringify(response.body));
+  const afterResponse = await witness.request('/api/state');
+  const responses = afterResponse.body.world.events.filter(event => event.type === 'source-observation-challenge-responded');
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].actor.id, before.body.viewer.id);
+  assert.equal(responses[0].actor.role, 'founder');
+  assert.equal(responses[0].challengeId, challengeId);
+  assert.equal(responses[0].observationId, observationId);
+  assert.equal(responses[0].creationId, published.body.result.creationId);
+  assert.equal(responses[0].version, 1);
+  assert.equal(responses[0].responseText, responseAction.responseText);
+  assert.equal(afterResponse.body.world.revision, beforeResponse.body.world.revision + 1);
+  assert.equal(afterResponse.body.world.xp, before.body.world.xp);
+  const responseRevision = afterResponse.body.world.revision;
+  const responseReplay = await founder.request('/api/action', responseAction);
+  assert.equal(responseReplay.response.status, 200, JSON.stringify(responseReplay.body));
+  assert.equal(responseReplay.body.idempotentReplay, true);
+  const afterResponseReplay = await witness.request('/api/state');
+  assert.equal(afterResponseReplay.body.world.revision, responseRevision);
+  assert.equal(afterResponseReplay.body.world.events.filter(event => event.type === 'source-observation-challenge-responded').length, 1);
+  const wrongAuthor = await witness.request('/api/action', { ...responseAction, requestId: 'witness-response-1' });
+  assert.equal(wrongAuthor.response.status, 403);
+  assert.equal(wrongAuthor.body.error.code, 'FORBIDDEN');
+  const secondResponse = await founder.request('/api/action', { ...responseAction, requestId: 'founder-second-response' });
+  assert.equal(secondResponse.response.status, 409);
+  assert.equal(secondResponse.body.error.code, 'CHALLENGE_ALREADY_ANSWERED');
+  assert.equal(afterResponseReplay.body.world.xp, before.body.world.xp);
   const selfChallenge = await founder.request('/api/action', {
     ...challengeAction, requestId: 'founder-self-challenge', challengeText: 'The author cannot challenge their own note.'
   });
@@ -1330,4 +1364,5 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   const final = await founder.request('/api/state');
   assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
   assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenge-responded').length, 1);
 });

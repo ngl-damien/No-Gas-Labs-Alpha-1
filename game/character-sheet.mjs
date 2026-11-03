@@ -364,6 +364,9 @@ export function projectCharacter(world, viewer) {
     .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
   const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
     .filter(challenge => challenge.actor?.id === viewer?.id && challenge.actor?.role === viewer?.role);
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
 
   const completedQuestObjectives = getQuestTrail(world, viewer)
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
@@ -418,6 +421,13 @@ export function projectCharacter(world, viewer) {
       count: matchedReports.length + sourceObservationChallenges.length,
       record: 'reports and challenges to another actor’s source observations',
       basis: 'Attributed version-bound reports plus unique, earlier challenges to another actor’s retained source notes; this counts dissenting practice, not correctness or adjudication.'
+    },
+    {
+      id: 'source-responder',
+      label: 'Source Responder',
+      count: sourceObservationResponses.length,
+      record: 'append-only author responses to retained challenges',
+      basis: 'Responses are counted only when the original note author answers one uniquely linked earlier challenge. This counts accountable response practice, not truth, adjudication, approval, or XP.'
     },
     {
       id: 'researcher',

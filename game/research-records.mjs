@@ -493,12 +493,21 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
   const observationIdCounts = countBy(observationEvents, 'observationId', hasText);
   const sourceObservationChallengeEvents = events.filter(event => event?.type === 'source-observation-challenged');
   const challengeIdCounts = countBy(sourceObservationChallengeEvents, 'challengeId', hasText);
+  const sourceObservationResponseEvents = events.filter(event => event?.type === 'source-observation-challenge-responded');
+  const responseIdCounts = countBy(sourceObservationResponseEvents, 'responseId', hasText);
   const challengesByObservation = new Map();
   events.forEach((event, index) => {
     if (event?.type !== 'source-observation-challenged' || !hasText(event.observationId)) return;
     const rowsForObservation = challengesByObservation.get(event.observationId) || [];
     rowsForObservation.push({ event, index });
     challengesByObservation.set(event.observationId, rowsForObservation);
+  });
+  const responsesByChallenge = new Map();
+  events.forEach((event, index) => {
+    if (event?.type !== 'source-observation-challenge-responded' || !hasText(event.challengeId)) return;
+    const rowsForChallenge = responsesByChallenge.get(event.challengeId) || [];
+    rowsForChallenge.push({ event, index });
+    responsesByChallenge.set(event.challengeId, rowsForChallenge);
   });
   const versions = new Map();
   for (const creation of creations) {
@@ -588,11 +597,33 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       sourceObservationChallengeTypes.has(challenge.challengeType) && typeof challenge.challengeText === 'string' &&
       challenge.challengeText.trim() && Array.from(challenge.challengeText).length <= 1000 &&
       isStrictTimestamp(challenge.at) && challengeIndex > index && Date.parse(event.at) <= Date.parse(challenge.at)
-    ).map(({ event: challenge }) => Object.freeze({
-      id: challenge.id, challengeId: challenge.challengeId, observationId: challenge.observationId,
-      creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
-      challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at
-    }));
+    ).map(({ event: challenge, index: challengeIndex }) => {
+      const responseRows = responsesByChallenge.get(challenge.challengeId) || [];
+      const responses = responseRows.filter(({ event: response, index: responseIndex }) =>
+        !unsafeEvents.has(response) && typeof response.id === 'string' && eventIdCounts.get(response.id) === 1 &&
+        typeof response.responseId === 'string' && responseIdCounts.get(response.responseId) === 1 &&
+        response.challengeId === challenge.challengeId && response.observationId === event.observationId &&
+        response.creationId === event.creationId && response.version === event.version &&
+        response.actor?.id === event.actor?.id && response.actor?.role === event.actor?.role &&
+        typeof response.responseText === 'string' && response.responseText.trim() &&
+        Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
+        responseIndex > challengeIndex && Date.parse(challenge.at) < Date.parse(response.at) &&
+        Date.parse(event.at) < Date.parse(response.at)
+      ).map(({ event: response }) => Object.freeze({
+        id: response.id, type: response.type, responseId: response.responseId,
+        challengeId: response.challengeId, observationId: response.observationId,
+        creationId: response.creationId, version: response.version,
+        responseText: response.responseText, actor: response.actor, at: response.at
+      }));
+      const responseStatus = responseRows.length === 0 ? 'unanswered' :
+        responseRows.length === 1 && responses.length === 1 ? 'answered' : 'ambiguous';
+      return Object.freeze({
+        id: challenge.id, challengeId: challenge.challengeId, observationId: challenge.observationId,
+        creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
+        challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at,
+        responseStatus, responses: Object.freeze(responses)
+      });
+    });
     const warning = event.sourceKind === 'model-assertion'
       ? 'Model assertions are leads only, not evidence.'
       : event.sourceKind === 'tool-output'

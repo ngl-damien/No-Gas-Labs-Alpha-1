@@ -382,6 +382,12 @@ function worldEntry(event, index, creations, notes) {
     entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "A different actor"} preserved a challenge to an earlier source observation. The original remains intact; this does not decide truth.`;
     entry.detail = `Target observation: ${text(event?.observationId) || "not identified"} · ${text(event?.challengeText) || "No challenge text was recorded."}`;
     entry.warning = "A challenge is attributed dissent, not evidence, a verdict, or authority. It grants no XP and does not change the original observation.";
+  } else if (type === "source-observation-challenge-responded") {
+    entry.title = "Author response to source challenge";
+    entry.category = "DISSENT & RESPONSE";
+    entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "The original author"} preserved an attributed response to a challenge against their source observation. The original note and challenge remain intact.`;
+    entry.detail = `Challenge: ${text(event?.challengeId) || "not identified"} · Response: ${text(event?.responseText) || "No response text was recorded."}`;
+    entry.warning = "An author response is attributed context, not independent evidence, adjudication, a truth verdict, approval, or authority. It grants no XP.";
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
@@ -389,7 +395,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded", "source-observation-challenged"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded", "source-observation-challenged", "source-observation-challenge-responded"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;

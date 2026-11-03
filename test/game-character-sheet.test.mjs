@@ -813,6 +813,10 @@ test('Challenger skill counts a different actor’s retained Source Observation 
         challengeId: 'source-challenge-1', observationId, creationId, version: 1,
         challengeType: 'missing-evidence',
         challengeText: 'The source is not independently retrievable.'
+      }),
+      event('challenge-source-response', 'source-observation-challenge-responded', founder, t4, {
+        responseId: 'source-response-1', challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+        responseText: 'The note is a lead only; source retrieval remains outstanding.'
       })
     ],
     discoveries: [], contributions: [], reports: [], methods: []
@@ -824,4 +828,8 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(founderRecord.xp, 100);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'challenger').count, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-responder').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-responder').count, 0);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(witnessRecord.xp, 0);
 });

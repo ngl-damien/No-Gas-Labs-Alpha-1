@@ -731,6 +731,14 @@ test("source-observation challenges appear as linked dissent, not adjudication o
       at: "2026-10-26T10:08:00.000Z",
       challengeType: "missing-evidence",
       challengeText: "No retrievable primary source is attached."
+    },
+    {
+      id: "source-response-event", type: "source-observation-challenge-responded",
+      responseId: "source-response-1", challengeId: "challenge-1",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:09:00.000Z",
+      responseText: "The note is a lead only; source retrieval remains outstanding."
     }
   );
   const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-challenge-event");
@@ -741,4 +749,11 @@ test("source-observation challenges appear as linked dissent, not adjudication o
   assert.match(entry.summary, /does not decide truth/i);
   assert.match(entry.detail, /No retrievable primary source is attached/);
   assert.match(entry.warning, /attributed dissent, not evidence, a verdict, or authority/i);
+  const response = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-response-event");
+  assert.equal(response.category, "DISSENT & RESPONSE");
+  assert.equal(response.targetTitle, "Source Observatory");
+  assert.equal(response.targetAvailable, true);
+  assert.match(response.summary, /original note and challenge remain intact/i);
+  assert.match(response.detail, /source retrieval remains outstanding/i);
+  assert.match(response.warning, /not independent evidence, adjudication, a truth verdict/i);
 });
