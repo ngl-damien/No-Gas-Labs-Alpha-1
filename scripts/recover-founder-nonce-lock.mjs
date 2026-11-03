@@ -13,7 +13,7 @@ const RECOVERY_LEASE_SCHEMA = 'ngl.founder-nonce-recovery.v1';
 const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_NONCE_COUNT = 100_000;
 const TEMPORARY_NONCE_FILE = /^\.founder-nonce-[0-9a-f-]{36}\.tmp$/;
-const RECOVERY_WARNING = 'PID probes are advisory only. PID reuse, namespaces, permissions, and races can mislead; use only after confirming the owner is stopped on this same host/PID namespace. This tool never grants Founder authority.';
+const RECOVERY_WARNING = 'PID probes are advisory only. PID reuse, namespaces, permissions, and races can mislead; stop all older writers and confirm the owner is stopped on this same host/PID namespace. The recovery lease fences only writers running this version. This tool never grants Founder authority.';
 
 function failure(code, detail = '') {
   const error = new Error(detail ? code + ':' + detail : code);
