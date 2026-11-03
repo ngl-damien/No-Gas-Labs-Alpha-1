@@ -1501,15 +1501,26 @@ def shared(browser,url,data,out):
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Field equipment · evidence-derived')
-        armor_bearer_before=armor_bearer_steps(a)
-        character_xp_before=character_xp_from_open_sheet(a)
-        assert armor_bearer_before[0]>=1 and armor_bearer_before[1]==8, armor_bearer_before
+        initial_armor_bearer=armor_bearer_steps(a)
+        assert initial_armor_bearer[0]>=1 and initial_armor_bearer[1]==8, initial_armor_bearer
         adversarial_slot=a.locator('#sheet [data-equipment-slot="adversarial"]')
         expect(adversarial_slot).to_contain_text('Contradiction Ward')
         expect(adversarial_slot).to_contain_text('dissent preserved · not adjudicated')
         expect(adversarial_slot.get_by_role('button',name='Inspect source →',exact=True)).to_have_count(1)
 
-        # The Forge creates an actor-owned item only from this actor's exact earlier challenge event.
+        # Walking to the Forge may legitimately discover a guide along the route.
+        # Capture the XP and field-kit baseline after arrival so this assertion
+        # measures only the Forge/equipment action, not exploration performed en route.
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Forge',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Forge')
+        close_sheet(a)
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        armor_bearer_before=armor_bearer_steps(a)
+        character_xp_before=character_xp_from_open_sheet(a)
+        assert armor_bearer_before[0]>=1 and armor_bearer_before[1]==8, armor_bearer_before
         close_sheet(a)
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Forge',exact=True).click()
@@ -1519,11 +1530,14 @@ def shared(browser,url,data,out):
         forge_choice=forge_slot.locator('select[data-forge-choice="adversarial"]')
         forge_choice.select_option(retained_challenges[0]['id'])
         before_forge=owner.request.get(url+'api/state').json()
+        before_forge_event_ids={event.get('id') for event in before_forge['world']['events']}
         owner_id=before_forge['viewer']['id']
         assert retained_challenges[0]['actor']['id']==owner_id
         forge_slot.get_by_role('button',name='Forge item',exact=True).click()
         expect(a.locator('#sheet')).to_contain_text('1 personal field item is already forged')
         forged_state=owner.request.get(url+'api/state').json()
+        new_forge_events=[event for event in forged_state['world']['events'] if event.get('id') not in before_forge_event_ids]
+        assert len(new_forge_events)==1 and new_forge_events[0].get('type')=='field-item-forged', new_forge_events
         forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged' and event.get('actor',{}).get('id')==owner_id]
         assert len(forge_events)==1, forge_events
         forge_event=forge_events[0]
