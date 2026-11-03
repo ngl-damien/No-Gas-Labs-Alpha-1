@@ -83,10 +83,10 @@ const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
 const GUILD_NPC_POSITIONS = Object.freeze([
-  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
-  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
-  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
-  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
+  { roleId: 'archivist', x: 980, y: 220, accent: '#6b805d', sigil: 'A', routeLocation: 'evidence_archive' },
+  { roleId: 'adversary', x: 1080, y: 235, accent: '#af5138', sigil: '!', routeLocation: 'evidence_archive' },
+  { roleId: 'synthesizer', x: 150, y: 230, accent: '#536b68', sigil: 'S', routeLocation: 'guild_hall' },
+  { roleId: 'tutor', x: 250, y: 470, accent: '#9a8b5b', sigil: 'T', routeLocation: 'academy' }
 ]);
 const COLLABORATOR_ROLE_CATALOGUE = projectCollaboratorPackets({ events: [], creations: [] });
 const GUILD_NPC_SHORT_NAMES = Object.freeze({
@@ -100,20 +100,22 @@ const GUILD_NPC_SHORT_NAMES = Object.freeze({
 // renderer contributes only map positions and visual accents.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
   const role = COLLABORATOR_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
-  return role ? [Object.freeze({
+  const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
+  return role && place ? [Object.freeze({
     id: 'guild-npc-' + role.id,
     roleId: role.id,
     name: role.name,
     objective: role.objective,
     shortName: GUILD_NPC_SHORT_NAMES[role.id] || role.name.toUpperCase(),
-    routeLocation: 'guild_hall',
+    ...position,
+    routeLocation: place.id,
+    locationLabel: place.name.toUpperCase(),
     authority: 'advisory-only',
     invokesModel: false,
     mayWriteCanonicalState: false,
     mayGrantAuthority: false,
     mayAwardProgress: false,
-    mayCertifyTruthOrExecution: false,
-    ...position
+    mayCertifyTruthOrExecution: false
   })] : [];
 }));
 
@@ -176,9 +178,9 @@ function guildNpcAccessibilityText(readiness) {
     const omitted = entry.omittedCount > 0
       ? ` ${countPhrase(entry.omittedCount, 'additional eligible event reference is omitted', 'additional eligible event references are omitted')} from this bounded packet.`
       : '';
-    return `${npc.name}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
+    return `${npc.name} at ${npc.locationLabel}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
   });
-  return 'Guild Hall bounded collaborator guides: ' + descriptions.join(' ') +
+  return 'Bounded institutional collaborator guides: ' + descriptions.join(' ') +
     ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.';
 }
 function safeQuestTargetId(value) {
@@ -275,6 +277,11 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
   if (type === 'location') {
     const id = ownDataValue(action, 'id');
     if (!safeQuestTargetId(id)) return null;
+    const npcMatches = GUILD_NPCS.filter(npc => npc.id === id);
+    if (npcMatches.length === 1) {
+      const npc = npcMatches[0];
+      return createQuestMapTarget('npc', npc.id, npc.x, npc.y + 10, npc.name);
+    }
     const place = PLACES.find(item => item.id === id);
     return place ? createQuestMapTarget('location', place.id, place.x, place.y, place.name) : null;
   }
@@ -815,6 +822,9 @@ export class PixelWorldView extends WorldView {
       ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
     this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
       `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
+    ).join(';');
+    this.canvas.dataset.guildNpcLocations = GUILD_NPCS.map(npc =>
+      `${npc.roleId}=${npc.routeLocation}`
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     if (!counts?.available) {
