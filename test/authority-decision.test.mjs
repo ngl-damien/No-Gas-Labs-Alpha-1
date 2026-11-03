@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync, createHash, sign, randomUUID } from "node:crypto";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { existsSync, readdirSync, writeFileSync, readFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -296,6 +298,45 @@ test("trust-anchor loader validates the enrolled public key fingerprint", () => 
     assert.equal(trust.mode, "PRODUCTION");
     assert.equal(trust.fingerprint, kp.fingerprint);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("trust-anchor loader rejects a path swapped to a symlink during descriptor read", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-race-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const trustPath = path.join(dir, "founder.pub.json");
+  const replacementPath = path.join(dir, "replacement.pub.json");
+  const anchorFor = kp => ({
+    schema: "ngl.founder-trust-anchor.v1",
+    status: "ENROLLED",
+    enrolled: true,
+    mode: "PRODUCTION",
+    public_key_jwk: kp.jwk,
+    fingerprint: kp.fingerprint,
+  });
+  writeFileSync(trustPath, JSON.stringify(anchorFor(keyPair())), { mode: 0o600 });
+  writeFileSync(replacementPath, JSON.stringify(anchorFor(keyPair())), { mode: 0o600 });
+
+  const originalReadFileSync = fs.readFileSync;
+  let swapped = false;
+  fs.readFileSync = (target, ...args) => {
+    if (!swapped) {
+      swapped = true;
+      unlinkSync(trustPath);
+      fs.symlinkSync(replacementPath, trustPath);
+    }
+    return originalReadFileSync(target, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(swapped, true);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    syncBuiltinESMExports();
     rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as verifySignature, randomBytes, randomUUID } from "node:crypto";
-import { constants as fsConstants, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -146,17 +146,22 @@ function loadHostTrustAnchor() {
   if (!trustPath || !path.isAbsolute(trustPath)) {
     throw new Error("FOUNDER_TRUST_ROOT_UNCONFIGURED");
   }
-  assertNoSymlinkPathComponents(trustPath, "FOUNDER_TRUST_ROOT_UNSAFE");
-  assertPrivateDirectory(path.dirname(path.resolve(trustPath)), "FOUNDER_TRUST_ROOT_UNSAFE");
+  const absoluteTrustPath = path.resolve(trustPath);
+  const directory = path.dirname(absoluteTrustPath);
+  assertNoSymlinkPathComponents(absoluteTrustPath, "FOUNDER_TRUST_ROOT_UNSAFE");
+  const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_TRUST_ROOT_UNSAFE");
   let stat;
-  try { stat = lstatSync(trustPath); }
+  try { stat = lstatSync(absoluteTrustPath); }
   catch { throw new Error("FOUNDER_TRUST_ROOT_UNAVAILABLE"); }
   if (stat.isSymbolicLink() || !stat.isFile() ||
       (stat.mode & 0o777) !== 0o600 || stat.size > 16_384 ||
       (typeof process.getuid === "function" && stat.uid !== process.getuid())) {
     throw new Error("FOUNDER_TRUST_ROOT_UNSAFE");
   }
-  return loadTrustAnchor(trustPath);
+  const trust = loadTrustAnchorFromPath(absoluteTrustPath, stat);
+  assertNoSymlinkPathComponents(absoluteTrustPath, "FOUNDER_TRUST_ROOT_UNSAFE");
+  assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_TRUST_ROOT_UNSAFE");
+  return trust;
 }
 
 function readNonceLedger(filePath) {
@@ -336,18 +341,48 @@ function publicKeyFingerprint(publicKeyJwk) {
     .digest("hex");
 }
 
-/** Load a trust anchor for inspection. Authorization never accepts a caller-selected path. */
-export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
-  if (!existsSync(trustPath)) {
-    return Object.freeze({ enrolled: false, reason: "TRUST_ANCHOR_ABSENT", path: trustPath });
-  }
+function loadTrustAnchorFromPath(trustPath, expectedStat = null) {
   let raw;
   try {
-    const stat = lstatSync(trustPath);
-    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 16_384) {
-      return Object.freeze({ enrolled: false, reason: "MALFORMED_TRUST_ANCHOR", path: trustPath });
+    let before;
+    try { before = lstatSync(trustPath); }
+    catch (error) {
+      if (error?.code === "ENOENT") {
+        return Object.freeze({ enrolled: false, reason: "TRUST_ANCHOR_ABSENT", path: trustPath });
+      }
+      throw error;
     }
-    raw = snapshotJsonData(JSON.parse(readFileSync(trustPath, "utf8")));
+    if (before.isSymbolicLink() || !before.isFile() || before.size > 16_384 ||
+        (expectedStat && !sameFileSnapshot(expectedStat, before))) {
+      throw new Error("TRUST_ANCHOR_UNSAFE");
+    }
+
+    let descriptor;
+    try {
+      descriptor = openSync(trustPath, fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+      const opened = fstatSync(descriptor);
+      if (!opened.isFile() || !sameFileSnapshot(before, opened) ||
+          (expectedStat && !sameFileSnapshot(expectedStat, opened))) {
+        throw new Error("TRUST_ANCHOR_CHANGED");
+      }
+      const bytes = readFileSync(descriptor);
+      const after = lstatSync(trustPath);
+      const afterDescriptor = fstatSync(descriptor);
+      if (after.isSymbolicLink() || !after.isFile() ||
+          !sameFileSnapshot(opened, after) ||
+          !sameFileSnapshot(opened, afterDescriptor) ||
+          bytes.length !== opened.size || bytes.length > 16_384) {
+        throw new Error("TRUST_ANCHOR_CHANGED");
+      }
+      const serialized = bytes.toString("utf8");
+      if (!Buffer.from(serialized, "utf8").equals(bytes)) {
+        throw new Error("TRUST_ANCHOR_ENCODING_INVALID");
+      }
+      raw = snapshotJsonData(JSON.parse(serialized));
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
   } catch {
     return Object.freeze({ enrolled: false, reason: "MALFORMED_TRUST_ANCHOR", path: trustPath });
   }
@@ -382,6 +417,11 @@ export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
     fingerprint: raw.fingerprint,
     path: trustPath,
   });
+}
+
+/** Load a trust anchor for inspection. Authorization never accepts a caller-selected path. */
+export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
+  return loadTrustAnchorFromPath(trustPath);
 }
 
 export function makeDecisionPayload(input) {
