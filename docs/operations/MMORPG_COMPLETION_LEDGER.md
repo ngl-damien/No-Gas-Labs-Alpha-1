@@ -49,4 +49,4 @@ Keep current-main and proposed-branch evidence separate. Do not delete supersede
 G6 remains **IN PROGRESS**. The proposed child PR #326 adds a read-only Source Observation response queue inside the Evidence Archive. It is derived from uniquely linked retained observations/challenges, opens the exact published version for the existing author-only response form, and withholds action for ambiguous histories. Answered challenges remain in Chronicle. No XP, truth verdict, evidence, approval or authority is created.
 
 The new unit tests cover unanswered, answered, ambiguous and hostile-text cases; hosted exact-head Verify, Genesis and Browser results are pending observation. Map badge projection remains blocked by the separate open PR #309 ownership of game/world-view.mjs. No merge, release or deployment is claimed.
-
+- First exact-head Verify run 41649638021 exposed one assertion that expected wording not present in the Chronicle. The queue itself removed the answered item and retained the response entry; the assertion now checks the actual DISSENT & RESPONSE category. Exact-head rerun is required.

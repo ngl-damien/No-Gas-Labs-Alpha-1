@@ -194,7 +194,7 @@ test('answered source challenges leave the response queue but remain in the Chro
   assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
   assert.match(output, /No unanswered Source Observation challenges/);
   assert.match(output, /Author response to source challenge/);
-  assert.match(output, /does not establish independent evidence/);
+  assert.match(output, /DISSENT & RESPONSE/);
 }));
 
 test('ambiguous Source Observation response history is visible but never offered as a new response action', () => withDocument(() => {

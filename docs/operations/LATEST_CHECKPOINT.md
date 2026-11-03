@@ -271,4 +271,4 @@ No merge or deployment was performed.
 - The Source Observation event types are still absent from the map's Evidence Archive/TownSquare activity badge matchers. world-view.mjs is owned by the still-open PR #309 lifecycle branch; this run deliberately did not edit that shared file.
 - The classic top-down tile-and-sprite transformation, physical Android-device acceptance, and independently authenticated Founder Gate remain unfinished.
 - Draft child only. No merge, release, deployment, Founder decision, XP award, canonical event, credential change or permission change.
-
+- First exact-head Verify run 41649638021 exposed one assertion that expected wording not present in the Chronicle. The queue itself removed the answered item and retained the response entry; the assertion now checks the actual DISSENT & RESPONSE category. Exact-head rerun is required.
