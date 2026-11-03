@@ -84,7 +84,7 @@ test('TEST_ONLY trust is inspectable and cryptographically valid but cannot auth
   );
   assert.throws(
     () => authorizationEvent({ signed, payload }),
-    /FOUNDER_NOT_ENROLLED/
+    /FOUNDER_TRUST_ROOT_UNCONFIGURED/
   );
 });
 
