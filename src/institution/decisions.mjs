@@ -448,6 +448,28 @@ export async function openDecisions({ directory, now = Date.now, syncDirectory: 
           });
         });
       },
+      summary() {
+        // A deliberately read-only, public projection for the world map. It
+        // exposes aggregate status counts only: no titles, evaluation bytes,
+        // risks, rollback text, policy basis, or audit details.
+        if (uncertain || closing || closed) {
+          return clone({ schema: 'ngl.decisions.summary.v1', available: false });
+        }
+        const counts = { PENDING: 0, APPROVED: 0, REJECTED: 0, DEFERRED: 0, EXPIRED: 0 };
+        for (const decision of state.decisions) {
+          if (!Object.hasOwn(counts, decision.status)) {
+            return clone({ schema: 'ngl.decisions.summary.v1', available: false });
+          }
+          counts[decision.status] += 1;
+        }
+        return clone({
+          schema: 'ngl.decisions.summary.v1',
+          available: true,
+          revision: state.revision,
+          decisionCount: state.decisions.length,
+          counts,
+        });
+      },
       snapshot(actor) {
         return prepare(() => {
           const trustedActor = viewer(actor);

@@ -56,6 +56,29 @@ function ownDataValue(object,key){
  }catch{return undefined;}
 }
 function isArraySafely(value){try{return Array.isArray(value)}catch{return false}}
+const DECISION_SUMMARY_SCHEMA='ngl.decisions.summary.v1';
+const DECISION_STATUSES=Object.freeze(['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']);
+function decisionSummaryState(summary){
+ if(!summary||typeof summary!=='object'||isArraySafely(summary)||
+    ownDataValue(summary,'schema')!==DECISION_SUMMARY_SCHEMA)return null;
+ if(ownDataValue(summary,'available')!==true)return {available:false};
+ const revision=ownDataValue(summary,'revision');
+ const decisionCount=ownDataValue(summary,'decisionCount');
+ const counts=ownDataValue(summary,'counts');
+ if(!Number.isSafeInteger(revision)||revision<0||
+    !Number.isSafeInteger(decisionCount)||decisionCount<0||
+    !counts||typeof counts!=='object'||isArraySafely(counts))return {available:false};
+ const normalized=Object.create(null);
+ let total=0;
+ for(const status of DECISION_STATUSES){
+  const count=ownDataValue(counts,status);
+  if(!Number.isSafeInteger(count)||count<0)return {available:false};
+  normalized[status]=count;
+  total+=count;
+ }
+ if(!Number.isSafeInteger(total)||total!==decisionCount||revision<decisionCount)return {available:false};
+ return {available:true,revision,decisionCount,counts:normalized};
+}
 const INSTITUTION_SUMMARY_SCHEMA='ngl.shared-institution-summary.v1';
 const INSTITUTION_KERNEL_SCHEMA='ngl.institution.v1';
 export function institutionSummaryFromState(dto){
@@ -110,15 +133,21 @@ function computeInstitutionActivityCounts(world,institution=null){
  // Do not present a partial kernel response as a complete institutional count.
  // The server's revision, declared count and delivered array length must agree.
  const kernel=ownDataValue(institution,'kernel');
- if(ownDataValue(institution,'schema')!==INSTITUTION_SUMMARY_SCHEMA||
-    ownDataValue(kernel,'schema')!==INSTITUTION_KERNEL_SCHEMA)return activity;
- const kernelEvents=ownDataValue(kernel,'events');
- const kernelCount=ownDataValue(kernel,'eventCount');
- const kernelRevision=ownDataValue(kernel,'revision');
- const deliveredCount=ownDataValue(kernelEvents,'length');
- if(isArraySafely(kernelEvents)&&Number.isSafeInteger(kernelCount)&&kernelCount===deliveredCount&&
-    Number.isSafeInteger(kernelRevision)&&kernelRevision===kernelCount){
-  addIdentifiedActivity(kernelEvents,INSTITUTION_KERNEL_EVENT_MATCHERS,activity);
+ const validInstitutionSummary=ownDataValue(institution,'schema')===INSTITUTION_SUMMARY_SCHEMA&&
+    ownDataValue(kernel,'schema')===INSTITUTION_KERNEL_SCHEMA;
+ if(validInstitutionSummary){
+  const kernelEvents=ownDataValue(kernel,'events');
+  const kernelCount=ownDataValue(kernel,'eventCount');
+  const kernelRevision=ownDataValue(kernel,'revision');
+  const deliveredCount=ownDataValue(kernelEvents,'length');
+  if(isArraySafely(kernelEvents)&&Number.isSafeInteger(kernelCount)&&kernelCount===deliveredCount&&
+     Number.isSafeInteger(kernelRevision)&&kernelRevision===kernelCount){
+   addIdentifiedActivity(kernelEvents,INSTITUTION_KERNEL_EVENT_MATCHERS,activity);
+  }
+  // The separate decision ledger contributes only a validated aggregate count.
+  // It never exposes proposal text or converts a disposition into game success.
+  const decisionSummary=decisionSummaryState(ownDataValue(institution,'decisionSummary'));
+  if(decisionSummary?.available)activity.decision_chamber+=decisionSummary.decisionCount;
  }
  return activity;
 }
@@ -507,7 +536,7 @@ export class WorldView {
   setWorld(world,institutionSummary=this.institutionSummary){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
-  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');this.text(this.institutionCounts[place.id]+' records',0,53,9,'#687756');c.restore();}
+  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const label=place.id==='decision_chamber'&&this.institutionSummary?(gate?.available?this.institutionCounts[place.id]+' records · '+gate.counts.PENDING+' pending':'gate ledger unavailable'):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}

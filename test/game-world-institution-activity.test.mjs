@@ -189,6 +189,45 @@ test('world map counts retained institutional kernel stages at their real locati
   assert.equal(world.xp, 0);
 });
 
+test('Decision Chamber includes only a valid aggregate from the separate decision ledger', () => {
+  const world = { events: [{ id: 'world-decision-1', type: 'decision' }] };
+  const institution = {
+    schema: 'ngl.shared-institution-summary.v1',
+    kernel: { schema: 'ngl.institution.v1', revision: 0, eventCount: 0, events: [] },
+    decisionSummary: {
+      schema: 'ngl.decisions.summary.v1',
+      available: true,
+      revision: 3,
+      decisionCount: 1,
+      counts: { PENDING: 0, APPROVED: 0, REJECTED: 1, DEFERRED: 0, EXPIRED: 0 }
+    }
+  };
+  assert.equal(institutionActivityCount('decision_chamber', world, institution), 2);
+  assert.equal(institutionActivityCount('town-square', world, institution), 0);
+
+  for (const invalid of [
+    { ...institution.decisionSummary, decisionCount: 2 },
+    { ...institution.decisionSummary, revision: 0 },
+    { ...institution.decisionSummary, counts: { ...institution.decisionSummary.counts, REJECTED: -1 } },
+    { ...institution.decisionSummary, available: false }
+  ]) {
+    assert.equal(institutionActivityCount('decision_chamber', world, {
+      ...institution, decisionSummary: invalid
+    }), 1, 'invalid or unavailable gate summaries must not inflate map activity');
+  }
+  assert.equal(institutionActivityCount('decision_chamber', world, {
+    ...institution, schema: 'ngl.shared-institution-summary.v2'
+  }), 1, 'a decision aggregate outside the recognized institution envelope must be ignored');
+
+  let getterCalls = 0;
+  const hostile = { schema: 'ngl.decisions.summary.v1', available: true, revision: 1, decisionCount: 1 };
+  Object.defineProperty(hostile, 'counts', { get() { getterCalls += 1; return institution.decisionSummary.counts; } });
+  assert.equal(institutionActivityCount('decision_chamber', world, {
+    ...institution, decisionSummary: hostile
+  }), 1);
+  assert.equal(getterCalls, 0);
+});
+
 test('incomplete institutional kernel snapshots do not inflate map counters', () => {
   const world = { events: [] };
   const institution = { schema: 'ngl.shared-institution-summary.v1', kernel: {
