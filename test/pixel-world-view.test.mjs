@@ -6,7 +6,7 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
-import { isWalkable, PLACES } from '../game/world-view.mjs';
+import { isWalkable, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -235,4 +235,49 @@ test('quest map projection rejects hostile action accessors without invoking the
   });
   assert.equal(projectQuestMapTarget(action, { creations: [] }), null);
   assert.equal(reads, 0);
+});
+
+
+test('quest map targets fail closed on identity collisions, duplicate versions and out-of-world positions', () => {
+  const creationAction = { type: 'creation', id: 'creation-one', version: 1 };
+  const duplicateVersions = {
+    creations: [{
+      id: 'creation-one', version: 2, versions: [{ version: 1 }, { version: 1 }],
+      title: 'Ambiguous version', position: { x: 240, y: 360 }
+    }]
+  };
+  assert.equal(projectQuestMapTarget(creationAction, duplicateVersions), null);
+
+  const outOfWorld = {
+    creations: [{
+      id: 'creation-one', version: 1, versions: [],
+      title: 'Off-map creation', position: { x: WORLD_WIDTH + 1, y: 360 }
+    }]
+  };
+  assert.equal(projectQuestMapTarget(creationAction, outOfWorld), null);
+  assert.equal(projectQuestMapTarget({
+    type: 'creation', id: 'creation-one', version: 1
+  }, {
+    creations: [{
+      id: 'creation-one', version: 1, versions: [],
+      title: 'Off-map creation', position: { x: 240, y: WORLD_HEIGHT + 1 }
+    }]
+  }), null);
+
+  const object = {
+    id: 'moonshot-object:question-one', moonshotId: 'question-one',
+    title: 'One object', x: 1320, y: 520
+  };
+  assert.equal(projectQuestMapTarget({
+    type: 'research-object', id: object.id, moonshotId: object.moonshotId
+  }, { creations: [] }, [object, { ...object, moonshotId: 'other-question' }]), null);
+
+  const activity = {
+    id: 'research-activity:event-one', moonshotId: 'question-one',
+    activityId: 'report-one', title: 'One activity', x: 1144, y: 629, mapVisible: true
+  };
+  assert.equal(projectQuestMapTarget({
+    type: 'research-activity', id: activity.id,
+    moonshotId: activity.moonshotId, activityId: activity.activityId
+  }, { creations: [] }, [], [activity, { ...activity, activityId: 'other-report' }]), null);
 });

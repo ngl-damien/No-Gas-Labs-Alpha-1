@@ -106,6 +106,8 @@ def basic(page,url,out,label):
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('1')")
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:relay')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target-label', 'The Relay')
     evidence = page.locator('[data-objective-id="founder-first-place"] details.quest-evidence')
     expect(evidence).to_have_count(1)
     expect(evidence.locator('summary')).to_have_text('Inspect retained evidence')

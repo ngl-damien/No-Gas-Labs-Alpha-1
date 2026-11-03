@@ -105,7 +105,8 @@ function questTargetLabel(value, fallback) {
 }
 
 function createQuestMapTarget(kind, id, x, y, label) {
-  if (!safeQuestTargetId(id) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (!safeQuestTargetId(id) || !Number.isFinite(x) || !Number.isFinite(y) ||
+      x < 0 || y < 0 || x > WORLD_WIDTH || y > WORLD_HEIGHT) return null;
   return Object.freeze({ kind, id, x, y, label: questTargetLabel(label, 'Next objective') });
 }
 
@@ -137,11 +138,11 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
     const matches = creations.filter(item => ownDataValue(item, 'id') === id);
     if (matches.length !== 1) return null;
     const creation = matches[0];
-    const currentVersion = ownDataValue(creation, 'version');
     const rawVersions = ownDataValue(creation, 'versions');
     const versions = rawVersions === undefined || rawVersions === null ? [] : questTargetRows(rawVersions);
-    if (!versions || (currentVersion !== version &&
-        !versions.some(item => ownDataValue(item, 'version') === version))) return null;
+    if (!versions) return null;
+    const versionMatches = [creation, ...versions].filter(item => ownDataValue(item, 'version') === version);
+    if (versionMatches.length !== 1) return null;
     const position = ownDataValue(creation, 'position');
     return createQuestMapTarget(
       'creation', id, ownDataValue(position, 'x'), ownDataValue(position, 'y'),
@@ -155,11 +156,10 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
     if (!safeQuestTargetId(id) || !safeQuestTargetId(moonshotId)) return null;
     const objects = questTargetRows(researchObjects);
     if (!objects) return null;
-    const matches = objects.filter(item =>
-      ownDataValue(item, 'id') === id && ownDataValue(item, 'moonshotId') === moonshotId
-    );
+    const matches = objects.filter(item => ownDataValue(item, 'id') === id);
     if (matches.length !== 1) return null;
     const object = matches[0];
+    if (ownDataValue(object, 'moonshotId') !== moonshotId) return null;
     return createQuestMapTarget(
       'research-object', id, ownDataValue(object, 'x'), ownDataValue(object, 'y'),
       ownDataValue(object, 'title')
@@ -173,12 +173,12 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
     if (!safeQuestTargetId(id) || !safeQuestTargetId(moonshotId) || !safeQuestTargetId(activityId)) return null;
     const objects = questTargetRows(researchActivityObjects);
     if (!objects) return null;
-    const matches = objects.filter(item =>
-      ownDataValue(item, 'id') === id && ownDataValue(item, 'moonshotId') === moonshotId &&
-      ownDataValue(item, 'activityId') === activityId && ownDataValue(item, 'mapVisible') === true
-    );
+    const matches = objects.filter(item => ownDataValue(item, 'id') === id);
     if (matches.length !== 1) return null;
     const object = matches[0];
+    if (ownDataValue(object, 'moonshotId') !== moonshotId ||
+        ownDataValue(object, 'activityId') !== activityId ||
+        ownDataValue(object, 'mapVisible') !== true) return null;
     return createQuestMapTarget(
       'research-activity', id, ownDataValue(object, 'x'), ownDataValue(object, 'y'),
       ownDataValue(object, 'title')
@@ -523,7 +523,11 @@ export class PixelWorldView extends WorldView {
 
   drawMapLabel(value, x, y, size = 9) {
     const context = this.ctx;
-    const label = String(value);
+    const source = String(value);
+    const maximumCharacters = Math.max(4, Math.floor((190 - 12) / size));
+    const characters = Array.from(source);
+    const label = characters.length > maximumCharacters
+      ? characters.slice(0, maximumCharacters - 1).join('') + '…' : source;
     context.font = size + 'px ui-monospace, monospace';
     const width = Math.min(190, Math.max(44, Math.ceil(context.measureText(label).width) + 12));
     const left = Math.round(x - width / 2);
