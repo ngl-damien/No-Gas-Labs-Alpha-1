@@ -1579,7 +1579,7 @@ def shared(browser,url,data,out):
         before_xp=before_loadout['world']['xp']
         adversarial_slot.get_by_role('button',name='Pin selected source',exact=True).click()
         expect(adversarial_slot).to_contain_text('PINNED')
-        expect(adversarial_slot).to_contain_text('Challenge · missing-evidence')
+        expect(adversarial_slot.locator('p').nth(2)).to_have_text('Challenge · missing-evidence')
         pinned_state=owner.request.get(url+'api/state').json()
         new_loadout_events=[event for event in pinned_state['world']['events'] if event.get('id') not in before_loadout_event_ids]
         pin_events=[event for event in new_loadout_events if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('id')==owner_id]
