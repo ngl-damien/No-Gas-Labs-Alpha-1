@@ -48,6 +48,17 @@ test('CI runner rejects caller-selected receipt paths and propagates spawn failu
   assert.throws(() => runPreflightCi([], () => ({ error: new Error('spawn failed') })), /spawn failed/);
 });
 
+test('CI runner bounds validator execution and fails closed on timeout', () => {
+  const calls = [];
+  const timeout = Object.assign(new Error('preflight timed out'), { code: 'ETIMEDOUT' });
+  assert.throws(() => runPreflightCi(args, (...call) => {
+    calls.push(call);
+    return { error: timeout, status: null, signal: 'SIGTERM' };
+  }), error => error.code === 'ETIMEDOUT');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][2].timeout, 120_000);
+});
+
 test('CI runner preserves a blocked validator exit code instead of reporting success', () => {
   for (const exitCode of [1, 7]) {
     assert.equal(runPreflightCi(args, () => ({ status: exitCode })), exitCode);

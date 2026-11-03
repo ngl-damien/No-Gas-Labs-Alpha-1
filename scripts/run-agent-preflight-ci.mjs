@@ -18,7 +18,8 @@ export function runPreflightCi(args = process.argv.slice(2), spawn = spawnSync) 
   }
   const receiptPath = createReceiptPath();
   const child = spawn(process.execPath, [validatorPath, ...args, '--receipt', receiptPath], {
-    stdio: 'inherit'
+    stdio: 'inherit',
+    timeout: 120_000
   });
   if (child.error) throw child.error;
   return Number.isInteger(child.status) ? child.status : 1;
