@@ -1568,13 +1568,23 @@ def shared(browser,url,data,out):
         source_choice.select_option(retained_challenges[0]['id'])
         selected_source_id=source_choice.input_value()
         assert selected_source_id==retained_challenges[0]['id'], 'The original dissent event remains selectable beside the forged item'
+        # Refresh the no-XP baseline after the preceding forge/equip actions and
+        # wait for the exact source label below; PINNED alone is not a state change
+        # because this slot was already pinned to the forged item.
+        armor_bearer_before=armor_bearer_steps(a)
+        character_xp_before=character_xp_from_open_sheet(a)
         before_loadout=owner.request.get(url+'api/state').json()
+        before_loadout_event_ids={event.get('id') for event in before_loadout['world']['events']}
         before_revision=before_loadout['world']['revision']
         before_xp=before_loadout['world']['xp']
         adversarial_slot.get_by_role('button',name='Pin selected source',exact=True).click()
         expect(adversarial_slot).to_contain_text('PINNED')
+        expect(adversarial_slot).to_contain_text('Challenge · missing-evidence')
         pinned_state=owner.request.get(url+'api/state').json()
-        assert pinned_state['world']['revision']==before_revision+1
+        new_loadout_events=[event for event in pinned_state['world']['events'] if event.get('id') not in before_loadout_event_ids]
+        pin_events=[event for event in new_loadout_events if event.get('type')=='field-item-equipped' and event.get('actor',{}).get('id')==owner_id]
+        assert len(pin_events)==1 and pin_events[0].get('slotId')=='adversarial' and pin_events[0].get('sourceEventId')==selected_source_id, new_loadout_events
+        assert pinned_state['world']['revision']==before_revision+1, new_loadout_events
         assert pinned_state['world']['xp']==before_xp, 'Equipping a retained source must not award XP'
         assert armor_bearer_steps(a)==armor_bearer_before, 'Pinning a different source must preserve the number of record-backed field-kit steps'
         assert_character_xp_unchanged(a,character_xp_before,'Pinning a retained field source')
