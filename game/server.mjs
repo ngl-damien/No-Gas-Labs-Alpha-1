@@ -591,13 +591,25 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, allowGeneratedFounderKey = false } = {}) {
+  const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
+  const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
+  if (!validFounderKey && !mayGenerateLocalFounderKey) {
+    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
+  }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
-  await assertNoSymlinkPathComponents(dataDir);
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const dataDirectory = await assertPrivateDataDirectory(dataDir);
-  const key = await getFounderKey(dataDir, founderKey);
-  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+  let dataDirectory, key, dataDirectoryAfterKeyRead;
+  try {
+    await assertNoSymlinkPathComponents(dataDir);
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    dataDirectory = await assertPrivateDataDirectory(dataDir);
+    key = await getFounderKey(dataDir, founderKey);
+    dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+  } catch (error) {
+    if (!String(error.code || '').startsWith('FOUNDER_')) error.storageCode = error.code;
+    error.code = 'FOUNDER_STORAGE_INVALID';
+    throw error;
+  }
   if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
       dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
       dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
@@ -961,13 +973,25 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
 }
 
 
+/** Programmatic server creation always requires an explicit Founder bearer key. */
+export async function createGameServer(options = {}) {
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory });
+}
+
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let server;
   try {
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport = process.env.NGL_INSTITUTION_REPORT ? await readInstitutionReport(resolve(process.env.NGL_INSTITUTION_REPORT)) : null;
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
+    const loopbackDevelopment = process.env.NODE_ENV !== 'production' && ['127.0.0.1', 'localhost', '::1'].includes(host);
+    server = await createGameServerInternal({
+      dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,
+      institutionReport,
+      allowGeneratedFounderKey: loopbackDevelopment,
+    });
     await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
     const address = server.address();
     console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
@@ -976,7 +1000,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
-    console.error(error.code === 'SERVICE_LOCKED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
+    const safeStartupError = error.code === 'SERVICE_LOCKED' || (typeof error.code === 'string' && error.code.startsWith('FOUNDER_'));
+    console.error(safeStartupError ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
     process.exitCode = 1;
   }
 }
