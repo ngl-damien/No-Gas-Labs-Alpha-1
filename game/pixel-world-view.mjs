@@ -78,6 +78,116 @@ export function projectSourceObservationMapCounts(world) {
 }
 
 
+const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
+
+function safeQuestTargetId(value) {
+  return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+}
+
+function questTargetRows(value) {
+  if (!isArraySafely(value)) return null;
+  const length = ownDataValue(value, 'length');
+  if (!Number.isSafeInteger(length) || length < 0 || length > MAX_SOURCE_OBSERVATION_MAP_EVENTS) return null;
+  const rows = [];
+  for (let index = 0; index < length; index += 1) {
+    const row = ownDataValue(value, String(index));
+    if (row === undefined) return null;
+    rows.push(row);
+  }
+  return rows;
+}
+
+function questTargetLabel(value, fallback) {
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  return Array.from(value.trim()).slice(0, 32).join('');
+}
+
+function createQuestMapTarget(kind, id, x, y, label) {
+  if (!safeQuestTargetId(id) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return Object.freeze({ kind, id, x, y, label: questTargetLabel(label, 'Next objective') });
+}
+
+/**
+ * Resolve a quest action to one exact, already-projected world object.
+ * This is a read-only navigation hint: it never advances the objective.
+ */
+export function projectQuestMapTarget(action, world, researchObjects = [], researchActivityObjects = []) {
+  const type = ownDataValue(action, 'type');
+  if (type === 'workbench') {
+    if (!QUEST_RECIPES.has(ownDataValue(action, 'recipe'))) return null;
+    const place = PLACES.find(item => item.id === 'workbench');
+    return place ? createQuestMapTarget('location', place.id, place.x, place.y, place.name) : null;
+  }
+
+  if (type === 'location') {
+    const id = ownDataValue(action, 'id');
+    if (!safeQuestTargetId(id)) return null;
+    const place = PLACES.find(item => item.id === id);
+    return place ? createQuestMapTarget('location', place.id, place.x, place.y, place.name) : null;
+  }
+
+  if (type === 'creation') {
+    const id = ownDataValue(action, 'id');
+    const version = ownDataValue(action, 'version');
+    if (!safeQuestTargetId(id) || !Number.isSafeInteger(version) || version < 1) return null;
+    const creations = questTargetRows(ownDataValue(world, 'creations'));
+    if (!creations) return null;
+    const matches = creations.filter(item => ownDataValue(item, 'id') === id);
+    if (matches.length !== 1) return null;
+    const creation = matches[0];
+    const currentVersion = ownDataValue(creation, 'version');
+    const rawVersions = ownDataValue(creation, 'versions');
+    const versions = rawVersions === undefined || rawVersions === null ? [] : questTargetRows(rawVersions);
+    if (!versions || (currentVersion !== version &&
+        !versions.some(item => ownDataValue(item, 'version') === version))) return null;
+    const position = ownDataValue(creation, 'position');
+    return createQuestMapTarget(
+      'creation', id, ownDataValue(position, 'x'), ownDataValue(position, 'y'),
+      ownDataValue(creation, 'title')
+    );
+  }
+
+  if (type === 'research-object') {
+    const id = ownDataValue(action, 'id');
+    const moonshotId = ownDataValue(action, 'moonshotId');
+    if (!safeQuestTargetId(id) || !safeQuestTargetId(moonshotId)) return null;
+    const objects = questTargetRows(researchObjects);
+    if (!objects) return null;
+    const matches = objects.filter(item =>
+      ownDataValue(item, 'id') === id && ownDataValue(item, 'moonshotId') === moonshotId
+    );
+    if (matches.length !== 1) return null;
+    const object = matches[0];
+    return createQuestMapTarget(
+      'research-object', id, ownDataValue(object, 'x'), ownDataValue(object, 'y'),
+      ownDataValue(object, 'title')
+    );
+  }
+
+  if (type === 'research-activity') {
+    const id = ownDataValue(action, 'id');
+    const moonshotId = ownDataValue(action, 'moonshotId');
+    const activityId = ownDataValue(action, 'activityId');
+    if (!safeQuestTargetId(id) || !safeQuestTargetId(moonshotId) || !safeQuestTargetId(activityId)) return null;
+    const objects = questTargetRows(researchActivityObjects);
+    if (!objects) return null;
+    const matches = objects.filter(item =>
+      ownDataValue(item, 'id') === id && ownDataValue(item, 'moonshotId') === moonshotId &&
+      ownDataValue(item, 'activityId') === activityId && ownDataValue(item, 'mapVisible') === true
+    );
+    if (matches.length !== 1) return null;
+    const object = matches[0];
+    return createQuestMapTarget(
+      'research-activity', id, ownDataValue(object, 'x'), ownDataValue(object, 'y'),
+      ownDataValue(object, 'title')
+    );
+  }
+
+  return null;
+}
+
 export const WORLD_TILE_SIZE = 32;
 const HALF_TILE = WORLD_TILE_SIZE / 2;
 const PATHS = [
@@ -335,6 +445,8 @@ export class PixelWorldView extends WorldView {
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+    this.questAction = null;
+    this.questTarget = null;
     this.updateResearchAccessibility();
   }
 
@@ -351,15 +463,48 @@ export class PixelWorldView extends WorldView {
     const counts = this.sourceObservationMapCounts;
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
+      this.researchAccessibilityLabel =
+        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity.';
+    } else {
+      this.canvas.dataset.sourceObservationCounts =
+        `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
+      const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
+      this.researchAccessibilityLabel =
+        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`;
+    }
+    this.questTarget = projectQuestMapTarget(
+      this.questAction, this.world, this.researchObjects, this.researchActivityObjects
+    );
+    this.updateQuestAccessibility();
+  }
+
+  setQuestTarget(action) {
+    this.questAction = action && typeof action === 'object' ? action : null;
+    this.questTarget = projectQuestMapTarget(
+      this.questAction, this.world, this.researchObjects, this.researchActivityObjects
+    );
+    this.updateQuestAccessibility();
+  }
+
+  updateQuestAccessibility() {
+    if (!this.questAction) {
+      this.canvas.dataset.activeQuestTarget = 'none';
+      delete this.canvas.dataset.activeQuestTargetLabel;
       this.canvas.setAttribute('aria-label',
-        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity.');
+        `${this.researchAccessibilityLabel} No specific map destination is currently available for the next objective.`);
       return;
     }
-    this.canvas.dataset.sourceObservationCounts =
-      `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
-    const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
+    if (!this.questTarget) {
+      this.canvas.dataset.activeQuestTarget = 'unavailable';
+      delete this.canvas.dataset.activeQuestTargetLabel;
+      this.canvas.setAttribute('aria-label',
+        `${this.researchAccessibilityLabel} The active quest target is unavailable or ambiguous; no substitute destination is inferred.`);
+      return;
+    }
+    this.canvas.dataset.activeQuestTarget = `${this.questTarget.kind}:${this.questTarget.id}`;
+    this.canvas.dataset.activeQuestTargetLabel = this.questTarget.label;
     this.canvas.setAttribute('aria-label',
-      `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`);
+      `${this.researchAccessibilityLabel} Active quest target: ${this.questTarget.label}. This marker is a read-only navigation cue; it does not record progress or award XP.`);
   }
 
   sourceObservationMapLine() {
@@ -374,6 +519,25 @@ export class PixelWorldView extends WorldView {
     context.fillStyle = color;
     context.textAlign = 'center';
     context.fillText(String(value), x, y);
+  }
+
+  drawMapLabel(value, x, y, size = 9) {
+    const context = this.ctx;
+    const label = String(value);
+    context.font = size + 'px ui-monospace, monospace';
+    const width = Math.min(190, Math.max(44, Math.ceil(context.measureText(label).width) + 12));
+    const left = Math.round(x - width / 2);
+    const top = Math.round(y - size - 5);
+    context.fillStyle = '#0c0d0b';
+    context.fillRect(left, top, width, size + 9);
+    context.strokeStyle = '#e8e6dc';
+    context.lineWidth = 1;
+    context.strokeRect(left + 0.5, top + 0.5, width - 1, size + 8);
+    this.text(label, x, y, size, '#e8e6dc');
+  }
+
+  drawResearchCounterPanel(x, y) {
+    this.drawMapLabel(this.sourceObservationMapLine(), x, y, 9);
   }
 
   drawLandscape() {
@@ -426,9 +590,9 @@ export class PixelWorldView extends WorldView {
       context.fillStyle = '#d8d1ad';
       context.fillRect(stall.x - 14, 424, 28, 3);
     }
-    this.text('TOWNSQUARE', 1040, 468, 11, '#273b30');
-    this.text((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 480, 8, '#445c49');
-    this.text(this.sourceObservationMapLine(), 1040, 492, 7, '#445c49');
+    this.drawMapLabel('TOWNSQUARE', 1040, 468, 10);
+    this.drawMapLabel((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 489, 8);
+    this.drawResearchCounterPanel(1040, 510);
   }
 
   drawInstitution(place) {
@@ -448,10 +612,10 @@ export class PixelWorldView extends WorldView {
     const roof = roofColors[place.id] || '#536d53';
     drawPixelBuilding(this.ctx, place.x, place.y + 8, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
-    this.text(place.name.toUpperCase(), place.x, place.y + 34, 8, '#293c30');
-    this.text((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 46, 7, '#445b49');
+    this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 34, 9);
+    this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 54, 8);
     if (place.id === 'evidence_archive') {
-      this.text(this.sourceObservationMapLine(), place.x, place.y + 58, 7, '#445b49');
+      this.drawResearchCounterPanel(place.x, place.y + 74);
     }
   }
 
@@ -559,6 +723,35 @@ export class PixelWorldView extends WorldView {
     else if (player.name) this.text(String(player.name).slice(0, 24), player.x, player.y + 25, 8, '#e8e6dc');
   }
 
+  drawQuestTarget() {
+    const target = this.questTarget;
+    if (!target) return;
+    const context = this.ctx;
+    const label = Array.from(target.label).slice(0, 18).join('');
+    const caption = 'NEXT QUEST · ' + label;
+    context.font = '10px ui-monospace, monospace';
+    const width = Math.min(220, Math.max(112, Math.ceil(context.measureText(caption).width) + 18));
+    const left = Math.round(target.x - width / 2);
+    const top = Math.round(target.y - 88);
+    context.fillStyle = '#0c0d0b';
+    context.fillRect(left, top, width, 23);
+    context.strokeStyle = '#e8e6dc';
+    context.lineWidth = 2;
+    context.strokeRect(left + 1, top + 1, width - 2, 21);
+    context.fillStyle = '#c77b48';
+    context.fillRect(left + 6, top + 6, 6, 11);
+    this.text(caption, target.x + 4, top + 15, 9, '#e8e6dc');
+    context.fillStyle = '#c77b48';
+    context.fillRect(target.x - 2, top + 23, 4, 25);
+    context.strokeStyle = '#e8e6dc';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(target.x, target.y - 3, 15, 0, Math.PI * 2);
+    context.stroke();
+    context.fillStyle = '#c77b48';
+    context.fillRect(target.x - 4, target.y - 7, 8, 8);
+  }
+
   render() {
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -599,6 +792,7 @@ export class PixelWorldView extends WorldView {
       { y: this.player.y, draw: () => this.drawPlayer(this.player) }
     ];
     objects.sort((left, right) => left.y - right.y).forEach(object => object.draw());
+    this.drawQuestTarget();
 
     const near = this.nearest();
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {

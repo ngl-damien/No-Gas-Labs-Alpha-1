@@ -6,11 +6,11 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
-import { isWalkable } from '../game/world-view.mjs';
+import { isWalkable, PLACES } from '../game/world-view.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { projectSourceObservationMapCounts } from '../game/pixel-world-view.mjs';
+import { projectSourceObservationMapCounts, projectQuestMapTarget } from '../game/pixel-world-view.mjs';
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
   assert.equal(WORLD_TILE_SIZE, 32);
@@ -162,4 +162,77 @@ test('hostile event type accessors are not invoked while building map counts', (
   assert.deepEqual(counts, {
     available: true, notes: 0, dissent: 0, responses: 0, pending: 0, review: 0
   });
+});
+
+
+test('quest map targets resolve the exact workbench and institution objectives', () => {
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'workbench', recipe: 'comic' }, { creations: [] }),
+    { kind: 'location', id: 'workbench', x: 325, y: 645, label: 'The Making Bench' }
+  );
+  const academy = PLACES.find(place => place.id === 'academy');
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'location', id: 'academy' }, { creations: [] }),
+    { kind: 'location', id: 'academy', x: academy.x, y: academy.y, label: academy.name }
+  );
+  assert.equal(projectQuestMapTarget({ type: 'location', id: 'not-a-place' }, { creations: [] }), null);
+  assert.equal(projectQuestMapTarget({ type: 'workbench', recipe: 'unknown' }, { creations: [] }), null);
+});
+
+test('creation quest targets require one unique retained ID and the exact referenced version', () => {
+  const world = {
+    creations: [{
+      id: 'creation-one', version: 2, versions: [{ version: 1 }],
+      title: 'A retained place', position: { x: 240, y: 360 }
+    }]
+  };
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'creation', id: 'creation-one', version: 1 }, world),
+    { kind: 'creation', id: 'creation-one', x: 240, y: 360, label: 'A retained place' }
+  );
+  assert.equal(projectQuestMapTarget({ type: 'creation', id: 'creation-one', version: 3 }, world), null);
+  assert.equal(projectQuestMapTarget({ type: 'creation', id: 'creation-one', version: 2 }, {
+    creations: [...world.creations, ...world.creations]
+  }), null);
+});
+
+test('research quest targets require one exact projected and map-visible object', () => {
+  const researchObjects = [{
+    id: 'moonshot-object:question-one', moonshotId: 'question-one',
+    title: 'A falsifiable question', x: 1320, y: 520
+  }];
+  const researchActivityObjects = [{
+    id: 'research-activity:event-one', moonshotId: 'question-one',
+    activityId: 'report-one', title: 'Attempt · failed', x: 1144, y: 629, mapVisible: true
+  }];
+  assert.deepEqual(
+    projectQuestMapTarget({
+      type: 'research-object', id: 'moonshot-object:question-one', moonshotId: 'question-one'
+    }, { creations: [] }, researchObjects, researchActivityObjects),
+    { kind: 'research-object', id: 'moonshot-object:question-one', x: 1320, y: 520, label: 'A falsifiable question' }
+  );
+  assert.deepEqual(
+    projectQuestMapTarget({
+      type: 'research-activity', id: 'research-activity:event-one',
+      moonshotId: 'question-one', activityId: 'report-one'
+    }, { creations: [] }, researchObjects, researchActivityObjects),
+    { kind: 'research-activity', id: 'research-activity:event-one', x: 1144, y: 629, label: 'Attempt · failed' }
+  );
+  assert.equal(projectQuestMapTarget({
+    type: 'research-activity', id: 'research-activity:event-one',
+    moonshotId: 'question-one', activityId: 'report-one'
+  }, { creations: [] }, researchObjects, [{ ...researchActivityObjects[0], mapVisible: false }]), null);
+  assert.equal(projectQuestMapTarget({
+    type: 'research-object', id: 'moonshot-object:question-one', moonshotId: 'question-one'
+  }, { creations: [] }, [...researchObjects, ...researchObjects]), null);
+});
+
+test('quest map projection rejects hostile action accessors without invoking them', () => {
+  let reads = 0;
+  const action = Object.defineProperty({}, 'type', {
+    enumerable: true,
+    get() { reads += 1; return 'location'; }
+  });
+  assert.equal(projectQuestMapTarget(action, { creations: [] }), null);
+  assert.equal(reads, 0);
 });
