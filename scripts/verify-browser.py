@@ -69,6 +69,9 @@ def basic(page,url,out,label):
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
     expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:workbench')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target-label', 'The Making Bench')
+    expect(page.locator('#world')).to_have_attribute('aria-label', re.compile('Active quest target: The Making Bench'))
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
     character=page.locator('#character-button')
     expect(character).to_be_visible()
@@ -103,6 +106,12 @@ def basic(page,url,out,label):
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('1')")
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:relay')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target-label', 'The Relay')
+    if page.evaluate('window.innerWidth') < 600:
+        expect(page.locator('#world')).to_have_attribute('data-quest-compass', 'offscreen')
+    else:
+        expect(page.locator('#world')).to_have_attribute('data-quest-compass', 'onscreen')
     evidence = page.locator('[data-objective-id="founder-first-place"] details.quest-evidence')
     expect(evidence).to_have_count(1)
     expect(evidence.locator('summary')).to_have_text('Inspect retained evidence')
@@ -832,6 +841,27 @@ def shared(browser,url,data,out):
         visit(b,'The shared observatory')
         expect(b.locator('#source-observations')).to_contain_text(response_text)
         expect(b.locator('[data-source-observation-response]')).to_have_count(1)
+        map_events=after_author_response_retry['world']['events']
+        map_notes=sum(event.get('type')=='source-observation-recorded' for event in map_events)
+        map_dissent=sum(event.get('type')=='source-observation-challenged' for event in map_events)
+        map_responses=sum(event.get('type')=='source-observation-challenge-responded' for event in map_events)
+        expect(b.locator('#world')).to_have_attribute(
+            'data-source-observation-counts',
+            f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
+        )
+        def count_phrase(count,singular,plural):
+            return f'{count} {singular if count==1 else plural}'
+        expected_map_accessibility=(
+            'Evidence Archive: '+
+            count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
+            count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
+            count_phrase(map_responses,'linked author response','linked author responses')+', '+
+            '0 pending author responses, and 0 retained records requiring review'
+        )
+        expect(b.locator('#world')).to_have_attribute(
+            'aria-label',
+            re.compile(re.escape(expected_map_accessibility))
+        )
         close_sheet(b);b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Responder')
         expect(b.locator('#sheet')).to_contain_text('1 recorded')
