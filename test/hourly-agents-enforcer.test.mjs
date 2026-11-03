@@ -10,6 +10,21 @@ test('hourly enforcer has read-only repository permissions and a bounded job', (
   assert.match(workflow, /timeout-minutes:\s*5/);
 });
 
+test('hourly schedule, manual dispatch, and governed push triggers remain enabled', () => {
+  assert.ok(workflow.includes("cron: '0 * * * *'"));
+  assert.ok(workflow.includes('workflow_dispatch:'));
+  const pushSection = workflow.split('  schedule:')[0];
+  for (const path of [
+    "'.github/workflows/hourly-agents-enforcer.yml'",
+    "'test/hourly-agents-enforcer.test.mjs'",
+    "'docs/operations/hourly-agents/**'",
+    "'docs/operations/LATEST_CHECKPOINT.md'",
+    "'docs/authority/founder.pub.json'"
+  ]) {
+    assert.ok(pushSection.includes(path), 'missing push trigger path: ' + path);
+  }
+});
+
 test('hourly enforcer requires every preflight target to exist before invoking the validator', () => {
   assert.ok(workflow.includes('for target in \\'));
   assert.ok(workflow.includes('if ! test -f "$target"; then'));
@@ -35,12 +50,6 @@ test('hourly enforcer preflights every governed input with a unique receipt', ()
   assert.ok(workflow.includes('if: always()'));
   assert.ok(workflow.includes('include-hidden-files: true'));
   assert.ok(workflow.includes('actions/upload-artifact@v4'));
-});
-
-test('push path filter reruns the enforcer when its workflow or regression changes', () => {
-  const pushSection = workflow.split('  schedule:')[0];
-  assert.ok(pushSection.includes("'.github/workflows/hourly-agents-enforcer.yml'"));
-  assert.ok(pushSection.includes("'test/hourly-agents-enforcer.test.mjs'"));
 });
 
 test('registry preserves both scheduled workers exactly once and every entry is non-deletable', () => {
