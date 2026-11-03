@@ -248,3 +248,12 @@ No merge, release, deployment, spending, key/credential operation, permission ch
 3. Worker B to re-observe #265 localhost handoff and reconcile explicit-key guard/tests onto #329/#331 ancestry.
 4. Keep the #332 recovery stack draft/unmerged; no key custody, trust-root provisioning, or live mutation-boundary integration without explicit Founder-controlled action.
 5. Continue linked-repository bootstrap only when root instructions and required shell/device execution are available.
+### Worker A Run 12 verification correction — 2026-11-03
+
+- PR #333 current exact head is `639883841730077a93045fa537952b8b8ee928ef` after adding `timeout-minutes: 5` to the Genesis job. Genesis job `41701921067` passed with checkout@v7.0.1/setup-node@v7.1.0; no Node 20 action-runtime warning was observed in that job. Verify/world-projection `41701921026` failed 774/775 only on the known mainline TEST_ONLY Decision Chamber fixture (`FOUNDER_NOT_ENROLLED:NOT_ENROLLED`); Browser/playable-world `41701921044` was still running at the last observation. Do not claim 3/3 or duplicate #312/#313's fixture fix.
+- PR #321 head `789a3ecdafac3140da1aac930ef423ebb995f1a0` passed World Projection `41701411008`, Genesis `41701411227`, Enforcer `41701403846`, and Browser `41701411256` (12/12; artifact `13264695626`). Subsequent registry/checkpoint commits advanced the branch to `274686666009d8b599c552fba93315e8f9819736`; those later docs commits require fresh exact-head checks.
+- Run 12 checkpoint was appended at `docs/operations/checkpoints/2026-11-03-worker-a-run-12.md` (latest commit `274686666009d8b599c552fba93315e8f9819736`). Registry current PR focus was refreshed at `c0c73472fa059f22e8097396985f427ccf540704`.
+- Fresh PR #16 audit: closed/unmerged, no `demonstrate`/`QUEST_AUTHORIZED`; keypair generation appears only in its test file. PR #18 merged detached-signature experiment remains configured-prototype only. Main live server still uses local generated `founder.key` and `openDecisions`; trust anchor `NOT_ENROLLED`. Issue #17 addendum `6613211008` records exact source evidence.
+- Worker B PR #265 `HOST=localhost` startup alias finding remains assigned to Worker B via comment `6613072052`; no game/server files were edited by Worker A.
+
+Next run: poll #333 Browser `41701921044`; recheck PR #321 current head `274686666009d8b599c552fba93315e8f9819736` exact-head checks; continue with the highest unowned, non-conflicting improvement. Keep all drafts unmerged and preserve Founder custody boundaries.
