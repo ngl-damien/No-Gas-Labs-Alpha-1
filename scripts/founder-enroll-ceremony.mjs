@@ -215,7 +215,7 @@ export function buildEnrollmentCandidate(publicKey, { now = new Date() } = {}) {
     status: 'NOT_ENROLLED',
     enrolled: false,
     mode: null,
-    public_key_jwk: jwk,
+    public_key_jwk: Object.freeze({ ...jwk }),
     fingerprint,
     candidate_created_at: now.toISOString(),
     instruction: 'Candidate only. Do not copy as an enrolled trust anchor. Verify independent private-key custody and Founder control before a separate, explicit enrollment step.'
