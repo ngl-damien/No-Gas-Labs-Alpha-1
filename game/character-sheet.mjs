@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -48,10 +49,51 @@ function retainedVersionIndex(world) {
   return index;
 }
 
-// A publish label alone is not a reward receipt. The event must be unique,
-// Founder-attributed, match a retained version and timestamp, and carry the
-// game's fixed publication reward. Duplicate claims for one version are
-// ambiguous, so none of them award character XP or Maker skill.
+// A retained publication binds an event to one exact artifact version and
+// timestamp. It establishes that a place was published, not that its contents
+// are true or that it deserves game XP.
+function retainedPublicationEvents(world) {
+  const events = uniqueEvents(world?.events);
+  const versions = retainedVersionIndex(world);
+  const candidates = [];
+  for (const event of events) {
+    if (event.type !== 'publish' ||
+        typeof event.actor?.id !== 'string' || !event.actor.id.trim() ||
+        event.actor.id.trim() !== event.actor.id || event.actor.role !== 'founder' ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) ||
+        event.version < 1 || !isStrictTimestamp(event.at)) continue;
+    const key = versionKey(event.creationId, event.version);
+    const version = versions.get(key);
+    if (!version || version.publishedAt !== event.at) continue;
+    candidates.push({ event, key });
+  }
+  const groups = new Map();
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.key) || [];
+    group.push(candidate);
+    groups.set(candidate.key, group);
+  }
+  const retained = [];
+  for (const group of groups.values()) {
+    const rewarded = group.filter(candidate =>
+      Number.isSafeInteger(candidate.event.reward) && candidate.event.reward === XP_PER_PUBLICATION
+    );
+    // Prefer one valid fixed-reward receipt over malformed reward claims for
+    // the same exact version. If no valid reward exists, one unambiguous
+    // publication still keeps the artifact inspectable without granting XP.
+    const selected = rewarded.length === 1 ? rewarded
+      : rewarded.length === 0 && group.length === 1 ? group
+      : [];
+    for (const candidate of selected) retained.push(candidate.event);
+  }
+  return retained;
+}
+
+// A publication is an XP receipt only when the exact fixed reward is present.
+// Invalid reward metadata does not erase a retained artifact from the world.
+// XP requires one unambiguous retained publication whose own event carries
+// the fixed game reward. Malformed reward claims do not suppress a separate,
+// valid receipt for the same retained version.
 function matchedPublications(world) {
   const events = uniqueEvents(world?.events);
   const versions = retainedVersionIndex(world);
@@ -71,6 +113,71 @@ function matchedPublications(world) {
   const counts = new Map();
   for (const candidate of candidates) counts.set(candidate.key, (counts.get(candidate.key) || 0) + 1);
   return candidates.filter(candidate => counts.get(candidate.key) === 1).map(candidate => candidate.event);
+}
+
+
+function validActivityActor(actor) {
+  return actor && typeof actor.id === 'string' && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
+}
+
+function validActivityField(field, value) {
+  if (field === 'version') return Number.isSafeInteger(value) && value > 0;
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+// Join a projected record to one unique retained event using the fields the
+// writer records identically. If either side is ambiguous, the activity does
+// not count. This is a read-only projection, not a new canonical receipt.
+function matchedActivityRecords(type, records, allEvents, fields, viewer, predicate = () => true) {
+  const eventGroups = new Map();
+  for (const event of rows(allEvents)) {
+    if (event?.type !== type) continue;
+    const key = activityJoinKey(event, fields);
+    if (key === null) continue;
+    const group = eventGroups.get(key) || [];
+    group.push(event);
+    eventGroups.set(key, group);
+  }
+
+  const source = rows(records);
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+
+  const recordGroups = new Map();
+  for (const record of source) {
+    if (typeof record?.id !== 'string' || !record.id || record.id.trim() !== record.id ||
+        record.actor?.id !== viewer?.id || record.actor?.role !== viewer?.role) continue;
+    const key = activityJoinKey(record, fields);
+    if (key === null) continue;
+    const group = recordGroups.get(key) || [];
+    group.push(record);
+    recordGroups.set(key, group);
+  }
+
+  const matched = [];
+  for (const [key, group] of recordGroups) {
+    if (group.length !== 1) continue;
+    const record = group[0];
+    if (recordIdCounts.get(record.id) !== 1) continue;
+    const candidates = eventGroups.get(key);
+    if (!candidates || candidates.length !== 1) continue;
+    let accepted = false;
+    try { accepted = predicate(candidates[0], record) === true; } catch { accepted = false; }
+    if (accepted) matched.push(record);
+  }
+  return matched;
+}
+
+function activityJoinKey(entry, fields) {
+  if (!validActivityActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
+  const values = fields.map(field => entry[field]);
+  if (!fields.every((field, index) => validActivityField(field, values[index]))) return null;
+  return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
 }
 
 export function projectCharacter(world, viewer) {
@@ -121,7 +228,61 @@ export function projectCharacter(world, viewer) {
   }
   const reportById = new Map(validExperimentReports.map(event => [event.reportId, event]));
   const retainedVersions = retainedVersionIndex(world);
+  const retainedPublications = retainedPublicationEvents(world);
+  const retainedPublicationByVersion = new Map(retainedPublications.map(event => [
+    versionKey(event.creationId, event.version), event
+  ]));
+  const retainedPublicationIds = new Set(retainedPublications.map(event => event.id));
+  const retainedPublishedVersionKeys = new Set(retainedPublications.map(event =>
+    versionKey(event.creationId, event.version)
+  ));
   const canonicalPublications = matchedPublications(world);
+  const hasEarlierPublication = event => {
+    const publication = retainedPublicationByVersion.get(versionKey(event.creationId, event.version));
+    const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+    const activityPosition = positionByEvent.get(event) ?? -1;
+    return publicationPosition >= 0 && activityPosition > publicationPosition &&
+      isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
+      Date.parse(publication.at) <= Date.parse(event.at);
+  };
+  const matchedDiscoveries = matchedActivityRecords(
+    'discover', world?.discoveries, allEvents, ['locationId'], viewer,
+    event => event.repeat !== true && getLocationAction(event.locationId, world, viewer) !== null
+  );
+  const matchedContributions = matchedActivityRecords(
+    'contribute', world?.contributions, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const matchedReports = matchedActivityRecords(
+    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
+    hasEarlierPublication
+  );
+  const repairEventsByVersion = new Map();
+  for (const event of allEvents) {
+    if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
+        !['founder', 'witness'].includes(event.actor.role) ||
+        typeof event.creationId !== 'string' || !Number.isSafeInteger(event.baseVersion) ||
+        event.baseVersion < 1 || typeof event.draftId !== 'string' || !event.draftId ||
+        !isStrictTimestamp(event.at)) continue;
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.baseVersion]);
+    const list = repairEventsByVersion.get(key) || [];
+    list.push(event);
+    repairEventsByVersion.set(key, list);
+  }
+  const hasUniquePriorRepair = event => {
+    const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.version - 1]);
+    const publicationPosition = positionByEvent.get(event) ?? -1;
+    const prior = (repairEventsByVersion.get(key) || []).filter(repair => {
+      const repairPosition = positionByEvent.get(repair) ?? -1;
+      return repairPosition >= 0 && publicationPosition > repairPosition &&
+        Date.parse(repair.at) <= Date.parse(event.at);
+    });
+    return prior.length === 1;
+  };
+  const matchedMethods = matchedActivityRecords(
+    'publish', world?.methods, allEvents, ['creationId', 'version'], viewer,
+    event => event.version > 1 && retainedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
+  );
   const experimentChallenges = events.filter(event => {
     const report = reportById.get(event?.reportId);
     const reportPosition = report ? (positionByEvent.get(report) ?? -1) : -1;
@@ -147,15 +308,16 @@ export function projectCharacter(world, viewer) {
       (event.evidenceVersion !== undefined && event.evidenceVersion !== null)
     )) return false;
     if (hasEvidenceId) {
-      const version = retainedVersions.get(versionKey(event.evidenceCreationId, event.evidenceVersion));
-      if (!version || !isStrictTimestamp(version.publishedAt) ||
-          Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
+      const evidenceKey = versionKey(event.evidenceCreationId, event.evidenceVersion);
+      const version = retainedVersions.get(evidenceKey);
+      if (!version || !retainedPublishedVersionKeys.has(evidenceKey) ||
+          !isStrictTimestamp(version.publishedAt) || Date.parse(version.publishedAt) > Date.parse(event.at)) return false;
     }
     return true;
   });
   const studyIdCounts = new Map();
   for (const event of allEvents) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
-  const publishedStudyVersions = new Set(canonicalPublications.map(event => versionKey(event.creationId, event.version)));
+  const publishedStudyVersions = retainedPublishedVersionKeys;
   const studyEvents = events.filter(event => {
     if (event.type !== 'study' || typeof event.studyId !== 'string' || studyIdCounts.get(event.studyId) !== 1 ||
         typeof event.creationId !== 'string' || !Number.isSafeInteger(event.version) || event.version < 1 ||
@@ -192,8 +354,13 @@ export function projectCharacter(world, viewer) {
   const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
-  const worldXp = Number.isSafeInteger(world?.xp) && world.xp >= 0 ? world.xp : 0;
+  const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION;
+  const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
+
+  const completedQuestObjectives = getQuestTrail(world, viewer)
+    .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
+      Number.isSafeInteger(item.target) && item.progress >= item.target).length;
 
   const skills = [
     {
@@ -206,14 +373,14 @@ export function projectCharacter(world, viewer) {
     {
       id: 'explorer',
       label: 'Explorer',
-      count: mine(world?.discoveries, viewer).length,
+      count: matchedDiscoveries.length,
       record: 'guide discoveries',
       basis: 'Recorded visits to the four authored guide locations.'
     },
     {
       id: 'observer',
       label: 'Observer',
-      count: mine(world?.contributions, viewer).length,
+      count: matchedContributions.length,
       record: 'field notes',
       basis: 'Attributed notes attached to a published version.'
     },
@@ -234,7 +401,7 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: mine(world?.reports, viewer).length,
+      count: matchedReports.length,
       record: 'reports',
       basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
     },
@@ -260,21 +427,31 @@ export function projectCharacter(world, viewer) {
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
     },
     {
+      id: 'questkeeper',
+      label: 'Questkeeper',
+      count: completedQuestObjectives,
+      record: 'completed evidence-backed quest objectives',
+      basis: 'The same source-linked quest trail shown in the world HUD. Completion records matched activity or artifact linkage, not truth, mastery, correctness, or approval.'
+    },
+    {
       id: 'restorer',
       label: 'Restorer',
-      count: mine(world?.methods, viewer).length,
+      count: matchedMethods.length,
       record: 'checked repairs',
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
 
+  const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
-    .filter(creation => creation && typeof creation.id === 'string')
+    .filter(creation => creation && typeof creation.id === 'string' &&
+      Number.isSafeInteger(creation.version) && creation.version > 0 &&
+      publishedVersionKeys.has(versionKey(creation.id, creation.version)))
     .map(creation => Object.freeze({
       id: creation.id,
       title: typeof creation.title === 'string' && creation.title ? creation.title : 'Untitled place',
       kind: typeof creation.kind === 'string' ? creation.kind : 'unknown',
-      version: Number.isInteger(creation.version) && creation.version > 0 ? creation.version : 1,
+      version: creation.version,
       receipt: creation.receipt && typeof creation.receipt.digest === 'string'
         ? Object.freeze({ digest: creation.receipt.digest, size: creation.receipt.size })
         : null

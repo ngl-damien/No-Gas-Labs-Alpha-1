@@ -75,6 +75,7 @@ def basic(page,url,out,label):
     character.click()
     expect(page.locator('#sheet-title')).to_have_text('Character & field record')
     expect(page.locator('#sheet')).to_contain_text('Level 1')
+    expect(page.locator('#sheet')).to_contain_text('Questkeeper')
     close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
