@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as verifySignature, randomBytes, randomUUID } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -185,7 +185,7 @@ function readNonceLedger(filePath) {
     if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
       throw new Error("FOUNDER_NONCE_LEDGER_CHANGED");
     }
-    const bytes = readFileSync(descriptor);
+    const bytes = readBoundedDescriptor(descriptor, 16_384);
     const after = lstatSync(filePath);
     const afterDescriptor = fstatSync(descriptor);
     if (after.isSymbolicLink() || !after.isFile() ||
@@ -339,6 +339,18 @@ function publicKeyFingerprint(publicKeyJwk) {
   return createHash("sha256")
     .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
     .digest("hex");
+}
+
+function readBoundedDescriptor(descriptor, maxBytes) {
+  const buffer = Buffer.alloc(maxBytes + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const count = readSync(descriptor, buffer, offset, buffer.length - offset, null);
+    if (count === 0) break;
+    offset += count;
+  }
+  if (offset > maxBytes) throw new Error("TRUST_ANCHOR_TOO_LARGE");
+  return buffer.subarray(0, offset);
 }
 
 function loadTrustAnchorFromPath(trustPath, expectedStat = null) {

@@ -341,6 +341,49 @@ test("trust-anchor loader rejects a path swapped to a symlink during descriptor 
   }
 });
 
+test("trust-anchor loader bounds descriptor reads when the file grows after its initial stat", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-size-race-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const trustPath = path.join(dir, "founder.pub.json");
+  const kp = keyPair();
+  writeFileSync(trustPath, JSON.stringify({
+    schema: "ngl.founder-trust-anchor.v1",
+    status: "ENROLLED",
+    enrolled: true,
+    mode: "PRODUCTION",
+    public_key_jwk: kp.jwk,
+    fingerprint: kp.fingerprint,
+  }), { mode: 0o600 });
+
+  const originalReadSync = fs.readSync;
+  let appended = false;
+  let requestedBytes = 0;
+  let returnedBytes = 0;
+  fs.readSync = (descriptor, buffer, offset, length, position) => {
+    requestedBytes += length;
+    if (!appended) {
+      appended = true;
+      fs.appendFileSync(trustPath, "x".repeat(20_000));
+    }
+    const count = originalReadSync(descriptor, buffer, offset, length, position);
+    returnedBytes += count;
+    return count;
+  };
+  syncBuiltinESMExports();
+  try {
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(appended, true);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
+    assert.ok(requestedBytes <= 16_385, "requested read capacity must remain bounded to max plus one byte");
+    assert.ok(returnedBytes <= 16_385, "actual bytes read must remain bounded to max plus one byte");
+  } finally {
+    fs.readSync = originalReadSync;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("trust-anchor loader rejects a fingerprint that does not match its JWK", () => {
   const dir = path.join(tmpdir(), "ngl-auth-mismatch-" + process.pid);
   mkdirSync(dir, { recursive: true });
