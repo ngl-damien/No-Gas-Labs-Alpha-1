@@ -18,9 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
       - name: Execute tests, package and bounded institutional exercise
         run: npm run verify
+      - name: Preserve portable preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: agent-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/agent-preflight-ci-*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
