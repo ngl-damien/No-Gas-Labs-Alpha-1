@@ -12,9 +12,9 @@ test('Android emulator acceptance uses a lean AOSP image and preserves offline W
 
   const emulatorStep = source.slice(start, diagnosticsStart);
   const diagnosticsStep = source.slice(diagnosticsStart, end);
-  assert.match(emulatorStep, /^\\s{10}target:\\s*default\\s*$/m,
+  assert.match(emulatorStep, /^\s{10}target:\s*default\s*$/m,
     'the offline-only app must not boot unnecessary Google Play services');
-  assert.doesNotMatch(emulatorStep, /^\\s{10}target:\\s*google_apis\\s*$/m,
+  assert.doesNotMatch(emulatorStep, /^\s{10}target:\s*google_apis\s*$/m,
     'the emulator must not add a Google APIs system image to this offline WebView test');
   assert.match(emulatorStep, /webview_state=.*dumpsys webviewupdate/,
     'record the active platform WebView provider before instrumentation');
