@@ -1679,3 +1679,23 @@ No merge, release, deployment, spending, external publication, credential/key/pe
 5. Resume linked-repository bootstrap only when the mandatory local/authorized execution environment is available; then repair the node-gate bootstrap's failure masking before claiming install/build/test success.
 
 No merge, release, deployment, spending, external publication, credential/permission change, key operation or Founder decision occurred. No uninterrupted between-run execution is claimed.
+
+
+### Run 36 final reinspection addendum — Android failure artifact and preflight-count correction (2026-11-03 UTC)
+
+**Correction to the preflight count above:** exact Verify log parsing shows **70 target paths**, not 73. The same receipt also records 1 root instruction, 1 shared protocol, 4 vendor pointers and 1 durable checkpoint. `warnings: []` and `failures: []` remain correct. This correction preserves the original record rather than rewriting it.
+
+**PR #301 exact-head recheck:** head `a1a8efad2eaf504936e6dc9c3240eff7f2085f1a`. Verify [41567592268](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592268) passed; Genesis [41567592348](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592348) passed; Browser [41567592388](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592388) remained in progress at this addendum. PR #301 comment [6594148151](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/301#issuecomment-6594148151) records the exact Verify/Genesis evidence.
+
+**Worker B Android failure now terminal at the inspected head:** PR #298 head `9affb5b61af68cfac46ff417beef070b20fd2a1b`, Android run [41565567594](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567594) completed **failure**. Artifact [13200255149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567594/artifacts/13200255149), 981,175 bytes, SHA-256 `78bbaa738c9ddc4394888c7142aa5c87258ee8af5a7aa9eb8cdd6ca7eacf5726`, was downloaded and inspected:
+- Gradle reached `:app:connectedDebugAndroidTest`; six tests started, five passed, zero skipped, one failed.
+- The last test `bundledWorldStartsPrivatelyAndSharedModeFailsClosed` has an empty XML failure element. The test-result textproto reports `INSTRUMENTATION_FAILED`: instrumentation did not complete because the process crashed. No assertion message or definitive Java/native stack is present.
+- Global logcat shows multiple emulator system-service ANRs, WebView sandbox-process death, and ActivityManager's app/instrumentation crash report. Earlier emulator output also has ColorBuffer/texture binding errors. These observations do not establish whether the initiating fault is app code, WebView, or emulator instability; no cause is asserted.
+- Cross-worker triage and next diagnostic action are recorded in PR #298 comment [6594140549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/298#issuecomment-6594140549). Worker A did not change Android code or rerun the workflow.
+
+**Checkpoint branch's own post-update checks:** on checkpoint commit `f7109926f328827405e795b88db97dd7a571ba11`, Verify [41568041463](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41568041463) and Genesis [41568041435](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41568041435) passed; Browser [41568041476](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41568041476) was still in progress at this addendum.
+
+**Next action refinement:**
+1. Recheck PR #301 Browser [41567592388](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41567592388) and checkpoint Browser [41568041476](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41568041476); do not call either complete while running.
+2. Worker B should diagnose PR #298 Android failure from artifact [13200255149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41565567594/artifacts/13200255149), then rerun the same exact head once if the available CI budget permits. If it repeats, isolate the final test and obtain a process/WebView crash stack before changing product behavior.
+3. Keep Android acceptance open until a clean exact-head run completes all six tests. A hosted emulator result is not physical-device/Termux acceptance.
