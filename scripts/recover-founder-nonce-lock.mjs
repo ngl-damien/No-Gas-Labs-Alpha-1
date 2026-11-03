@@ -223,6 +223,31 @@ function sameLockObservation(left, right) {
  * Read-only assessment. A missing PID is advisory, never proof by itself.
  * Pending pre-rename temporary files deliberately block automatic cleanup.
  */
+function blockedByRecoveryLease(recoveryLeasePath, recoveryLease) {
+  const recognizedRecoveryLease = recoveryLease.status === 'present' &&
+    recoveryLease.format === 'owner-metadata' &&
+    recoveryLease.owner?.schema === RECOVERY_LEASE_SCHEMA;
+  return {
+    status: 'blocked',
+    reason: recognizedRecoveryLease
+      ? 'recovery-lease-present-manual-inspection-required'
+      : 'recovery-lease-requires-manual-inspection',
+    recoveryLeasePath,
+    recoveryLease: {
+      status: recoveryLease.status,
+      format: recoveryLease.format ?? null,
+      reason: recoveryLease.reason ?? null,
+      owner: recoveryLease.owner ?? null,
+      file: recoveryLease.file ?? null
+    },
+    recoveryLeaseProcessProbeAdvisoryOnly: true,
+    recoveryLeaseSafeToRemove: false,
+    safeToRemove: false,
+    authorityGranted: false,
+    warning: RECOVERY_WARNING
+  };
+}
+
 async function inspectFounderNonceRecoveryState(ledgerPath, { ignoreRecoveryLease = false } = {}) {
   if (typeof ledgerPath !== 'string' || !ledgerPath.trim() || !parse(ledgerPath).root) {
     throw failure('FOUNDER_NONCE_RECOVERY_ABSOLUTE_LEDGER_PATH_REQUIRED');
@@ -239,28 +264,7 @@ async function inspectFounderNonceRecoveryState(ledgerPath, { ignoreRecoveryLeas
     try { recoveryLease = await inspectWriterLock(recoveryLeasePath); }
     catch { throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE'); }
     if (recoveryLease.status !== 'missing') {
-      const recognizedRecoveryLease = recoveryLease.status === 'present' &&
-        recoveryLease.format === 'owner-metadata' &&
-        recoveryLease.owner?.schema === RECOVERY_LEASE_SCHEMA;
-      return {
-        status: 'blocked',
-        reason: recognizedRecoveryLease
-          ? 'recovery-lease-present-manual-inspection-required'
-          : 'recovery-lease-requires-manual-inspection',
-        recoveryLeasePath,
-        recoveryLease: {
-          status: recoveryLease.status,
-          format: recoveryLease.format ?? null,
-          reason: recoveryLease.reason ?? null,
-          owner: recoveryLease.owner ?? null,
-          file: recoveryLease.file ?? null
-        },
-        recoveryLeaseProcessProbeAdvisoryOnly: true,
-        recoveryLeaseSafeToRemove: false,
-        safeToRemove: false,
-        authorityGranted: false,
-        warning: RECOVERY_WARNING
-      };
+      return blockedByRecoveryLease(recoveryLeasePath, recoveryLease);
     }
   }
   const lockPath = join(directory, '.founder-nonce.lock');
@@ -268,6 +272,17 @@ async function inspectFounderNonceRecoveryState(ledgerPath, { ignoreRecoveryLeas
   const pendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
   const ledger = await readNonceLedger(absoluteLedgerPath);
   await assertDirectoryIdentity(directory, directoryIdentity);
+
+  // A recovery lease may appear after the first check while this snapshot is
+  // being read. Recheck before reporting the owner lock/ledger as actionable.
+  if (!ignoreRecoveryLease) {
+    let finalRecoveryLease;
+    try { finalRecoveryLease = await inspectWriterLock(recoveryLeasePath); }
+    catch { throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE'); }
+    if (finalRecoveryLease.status !== 'missing') {
+      return blockedByRecoveryLease(recoveryLeasePath, finalRecoveryLease);
+    }
+  }
 
   if (lock.status === 'missing') {
     const finalLock = await inspectWriterLock(lockPath);
