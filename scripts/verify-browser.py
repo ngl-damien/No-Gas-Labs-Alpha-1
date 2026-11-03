@@ -516,6 +516,114 @@ def shared(browser,url,data,out):
         assert observation['nextTest']=='Retrieve and inspect the primary source.'
         b.locator('#portal-close').click()
         visit(a,'The shared observatory')
+        # A Witness imports the v2 notebook into the shared Evidence Archive.
+        # The service commits the event, but the browser receives a simulated
+        # 503; the Relay must recover the exact actor-bound request once.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        import_target=b.locator('[data-source-observation-import-target]')
+        import_target_value=import_target.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
+        assert import_target_value, 'Shared Evidence Archive did not offer a retained Observatory version'
+        selected_target=json.loads(import_target_value)
+        assert selected_target['version']==1, selected_target
+        shared_notes={
+            'schema':'ngl.source-observatory.v2',
+            'assurance':{'sourceRetrieval':'NOT_PERFORMED','independentVerification':'NOT_PERFORMED','modelAssertions':'LEADS_ONLY','execution':'NOT_EXECUTED'},
+            'observations':[{
+                'claim':'The shared model says the bridge is open.',
+                'sourceKind':'model-assertion',
+                'source':'A pasted model response; no source was retrieved.',
+                'falsifier':'A direct inspection finds the bridge closed.',
+                'uncertainty':'No independent observation has been made.',
+                'nextTest':'Inspect the bridge and retain the observation.'
+            }]
+        }
+        before_observation=visitor.request.get(url+'api/state').json()
+        before_observation_revision=before_observation['world']['revision']
+        lose_import={'remaining':True}
+        def lose_shared_observation_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lose_import['remaining'] and payload.get('type')=='record-source-observation':
+                route.fetch()  # The shared service commits before the response is replaced.
+                lose_import['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body='{"error":{"code":"SIMULATED_RESPONSE_LOSS","message":"Response lost after commit."}}')
+                return
+            route.continue_()
+        b.route('**/api/action',lose_shared_observation_response)
+        import_target.select_option(import_target_value)
+        b.locator('[data-source-observation-import-file]').set_input_files({
+            'name':'shared-source-observations.json','mimeType':'application/json',
+            'buffer':json.dumps(shared_notes).encode('utf-8')
+        })
+        expect(b.locator('[data-source-observation-import-confirm]')).to_be_enabled()
+        b.locator('[data-source-observation-import-confirm]').click()
+        expect(b.locator('[data-source-observation-import-status]')).to_contain_text('Stopped after 0 of 1 note(s): Response lost after commit')
+        pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_raw, 'A committed observation with a lost response must leave a Relay receipt'
+        pending_observation=json.loads(pending_raw)
+        assert pending_observation['action']['type']=='record-source-observation'
+        assert pending_observation['requestId'].startswith('source-observation-')
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the local pending receipt'
+        recovered_observation=visitor.request.get(url+'api/state').json()
+        source_observations=[event for event in recovered_observation['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(source_observations)==1
+        source_observation=source_observations[0]
+        assert source_observation['actor']['role']=='witness'
+        assert source_observation['version']==1
+        assert source_observation['originSchema']=='ngl.source-observatory.v2'
+        assert source_observation['bindingMode']=='USER_SELECTED'
+        assert source_observation['sourceKind']=='model-assertion'
+        assert re.fullmatch(r'source-observation-[0-9a-f]{64}',source_observation['observationId'])
+        assert source_observation['normalizedRecordDigest']==source_observation['observationId'].removeprefix('source-observation-')
+        assert source_observation['sourceRetrieval']=='NOT_PERFORMED'
+        assert source_observation['independentVerification']=='NOT_PERFORMED'
+        assert source_observation['modelAssertions']=='LEADS_ONLY'
+        assert source_observation['execution']=='NOT_EXECUTED'
+        assert recovered_observation['world']['revision']==before_observation_revision+1
+        assert recovered_observation['world']['xp']==100, 'A retained observation and exact retry must not award XP'
+        expect(b.locator('[data-objective-id="witness-source-observation"]')).to_contain_text('RECORDED')
+        b.unroute('**/api/action',lose_shared_observation_response)
+        # Re-importing the same actor/version/note must be a no-op, not a second event.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        import_target=b.locator('[data-source-observation-import-target]')
+        import_target_value=import_target.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
+        import_target.select_option(import_target_value)
+        b.locator('[data-source-observation-import-file]').set_input_files({
+            'name':'shared-source-observations.json','mimeType':'application/json',
+            'buffer':json.dumps(shared_notes).encode('utf-8')
+        })
+        expect(b.locator('[data-source-observation-import-confirm]')).to_be_enabled()
+        b.locator('[data-source-observation-import-confirm]').click()
+        expect(b.locator('#toast')).to_contain_text('0 new retained event(s)')
+        expect(b.locator('[data-source-observation-card]')).to_have_count(1)
+        close_sheet(b)
+        replayed_observation=visitor.request.get(url+'api/state').json()
+        assert replayed_observation['world']['revision']==before_observation_revision+1
+        assert len([event for event in replayed_observation['world']['events'] if event['type']=='source-observation-recorded'])==1
+        assert replayed_observation['world']['xp']==100
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('Source Recorder')
+        expect(b.locator('#sheet')).to_contain_text('1 recorded retained source observations')
+        close_sheet(b)
+        expect(b.locator('[data-objective-id="witness-source-observation"]')).to_contain_text('RECORDED')
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(b.locator('[data-source-observation-card]')).to_have_count(1)
+        expect(b.locator('#sheet')).to_contain_text('Model assertions are leads only, not evidence.')
+        close_sheet(b)
+        visit(b,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
         a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
