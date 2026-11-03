@@ -257,3 +257,54 @@ No merge, release, deployment, spending, key/credential operation, permission ch
 - Worker B PR #265 `HOST=localhost` startup alias finding remains assigned to Worker B via comment `6613072052`; no game/server files were edited by Worker A.
 
 Next run: poll #333 Browser `41701921044`; recheck PR #321 current head `274686666009d8b599c552fba93315e8f9819736` exact-head checks; continue with the highest unowned, non-conflicting improvement. Keep all drafts unmerged and preserve Founder custody boundaries.
+
+---
+
+## Worker A Run 13 — 2026-11-03
+
+### Rehydration and current baseline
+- Re-read current root `AGENTS.md`, then the complete shared scheduler protocol, the stale main checkpoint, Worker A Run 12 checkpoint, and latest Worker B PR results in the required order.
+- Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`; main `LATEST_CHECKPOINT.md` still declares `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. Run 13 checkpoint is appended on this existing #321 branch at `docs/operations/checkpoints/2026-11-03-worker-a-run-13.md`; main was not edited.
+- No local checkout or online remote device was available. Local preflight/tests are not claimed; exact-head hosted CI is the verification source. Nested instruction checks for docs/checkpoints, scripts, src/authority and test returned 404.
+
+### Cycle 1 — missing nonce-ledger history requires separate acknowledgement
+- PR #332 exact head `a036e5c4f8e0d92199eb94f245c4f8613129fc8e` passed Verify 41698188063, Genesis 41698188231, Browser 41698188134 (12/12).
+- Its recovery helper allowed a stale lock to be removed when the nonce ledger was absent, using only owner-stopped and same-host confirmations. A missing ledger cannot distinguish never-initialized state from deleted replay history.
+- PR #336 adds `confirmLedgerAbsent: true`, CLI `--confirm-ledger-absent`, a fail-closed error when absent-ledger recovery lacks that acknowledgement, and API/CLI regressions.
+
+### Cycle 2 — writer/recovery-lease filename collision
+- Fresh source review found `consumeFounderNonce()` rejected `.founder-nonce.lock` but not `.founder-nonce-recovery.lock`. A configured ledger could be published at the recovery-lease filename, causing future writers and recovery inspection to remain blocked.
+- PR #336 rejects both names before acquiring or creating coordination files and adds a regression for each.
+
+### Cycle 3 — temporary nonce filename collision
+- Both the writer and recovery inspector reserve `.founder-nonce-<UUID>.tmp` for atomic temporary files, but the configured ledger validators did not reject that namespace. A permanent ledger using the pattern would be misclassified as an orphaned temporary file.
+- PR #336 aligns writer and recovery path validation and adds regressions covering the temporary filename pattern.
+
+### PR #336 current exact head
+- [PR #336](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/336), child of #332, branch `security/acknowledge-absent-founder-nonce-ledger-20261103`, head `b85047af71374910c897081a0236aa375f8ea3de`, 8 commits ahead/0 behind, four changed files.
+- Verify/world-projection 41707557896 PASS: hosted preflight `ready`, zero warnings/failures; Node 24.22.1 test command, Python inspector, package build and institutional exercise exit 0; receipt 13265985830.
+- Genesis Evidence Invariant 41707557936 PASS.
+- Browser Acceptance 41707558012 was still IN PROGRESS at the registry/checkpoint update. Do not claim 3/3 until this exact head completes. Issue #17 comments 6613874469 and 6613988682 carry the security findings.
+- This is helper-level recovery safety, not live Founder authentication. No key, host trust root, production ledger or live server mutation boundary was provisioned.
+
+### Fresh Worker B and CI portfolio
+- PR #265 head `e0c844b89c906df40f997d207f681854df7200c1` passed Verify 41704391337, Genesis 41704391296, Browser 41704390841. The generated-key development exception is now limited to literal `127.0.0.1`/ `::1`; `HOST=localhost` fails before runtime-directory creation without an explicit key. Handoff follow-up comment 6614003635. It remains on older game ancestry and is not integrated.
+- PR #331 head `d9ba2b102cdc86d5410e46c8df8e62c373483306` passed Verify 41699097570, Genesis 41699097612, Browser 41699097569 (12/12), Enforcer 41699091089. G6 remains IN PROGRESS.
+- PR #334 current head `8da736974081d8ccbd6adf7c9909b320bed15c8a` passed Verify 41706819255, Genesis 41706819125, Browser 41706819242 (12/12; artifact 13265594770). It adds authored advisory Guild Hall NPCs, not autonomous agents, provider calls, authority, XP or canonical writes. Comment 6614017931 asks Worker B to refresh its stale PR description head.
+- PR #335 head `5c16a7584c993bbb14c92fcdb0df7280529e9311` passed Verify 41705476334, Genesis 41705476072, Browser 41705476113 (12/12). The four exact upstream action tags declare Node 24. PR #333/#313 remain open donor proposals; no close or merge was performed.
+
+### Linked-repository gates
+- Nine linked repositories returned 404 for root `AGENTS.md`; no source was inspected.
+- AI-BI root instructions and required continuity files were read. `init_node.sh` is mode 100644, not executable; required bootstrap/install/build verification remains blocked.
+- Governance root instructions require `./init_repo.sh`; no shell/online device was available. No source was inspected.
+
+### Next ranked actions
+1. Poll PR #336 current-head Browser run 41707558012 and update Run 13 checkpoint/registry with exact result/artifact. If it fails, fix only a regression attributable to the current head.
+2. Keep #336 and the complete #332 → #330 → #328 → #327 → #325 → #324 → #316 → #312 chain draft/unmerged pending review.
+3. Worker B: reconcile #265 explicit-key guard and #334 NPC work onto #329/#331 ancestry; retain G6 IN PROGRESS until source retrieval, independent verification and physical-device evidence exist.
+4. PR #335 is the current green Node 24 action-modernization proposal on #312; reconcile #313/#333 donor proposals after reviewing ancestry and the corrected TEST_ONLY fixture.
+5. Preserve Founder-controlled key custody, host trust-root provisioning and canonical live mutation-boundary integration. Do not generate/enroll keys or operate a production nonce ledger.
+6. Do not overwrite main `LATEST_CHECKPOINT.md` until the proposed #314/#317/#320/#323/#326/#329/#331 checkpoint stack is reconciled.
+7. Do not inspect linked-repository source until root instructions and mandatory bootstrap execution are satisfied.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder key operation, host trust-root provisioning, production ledger operation, or Founder-reserved decision occurred. No uninterrupted work between runs is claimed.
