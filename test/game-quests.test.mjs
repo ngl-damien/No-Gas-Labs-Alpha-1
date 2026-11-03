@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -635,4 +637,44 @@ test('quest trail does not unlock research progress from incomplete or unattribu
     assert.equal(reportMilestone.progress, 0);
     assert.equal(reportMilestone.blockedReason, 'Propose a falsifiable moonshot first.');
   }
+});
+
+test('Source Observation quest progress is actor-scoped and routes an unfinished player to the Evidence Archive', () => {
+  const creationId = 'observatory-quest';
+  const creation = {
+    id: creationId, kind: 'observatory', title: 'Source Observatory',
+    version: 1, publishedAt: '2026-10-25T12:00:00.000Z', versions: []
+  };
+  const note = {
+    claim: 'A model says the bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'Model output only; no source retrieved.',
+    falsifier: 'A direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the bridge.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const publication = {
+    id: 'publish-observatory', type: 'publish', creationId, version: 1,
+    actor: founder, at: '2026-10-25T12:00:00.000Z'
+  };
+  const observation = {
+    id: 'source-observation-event', type: 'source-observation-recorded',
+    actor: founder, at: '2026-10-25T12:01:00.000Z',
+    observationId: 'source-observation-' + digest, creationId, version: 1, ...note,
+    originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  };
+  const world = { creations: [creation], events: [publication, observation], contributions: [], reports: [], discoveries: [] };
+  const founderObjective = getQuestTrail(world, founder).find(item => item.id === 'founder-source-observation');
+  assert.equal(founderObjective.progress, 1);
+  assert.equal(founderObjective.complete, true);
+  const witnessObjective = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation');
+  assert.equal(witnessObjective.progress, 0);
+  assert.equal(witnessObjective.complete, false);
+  assert.deepEqual(witnessObjective.action, { type: 'location', id: 'evidence_archive' });
 });

@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -468,6 +468,9 @@ export function getQuestTrail(world, viewer) {
   const publishedObservatoryVersions = publications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   );
+  const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
+  const sourceObservationRecords = projectSourceObservationRecords(events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked' && record.actor?.id === actorId && record.actor?.role === actorRole);
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
   ));
@@ -713,6 +716,13 @@ export function getQuestTrail(world, viewer) {
         !hasObservatory ? { type: 'workbench', recipe: 'observatory' } : null
       ),
       trailMilestone(
+        'founder-source-observation', 'Import a falsifiable source observation', 1,
+        sourceObservationRecords.map(event => event.id), sourceObservationRecords,
+        hasPublishedObservatory && !sourceObservationRecords.length ? { type: 'location', id: 'evidence_archive' } : null,
+        !hasPublishedObservatory ? 'Publish a Source Observatory first; a notebook export alone is not a retained world event.' : null,
+        'This records an actor-attributed note against an importer-selected version. Export origin, truth, retrieval, independent verification and execution are not established.'
+      ),
+      trailMilestone(
         'founder-research-report', 'Record a version-bound research report', 1,
         researchReports.map(match => match.event.id), researchReports.map(match => match.event),
         hasObservatory && !hasResearchReport && latestObservatoryPublication
@@ -841,6 +851,12 @@ export function getQuestTrail(world, viewer) {
       studyReviews.map(event => event.id), studyReviews,
       !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
       !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
+    ),
+    trailMilestone('witness-source-observation', 'Import a falsifiable source observation', 1,
+      sourceObservationRecords.map(event => event.id), sourceObservationRecords,
+      hasPublishedObservatory && !sourceObservationRecords.length ? { type: 'location', id: 'evidence_archive' } : null,
+      !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before importing a notebook export.' : null,
+      'This records an actor-attributed note against an importer-selected version. Export origin, truth, retrieval, independent verification and execution are not established.'
     ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,
