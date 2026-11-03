@@ -678,6 +678,10 @@ test('world animation pauses behind sheets and in the background, then resumes o
   assert.equal(view.paused, false);
   assert.equal(frames.size, 1, 'a visible world schedules one animation frame');
 
+  let staleUpdates = 0;
+  let staleRenders = 0;
+  view.update = () => { staleUpdates += 1; };
+  view.render = () => { staleRenders += 1; };
   const firstFrameId = view.animation;
   const staleFrame = frames.get(firstFrameId);
   view.moving = true;
@@ -706,6 +710,12 @@ test('world animation pauses behind sheets and in the background, then resumes o
   fixture.setModalOpen(false);
   assert.equal(view.animation, resumedFrameId, 'repeated visibility signals do not duplicate frames');
   assert.equal(frames.size, 1);
+
+  staleFrame(32);
+  assert.equal(view.animation, resumedFrameId, 'an obsolete callback delivered after resume cannot replace the new frame');
+  assert.equal(frames.size, 1, 'an obsolete callback delivered after resume cannot create a second loop');
+  assert.equal(staleUpdates, 0, 'an obsolete callback after resume cannot advance the world');
+  assert.equal(staleRenders, 0, 'an obsolete callback after resume cannot render another frame');
 
   fixture.document.hidden = true;
   fixture.dispatchVisibility();
