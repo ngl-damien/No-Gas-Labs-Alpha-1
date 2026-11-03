@@ -127,6 +127,16 @@ test('an unanswered linked challenge appears as pending dissent, not a completed
   });
 });
 
+test('ambiguous duplicate author responses remain review items, not resolved responses', async () => {
+  const world = await sourceObservationWorld({ respond: true });
+  const response = world.events.find(event => event.type === 'source-observation-challenge-responded');
+  const duplicate = { ...response, id: 'pixel-map-duplicate-response-event' };
+  const ambiguous = { ...world, events: [...world.events, duplicate] };
+  assert.deepEqual(projectSourceObservationMapCounts(ambiguous), {
+    available: true, notes: 1, dissent: 1, responses: 0, pending: 0, review: 2
+  });
+});
+
 test('unlinked retained notes and their challenge history become review counts, not zero activity', async () => {
   const world = await sourceObservationWorld({ respond: true });
   const unlinked = { ...world, creations: [] };
