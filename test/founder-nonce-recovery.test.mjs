@@ -693,3 +693,69 @@ test('offline recovery refuses owner-lock removal when its recovery lease is rep
   assert.equal(JSON.parse(await readFile(value.recoveryLeasePath, 'utf8')).openedAt, replacementOpenedAt);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+
+test('recovery release preserves a replacement lease after a live-owner precondition blocks recovery', async t => {
+  const value = await fixture(t, { pid: process.pid });
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const replacementOpenedAt = '2001-01-01T00:00:00.000Z';
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalReaddir = fsPromises.readdir;",
+    "const originalUnlink = fsPromises.unlink;",
+    "const originalWriteFile = fsPromises.writeFile;",
+    "let directoryReads = 0;",
+    "let replaced = false;",
+    "fsPromises.readdir = async (target, ...args) => {",
+    "  const entries = await originalReaddir(target, ...args);",
+    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "    directoryReads += 1;",
+    "    if (!replaced && directoryReads === 2) {",
+    "      replaced = true;",
+    "      await originalUnlink(process.env.TEST_RECOVERY_LEASE);",
+    "      const receipt = JSON.stringify({",
+    "        openedAt: process.env.TEST_REPLACEMENT_OPENED_AT,",
+    "        pid: process.pid,",
+    "        schema: 'ngl.founder-nonce-recovery.v1'",
+    "      });",
+    "      await originalWriteFile(process.env.TEST_RECOVERY_LEASE, receipt, { mode: 0o600 });",
+    "    }",
+    "  }",
+    "  return entries;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: 'unexpected-recovered', directoryReads, replaced }));",
+    "  process.exitCode = 1;",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), directoryReads, replaced }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_RECOVERY_LEASE: value.recoveryLeasePath,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule,
+      TEST_REPLACEMENT_OPENED_AT: replacementOpenedAt
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
+  assert.equal(observed.directoryReads, 2, 'the replacement occurs during the first read-only state inspection');
+  assert.equal(observed.replaced, true);
+  assert.equal(await exists(value.lockPath), true, 'the live owner's lock must remain');
+  assert.equal(await exists(value.recoveryLeasePath), true, 'release must not unlink the replacement lease');
+  assert.equal(JSON.parse(await readFile(value.recoveryLeasePath, 'utf8')).openedAt, replacementOpenedAt);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
