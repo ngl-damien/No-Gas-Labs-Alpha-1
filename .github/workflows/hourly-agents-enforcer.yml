@@ -1,54 +1,103 @@
 name: hourly-agents-enforcer
+
 on:
   push:
     paths:
+      - '.github/workflows/hourly-agents-enforcer.yml'
+      - 'test/hourly-agents-enforcer.test.mjs'
       - 'docs/operations/hourly-agents/**'
       - 'docs/operations/LATEST_CHECKPOINT.md'
       - 'docs/authority/founder.pub.json'
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   enforce:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Verify registry exists
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify governed inputs and preserve a unique preflight receipt
+        run: |
+          node scripts/validate-agent-governance.mjs \
+            --path .github/workflows/hourly-agents-enforcer.yml \
+            --path test/hourly-agents-enforcer.test.mjs \
+            --path docs/operations/hourly-agents/REGISTRY.json \
+            --path docs/operations/hourly-agents/STUTTER_STEP_STEERING.md \
+            --path docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md \
+            --path docs/operations/hourly-agents/DO_NOT_DELETE.md \
+            --path src/authority/decision.js \
+            --path game/server.mjs \
+            --checkpoint docs/operations/LATEST_CHECKPOINT.md \
+            --receipt ".runtime/hourly-agents-enforcer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+      - name: Verify registry and steering files exist
         run: |
           test -f docs/operations/hourly-agents/REGISTRY.json
-          grep -q 6ac6c77de7ac81918e446a49ea330eb6 docs/operations/hourly-agents/REGISTRY.json
-          grep -q 6ac307e1e9bc8191ae21d22f94743802 docs/operations/hourly-agents/REGISTRY.json
-          test -f docs/operations/LATEST_CHECKPOINT.md
-      - name: Verify steering files exist
-        run: |
           test -f docs/operations/hourly-agents/STUTTER_STEP_STEERING.md
           test -f docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md
           test -f docs/operations/hourly-agents/DO_NOT_DELETE.md
-      - name: Verify do_not_delete flag preserved
+          test -f docs/operations/LATEST_CHECKPOINT.md
+      - name: Verify registered workers are unique and preserved
         run: |
           python3 - <<'PY'
           import json, sys
-          data = json.load(open("docs/operations/hourly-agents/REGISTRY.json"))
-          agents = data.get("agents") or []
-          if len(agents) < 2:
-              sys.exit("expected at least two registered agents")
-          for a in agents:
-              if a.get("do_not_delete") is not True:
-                  sys.exit(f"do_not_delete missing or false for {a.get('id')}")
-          print("do_not_delete enforced for all agents")
+          with open("docs/operations/hourly-agents/REGISTRY.json", encoding="utf-8") as handle:
+              data = json.load(handle)
+          agents = data.get("agents")
+          if not isinstance(agents, list) or not agents:
+              sys.exit("registry agents must be a non-empty array")
+          if any(not isinstance(agent, dict) for agent in agents):
+              sys.exit("every registry agent must be an object")
+          ids = [agent.get("id") for agent in agents]
+          if any(not isinstance(agent_id, str) or not agent_id for agent_id in ids):
+              sys.exit("every registry agent must have a non-empty string id")
+          if len(ids) != len(set(ids)):
+              sys.exit("duplicate agent IDs are not allowed")
+          required = {
+              "6ac6c77de7ac81918e446a49ea330eb6",
+              "6ac307e1e9bc8191ae21d22f94743802",
+          }
+          missing = sorted(required.difference(ids))
+          if missing:
+              sys.exit("required scheduled agents missing: " + ", ".join(missing))
+          for agent in agents:
+              if agent.get("do_not_delete") is not True:
+                  sys.exit("do_not_delete missing or false for " + agent["id"])
+          print("both required agents are present exactly once; all registry entries are preserved")
           PY
-      - name: Report authority hole status
+      - name: Report authority helper status without overstating route coverage
         run: |
-          if grep -q 'verification?.valid' src/authority/decision.js; then
-            echo "HOLE OPEN — needs fix/authority-verifyFounderDecision-no-trust-caller-valid"
+          if grep -Fq 'verification?.valid' src/authority/decision.js; then
+            echo "HELPER-LEVEL FLAG PRESENT — inspect the isolated authorization helper; this is not a demonstrated live-route exploit."
           else
-            echo "caller-supplied verification?.valid pattern not found"
+            echo "Caller-supplied verification flag pattern not found in the isolated helper."
+          fi
+          if grep -Fq 'src/authority/decision.js' game/server.mjs; then
+            echo "The game server directly references the authority helper; inspect the complete call graph before making route-level claims."
+          else
+            echo "No direct server import of the isolated helper observed."
           fi
           if test -f docs/authority/founder.pub.json; then
-            echo "trust anchor exists"
+            echo "Founder public-key file present; presence alone does not establish identity, custody, or production trust."
           else
-            echo "trust anchor absent — expected until genuine Founder ceremony"
+            echo "Founder trust anchor absent — expected until a genuine Founder-controlled enrollment."
           fi
       - name: Report lab-queue path
         run: |
           if test -d lab-queue; then ls -la lab-queue; else echo "lab-queue not yet populated"; fi
+      - name: Preserve the preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hourly-agents-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/hourly-agents-enforcer-*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
