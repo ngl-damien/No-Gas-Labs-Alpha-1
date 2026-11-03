@@ -259,9 +259,73 @@ test('read-only inspection reports an active recovery lease as blocked', async t
 
   const result = await inspectFounderNonceRecovery(value.ledgerPath);
   assert.equal(result.status, 'blocked');
-  assert.equal(result.reason, 'recovery-in-progress');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.status, 'present');
+  assert.equal(result.recoveryLease.format, 'owner-metadata');
+  assert.equal(result.recoveryLease.owner.schema, 'ngl.founder-nonce-recovery.v1');
+  assert.equal(result.recoveryLease.owner.processProbe, 'possibly-alive');
+  assert.equal(result.recoveryLeaseProcessProbeAdvisoryOnly, true);
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
   assert.equal(result.safeToRemove, false);
   assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+});
+
+test('public inspection cannot bypass a present recovery lease with caller options', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath, { ignoreRecoveryLease: true });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.owner.processProbe, 'possibly-alive');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+});
+
+test('read-only inspection reports an absent recovery-lease PID but never authorizes cleanup', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: 2147483647,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.owner.processProbe, 'not-found');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+  assert.equal(await exists(value.lockPath), true);
+});
+
+test('unrecognized recovery-lease metadata remains blocked with a diagnostic reason', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.unknown-recovery-lease.v9',
+    pid: 2147483647,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-requires-manual-inspection');
+  assert.equal(result.recoveryLease.status, 'present');
+  assert.equal(result.recoveryLease.format, 'unrecognized-json');
+  assert.equal(result.recoveryLease.reason, 'unsupported-lock-schema');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
 });
 
 test('recovery CLI help loads without host configuration and documents the recovery lease', () => {
@@ -325,4 +389,48 @@ test('unreadable post-unlink owner-lock inspection retains the recovery fence', 
   assert.equal(await exists(value.lockPath), false, 'the original owner lock was already durably removed');
   assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain when final lock state is unreadable');
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore, 'nonce ledger bytes must remain unchanged');
+});
+
+
+test('read-only recovery inspection opens the nonce ledger without write access', async t => {
+  const value = await fixture(t);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { constants as fsConstants } from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fsPromises.open;",
+    "let ledgerAccessMode = null;",
+    "fsPromises.open = async (target, flags, ...args) => {",
+    "  if (String(target) === process.env.TEST_LEDGER) {",
+    "    ledgerAccessMode = flags & fsConstants.O_ACCMODE;",
+    "    if (ledgerAccessMode !== fsConstants.O_RDONLY) {",
+    "      const error = new Error('read-only filesystem denies writable open');",
+    "      error.code = 'EROFS';",
+    "      throw error;",
+    "    }",
+    "  }",
+    "  return originalOpen(target, flags, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
+    "console.log(JSON.stringify({ status: result.status, ledger: result.ledger, ledgerAccessMode }));"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'ready');
+  assert.equal(observed.ledger.exists, true);
+  assert.equal(observed.ledger.nonceCount, 1);
+  assert.equal(observed.ledgerAccessMode, 0, 'read-only inspection must request O_RDONLY');
 });

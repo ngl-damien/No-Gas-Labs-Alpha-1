@@ -108,7 +108,8 @@ async function readNonceLedger(ledgerPath, { sync = false } = {}) {
 
   let handle;
   try {
-    handle = await open(ledgerPath, fsConstants.O_RDWR |
+    const accessMode = sync ? fsConstants.O_RDWR : fsConstants.O_RDONLY;
+    handle = await open(ledgerPath, accessMode |
       (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
     const opened = await handle.stat();
     if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
@@ -222,7 +223,7 @@ function sameLockObservation(left, right) {
  * Read-only assessment. A missing PID is advisory, never proof by itself.
  * Pending pre-rename temporary files deliberately block automatic cleanup.
  */
-export async function inspectFounderNonceRecovery(ledgerPath, { ignoreRecoveryLease = false } = {}) {
+async function inspectFounderNonceRecoveryState(ledgerPath, { ignoreRecoveryLease = false } = {}) {
   if (typeof ledgerPath !== 'string' || !ledgerPath.trim() || !parse(ledgerPath).root) {
     throw failure('FOUNDER_NONCE_RECOVERY_ABSOLUTE_LEDGER_PATH_REQUIRED');
   }
@@ -234,18 +235,32 @@ export async function inspectFounderNonceRecovery(ledgerPath, { ignoreRecoveryLe
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
   const recoveryLeasePath = join(directory, '.founder-nonce-recovery.lock');
   if (!ignoreRecoveryLease) {
-    try {
-      await lstat(recoveryLeasePath);
+    let recoveryLease;
+    try { recoveryLease = await inspectWriterLock(recoveryLeasePath); }
+    catch { throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE'); }
+    if (recoveryLease.status !== 'missing') {
+      const recognizedRecoveryLease = recoveryLease.status === 'present' &&
+        recoveryLease.format === 'owner-metadata' &&
+        recoveryLease.owner?.schema === RECOVERY_LEASE_SCHEMA;
       return {
         status: 'blocked',
-        reason: 'recovery-in-progress',
+        reason: recognizedRecoveryLease
+          ? 'recovery-lease-present-manual-inspection-required'
+          : 'recovery-lease-requires-manual-inspection',
         recoveryLeasePath,
+        recoveryLease: {
+          status: recoveryLease.status,
+          format: recoveryLease.format ?? null,
+          reason: recoveryLease.reason ?? null,
+          owner: recoveryLease.owner ?? null,
+          file: recoveryLease.file ?? null
+        },
+        recoveryLeaseProcessProbeAdvisoryOnly: true,
+        recoveryLeaseSafeToRemove: false,
         safeToRemove: false,
         authorityGranted: false,
         warning: RECOVERY_WARNING
       };
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE');
     }
   }
   const lockPath = join(directory, '.founder-nonce.lock');
@@ -339,6 +354,15 @@ export async function inspectFounderNonceRecovery(ledgerPath, { ignoreRecoveryLe
 }
 
 /**
+ * Public read-only inspection always honors a present recovery lease. The
+ * internal recovery routine uses the private state inspector only after it has
+ * acquired its own exclusive recovery lease.
+ */
+export async function inspectFounderNonceRecovery(ledgerPath) {
+  return inspectFounderNonceRecoveryState(ledgerPath);
+}
+
+/**
  * Explicit offline recovery. It never removes pending temporary files or edits
  * nonce contents. The operator must confirm both that the owner is stopped and
  * that the lock belongs to this host/PID namespace.
@@ -420,7 +444,7 @@ export async function recoverFounderNonceLock({
 
   try {
     await assertDirectoryIdentity(directory, directoryIdentity);
-    const before = await inspectFounderNonceRecovery(absoluteLedgerPath, { ignoreRecoveryLease: true });
+    const before = await inspectFounderNonceRecoveryState(absoluteLedgerPath, { ignoreRecoveryLease: true });
     if (before.status !== 'ready') {
       throw failure('FOUNDER_NONCE_RECOVERY_NOT_READY', before.reason || before.status);
     }
@@ -434,7 +458,7 @@ export async function recoverFounderNonceLock({
     await syncDirectory(directory);
     await assertDirectoryIdentity(directory, directoryIdentity);
 
-    const final = await inspectFounderNonceRecovery(absoluteLedgerPath, { ignoreRecoveryLease: true });
+    const final = await inspectFounderNonceRecoveryState(absoluteLedgerPath, { ignoreRecoveryLease: true });
     if (final.status !== 'ready' ||
         !sameLockObservation(
           { status: 'present', format: 'owner-metadata', owner: before.owner, file: before.lock },
