@@ -13,7 +13,7 @@ export const PLACES=[
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
  {id:'commons',name:'The Commons',x:600,y:500,type:'institution',purpose:'Share bounded player messages, report abuse, and inspect human moderation history.',glyph:'C',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Inspect actor-scoped Questkeeper objectives, coordinate player groups, synthesize proposals and dissent, and review collaborator limits.',glyph:'G',color:'#356e62'},
- {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
+ {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Forge personal field items from retained activity; draft, repair, check and publish real artifacts under the Founder gate.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent and exact collaborator responses; audit source chains and challenge published artifacts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work with bounded tutoring prompts; visits and explanations do not certify mastery.',glyph:'A',color:'#7c876a'},
@@ -45,7 +45,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: research proposals, reported attempts, and explicit dissent.
  guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','collaborator-response-recorded','guild-created','guild-joined','guild-left','guild-disbanded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish'].includes(event?.type)||event?.execution==='EXECUTED',
+ forge:event=>['draft','repair','publish','field-item-forged'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.

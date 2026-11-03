@@ -125,7 +125,16 @@ jobs:
             # assignment, readback, diagnostics and the guard in one shell line.
             adb shell settings put global verifier_verify_adb_installs 0
             verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"; printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"; if [ "$verifier_adb" != "0" ]; then adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true; exit 1; fi
-            gradle -p android :app:connectedDebugAndroidTest
+            if gradle -p android :app:connectedDebugAndroidTest; then test_status=0; else test_status=$?; mkdir -p android/app/build/reports/androidTests/connected/debug/diagnostics || true; adb logcat -d -v threadtime -t 20000 > android/app/build/reports/androidTests/connected/debug/diagnostics/logcat.txt 2>&1 || true; adb shell dumpsys activity activities > android/app/build/reports/androidTests/connected/debug/diagnostics/activity.txt 2>&1 || true; adb shell dumpsys webviewupdate > android/app/build/reports/androidTests/connected/debug/diagnostics/webview-provider.txt 2>&1 || true; fi; exit "$test_status"
+      - name: Preserve Android instrumentation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-android-instrumentation-diagnostics-${{ github.run_id }}
+          path: |
+            android/app/build/reports/androidTests/connected/debug/
+            android/app/build/outputs/androidTest-results/connected/debug/
+          if-no-files-found: warn
       - name: Preserve debug APK
         if: always()
         uses: actions/upload-artifact@v4
