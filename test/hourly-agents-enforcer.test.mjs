@@ -49,7 +49,7 @@ test('hourly enforcer preflights every governed input with a unique receipt', ()
   assert.ok(workflow.includes('--receipt ".runtime/hourly-agents-enforcer-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"'));
   assert.ok(workflow.includes('if: always()'));
   assert.ok(workflow.includes('include-hidden-files: true'));
-  assert.ok(workflow.includes('actions/upload-artifact@v4'));
+  assert.ok(workflow.includes('actions/upload-artifact@v7.0.2'));
 });
 
 test('registry preserves both scheduled workers exactly once and every entry is non-deletable', () => {
