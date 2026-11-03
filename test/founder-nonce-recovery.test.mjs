@@ -259,9 +259,55 @@ test('read-only inspection reports an active recovery lease as blocked', async t
 
   const result = await inspectFounderNonceRecovery(value.ledgerPath);
   assert.equal(result.status, 'blocked');
-  assert.equal(result.reason, 'recovery-in-progress');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.status, 'present');
+  assert.equal(result.recoveryLease.format, 'owner-metadata');
+  assert.equal(result.recoveryLease.owner.schema, 'ngl.founder-nonce-recovery.v1');
+  assert.equal(result.recoveryLease.owner.processProbe, 'possibly-alive');
+  assert.equal(result.recoveryLeaseProcessProbeAdvisoryOnly, true);
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
   assert.equal(result.safeToRemove, false);
   assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+});
+
+test('read-only inspection reports an absent recovery-lease PID but never authorizes cleanup', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: 2147483647,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.owner.processProbe, 'not-found');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+  assert.equal(await exists(value.lockPath), true);
+});
+
+test('unrecognized recovery-lease metadata remains blocked with a diagnostic reason', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.unknown-recovery-lease.v9',
+    pid: 2147483647,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-requires-manual-inspection');
+  assert.equal(result.recoveryLease.status, 'present');
+  assert.equal(result.recoveryLease.format, 'unrecognized-json');
+  assert.equal(result.recoveryLease.reason, 'unsupported-lock-schema');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
 });
 
 test('recovery CLI help loads without host configuration and documents the recovery lease', () => {
