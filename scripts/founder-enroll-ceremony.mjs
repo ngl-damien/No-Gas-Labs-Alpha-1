@@ -93,44 +93,117 @@ export function validatePrivateKeyDestination(destination, {
 
 export function writePrivateKeyFile(destination, privateJwk, options = {}) {
   const target = validatePrivateKeyDestination(destination, options);
+  const parent = dirname(target);
   const payload = JSON.stringify(privateJwk, null, 2) + '\n';
+  let directoryFd;
   let fd;
   let identity;
+  let directoryIdentity;
 
   try {
+    // Keep the validated parent directory open while creating and syncing the
+    // new entry. Rechecking its pathname catches a directory/symlink swap
+    // around the path-based file open; the open descriptor is used for fsync.
+    const parentBefore = lstatSync(parent);
+    if (parentBefore.isSymbolicLink() || !parentBefore.isDirectory()) {
+      throw failure('FOUNDER_PRIVATE_KEY_PARENT_INVALID', 'Private-key parent must remain a real directory.');
+    }
+    directoryFd = openSync(parent, 'r');
+    const parentOpened = fstatSync(directoryFd);
+    if (!parentOpened.isDirectory() ||
+        parentOpened.dev !== parentBefore.dev ||
+        parentOpened.ino !== parentBefore.ino ||
+        (parentOpened.mode & 0o077) !== 0) {
+      throw failure('FOUNDER_PRIVATE_KEY_PARENT_CHANGED', 'Private-key parent identity or permissions changed before file creation.');
+    }
+    directoryIdentity = { dev: parentOpened.dev, ino: parentOpened.ino };
+
     try {
-      fd = openSync(target, 'wx', 0o600);
-    } catch (error) {
-      if (error?.code === 'EEXIST') {
-        throw failure('FOUNDER_PRIVATE_KEY_DESTINATION_EXISTS', 'Private-key destination already exists; refusing to overwrite it.');
+      try {
+        fd = openSync(target, 'wx', 0o600);
+      } catch (error) {
+        if (error?.code === 'EEXIST') {
+          throw failure('FOUNDER_PRIVATE_KEY_DESTINATION_EXISTS', 'Private-key destination already exists; refusing to overwrite it.');
+        }
+        throw error;
       }
-      throw error;
+
+      const before = fstatSync(fd);
+      if (!before.isFile() || (before.mode & 0o077) !== 0) {
+        throw failure('FOUNDER_PRIVATE_KEY_FILE_PERMISSIONS_UNSAFE', 'New private-key file is not a private regular file.');
+      }
+      writeFileSync(fd, payload);
+      fsyncSync(fd);
+      const after = fstatSync(fd);
+      if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || (after.mode & 0o077) !== 0) {
+        throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key file identity or permissions changed during write.');
+      }
+      identity = { dev: after.dev, ino: after.ino };
+    } finally {
+      if (fd !== undefined) {
+        closeSync(fd);
+        fd = undefined;
+      }
     }
 
-    const before = fstatSync(fd);
-    if (!before.isFile() || (before.mode & 0o077) !== 0) {
-      throw failure('FOUNDER_PRIVATE_KEY_FILE_PERMISSIONS_UNSAFE', 'New private-key file is not a private regular file.');
+    const parentAfterWrite = lstatSync(parent);
+    const openedAfterWrite = fstatSync(directoryFd);
+    if (parentAfterWrite.isSymbolicLink() || !parentAfterWrite.isDirectory() ||
+        parentAfterWrite.dev !== directoryIdentity.dev ||
+        parentAfterWrite.ino !== directoryIdentity.ino ||
+        openedAfterWrite.dev !== directoryIdentity.dev ||
+        openedAfterWrite.ino !== directoryIdentity.ino ||
+        (openedAfterWrite.mode & 0o077) !== 0) {
+      throw failure('FOUNDER_PRIVATE_KEY_PARENT_CHANGED', 'Private-key parent identity or permissions changed during file creation.');
     }
-    writeFileSync(fd, payload);
-    fsyncSync(fd);
-    const after = fstatSync(fd);
-    if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || (after.mode & 0o077) !== 0) {
-      throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key file identity or permissions changed during write.');
+
+    const finalFile = lstatSync(target);
+    if (finalFile.isSymbolicLink() || !finalFile.isFile() ||
+        finalFile.dev !== identity.dev || finalFile.ino !== identity.ino ||
+        (finalFile.mode & 0o077) !== 0) {
+      throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key destination changed after creation.');
     }
-    identity = { dev: after.dev, ino: after.ino };
+
+    // fsync(file) protects file contents; fsync(parent) protects the newly
+    // created directory entry across a crash. If the filesystem cannot sync
+    // the directory, leave the 0600 file for manual inspection and do not
+    // print a candidate that could be mistaken for a completed export.
+    try {
+      fsyncSync(directoryFd);
+    } catch (error) {
+      const uncertain = failure(
+        'FOUNDER_PRIVATE_KEY_DIRECTORY_SYNC_UNCERTAIN',
+        'Private-key file contents were synced, but the parent directory entry could not be synced; inspect the destination before retrying.'
+      );
+      uncertain.cause = error;
+      throw uncertain;
+    }
+
+    const finalParent = lstatSync(parent);
+    const finalOpenedParent = fstatSync(directoryFd);
+    const finalEntry = lstatSync(target);
+    if (finalParent.isSymbolicLink() || !finalParent.isDirectory() ||
+        finalParent.dev !== directoryIdentity.dev ||
+        finalParent.ino !== directoryIdentity.ino ||
+        finalOpenedParent.dev !== directoryIdentity.dev ||
+        finalOpenedParent.ino !== directoryIdentity.ino ||
+        (finalOpenedParent.mode & 0o077) !== 0) {
+      throw failure('FOUNDER_PRIVATE_KEY_PARENT_CHANGED', 'Private-key parent changed after directory synchronization.');
+    }
+    if (finalEntry.isSymbolicLink() || !finalEntry.isFile() ||
+        finalEntry.dev !== identity.dev || finalEntry.ino !== identity.ino ||
+        (finalEntry.mode & 0o077) !== 0) {
+      throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key destination changed after directory synchronization.');
+    }
+    return target;
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    try {
+      if (fd !== undefined) closeSync(fd);
+    } finally {
+      if (directoryFd !== undefined) closeSync(directoryFd);
+    }
   }
-
-  const final = lstatSync(target);
-  if (final.isSymbolicLink() || !final.isFile() ||
-      final.dev !== identity.dev || final.ino !== identity.ino ||
-      (final.mode & 0o077) !== 0) {
-    throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key destination changed after creation.');
-  }
-  return target;
 }
-
 export function buildEnrollmentCandidate(publicKey, { now = new Date() } = {}) {
   const jwk = publicKey.export({ format: 'jwk' });
   const fingerprint = createHash('sha256')
