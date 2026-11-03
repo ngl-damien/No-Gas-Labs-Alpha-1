@@ -6,15 +6,16 @@
 
 **Current focus:**
 
-- Fix authority valid hole — branch fix/authority-verifyFounderDecision-no-trust-caller-valid — negative tests
-- PR #301 8c2c953c Verify Passed 41568800680 Genesis Passed — should supersede #300
-- PR #298 Android Failed artifact 13200255149 crash bundledWorldStartsPrivatelyAndSharedModeFailsClosed — 5 passed 1 failed
-- 93 vs 95 repo delta unreconciled
-- MMORPG ledger all NOT ASSESSED
+- PR #317 — draft Source Observation event lifecycle, child of #315; exact parent head d4185da0661f165f68764238533dae6744d6e596.
+- G6 remains IN PROGRESS: actor-attributed research notes are now proposed as canonical events with version binding, idempotent retry, Chronicle/Evidence Archive projection, and actor-scoped quest/skill projections; exact-head hosted verification pending.
+- PR #316 remains a separate Founder Gate trust-root/JWK proposal; no key enrollment or Founder identity binding is claimed.
+- PR #313's Browser run passed 12/12, but Verify failed one Decision Chamber fixture test (774/775); do not transfer its Browser result to other heads.
+- Android emulator and physical-device acceptance remain separate; no physical device is verified in this run.
+- The top-down tile-and-sprite world transformation remains an unfinished product priority.
 
 **Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
 
-**Next falsification targets:** repair AI-BI test command node --test tests/ defective, verify be43452 reference on Alpha-1 main from clean checkout, finish #301 exact-head, diagnose #298 Android crash artifact, reconcile 95 vs 93, advance founder trust-root to live signed-verifier with negative tests
+**Next falsification targets:** exact-head Verify/Genesis/Browser on PR #317; inspect preflight target-byte receipt and all new server/model negative paths; test lost-response retry through shared Relay; reconcile PR #316 trust-root design with the live authorization routes; continue G6 research-to-evidence lifecycle without upgrading authored notes to truth; advance the top-down tile-and-sprite world renderer; obtain physical Android-device evidence.
 
 **Hash chain:** prevHash 0... receiptHash of this file content — blockHash Founder sealed — deterministic reconstructable
 
@@ -75,3 +76,68 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Next highest-value game action: design an append-only, actor-attributed Source Observation event with strict schema/source bounds, idempotent retry, offline recovery, and deterministic world projection. Keep model assertions and tool receipts as leads/attributed output only; require independent evidence and the proper human gate for consequential transitions.
 - Visual direction remains a separate unfinished product priority: classic top-down tile-and-sprite world rendering. This run did not deliver that transformation.
 
+
+
+---
+
+## Run 39 — 2026-11-03 — Worker B — Source Observation events and projections
+
+**Objective:** convert the Source Observatory's exported notes into bounded, actor-attributed, retry-safe world events that appear in the Evidence Archive and Chronicle and produce deterministic actor-scoped quest/skill projections without awarding XP or asserting truth.
+
+### Rehydration and baseline
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current main rechecked at `cc317d49c8fdf003c78aa40f38a177095019066e`; main was not changed.
+- Read root `AGENTS.md` first (SHA `a4beeee1c0ec46faab28502957c0e53850b2855d`), then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` (SHA `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`).
+- Read the latest durable checkpoint (SHA `8a26ab65058c117fc778d78a30f5a74246cc2ee6`), MMORPG completion contract (SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`), and ledger (SHA `1fd18b5b8fb970eb571609ef1ab2aae6e575551c`).
+- Checked applicable nested instructions for `game/`, `test/`, `scripts/`, `docs/`, and `docs/operations/`; each returned 404, so root instructions remain applicable.
+- Parent PR #315 was re-observed as draft/open, exact head `d4185da0661f165f68764238533dae6744d6e596`, branch `integration/preflight-target-fingerprints-observatory-20261103`, child of #314. Its exact-head Verify [41605909581](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41605909581), Genesis [41605909973](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41605909973), and Browser [41605909732](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41605909732) passed; Browser reported 12/12 journeys. These parent results do not verify this child.
+- PR #314 remains a draft child of #312; its exact-head Verify, Genesis and Browser results are recorded in Run 38. Its notebook export is not canonical shared-world state.
+- Latest Worker A PR #313 was re-observed: Browser Acceptance passed 12/12, but Verify failed the Decision Chamber fixture `enrolled key authorizes exact decision` (`FOUNDER_NOT_ENROLLED:NOT_ENROLLED`, 774/775). Its Browser result is not transferred to this branch.
+- PR #316 was re-observed as a separate draft Founder Gate/JWK trust-root proposal based on #312. It was not transplanted; no key was enrolled or changed.
+- No authorized local checkout or Node 24 runtime was available. Local preflight and local test execution are not claimed. The new exact-head hosted workflows must supply the preflight receipt and verification.
+
+### Donor and implementation selection
+
+- Reused the existing `artifactReceipt` SHA-256 helper for deterministic normalized note identity, not as evidence of truth.
+- Reused the existing shared-action pending receipt and exact-request retry path in the client Relay for offline/lost-response recovery; no second queue was invented.
+- Reused existing Chronicle, character-sheet, and quest projection patterns rather than creating a parallel dashboard or separate progress store.
+- Rechecked Alpha-1's existing research-records, model/server action boundary, character projection, quest trail, Chronicle and client Relay patterns. No external donor code was copied. RAE/Mesh/RuneUX/AGP repositories with missing root instructions were not opened or treated as trusted donor sources.
+
+### Change delivered
+
+- Branch: `game/source-observation-import-events-20261103`.
+- Draft child PR #317: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/317
+- Parent: PR #315 exact head `d4185da0661f165f68764238533dae6744d6e596`.
+- Code/test/browser head before this checkpoint update: `c15f7c9dde79993d42a1da6f1993ea675487eaa1`.
+- Changed paths:
+  - `game/research-records.mjs`: strict exact-shape parser for `ngl.source-observatory.v2`; 1–100 observations; 500 Unicode code points per field; known self-classified source kinds; explicit `NOT_PERFORMED`, `LEADS_ONLY`, and `NOT_EXECUTED` assurance; normalized actor/role/target/version/note identity; deterministic projection that fails closed on malformed, duplicate, unavailable, or ambiguous records.
+  - `game/model.mjs`: append-only `source-observation-recorded` action; requires one retained, earlier published Source Observatory version; preserves claim, source class, attribution, falsifier, uncertainty, next test, and explicit assurance; exact duplicate returns the original world/revision; conflicting reuse fails.
+  - `game/server.mjs`: exact action schema; server recomputes the SHA-256 identity from authenticated actor and note content; validates the retained version/publication chronology and event history; mismatched IDs fail; exact replay does not commit a new revision.
+  - `game/client.mjs`: Evidence Archive import panel; explicit user-selected target version; 512 KiB file bound; stable deterministic request ID; reuses Relay pending-action receipt for shared-mode retry; displays attributed notes and epistemic limits.
+  - `game/chronicle.mjs`: notes become visible research-note Chronicle objects linked to the selected retained version, with explicit model-assertion/tool-output warnings and no truth upgrade.
+  - `game/character-sheet.mjs`: Source Recorder skill counts only the current actor's uniquely linked notes; it awards no XP.
+  - `game/quests.mjs`: Founder and Witness source-observation objectives use actor-scoped records and route an unfinished player to the Evidence Archive.
+  - Tests: `test/game-artifacts.test.mjs`, `test/game-model.test.mjs`, `test/game-server.test.mjs`, `test/game-character-sheet.test.mjs`, `test/game-quests.test.mjs`, and `test/chronicle.test.mjs`.
+  - `scripts/verify-browser.py`: private-world journey now creates/publishes a Source Observatory, imports a falsifiable note, re-imports the same note, and checks one retained note, Source Recorder, quest completion, and unchanged XP.
+  - `package.json` and `test/agent-governance.test.mjs`: declare/assert the changed runtime, tests, and browser journey as hosted preflight targets.
+
+### Epistemic and authority boundary
+
+- The importer chooses the target version. The exported JSON does not cryptographically prove it originated from that version; the UI and Chronicle state this limitation.
+- Source retrieval, independent verification, and execution remain explicitly `NOT_PERFORMED`/`NOT_EXECUTED`.
+- Model assertions remain leads only; tool output is attributed output, not independent verification.
+- A note does not grant XP, approval, authority, publication, truth status, or a consequential transition. The existing publication and Founder Gate paths are unchanged.
+- The normalized digest identifies actor + selected version + normalized note bytes. It is not a signature, source receipt, export-origin proof, or trust anchor.
+
+### Exact-head verification
+
+- PR #317 opened draft at code/test/browser head `c15f7c9dde79993d42a1da6f1993ea675487eaa1`; exact-head Verify, Genesis Evidence Invariant, and Browser Acceptance were pending when this checkpoint was written.
+- No local Node 24 run, physical Android-device acceptance, merge, release, deployment, Founder decision, credential change, or canonical state mutation outside the proposed branch is claimed.
+
+### Gate state and handoff
+
+- G6 remains **IN PROGRESS**, not complete. The notebook now has a proposed event lifecycle and deterministic world projections, but no external source retrieval or independent verification is performed and the export origin remains user-selected/unproven.
+- PR #317 is a draft child of #315; #315 is a draft child of #314; #314 is a draft child of #312. Do not merge this child independently of its parent stack.
+- Next: inspect all three exact-head hosted workflows and the preflight target-byte receipt; repair attributable failures; then test the shared-mode lost-response/Relay retry path with a two-session browser journey. Continue to preserve dissent, falsifiers, and unknowns as authored records, not verdicts.
+- The classic top-down tile-and-sprite world renderer and physical Android-device acceptance remain unfinished product priorities.
