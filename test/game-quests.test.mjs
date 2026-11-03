@@ -639,11 +639,12 @@ test('quest trail does not unlock research progress from incomplete or unattribu
   }
 });
 
-test('Source Observation quest progress is actor-scoped and routes an unfinished player to the Evidence Archive', () => {
+test('Source Observation quest progress is actor-scoped and routes an unfinished player to the latest retained Observatory version', () => {
   const creationId = 'observatory-quest';
   const creation = {
     id: creationId, kind: 'observatory', title: 'Source Observatory',
-    version: 1, publishedAt: '2026-10-25T12:00:00.000Z', versions: []
+    version: 2, publishedAt: '2026-10-25T12:02:00.000Z',
+    versions: [{ id: creationId, version: 1, kind: 'observatory', title: 'Source Observatory', publishedAt: '2026-10-25T12:00:00.000Z' }]
   };
   const note = {
     claim: 'A model says the bridge is open.',
@@ -660,6 +661,10 @@ test('Source Observation quest progress is actor-scoped and routes an unfinished
     id: 'publish-observatory', type: 'publish', creationId, version: 1,
     actor: founder, at: '2026-10-25T12:00:00.000Z'
   };
+  const latestPublication = {
+    id: 'publish-observatory-v2', type: 'publish', creationId, version: 2,
+    actor: founder, at: '2026-10-25T12:02:00.000Z'
+  };
   const observation = {
     id: 'source-observation-event', type: 'source-observation-recorded',
     actor: founder, at: '2026-10-25T12:01:00.000Z',
@@ -669,12 +674,14 @@ test('Source Observation quest progress is actor-scoped and routes an unfinished
     modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED',
     normalizedRecordDigest: digest
   };
-  const world = { creations: [creation], events: [publication, observation], contributions: [], reports: [], discoveries: [] };
+  const world = { creations: [creation], events: [publication, observation, latestPublication], contributions: [], reports: [], discoveries: [] };
   const founderObjective = getQuestTrail(world, founder).find(item => item.id === 'founder-source-observation');
   assert.equal(founderObjective.progress, 1);
   assert.equal(founderObjective.complete, true);
   const witnessObjective = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation');
   assert.equal(witnessObjective.progress, 0);
   assert.equal(witnessObjective.complete, false);
-  assert.deepEqual(witnessObjective.action, { type: 'location', id: 'evidence_archive' });
+  assert.equal(witnessObjective.title, 'Record a falsifiable source observation');
+  assert.deepEqual(witnessObjective.action, { type: 'creation', id: creationId, version: 2 });
+  assert.match(witnessObjective.interpretation, /NOT_PERFORMED/);
 });
