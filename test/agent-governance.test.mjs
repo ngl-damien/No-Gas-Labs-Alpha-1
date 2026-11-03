@@ -203,7 +203,7 @@ test('preflight refuses receipt creation through an escaping directory symlink',
 });
 
 
-test('hosted CI preflight uses a unique receipt runner and hashes current trust, Decision Gate, and hourly-agent inputs', async () => {
+test('hosted CI preflight uses a unique receipt runner and declares current trust, Decision Gate, and hourly-agent inputs', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const command = packageJson.scripts['agent:preflight:ci'];
   assert.match(command, /^node scripts\/run-agent-preflight-ci\.mjs /);
