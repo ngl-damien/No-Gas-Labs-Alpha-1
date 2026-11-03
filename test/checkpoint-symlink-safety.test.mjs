@@ -5,9 +5,19 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, rename, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runPreflight } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, receiptDescriptorRootForPlatform } from '../scripts/validate-agent-governance.mjs';
 
-const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
+const protocolPath = 'docs/operations/RALPH_SHARtest('descriptor-relative preflight I/O is restricted to Linux procfs', () => {
+  assert.equal(receiptDescriptorRootForPlatform('linux'), '/proc/self/fd');
+  for (const platform of ['darwin', 'win32', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos', 'unknown']) {
+    assert.equal(
+      receiptDescriptorRootForPlatform(platform),
+      null,
+      `${platform} must use the guarded path-based fallback`
+    );
+  }
+});
+
 const protocolText = [
   'Required loop on every run',
   'Shared work coordination rules',
