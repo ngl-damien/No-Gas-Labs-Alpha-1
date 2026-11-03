@@ -476,6 +476,67 @@ def shared(browser,url,data,out):
         assert observation['uncertainty']=='A note is not a verdict.'
         assert observation['nextTest']=='Retrieve and inspect the primary source.'
         b.locator('#portal-close').click()
+        # The parent world, not the isolated artifact iframe, is the authority
+        # boundary for a durable source observation. The action is actor-bound,
+        # source-version-bound, and recoverable through the Relay after a lost response.
+        b.locator('#source-observation-open').click()
+        source_claim='The retained source appears to support a narrow statement.'
+        drop_observation={'remaining':True}
+        def lose_source_observation_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if drop_observation['remaining'] and payload.get('type')=='record-source-observation' and payload.get('claim')==source_claim:
+                route.fetch()  # Commit once, then replace the response to exercise exact retry.
+                drop_observation['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body='{"error":{"code":"SIMULATED_RESPONSE_LOSS","message":"Response lost after commit."}}')
+                return
+            route.continue_()
+        b.route('**/api/action',lose_source_observation_response)
+        b.locator('#source-observation-claim').fill(source_claim)
+        b.locator('#source-observation-kind').select_option('model-assertion')
+        b.locator('#source-observation-source').fill('Pasted model response; no source was fetched.')
+        b.locator('#source-observation-falsifier').fill('A primary source contradicts the statement.')
+        b.locator('#source-observation-uncertainty').fill('The exact cited passage remains uninspected.')
+        b.locator('#source-observation-next-test').fill('Retrieve and compare the primary source.')
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('Response lost after commit')
+        observation_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert observation_receipt, 'A lost source-observation response must retain the exact action receipt'
+        observation_pending=json.loads(observation_receipt)
+        assert observation_pending['action']['type']=='record-source-observation'
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        recovered_observation=visitor.request.get(url+'api/state').json()
+        source_observations=[event for event in recovered_observation['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(source_observations)==1
+        assert source_observations[0]['actor']['role']=='witness'
+        assert source_observations[0]['version']==1
+        assert source_observations[0]['sourceKind']=='model-assertion'
+        assert source_observations[0]['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert recovered_observation['world']['xp']==100, 'Recording and recovering an observation must not award XP'
+        observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
+        expect(observation_objective).to_contain_text('RECORDED')
+        expect(observation_objective).to_contain_text('Activity only')
+        b.unroute('**/api/action',lose_source_observation_response)
+        visit(b,'The shared observatory')
+        expect(b.locator('#source-observations')).to_contain_text(source_claim)
+        close_sheet(b)
+        # The shared Chronicle is the canonical in-world projection of this note.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='Evidence Archive'")
+        expect(b.locator('#sheet')).to_contain_text('SOURCE OBSERVATORY')
+        expect(b.locator('#sheet')).to_contain_text('MODEL ASSERTION · LEAD ONLY · NOT EVIDENCE')
+        close_sheet(b)
         visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()

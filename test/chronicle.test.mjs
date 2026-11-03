@@ -668,3 +668,36 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /untrusted text/i);
 });
+
+
+test("source observations appear as version-bound research objects without being promoted to evidence", () => {
+  const { world, kernel } = fixture();
+  world.events.push({
+    id: "source-observation-v1",
+    type: "source-observation-recorded",
+    sourceObservationId: "source-observation-1",
+    creationId: "creation-observatory",
+    version: 1,
+    claim: "The cited source supports a narrow statement.",
+    sourceKind: "model-assertion",
+    source: "A pasted model response; no source retrieval occurred.",
+    falsifier: "A primary source contradicts the statement.",
+    uncertainty: "The exact passage remains unknown.",
+    nextTest: "Retrieve and inspect the primary source.",
+    assurance: {
+      sourceRetrieval: "NOT_PERFORMED",
+      independentVerification: "NOT_PERFORMED",
+      modelAssertions: "LEADS_ONLY",
+      execution: "NOT_EXECUTED",
+    },
+    actor: { id: "witness-1", name: "Witness" },
+    at: "2026-10-26T10:08:00.000Z",
+  });
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-observation-v1");
+  assert.equal(entry.category, "SOURCE OBSERVATORY");
+  assert.equal(entry.targetAvailable, true);
+  assert.equal(entry.version, 1);
+  assert.match(entry.summary, /no source retrieval, independent verification/i);
+  assert.match(entry.detail, /Possible falsifier: A primary source contradicts the statement/);
+  assert.match(entry.warning, /MODEL ASSERTION.*LEAD ONLY.*NOT EVIDENCE/i);
+});

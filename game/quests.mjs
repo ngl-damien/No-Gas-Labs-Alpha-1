@@ -1,5 +1,8 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
+
+const sourceObservationKinds = new Set(['unspecified', 'direct-observation', 'primary-source', 'secondary-source', 'tool-output', 'user-report', 'model-assertion']);
+const sourceObservationAssurance = { sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED', modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED' };
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -471,6 +474,9 @@ export function getQuestTrail(world, viewer) {
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
   ));
+  const latestAvailableObservatoryPublication = [...publishedObservatoryVersions].reverse().find(event =>
+    creationById.get(event.creationId)?.kind === 'observatory'
+  ) || null;
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
@@ -485,6 +491,33 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const sourceObservationIdCounts = new Map();
+  for (const event of events) if (event?.type === 'source-observation-recorded' && typeof event.sourceObservationId === 'string')
+    sourceObservationIdCounts.set(event.sourceObservationId, (sourceObservationIdCounts.get(event.sourceObservationId) || 0) + 1);
+  const allSourceObservations = events.filter(event => {
+    const creation = creationById.get(event?.creationId);
+    const assurance = event?.assurance;
+    const optionalField = value => value === null ||
+      (typeof value === 'string' && Boolean(value.trim()) && Array.from(value).length <= 500);
+    if (event?.type !== 'source-observation-recorded' || typeof event.id !== 'string' ||
+        !uniqueMoonshotEventIds.has(event.id) ||
+        typeof event.sourceObservationId !== 'string' || !event.sourceObservationId ||
+        sourceObservationIdCounts.get(event.sourceObservationId) !== 1 ||
+        typeof event.actor?.id !== 'string' || !['founder', 'witness'].includes(event.actor?.role) ||
+        creation?.kind !== 'observatory' ||
+        !Number.isSafeInteger(event.version) || event.version < 1 ||
+        typeof event.claim !== 'string' || !event.claim.trim() || Array.from(event.claim).length > 500 ||
+        !sourceObservationKinds.has(event.sourceKind) ||
+        typeof event.source !== 'string' || !event.source.trim() || Array.from(event.source).length > 500 ||
+        ![event.falsifier, event.uncertainty, event.nextTest].every(optionalField) ||
+        !assurance || Object.keys(assurance).sort().join(',') !== 'execution,independentVerification,modelAssertions,sourceRetrieval' ||
+        JSON.stringify(assurance) !== JSON.stringify(sourceObservationAssurance) ||
+        !isStrictTimestamp(event.at)) return false;
+    return hasUniqueEarlierPublication(event.creationId, event.version, event.at, eventPositionByReference.get(event));
+  });
+  const sourceObservations = allSourceObservations.filter(event =>
+    event.actor.id === actorId && event.actor.role === actorRole
+  );
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -648,6 +681,7 @@ export function getQuestTrail(world, viewer) {
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;
   const hasResearchReport = researchReports.length >= 1;
+  const hasSourceObservation = sourceObservations.length >= 1;
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
   const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
@@ -719,6 +753,15 @@ export function getQuestTrail(world, viewer) {
           ? { type: 'creation', id: latestObservatoryPublication.creationId, version: latestObservatoryPublication.version } : null,
         !hasObservatory ? 'Publish a source observatory first; an empty brief is not research evidence.' :
           !latestObservatoryPublication ? 'A retained observatory publication is required before reporting.' : null
+      ),
+      trailMilestone(
+        'founder-source-observation', 'Record a falsifiable source observation', 1,
+        sourceObservations.map(event => event.id), sourceObservations,
+        hasObservatory && !hasSourceObservation && latestObservatoryPublication
+          ? { type: 'creation', id: latestObservatoryPublication.creationId, version: latestObservatoryPublication.version } : null,
+        !hasObservatory ? 'Publish a Source Observatory first; an empty template is not a source observation.' :
+          !latestObservatoryPublication ? 'A retained Source Observatory publication is required before recording an observation.' : null,
+        'Activity only: this preserves an actor-attributed note against an exact published version. It does not fetch, independently verify, or adjudicate the source, and it awards no XP.'
       ),
       trailMilestone(
         'founder-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
@@ -801,6 +844,14 @@ export function getQuestTrail(world, viewer) {
         !workAvailable ? 'Wait for a Founder to publish a real place.' :
         !hasNote ? 'Leave an attributed field note before submitting a report.' :
         !latestCreation ? 'No retained published place is available to open.' : null
+    ),
+    trailMilestone(
+      'witness-source-observation', 'Record a falsifiable source observation', 1,
+      sourceObservations.map(event => event.id), sourceObservations,
+      !hasSourceObservation && latestAvailableObservatoryPublication
+        ? { type: 'creation', id: latestAvailableObservatoryPublication.creationId, version: latestAvailableObservatoryPublication.version } : null,
+      !latestAvailableObservatoryPublication ? 'Wait for the Founder to publish a Source Observatory before recording an observation.' : null,
+      'Activity only: this preserves an actor-attributed note against an exact published version. It does not fetch, independently verify, or adjudicate the source, and it awards no XP.'
     ),
     trailMilestone(
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,

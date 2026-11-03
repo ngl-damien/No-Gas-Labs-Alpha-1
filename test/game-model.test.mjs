@@ -136,3 +136,46 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
 });
+
+
+test('Source Observatory observations are actor-attributed, version-bound, lead-only and award no XP',async()=>{
+  const published=await publish(createWorld({id:'source-observation-world',now}),'observatory');
+  const creationId=published.result.creationId;
+  const observed=await applyAction(published.world,{
+    type:'record-source-observation',creationId,version:1,
+    claim:'The source supports a bounded statement.',
+    sourceKind:'model-assertion',
+    source:'A pasted model response; no source was retrieved.',
+    falsifier:'A primary source contradicts the statement.',
+    uncertainty:'The cited passage has not been inspected.',
+    nextTest:'Open the exact primary source and compare the wording.'
+  },witness,{now:'2026-10-17T12:01:00.000Z',requestId:'source-observation-request-1',actionFingerprint:'b'.repeat(64)});
+  const event=observed.world.events.at(-1);
+  assert.equal(event.type,'source-observation-recorded');
+  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.actor.role,'witness');
+  assert.equal(event.creationId,creationId);
+  assert.equal(event.version,1);
+  assert.equal(event.sourceKind,'model-assertion');
+  assert.deepEqual(event.assurance,{
+    sourceRetrieval:'NOT_PERFORMED',
+    independentVerification:'NOT_PERFORMED',
+    modelAssertions:'LEADS_ONLY',
+    execution:'NOT_EXECUTED'
+  });
+  assert.equal(observed.world.xp,published.world.xp,'recording a note does not award XP');
+  assert.equal(observed.result.sourceObservationId,event.sourceObservationId);
+  assert.equal(publicWorld(observed.world,witness).events.filter(item=>item.type==='source-observation-recorded').length,1);
+  assert.equal(await validateWorld(observed.world).then(()=>true),true);
+
+  const tampered=structuredClone(observed.world);
+  tampered.events.at(-1).assurance.modelAssertions='VERIFIED';
+  await assert.rejects(validateWorld(tampered),error=>error.code==='INVALID_WORLD');
+
+  const ordinary=await publish(createWorld({id:'ordinary-source-world',now}),'loom');
+  await assert.rejects(applyAction(ordinary.world,{
+    type:'record-source-observation',creationId:ordinary.result.creationId,version:1,
+    claim:'A claim.',sourceKind:'primary-source',source:'A source.',
+    falsifier:'A falsifier.',uncertainty:'An unknown.',nextTest:'A test.'
+  },witness,{now:'2026-10-17T12:01:00.000Z'}),error=>error.code==='INVALID_SOURCE_OBSERVATORY');
+});

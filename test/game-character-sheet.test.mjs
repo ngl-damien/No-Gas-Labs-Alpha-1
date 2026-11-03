@@ -129,7 +129,7 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
-    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['researcher', 0], ['sourcekeeper', 0], ['experimenter', 0], ['adversary', 0],
     ['questkeeper', 3], ['restorer', 0]
   ]);
   assert.equal(record.xp, 100);
@@ -742,4 +742,41 @@ test('Restorer requires one unique earlier repair event joined to the published 
   const rejected = projectCharacter(ambiguous, founder);
   assert.equal(rejected.skills.find(skill => skill.id === 'restorer').count, 0,
     'two earlier repairs for the same base version make the method-to-publication join ambiguous');
+});
+
+
+test('Sourcekeeper counts only unique actor-owned observations bound to an earlier Observatory publication, not XP', () => {
+  const source = publishedCreation('source-observatory', [t1]);
+  const observation = event('source-observation-event', 'source-observation-recorded', witness, t2, {
+    sourceObservationId: 'source-observation-1',
+    creationId: source.id,
+    version: 1,
+    claim: 'The source supports a bounded statement.',
+    sourceKind: 'model-assertion',
+    source: 'A model response, not fetched or verified.',
+    falsifier: 'A primary source contradicts it.',
+    uncertainty: 'The source passage remains unknown.',
+    nextTest: 'Retrieve and inspect the primary source.',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    }
+  });
+  const world = {
+    xp: 100,
+    creations: [source],
+    events: [publication('source-publication', founder, source.id, 1, t1), observation]
+  };
+  const record = projectCharacter(world, witness);
+  assert.equal(record.xp, 0);
+  assert.equal(record.worldXp, 100);
+  assert.equal(record.skills.find(skill => skill.id === 'sourcekeeper').count, 1);
+  assert.equal(record.recentActivity[0].type, 'source-observation-recorded');
+
+  const duplicate = { ...observation, id: 'source-observation-duplicate-event' };
+  const ambiguous = projectCharacter({ ...world, events: [...world.events, duplicate] }, witness);
+  assert.equal(ambiguous.skills.find(skill => skill.id === 'sourcekeeper').count, 0,
+    'duplicate source-observation identities must not inflate activity counts');
 });

@@ -636,3 +636,73 @@ test('quest trail does not unlock research progress from incomplete or unattribu
     assert.equal(reportMilestone.blockedReason, 'Propose a falsifiable moonshot first.');
   }
 });
+
+
+test('Source Observatory quest progress counts only unique actor-owned notes after one retained publication', () => {
+  const assurance = {
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED'
+  };
+  const publication = {
+    id: 'source-observatory-publication',
+    type: 'publish',
+    creationId: 'quest-observatory',
+    version: 1,
+    actor: founder,
+    at: '2026-10-28T17:00:00.000Z'
+  };
+  const observation = actor => ({
+    id: actor.id + '-source-observation-event',
+    type: 'source-observation-recorded',
+    sourceObservationId: actor.id + '-source-observation',
+    creationId: 'quest-observatory',
+    version: 1,
+    claim: 'The source supports a bounded statement.',
+    sourceKind: 'model-assertion',
+    source: 'A model response, not fetched or verified.',
+    falsifier: 'A primary source contradicts it.',
+    uncertainty: 'The source passage remains uninspected.',
+    nextTest: 'Retrieve and compare the primary source.',
+    assurance,
+    actor,
+    at: actor.role === 'founder' ? '2026-10-28T17:01:00.000Z' : '2026-10-28T17:02:00.000Z'
+  });
+  const base = {
+    creations: [{
+      id: 'quest-observatory', kind: 'observatory', title: 'Quest Observatory',
+      version: 1, publishedAt: publication.at,
+      receipt: { digest: 'a'.repeat(64), size: 10 }, versions: []
+    }],
+    events: [publication],
+    discoveries: [], contributions: [], reports: []
+  };
+  const founderWorld = { ...base, events: [publication, observation(founder)] };
+  const founderMilestone = getQuestTrail(founderWorld, founder)
+    .find(item => item.id === 'founder-source-observation');
+  assert.equal(founderMilestone.complete, true);
+  assert.equal(founderMilestone.progress, 1);
+  assert.deepEqual(founderMilestone.evidenceIds, [observation(founder).id]);
+  assert.match(founderMilestone.interpretation, /does not fetch, independently verify, or adjudicate/i);
+
+  const witnessWithoutNote = getQuestTrail(base, witness)
+    .find(item => item.id === 'witness-source-observation');
+  assert.equal(witnessWithoutNote.complete, false);
+  assert.deepEqual(witnessWithoutNote.action, { type: 'creation', id: 'quest-observatory', version: 1 });
+
+  const witnessWorld = { ...base, events: [publication, observation(founder), observation(witness)] };
+  const witnessMilestone = getQuestTrail(witnessWorld, witness)
+    .find(item => item.id === 'witness-source-observation');
+  assert.equal(witnessMilestone.complete, true);
+  assert.deepEqual(witnessMilestone.evidenceIds, [observation(witness).id]);
+
+  const outOfOrder = { ...base, events: [observation(founder), publication] };
+  assert.equal(getQuestTrail(outOfOrder, founder).find(item => item.id === 'founder-source-observation').complete, false);
+
+  const duplicate = { ...base, events: [publication, observation(founder), { ...observation(founder), id: 'duplicate-source-observation-event' }] };
+  assert.equal(getQuestTrail(duplicate, founder).find(item => item.id === 'founder-source-observation').complete, false);
+
+  const overclaimed = { ...base, events: [publication, { ...observation(founder), assurance: { ...assurance, modelAssertions: 'VERIFIED' } }] };
+  assert.equal(getQuestTrail(overclaimed, founder).find(item => item.id === 'founder-source-observation').complete, false);
+});

@@ -846,7 +846,16 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     '.github/workflows/hourly-agents-enforcer.yml',
     'game/artifacts.mjs',
     'test/game-artifacts.test.mjs',
-    'scripts/verify-browser.py'
+    'scripts/verify-browser.py',
+    'game/model.mjs',
+    'game/client.mjs',
+    'game/chronicle.mjs',
+    'game/quests.mjs',
+    'game/character-sheet.mjs',
+    'test/game-model.test.mjs',
+    'test/game-quests.test.mjs',
+    'test/game-character-sheet.test.mjs',
+    'test/chronicle.test.mjs'
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }

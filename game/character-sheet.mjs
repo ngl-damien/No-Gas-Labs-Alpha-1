@@ -11,6 +11,8 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
+const sourceObservationKinds = new Set(['unspecified', 'direct-observation', 'primary-source', 'secondary-source', 'tool-output', 'user-report', 'model-assertion']);
+const sourceObservationAssurance = { sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED', modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED' };
 
 function uniqueEvents(events) {
   const source = rows(events);
@@ -257,6 +259,31 @@ export function projectCharacter(world, viewer) {
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
   );
+  const sourceObservationIdCounts = new Map();
+  for (const event of allEvents) if (event?.type === 'source-observation-recorded' && typeof event.sourceObservationId === 'string') {
+    sourceObservationIdCounts.set(event.sourceObservationId, (sourceObservationIdCounts.get(event.sourceObservationId) || 0) + 1);
+  }
+  const creationsById = new Map(rows(world?.creations).filter(creation => creation && typeof creation.id === 'string').map(creation => [creation.id, creation]));
+  const sourceObservations = events.filter(event => {
+    const assurance = event?.assurance;
+    const optionalField = value => value === null ||
+      (typeof value === 'string' && Boolean(value.trim()) && Array.from(value).length <= 500);
+    const key = versionKey(event?.creationId, event?.version);
+    const version = retainedVersions.get(key);
+    return event?.type === 'source-observation-recorded' &&
+      typeof event.sourceObservationId === 'string' && event.sourceObservationId &&
+      sourceObservationIdCounts.get(event.sourceObservationId) === 1 &&
+      typeof event.creationId === 'string' && creationsById.get(event.creationId)?.kind === 'observatory' &&
+      Number.isSafeInteger(event.version) && event.version > 0 &&
+      retainedPublishedVersionKeys.has(key) && Boolean(version) &&
+      sourceObservationKinds.has(event.sourceKind) &&
+      typeof event.claim === 'string' && event.claim.trim() && Array.from(event.claim).length <= 500 &&
+      typeof event.source === 'string' && event.source.trim() && Array.from(event.source).length <= 500 &&
+      [event.falsifier, event.uncertainty, event.nextTest].every(optionalField) &&
+      assurance && Object.keys(assurance).sort().join(',') === 'execution,independentVerification,modelAssertions,sourceRetrieval' &&
+      JSON.stringify(assurance) === JSON.stringify(sourceObservationAssurance) &&
+      isStrictTimestamp(event.at) && hasEarlierPublication(event);
+  });
   const repairEventsByVersion = new Map();
   for (const event of allEvents) {
     if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
@@ -411,6 +438,13 @@ export function projectCharacter(world, viewer) {
       count: events.filter(event => validMoonshotProposalIds.has(event.id)).length,
       record: 'retained falsifiable proposals',
       basis: 'Attributed proposals with a hypothesis, falsifier and evidence requirement; this counts research activity, not a validated discovery or experiment result.'
+    },
+    {
+      id: 'sourcekeeper',
+      label: 'Sourcekeeper',
+      count: sourceObservations.length,
+      record: 'retained actor-attributed source observations',
+      basis: 'Unique notes bound to an earlier published Source Observatory version; this counts research-recording activity, not source retrieval, independent verification, truth, or XP.'
     },
     {
       id: 'experimenter',
