@@ -90,11 +90,6 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
          Date.parse(publicationEvents[0].at)>Date.parse(at))fail('STALE_VERSION','The selected Observatory version is not uniquely retained and published before this note.',409);
       const observationId=text(action.observationId,128,'Source observation identity');
       if(!/^source-observation-[a-f0-9]{64}$/.test(observationId))fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity must be a normalized SHA-256 identifier.');
-      if(!globalThis.crypto?.subtle)fail('CRYPTO_UNAVAILABLE','Web Crypto SHA-256 is required to record a Source Observation.');
-      const identityMaterial=sourceObservationRequestMaterial({actorId:who.id,actorRole:who.role,creationId,version:action.version,claim,sourceKind,source, falsifier,uncertainty,nextTest});
-      const identityBytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(identityMaterial));
-      const identityDigest=Array.from(new Uint8Array(identityBytes),value=>value.toString(16).padStart(2,'0')).join('');
-      if(observationId!=='source-observation-'+identityDigest)fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity does not match the authenticated actor, selected version and normalized note content.');
       if(requestMeta?.requestId&&requestMeta.requestId!==observationId)fail('INVALID_SOURCE_OBSERVATION_ID','The transport request ID must match the normalized observation identity.');
       const claim=text(action.claim,500,'Claim');
       const sourceKind=text(action.sourceKind,32,'Source class');
@@ -102,6 +97,11 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const source=text(action.source,500,'Source or attribution');
       const optional=value=>value===undefined||value===null?null:text(value,500,'Optional source observation field');
       const falsifier=optional(action.falsifier),uncertainty=optional(action.uncertainty),nextTest=optional(action.nextTest);
+      if(!globalThis.crypto?.subtle)fail('CRYPTO_UNAVAILABLE','Web Crypto SHA-256 is required to record a Source Observation.');
+      const identityMaterial=sourceObservationRequestMaterial({actorId:who.id,actorRole:who.role,creationId,version:action.version,claim,sourceKind,source,falsifier,uncertainty,nextTest});
+      const identityBytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(identityMaterial));
+      const identityDigest=Array.from(new Uint8Array(identityBytes),value=>value.toString(16).padStart(2,'0')).join('');
+      if(observationId!=='source-observation-'+identityDigest)fail('INVALID_SOURCE_OBSERVATION_ID','Source observation identity does not match the authenticated actor, selected version and normalized note content.');
       const normalizedRecordDigest=observationId.slice('source-observation-'.length);
       const existing=world.events.filter(item=>item.type==='source-observation-recorded'&&item.observationId===observationId);
       if(existing.length){
