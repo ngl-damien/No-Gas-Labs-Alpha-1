@@ -526,6 +526,56 @@ def shared(browser,url,data,out):
         before_observation=visitor.request.get(url+'api/state').json()
         before_observation_revision=before_observation['world']['revision']
         witness_id=before_observation['viewer']['id']
+        offline_claim='The shared model says the bridge is open; no source has been retrieved.'
+        # A request that never reaches the server must remain a local Relay receipt,
+        # and must not appear in canonical state until the player reconnects.
+        offline_attempt={'remaining':True}
+        def disconnect_source_observation(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if offline_attempt['remaining'] and payload.get('type')=='record-source-observation':
+                offline_attempt['remaining']=False
+                route.abort('internetdisconnected')
+                return
+            route.continue_()
+        b.route('**/api/action',disconnect_source_observation)
+        b.locator('#source-observation-open').click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        b.locator('#source-observation-claim').fill(offline_claim)
+        b.locator('#source-observation-kind').select_option('model-assertion')
+        b.locator('#source-observation-source').fill('A pasted model response; no source was retrieved.')
+        b.locator('#source-observation-falsifier').fill('A direct inspection finds the bridge closed.')
+        b.locator('#source-observation-uncertainty').fill('No independent observation has been made.')
+        b.locator('#source-observation-next-test').fill('Inspect the bridge and retain the observation.')
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_raw, 'A pre-commit network failure must preserve the exact local Relay receipt'
+        pending_offline=json.loads(pending_raw)
+        assert pending_offline['actorId']==witness_id
+        assert pending_offline['action']['type']=='record-source-observation'
+        assert pending_offline['action']['claim']==offline_claim
+        assert pending_offline['requestId']==pending_offline['action']['observationId']
+        not_committed=visitor.request.get(url+'api/state').json()
+        assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
+        assert not_committed['world']['revision']==before_observation_revision
+        assert not_committed['world']['xp']==before_observation['world']['xp']==100
+        b.unroute('**/api/action',disconnect_source_observation)
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
+        first_recovery=visitor.request.get(url+'api/state').json()
+        first_observations=[event for event in first_recovery['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(first_observations)==1 and first_observations[0]['claim']==offline_claim
+        assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
+        assert first_recovery['world']['revision']==before_observation_revision+1
+        assert first_recovery['world']['xp']==before_observation['world']['xp']==100
+        visit(b,'The shared observatory')
         source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
         lost_observation={'remaining':True}
         def lose_source_observation_response(route):
@@ -568,8 +618,8 @@ def shared(browser,url,data,out):
         assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
         recovered_observation=visitor.request.get(url+'api/state').json()
         source_observations=[event for event in recovered_observation['world']['events'] if event['type']=='source-observation-recorded']
-        assert len(source_observations)==1
-        source_observation=source_observations[0]
+        assert len(source_observations)==2
+        source_observation=next(event for event in source_observations if event['claim']==source_claim)
         assert source_observation['actor']['id']==witness_id
         assert source_observation['actor']['role']=='witness'
         assert source_observation['version']==1
@@ -584,19 +634,20 @@ def shared(browser,url,data,out):
         assert source_observation['independentVerification']=='NOT_PERFORMED'
         assert source_observation['modelAssertions']=='LEADS_ONLY'
         assert source_observation['execution']=='NOT_EXECUTED'
-        assert recovered_observation['world']['revision']==before_observation_revision+1
+        assert recovered_observation['world']['revision']==before_observation_revision+2
         assert recovered_observation['world']['xp']==before_observation['world']['xp']==100, 'Recording and retrying an observation must not award XP'
         expect(b.locator('[data-objective-id="witness-source-observation"]')).to_contain_text('RECORDED')
         b.unroute('**/api/action',lose_source_observation_response)
         visit(b,'The shared observatory')
+        expect(b.locator('#source-observations')).to_contain_text(offline_claim)
         expect(b.locator('#source-observations')).to_contain_text(source_claim)
-        expect(b.locator('[data-source-observation-card]')).to_have_count(1)
+        expect(b.locator('[data-source-observation-card]')).to_have_count(2)
         assert b.locator('#source-observations script').count()==0, 'Claim text must remain text, not executable markup'
         expect(b.locator('#source-observations')).to_contain_text('Model assertions are leads only, not evidence.')
         close_sheet(b)
         b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Recorder')
-        expect(b.locator('#sheet')).to_contain_text('1 recorded')
+        expect(b.locator('#sheet')).to_contain_text('2 recorded')
         close_sheet(b)
         b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
@@ -606,6 +657,7 @@ def shared(browser,url,data,out):
         close_sheet(b)
         visit(b,'The shared observatory')
         visit(a,'The shared observatory')
+        expect(a.locator('#source-observations')).to_contain_text(offline_claim)
         expect(a.locator('#source-observations')).to_contain_text(source_claim)
         note='<script>not code</script> Witness — こんにちは 🌍'
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
