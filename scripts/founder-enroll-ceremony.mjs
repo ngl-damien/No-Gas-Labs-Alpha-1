@@ -39,7 +39,7 @@ function failure(code, message) {
 
 function isWithin(root, candidate) {
   const rel = relative(root, candidate);
-  return rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel);
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
 }
 
 export function validatePrivateKeyDestination(destination, {
