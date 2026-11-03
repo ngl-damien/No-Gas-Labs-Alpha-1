@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, readdir, unlink } from 'node:fs/promises';
-import { dirname, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectWriterLock } from '../src/institution/lock-inspector.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
@@ -43,7 +43,8 @@ function sameDirectoryIdentity(left, right) {
 
 function assertNonceLedgerPathIsNotReserved(absoluteLedgerPath, directory) {
   if (absoluteLedgerPath === join(directory, '.founder-nonce.lock') ||
-      absoluteLedgerPath === join(directory, '.founder-nonce-recovery.lock')) {
+      absoluteLedgerPath === join(directory, '.founder-nonce-recovery.lock') ||
+      TEMPORARY_NONCE_FILE.test(basename(absoluteLedgerPath))) {
     throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID');
   }
 }
