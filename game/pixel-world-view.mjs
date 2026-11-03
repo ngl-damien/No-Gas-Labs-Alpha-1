@@ -189,6 +189,7 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
 
   const worldX = (x - width / 2) / zoom + cameraX;
   const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
   let selected = null;
   for (const npc of GUILD_NPCS) {
     const distance = Math.hypot(npc.x - worldX, npc.y + 10 - worldY);
