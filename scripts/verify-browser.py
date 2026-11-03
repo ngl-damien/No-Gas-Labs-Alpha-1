@@ -664,6 +664,69 @@ def shared(browser,url,data,out):
         visit(a,'The shared observatory')
         expect(a.locator('#source-observations')).to_contain_text(offline_claim)
         expect(a.locator('#source-observations')).to_contain_text(source_claim)
+        before_challenge=visitor.request.get(url+'api/state').json()
+        challenge_text='The note cites a model response but no retrievable primary source.'
+        lost_challenge={'remaining':True}
+        def lose_source_challenge_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_challenge['remaining'] and payload.get('type')=='challenge-source-observation':
+                committed=route.fetch()
+                assert committed.status==200, 'The service must commit the challenge before the simulated response loss'
+                lost_challenge['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Challenge response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_source_challenge_response)
+        challenge_card=a.locator(f'[data-source-observation-card][data-observation-id="{source_observation["observationId"]}"]')
+        challenge_details=challenge_card.locator('[data-source-observation-challenge-form]')
+        expect(challenge_details).to_have_count(1)
+        challenge_details.locator('summary').click()
+        challenge_details.locator('select').select_option('missing-evidence')
+        challenge_details.locator('textarea').fill(challenge_text)
+        challenge_details.get_by_role('button',name='Preserve dissent',exact=True).click()
+        pending_challenge_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_challenge_raw, 'A lost response must preserve the exact challenge receipt in the Relay queue'
+        pending_challenge=json.loads(pending_challenge_raw)
+        assert pending_challenge['actorId']=='damien'
+        assert pending_challenge['action']['type']=='challenge-source-observation'
+        assert pending_challenge['action']['observationId']==source_observation['observationId']
+        committed_challenge=visitor.request.get(url+'api/state').json()
+        challenge_events=[event for event in committed_challenge['world']['events'] if event['type']=='source-observation-challenged']
+        assert len(challenge_events)==1 and challenge_events[0]['challengeText']==challenge_text
+        assert challenge_events[0]['actor']['id']=='damien' and challenge_events[0]['actor']['role']=='founder'
+        assert committed_challenge['world']['revision']==before_challenge['world']['revision']+1
+        assert committed_challenge['world']['xp']==before_challenge['world']['xp']==100
+        a.unroute('**/api/action',lose_source_challenge_response)
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · CHALLENGE-SOURCE-OBSERVATION')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact challenge retry must clear the pending receipt'
+        after_challenge_retry=visitor.request.get(url+'api/state').json()
+        assert len([event for event in after_challenge_retry['world']['events'] if event['type']=='source-observation-challenged'])==1
+        assert after_challenge_retry['world']['revision']==committed_challenge['world']['revision'], 'Exact retry must not append a second challenge'
+        assert after_challenge_retry['world']['xp']==before_challenge['world']['xp']==100
+        visit(a,'The shared observatory')
+        visit(b,'The shared observatory')
+        expect(a.locator('#source-observations')).to_contain_text(challenge_text)
+        expect(a.locator('[data-source-observation-challenge]')).to_have_count(1)
+        expect(b.locator('#source-observations')).to_contain_text(challenge_text)
+        close_sheet(a);a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Challenger')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(a)
+        a.locator('#journal-button').click()
+        a.locator('#institution-projects').click()
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & CHALLENGE')
+        expect(a.locator('#sheet')).to_contain_text('Source observation challenged')
+        close_sheet(a)
+        visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
         a.locator('#creation-notes').get_by_text(note,exact=True).wait_for()
