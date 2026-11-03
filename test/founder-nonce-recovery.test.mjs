@@ -900,3 +900,54 @@ test('offline recovery revalidates owner-lock contents after the final temporary
   assert.equal(retainedLease.pid, observed.pid);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+test('recovery CLI labels post-unlink owner-lock uncertainty distinctly', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryScript = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalLstat = fsPromises.lstat;",
+    "const originalUnlink = fsPromises.unlink;",
+    "let ownerLockUnlinked = false;",
+    "fsPromises.unlink = async (target, ...args) => {",
+    "  const result = await originalUnlink(target, ...args);",
+    "  if (String(target) === process.env.TEST_OWNER_LOCK) ownerLockUnlinked = true;",
+    "  return result;",
+    "};",
+    "fsPromises.lstat = async (target, ...args) => {",
+    "  if (ownerLockUnlinked && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "    const error = new Error('injected post-unlink inspection failure');",
+    "    error.code = 'EACCES';",
+    "    throw error;",
+    "  }",
+    "  return originalLstat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
+    "await import(process.env.TEST_RECOVERY_MODULE);"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_OWNER_LOCK: value.lockPath,
+      TEST_RECOVERY_SCRIPT: recoveryScript,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 1, child.stderr);
+  const observed = JSON.parse(child.stderr);
+  assert.equal(observed.status, 'state-uncertain');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LOCK_STATE_UNCERTAIN');
+  assert.equal(observed.safeToRemove, false);
+  assert.equal(observed.authorityGranted, false);
+  assert.equal(await exists(value.lockPath), false, 'the original lock was already unlinked before inspection failed');
+  assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain for manual inspection');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
