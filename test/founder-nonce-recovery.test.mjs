@@ -521,3 +521,52 @@ test('nonce ledger path cannot alias reserved owner or recovery lease files', as
   assert.equal(await exists(value.recoveryLeasePath), false);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+
+test('read-only inspection blocks a temporary nonce file created during its snapshot', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const temporaryPath = join(value.directory, '.founder-nonce-' + randomUUID() + '.tmp');
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalReaddir = fsPromises.readdir;",
+    "const originalWriteFile = fsPromises.writeFile;",
+    "let injected = false;",
+    "fsPromises.readdir = async (target, ...args) => {",
+    "  const entries = await originalReaddir(target, ...args);",
+    "  if (!injected && String(target) === process.env.TEST_DIRECTORY) {",
+    "    injected = true;",
+    "    await originalWriteFile(process.env.TEST_TEMPORARY, 'late temporary nonce bytes', { mode: 0o600 });",
+    "  }",
+    "  return entries;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
+    "console.log(JSON.stringify({ status: result.status, reason: result.reason, pendingTemporaryFiles: result.pendingTemporaryFiles }));"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_TEMPORARY: temporaryPath,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.reason, 'temporary-files-changed-during-recovery-inspection');
+  assert.equal(observed.pendingTemporaryFiles.length, 1);
+  assert.equal(observed.pendingTemporaryFiles[0].name, temporaryPath.slice(temporaryPath.lastIndexOf('/') + 1));
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(temporaryPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), false);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
