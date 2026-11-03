@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -358,6 +358,9 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
+  const sourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked' && record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
+
   const completedQuestObjectives = getQuestTrail(world, viewer)
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
@@ -390,6 +393,13 @@ export function projectCharacter(world, viewer) {
       count: studyEvents.length,
       record: 'source-bound study notes',
       basis: 'Unique study notes matched to a retained published version, a question, an explanation and a next check; this counts recorded practice, not mastery.'
+    },
+    {
+      id: 'source-recorder',
+      label: 'Source Recorder',
+      count: sourceObservationRecords.length,
+      record: 'actor-attributed falsifiable source notes',
+      basis: 'Unique notes linked to one earlier retained Source Observatory publication. This counts recording practice, not truth, verification, mastery or XP.'
     },
     {
       id: 'retriever',

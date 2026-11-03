@@ -6,7 +6,8 @@ import {WorldView,PLACES,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
-import {projectResearchRecords} from './research-records.mjs';
+import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial} from './research-records.mjs';
+import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 
@@ -104,7 +105,7 @@ function persist(next){try{const existing=localStorage.getItem(STORAGE);if(exist
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
-async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
+async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
 function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
@@ -131,7 +132,7 @@ function followQuestAction(action){
     if(object?.mapVisible){followResearchTarget(object,()=>openMoonshotField(action.moonshotId,action.activityId),'research-activity');return}
     openMoonshotField(action.moonshotId,action.activityId);return;
   }
-  if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field','academy','guild_hall'].includes(action.id)){closeSheet();view.goTo(action.id);return}
+  if(action.type==='location'&&['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive'].includes(action.id)){closeSheet();view.goTo(action.id);return}
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
 function renderQuestTrail(milestones){const list=$('quest-trail');if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
@@ -432,6 +433,111 @@ function openEvidenceArchive(){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
   content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  const events=Array.isArray(world.events)?world.events:[];
+  const creations=Array.isArray(world.creations)?world.creations:[];
+  const sourceTargets=[];
+  const sourceTargetKeys=new Set();
+  for(const creation of creations){
+    if(creation?.kind!=='observatory'||typeof creation.id!=='string')continue;
+    for(const version of [...(Array.isArray(creation.versions)?creation.versions:[]),creation]){
+      if((version.kind??creation.kind)!=='observatory'||!Number.isSafeInteger(version.version)||version.version<1||!isStrictTimestamp(version.publishedAt))continue;
+      const key=JSON.stringify([creation.id,version.version]);
+      if(sourceTargetKeys.has(key))continue;
+      const publications=events.filter(event=>event?.type==='publish'&&event.creationId===creation.id&&event.version===version.version);
+      if(publications.length!==1||publications[0].at!==version.publishedAt)continue;
+      sourceTargetKeys.add(key);
+      sourceTargets.push({creationId:creation.id,version:version.version,title:version.title||creation.title||creation.id,publishedAt:version.publishedAt});
+    }
+  }
+  const importer=node('section',{class:'field-card','data-source-observation-import':'true'});
+  importer.append(node('h3',{text:'Import Source Observatory notes'}));
+  importer.append(paragraph('Choose a retained, published Observatory version, then select its ngl.source-observatory.v2 JSON export. The version binding is your selection; the file does not prove its own origin. No source is fetched, independently verified or executed. Recording a note grants no XP, approval or truth status.','form-help'));
+  const targetSelect=node('select',{class:'form-input','aria-label':'Retained Source Observatory version'});
+  targetSelect.dataset.sourceObservationImportTarget='true';
+  targetSelect.append(node('option',{value:'',text:sourceTargets.length?'Choose a published version…':'No published Source Observatory version is retained'}));
+  for(const target of sourceTargets){
+    const value=JSON.stringify({creationId:target.creationId,version:target.version});
+    targetSelect.append(node('option',{value,text:target.title+' · v'+target.version+' · '+target.publishedAt}));
+  }
+  if(!sourceTargets.length)targetSelect.disabled=true;
+  importer.append(node('label',{class:'form-label',text:'Source version selected by importer'}));
+  importer.append(targetSelect);
+  const fileInput=node('input',{type:'file',accept:'application/json,.json',hidden:true});
+  fileInput.dataset.sourceObservationImportFile='true';
+  importer.append(fileInput);
+  importer.append(button('Choose notebook export JSON →',()=>fileInput.click(),{class:'list-button'}));
+  const preview=node('div',{class:'evidence-import-preview'});
+  preview.dataset.sourceObservationImportPreview='true';
+  importer.append(preview);
+  const status=paragraph('Imports become append-only, actor-attributed notes. Re-importing the same note for the same actor and selected version is idempotent.','form-help');
+  status.dataset.sourceObservationImportStatus='true';
+  importer.append(status);
+  let parsedExport=null,previewTarget='';
+  const confirmButton=button('Record notes in Evidence Archive →',async()=>{
+    if(!parsedExport||!targetSelect.value||targetSelect.value!==previewTarget)return;
+    confirmButton.disabled=true;
+    const beforeIds=new Set(projectSourceObservationRecords(world.events,world.creations).map(record=>record.observationId));
+    let processed=0;
+    try{
+      const target=JSON.parse(targetSelect.value);
+      for(const note of parsedExport.observations){
+        if(!globalThis.crypto?.subtle)throw new Error('Web Crypto is unavailable in this browser context.');
+        const material=sourceObservationRequestMaterial({
+          actorId:viewer.id,actorRole:viewer.role,creationId:target.creationId,version:target.version,...note
+        });
+        const bytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(material));
+        const digest=Array.from(new Uint8Array(bytes),value=>value.toString(16).padStart(2,'0')).join('');
+        const observationId='source-observation-'+digest;
+        await act({
+          type:'record-source-observation',requestId:observationId,observationId,
+          creationId:target.creationId,version:target.version,...note
+        });
+        processed++;
+      }
+      const afterIds=new Set(projectSourceObservationRecords(world.events,world.creations).map(record=>record.observationId));
+      const added=[...afterIds].filter(id=>!beforeIds.has(id)).length;
+      toast('Processed '+processed+' source note(s); '+added+' new retained event(s). No verification or XP was granted.');
+      parsedExport=null;
+      fileInput.value='';
+      openEvidenceArchive();
+    }catch(error){
+      status.textContent='Stopped after '+processed+' of '+(parsedExport?.observations.length||0)+' note(s): '+(error?.message||'Import failed')+'. Earlier accepted notes remain. In shared mode, retry this same file after reconnecting; Relay keeps the exact pending request.';
+      confirmButton.disabled=false;
+    }
+  },{class:'primary-button'});
+  confirmButton.dataset.sourceObservationImportConfirm='true';
+  confirmButton.disabled=true;
+  importer.append(confirmButton);
+  targetSelect.addEventListener('change',()=>{
+    if(parsedExport){
+      parsedExport=null;previewTarget='';preview.replaceChildren();confirmButton.disabled=true;
+      status.textContent='The selected version changed. Choose the export again so the binding remains explicit.';
+    }
+  });
+  fileInput.addEventListener('change',async()=>{
+    parsedExport=null;previewTarget='';preview.replaceChildren();confirmButton.disabled=true;
+    const file=fileInput.files?.[0];
+    if(!file)return;
+    if(file.size>512*1024){status.textContent='Export exceeds the 512 KiB import limit.';return;}
+    if(!targetSelect.value){status.textContent='Select one retained, published Source Observatory version first.';return;}
+    try{
+      parsedExport=parseSourceObservatoryExport(await file.text());
+      previewTarget=targetSelect.value;
+      preview.append(node('strong',{text:file.name+' · '+parsedExport.observations.length+' observation(s)'}));
+      for(const note of parsedExport.observations){
+        preview.append(node('article',{class:'field-card'},[
+          node('strong',{text:note.claim}),
+          paragraph('Self-classified source kind: '+note.sourceKind),
+          paragraph('Source/attribution: '+note.source)
+        ]));
+      }
+      confirmButton.disabled=false;
+      status.textContent='Ready to record as '+viewer.name+' ('+viewer.role+'). The source class and note are attributed inputs, not verified findings.';
+    }catch(error){
+      status.textContent=error?.message||'The export could not be read.';
+    }
+  });
+  content.append(importer);
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
@@ -447,9 +553,23 @@ function openEvidenceArchive(){
     ]));
   }
 
-  const events=Array.isArray(world.events)?world.events:[];
-  const creations=Array.isArray(world.creations)?world.creations:[];
   const researchEvents=projectResearchRecords(events,creations);
+  const sourceObservationRecords=projectSourceObservationRecords(events,creations);
+  content.append(node('h3',{class:'section-title',text:'IMPORTED SOURCE OBSERVATIONS'}));
+  if(!sourceObservationRecords.length)content.append(paragraph('No source observations have been retained in this world yet.','empty-note'));
+  for(const record of sourceObservationRecords){
+    const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId});
+    card.append(node('h3',{text:record.claim}));
+    card.append(paragraph('Self-classified source kind: '+record.sourceKind+' · '+record.warning));
+    card.append(paragraph('Source/attribution: '+record.source));
+    card.append(paragraph('Falsifier: '+(record.falsifier||'NOT PROVIDED')+' · Uncertainty: '+(record.uncertainty||'NOT PROVIDED')));
+    card.append(paragraph('Next test: '+(record.nextTest||'NOT PROVIDED')));
+    card.append(paragraph('Recorded by '+(record.actor?.name||record.actor?.id||'unknown actor')+' ('+record.actor?.role+') · '+record.at));
+    card.append(paragraph('Selected target: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · binding '+record.bindingMode));
+    card.append(paragraph('Assurance: source retrieval '+record.sourceRetrieval+'; independent verification '+record.independentVerification+'; model assertions '+record.modelAssertions+'; execution '+record.execution+'.','form-help'));
+    card.append(paragraph(record.projectionStatus==='linked'?'Linked to one earlier retained Source Observatory publication. This reference does not prove that the export originated from that version.':'Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));
+    content.append(card);
+  }
   content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
   if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
 

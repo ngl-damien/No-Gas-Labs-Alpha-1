@@ -363,6 +363,18 @@ function worldEntry(event, index, creations, notes) {
       event?.validationReason ? `Structural result: ${text(event.validationReason)}` : "Structural result: valid for human review only",
     ].join(" · ");
     entry.warning = "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
+  } else if (type === "source-observation-recorded") {
+    const sourceKind = text(event?.sourceKind) || "unspecified";
+    const sourceWarning = sourceKind === "model-assertion"
+      ? "Model assertions are leads only, not evidence."
+      : sourceKind === "tool-output"
+        ? "Tool output is attributed output, not independent verification."
+        : "This is an author-entered note, not an independently verified claim.";
+    entry.title = `Source observation · ${text(event?.claim) || "untitled claim"}`;
+    entry.category = "RESEARCH NOTE";
+    entry.summary = `${actor} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
+    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}.`;
+    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
@@ -370,7 +382,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
