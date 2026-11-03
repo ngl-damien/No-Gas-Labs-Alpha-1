@@ -1,0 +1,10 @@
+{
+  "schema": "ngl.founder-trust-anchor.v1",
+  "status": "NOT_ENROLLED",
+  "enrolled": false,
+  "mode": null,
+  "public_key_jwk": null,
+  "fingerprint": null,
+  "instruction": "Founder must run scripts/founder-enroll-ceremony.mjs on a device they control. Private key NEVER leaves device (Android Keystore / secure enclave / IndexedDB non-extractable). Only the public JWK is written here. Until then authorizationEvent fails closed with FOUNDER_NOT_ENROLLED.",
+  "updated": "2026-11-03T00:00:00Z"
+}
