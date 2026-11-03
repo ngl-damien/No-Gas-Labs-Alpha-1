@@ -739,8 +739,8 @@ test('Founder and Witness challenge quests count only a different actor’s link
   const witnessQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-source-observation-challenge');
   assert.equal(founderQuest.complete, true);
   assert.equal(founderQuest.progress, 1);
-  assert.deepEqual(founderQuest.evidence, ['founder-challenge-event']);
+  assert.deepEqual(founderQuest.evidence.map(item => item.id), ['founder-challenge-event']);
   assert.equal(witnessQuest.complete, true);
   assert.equal(witnessQuest.progress, 1);
-  assert.deepEqual(witnessQuest.evidence, ['witness-challenge-event']);
+  assert.deepEqual(witnessQuest.evidence.map(item => item.id), ['witness-challenge-event']);
 });
