@@ -641,6 +641,58 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
   }
 });
 
+test("nonce-ledger reads remain bounded if the file grows after its initial stat", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-ledger-size-race-" + process.pid + "-" + randomUUID());
+  const fixture = createAuthorizationFixture(dir);
+  const maxBytes = 4 * 1024 * 1024;
+  writeFileSync(fixture.nonceLedgerPath, canonical({
+    schema: "ngl.founder-nonce-ledger.v1",
+    nonces: [],
+  }), { mode: 0o600 });
+  const ledgerStat = fs.lstatSync(fixture.nonceLedgerPath);
+  const signed = fixture.sign();
+
+  const originalReadSync = fs.readSync;
+  let appended = false;
+  let requestedBytes = 0;
+  let returnedBytes = 0;
+  fs.readSync = (descriptor, buffer, offset, length, position) => {
+    const opened = fs.fstatSync(descriptor);
+    if (opened.dev === ledgerStat.dev && opened.ino === ledgerStat.ino) {
+      requestedBytes += length;
+      if (!appended) {
+        appended = true;
+        fs.appendFileSync(fixture.nonceLedgerPath, "x".repeat(maxBytes + 100));
+      }
+      const count = originalReadSync(descriptor, buffer, offset, length, position);
+      returnedBytes += count;
+      return count;
+    }
+    return originalReadSync(descriptor, buffer, offset, length, position);
+  };
+  syncBuiltinESMExports();
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_UNAVAILABLE/
+      );
+    });
+    assert.equal(appended, true);
+    assert.ok(requestedBytes <= maxBytes + 1, "requested ledger read capacity must remain capped at 4 MiB plus one byte");
+    assert.ok(returnedBytes <= maxBytes + 1, "actual ledger bytes read must remain capped at 4 MiB plus one byte");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "a rejected over-limit ledger must release its owned lock");
+  } finally {
+    fs.readSync = originalReadSync;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("trust anchors reject private JWK material and additional non-contract JWK fields", () => {
   const dir = path.join(tmpdir(), "ngl-auth-jwk-shape-" + process.pid + "-" + randomUUID());
   mkdirSync(dir, { recursive: true });

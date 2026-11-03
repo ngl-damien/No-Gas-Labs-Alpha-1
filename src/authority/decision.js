@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as verifySignature, randomBytes, randomUUID } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -185,7 +185,7 @@ function readNonceLedger(filePath) {
     if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
       throw new Error("FOUNDER_NONCE_LEDGER_CHANGED");
     }
-    const bytes = readFileSync(descriptor);
+    const bytes = readBoundedDescriptor(descriptor, MAX_NONCE_LEDGER_BYTES);
     const after = lstatSync(filePath);
     const afterDescriptor = fstatSync(descriptor);
     if (after.isSymbolicLink() || !after.isFile() ||
@@ -349,7 +349,7 @@ function readBoundedDescriptor(descriptor, maxBytes) {
     if (count === 0) break;
     offset += count;
   }
-  if (offset > maxBytes) throw new Error("TRUST_ANCHOR_TOO_LARGE");
+  if (offset > maxBytes) throw new Error("BOUNDED_FILE_TOO_LARGE");
   return buffer.subarray(0, offset);
 }
 
