@@ -73,3 +73,12 @@ test('authority diagnostic distinguishes an isolated helper flag from live-route
   assert.ok(workflow.includes('No direct server import of the isolated helper observed.'));
   assert.ok(workflow.includes('presence alone does not establish identity, custody, or production trust.'));
 });
+
+test('enforcer uses action releases with Node 24 runtimes', () => {
+  assert.ok(workflow.includes('actions/checkout@v7.0.1'));
+  assert.ok(workflow.includes('actions/setup-node@v7.1.0'));
+  assert.ok(workflow.includes('actions/upload-artifact@v7.0.2'));
+  assert.ok(!workflow.includes('actions/checkout@v4'));
+  assert.ok(!workflow.includes('actions/setup-node@v4'));
+  assert.ok(!workflow.includes('actions/upload-artifact@v4'));
+});
