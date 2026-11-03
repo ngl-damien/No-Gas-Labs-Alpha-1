@@ -213,7 +213,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.append(el('p',record.falsifier?'Possible falsifier: '+record.falsifier:'Possible falsifier: not supplied in this note.'));
   card.append(el('p',record.uncertainty?'Uncertainty: '+record.uncertainty:'Uncertainty: not supplied in this note.'));
   card.append(el('p',record.nextTest?'Next discriminating test: '+record.nextTest:'Next discriminating test: not supplied in this note.'));
-  card.append(el('p','Assurance: source retrieval '+record.sourceRetrieval+' · independent verification '+record.independentVerification+' · model assertions '+record.modelAssertions+' · execution '+record.execution,'form-help'));
+  card.append(el('p','Assurance: Source retrieval '+record.sourceRetrieval+' · Independent verification '+record.independentVerification+' · Model assertions '+record.modelAssertions+' · Execution '+record.execution,'form-help'));
   card.append(el('p',record.warning,'evidence-warning'));
   if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
    const inspect=el('button','Open exact source version · v'+record.version);
