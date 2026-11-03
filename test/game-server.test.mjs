@@ -1260,3 +1260,73 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   const finalState = await founder.request('/api/state');
   assert.equal(finalState.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
 });
+
+test('Source Observation challenges are actor-separated, append-only, replay-safe, and non-rewarding', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const witnessBefore = await witness.request('/api/state');
+  assert.equal(witnessBefore.body.viewer.role, 'witness');
+  assert.notEqual(witnessBefore.body.viewer.id, 'damien');
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain falsifiable notes and challenges without turning either into a truth verdict.'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const before = await founder.request('/api/state');
+  const note = {
+    claim: 'The bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model response; no primary source was retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation has been made.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: before.body.viewer.id, actorRole: before.body.viewer.role,
+    creationId: published.body.result.creationId, version: 1, ...note
+  })).digest;
+  const observationId = 'source-observation-' + digest;
+  const recorded = await founder.request('/api/action', {
+    type: 'record-source-observation', requestId: observationId, observationId,
+    creationId: published.body.result.creationId, version: 1, ...note
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const beforeChallenge = await witness.request('/api/state');
+  const challengeAction = {
+    type: 'challenge-source-observation', requestId: 'source-challenge-1',
+    observationId, challengeType: 'missing-evidence',
+    challengeText: 'The note cites a model assertion but no retrievable primary source.'
+  };
+  const first = await witness.request('/api/action', challengeAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const after = await founder.request('/api/state');
+  const challenges = after.body.world.events.filter(event => event.type === 'source-observation-challenged');
+  assert.equal(challenges.length, 1);
+  assert.equal(challenges[0].actor.id, beforeChallenge.body.viewer.id);
+  assert.equal(challenges[0].actor.role, 'witness');
+  assert.equal(challenges[0].observationId, observationId);
+  assert.equal(challenges[0].creationId, published.body.result.creationId);
+  assert.equal(challenges[0].version, 1);
+  assert.equal(after.body.world.xp, before.body.world.xp);
+  const revision = after.body.world.revision;
+  const replay = await witness.request('/api/action', challengeAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  const afterReplay = await founder.request('/api/state');
+  assert.equal(afterReplay.body.world.revision, revision);
+  assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
+  assert.equal(afterReplay.body.world.xp, before.body.world.xp);
+  const selfChallenge = await founder.request('/api/action', {
+    ...challengeAction, requestId: 'founder-self-challenge', challengeText: 'The author cannot challenge their own note.'
+  });
+  assert.equal(selfChallenge.response.status, 409);
+  assert.equal(selfChallenge.body.error.code, 'SELF_CHALLENGE');
+  const final = await founder.request('/api/state');
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
+});
