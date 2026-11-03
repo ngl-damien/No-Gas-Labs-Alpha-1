@@ -274,3 +274,52 @@ No merge or deployment was performed.
 - First exact-head Verify run 41649638021 exposed one assertion that expected wording not present in the Chronicle. The queue itself removed the answered item and retained the response entry; the assertion now checks the actual DISSENT & RESPONSE category. Exact-head rerun is required.
 - Follow-up hardening: the docket now fails closed on oversized snapshots and warns when retained challenge events cannot be uniquely linked; those cases are not mislabeled as an empty queue. Added regressions for both conditions.
 
+---
+
+## Run 43 — 2026-11-03 — Worker B — Browser acceptance for the Evidence Archive response docket
+
+**Repository:** ngl-damien/No-Gas-Labs-Alpha-1  
+**Main baseline observed:** cc317d49c8fdf003c78aa40f38a177095019066e  
+**Proposed stack:** PR #326, branch game/evidence-archive-response-queue-20261103, code/test head fc45b7ef064db241243e8679c834530d06c4500c; child of PR #323 exact base head 749cefdf84fc8602bb09bbcd3c6ccdd0159087c6 → #320 → #317 → #315 → #314 → #312.
+
+### Rehydration and coordination
+
+- Read root AGENTS.md alone, then the complete canonical docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md alone before repository inspection. Read the current proposed-branch checkpoint (Run 42), the full MMORPG completion ledger and contract.
+- Read Worker A's latest durable checkpoint (2026-11-03-worker-a-run-06.md) and rechecked PR #325 and PR #321 exact heads and Verify/Genesis/Browser results. Rechecked PR #309's exact head, Android run and current ownership of game/world-view.mjs.
+- Checked nested instructions for game/, test/, scripts/, docs/, and docs/operations/; each returned 404, so root instructions remain applicable.
+- No local checkout / Node 24 preflight was available in this environment. The required manual instruction sequence was followed; the exact-head hosted preflight below ran after the change. No local test result is claimed.
+- Main is still cc317d49c8fdf003c78aa40f38a177095019066e. Its LATEST_CHECKPOINT.md still says HEAD ea025a587e0bb3113423ea67035ddfa83ea7dc9f and its completion ledger still marks G0–G9 NOT ASSESSED. This proposed-branch record does not silently update or replace mainline governance state.
+
+### Selected gap and change
+
+PR #326 already added a read-only Source Observation author-response docket and unit tests, but the docket had not been exercised in the real two-session browser journey. Extended scripts/verify-browser.py to exercise it through the actual Evidence Archive destination:
+
+1. After the Founder preserves a challenge and The Relay retries the exact request, the Founder sees one pending docket item and opens its exact retained creation/version.
+2. The challenger does not receive the original author's response form.
+3. The original Witness author opens the same docket and does receive the author-only response form.
+4. The author response is committed while the HTTP response is deliberately replaced with a 503. The exact local receipt is then retried through The Relay; the canonical event/revision is not duplicated.
+5. Once answered, the item leaves the pending queue while the original challenge and attributed author response remain in the Chronicle.
+6. Opening the pending or answered docket leaves canonical revision and XP unchanged.
+
+The live model/server path was rechecked: the response action resolves the unique retained challenge and observation, compares the authenticated actor ID and role with the original note author, and rejects another actor with FORBIDDEN. The UI restriction is not treated as the security boundary; the server/model check is.
+
+This run changed browser acceptance coverage only. It did not create a new runtime event, source retrieval, independent verification, XP, truth verdict, approval or authority. The pre-existing unit tests still cover pending, answered, ambiguous, unlinked, oversized and hostile-text cases.
+
+### Exact code/test-head verification — fc45b7ef064db241243e8679c834530d06c4500c
+
+- Verify [41652880659](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41652880659): **success**. Hosted preflight status ready, 47 declared targets, 50 file records, zero warnings and zero failures. Preflight artifact [13238366616](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41652880659/artifacts/13238366616), uploaded ZIP SHA-256 702720da500c1231cfc6000e7389769a52c117a58c45bc3da48c74e910e14cb9.
+- Hosted Node 24.22.1 full node --test: exit 0, 14.30 s. Python inspector: exit 0, 1.04 s. Game package build: exit 0, 0.87 s. Bounded institutional exercise: passed true, 15.69 s.
+- Genesis Evidence Invariant [41652880478](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41652880478): **success**.
+- Browser Acceptance [41652880469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41652880469): **success**, 12/12 journeys. The two-session shared result explicitly records pending → exact version → author-only response → answered Chronicle. Other journeys passed desktop, phone, five institutional locations, 320/360/412 px toolbars with 44 px minimum targets, one-button layouts, standalone export, exact-byte checks and shared restart.
+- Browser artifact [13237224633](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41652880469/artifacts/13237224633): 6,275,137 bytes; uploaded ZIP SHA-256 7dc1cc377a4c6b9b6ca7475e0e8df280c5046aaaf278f0ce4972896ef9b4a829. It includes the pending and answered docket screenshots.
+- Browser logs retain Node 20 action deprecation and punycode / url.parse deprecation warnings. They did not fail any journey.
+
+### Parallel work, donors and next gate
+
+- Worker A's PR #325 exact head 1bb1de3dc736a1a289a50f873c08d6637858a6f8 and PR #321 exact head 7eb765176d7e4298b1306426f106ac5ca1d5d4b9 each had Verify, Genesis and Browser successful. PR #309 exact head 9de3c5617f9dc0ebfe9211ed62489003b4b4032e had Android Alpha-1 run [41586444234](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41586444234) pass 7/7 instrumentation tests; its logs also contain repeated ADB exit-code-1 diagnostics and emulator .ini read warnings. This is emulator evidence, not physical-device acceptance.
+- Rechecked recovered in-repository mechanisms: src/evidence/content-addressed.js verifies byte length and SHA-256 against a detached receipt, not the truth of the bytes; src/world/guild-hall.js calls isVerifiedAuthorization before projecting a proposal as AUTHORIZED; The Relay persists the original actor/request and retries the exact pending action. No donor code was copied in this run.
+- game/world-view.mjs on PR #309 still lacks source-observation-recorded, source-observation-challenged, and source-observation-challenge-responded in its Evidence Archive/TownSquare event matchers. That file remains owned by the open #309 stack; it was not edited concurrently.
+- PR #326 remains draft/open and must travel with its parent stack. Main is unchanged; no merge, release, deployment, key/credential change, permission change or Founder decision occurred.
+- G6 remains **IN PROGRESS**. Source retrieval, independent verification and execution remain NOT_PERFORMED / NOT_EXECUTED; source classes remain author-selected; different actor IDs do not prove distinct real-world humans.
+- Next: reconcile the #309 world-view stack with the #317→#320→#323→#326 research stack, then add Source Observation/dissent counts to Evidence Archive and TownSquare map projections. Keep the top-down tile-and-sprite renderer, actual source retrieval and physical Android-device acceptance as separate unfinished gates.
+
