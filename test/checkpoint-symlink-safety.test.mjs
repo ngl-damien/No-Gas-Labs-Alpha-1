@@ -9,7 +9,7 @@ import { runPreflight, receiptDescriptorRootForPlatform } from '../scripts/valid
 
 test('descriptor-relative preflight I/O is restricted to Linux procfs', () => {
   assert.equal(receiptDescriptorRootForPlatform('linux'), '/proc/self/fd');
-  for (const platform of ['darwin', 'win32', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos', 'unknown']) {
+  for (const platform of ['android', 'darwin', 'win32', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos', 'unknown']) {
     assert.equal(
       receiptDescriptorRootForPlatform(platform),
       null,
