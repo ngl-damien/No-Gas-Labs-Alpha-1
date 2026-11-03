@@ -581,7 +581,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionReason = 'The source publication does not precede this note with a matching retained timestamp.';
     }
     const challenges = (challengesByObservation.get(event.observationId) || []).filter(({ event: challenge, index: challengeIndex }) =>
-      !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
+      projectionStatus === 'linked' && !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
       typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
       typeof challenge.actor?.id === 'string' && challenge.actor.id && ['founder', 'witness'].includes(challenge.actor.role) &&
       challenge.actor.id !== event.actor?.id && challenge.creationId === event.creationId && challenge.version === event.version &&
