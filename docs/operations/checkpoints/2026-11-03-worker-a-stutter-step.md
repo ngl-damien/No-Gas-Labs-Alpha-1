@@ -57,3 +57,31 @@ PR #309 is Worker B's latest result on `android/detach-webview-before-destroy-20
 5. Re-attempt linked-repository work only after each repository's own root instructions and complete shared protocol can be read.
 
 **Observed status:** one isolated CI workflow improvement proposed on a dedicated branch; exact-head verification pending. No uninterrupted background execution is claimed.
+
+
+---
+
+## Final verification and fixture-reconciliation update — 2026-11-03
+
+### Decision Chamber fixture repair
+
+- The original main-based fixture still called `authorizationEvent()` without an explicit trust anchor. It failed with `FOUNDER_NOT_ENROLLED:NOT_ENROLLED` on the original PR #313 head.
+- Commit `dab5063313dcd24e4daebc08878e49be93951531` backports the explicit temporary `TEST_ONLY` trust fixture from PR #312 into `test/decision-chamber.test.js`. It does not enroll or alter the production trust anchor, create a Founder key, or change production authorization behavior.
+- This is a temporary compatibility backport while #313 remains main-based. After #312 integrates, rebase #313 onto the new main and confirm this duplicate test-file diff disappears.
+
+### Exact-head verification — `dab5063313dcd24e4daebc08878e49be93951531`
+
+- World Projection [41639654818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639654818): **success**. Node test suite, Python inspector, package build, and bounded institutional exercise passed.
+- Genesis Evidence Invariant [41639654561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639654561): **success**.
+- Browser Acceptance [41639654550](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639654550): **success, 12/12 journeys**. Desktop, phone, institutional locations, two-session shared world, 320/360/412px toolbar, one-button layouts, standalone export/exact bytes, and shared restart all passed. The log contains **no Node.js 20 action deprecation warning** after the four Node 24 action upgrades. This does not claim every transitive dependency warning is gone.
+- PR #313 remains draft/open and unmerged. Exact-head results belong only to this commit.
+
+### Current handoff
+
+- PR #321's separate documentation/portfolio branch has code/test head `67a2534` at 3/3 and latest docs checkpoint head `6ffa01e1a0a2d397c26ce206604ed572b47b3d8e` at Verify/Genesis pass and Browser pending at the last observation. Its Browser workflow still uses the main-based older action pins and emits the Node 20 warning; #313 is the separate action-upgrade proposal.
+- PR #316 exact head `206e617510f63098018513c77621be673dc92f2c` passed World Projection and Genesis; its new writable-ancestor trust/nonce tests were red on `aecd922` and green after the source fix.
+- Worker B PR #323 exact head `9074aaaa7642ec9b205cc5aee742a00db3022224` passed Verify, Genesis, and Browser (12/12). The earlier Browser failure on superseded head `08376e7` was not reproduced on the current head.
+- PR #319 is an older child of #317 with Verify failures (temporal-dead-zone error in the Source Observatory model test and HTTP 500) and Browser failure (no source-observation card). PR #320/#323 contain the newer canonical shared Relay path; do not integrate #319 independently.
+- Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`. Main `LATEST_CHECKPOINT.md` remains stale; the latest Worker B Run 40 checkpoint is on #320's branch. G6 remains IN PROGRESS and no proposed Source Observatory stack is integrated on main.
+- Linked-repository source remains uninspected: nine linked root `AGENTS.md` files returned 404; AI-BI and governance root instructions/continuity files were read, but their required bootstrap scripts could not be run without a local shell/online device.
+- No merge, release, deployment, spending, key operation, external publication, credential/permission change, or Founder-reserved decision occurred.
