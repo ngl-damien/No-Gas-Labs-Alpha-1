@@ -10,7 +10,12 @@ import { isWalkable, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-vie
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
-import { projectSourceObservationMapCounts, projectQuestMapTarget } from '../game/pixel-world-view.mjs';
+import {
+  projectSourceObservationMapCounts,
+  projectQuestMapTarget,
+  projectMapLabelMetrics,
+  projectQuestCompassIndicator
+} from '../game/pixel-world-view.mjs';
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
   assert.equal(WORLD_TILE_SIZE, 32);
@@ -307,4 +312,61 @@ test('prefixed research target IDs preserve the full valid source identifier', (
     }, { creations: [] }, [], researchActivityObjects),
     { kind: 'research-activity', id: activityObjectId, x: 1144, y: 629, label: 'Long-ID activity' }
   );
+});
+
+test('map label metrics preserve readable screen size across mobile and desktop zoom', () => {
+  for (const zoom of [0.78, 0.92]) {
+    const metrics = projectMapLabelMetrics(11, zoom, 320);
+    assert.ok(metrics);
+    assert.ok(Math.abs(metrics.fontSize * zoom - 11) < 1e-9);
+    assert.ok(Math.abs(metrics.maxWidth * zoom - 220) < 1e-9);
+    assert.ok(Math.abs(metrics.lineWidth * zoom - 1.5) < 1e-9);
+    assert.ok(Object.isFrozen(metrics));
+  }
+  assert.equal(projectMapLabelMetrics(11, 0, 320), null);
+  assert.equal(projectMapLabelMetrics(7, 0.78, 320), null);
+  assert.equal(projectMapLabelMetrics(11, 0.78, 40), null);
+});
+
+test('quest compass stays hidden for visible objectives and points to off-screen destinations', () => {
+  assert.equal(projectQuestCompassIndicator(
+    { x: 325, y: 645, label: 'The Making Bench' },
+    { x: 280, y: 590 }, 390, 844, 0.78
+  ), null);
+
+  const right = projectQuestCompassIndicator(
+    { x: 1400, y: 500, label: 'Moonshot Field' },
+    { x: 700, y: 500 }, 390, 844, 0.78
+  );
+  assert.ok(right);
+  assert.ok(Math.abs(right.x - 364) < 1e-9);
+  assert.equal(right.y, 422);
+  assert.equal(right.angle, 0);
+  assert.equal(right.label, 'Moonshot Field');
+  assert.ok(Object.isFrozen(right));
+
+  const upperLeft = projectQuestCompassIndicator(
+    { x: 0, y: 0, label: 'Evidence Archive' },
+    { x: 800, y: 500 }, 390, 844, 0.78
+  );
+  assert.ok(upperLeft);
+  assert.equal(upperLeft.x, 26);
+  assert.ok(upperLeft.y >= 26 && upperLeft.y <= 818);
+  assert.ok(upperLeft.angle < -Math.PI / 2);
+});
+
+test('quest compass rejects malformed viewport and hostile target accessors without reading them', () => {
+  assert.equal(projectQuestCompassIndicator(
+    { x: 1400, y: 500, label: 'Moonshot Field' }, { x: 700, y: 500 }, 390, 844, 0
+  ), null);
+  assert.equal(projectQuestCompassIndicator(
+    { x: 1400, y: 500, label: 'Moonshot Field' }, { x: 700, y: 500 }, 40, 844, 0.78
+  ), null);
+  let reads = 0;
+  const hostile = Object.defineProperty({}, 'x', {
+    enumerable: true,
+    get() { reads += 1; return 1400; }
+  });
+  assert.equal(projectQuestCompassIndicator(hostile, { x: 700, y: 500 }, 390, 844, 0.78), null);
+  assert.equal(reads, 0);
 });
