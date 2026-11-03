@@ -164,6 +164,48 @@ export function projectGuildNpcReadiness(world) {
   }));
 }
 
+const GUILD_NPC_POINTER_HIT_RADIUS = 34;
+
+function ownFiniteCoordinate(value, key) {
+  try {
+    const descriptor = value && Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value') &&
+      Number.isFinite(descriptor.value) ? descriptor.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function projectGuildNpcPointerTarget(point, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  let selected = null;
+  for (const npc of GUILD_NPCS) {
+    const distance = Math.hypot(npc.x - worldX, npc.y + 10 - worldY);
+    if (distance <= GUILD_NPC_POINTER_HIT_RADIUS &&
+        (!selected || distance < selected.distance)) {
+      selected = { npc, distance };
+    }
+  }
+  if (!selected) return null;
+  return Object.freeze({
+    id: selected.npc.id,
+    roleId: selected.npc.roleId,
+    name: selected.npc.name,
+    routeLocation: selected.npc.routeLocation
+  });
+}
+
 function guildNpcAccessibilityText(readiness) {
   const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
   const descriptions = GUILD_NPCS.map(npc => {
@@ -745,6 +787,10 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
+    const inheritedPointer = this.onPointer;
+    canvas.removeEventListener('pointerdown', inheritedPointer);
+    this.onPointer = event => this.handlePointer(event, inheritedPointer);
+    canvas.addEventListener('pointerdown', this.onPointer);
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
@@ -752,6 +798,31 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
+  }
+
+  handlePointer(event, fallback) {
+    const rect = this.canvas.getBoundingClientRect();
+    const target = projectGuildNpcPointerTarget({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    }, this.camera, this.zoom, this.width, this.height);
+    if (!target) {
+      if (typeof fallback === 'function') fallback(event);
+      return;
+    }
+
+    const nearest = this.nearest(target.id, 'npc');
+    if (nearest?.type !== 'npc') {
+      if (typeof fallback === 'function') fallback(event);
+      return;
+    }
+    event.preventDefault?.();
+    if (nearest.distance < 160) {
+      this.interact(target.id, 'npc');
+      return;
+    }
+    this.goTo(target.id, 'npc');
+    this.canvas.focus({ preventScroll: true });
   }
 
   goTo(id, targetType) {
@@ -1233,13 +1304,22 @@ export class PixelWorldView extends WorldView {
     this.drawQuestTarget();
 
     const near = this.nearest();
-    this.canvas.dataset.nearbyNpcRole =
-      near?.type === 'npc' && near.distance < 145 ? near.roleId : 'none';
-    this.canvas.dataset.nearbyNpcPacketState = near?.type === 'npc'
-      ? this.guildNpcReadiness?.find(entry => entry.roleId === near.roleId)?.status ?? 'unavailable'
+    const modalOpen = document.body.classList.contains('modal-open');
+    const nearbyNpc = near?.type === 'npc' && near.distance < 160 && !modalOpen ? near : null;
+    this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
+    this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
+      ? this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
       : 'none';
-    if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
-      const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
+    if (nearbyNpc) {
+      this.canvas.setAttribute('aria-description',
+        `Nearby collaborator ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. This NPC is advisory only and cannot create canonical state, evidence, progress, approval, or authority.`);
+    } else {
+      this.canvas.removeAttribute('aria-description');
+    }
+    const promptRange = near?.type === 'npc' ? 160 : 145;
+    if (near?.distance < promptRange && !modalOpen) {
+      const label = near?.type === 'npc'
+        ? (this.width < 600 ? 'TAP · TALK · ' : 'E · TALK · ') + near.shortName
         : near.type === 'workbench' ? 'E · Make something'
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
