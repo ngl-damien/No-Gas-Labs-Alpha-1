@@ -343,7 +343,9 @@ export async function recoverFounderNonceLock({
       syncedLedger.nonceCount !== before.ledger.nonceCount) {
     throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_CHANGED');
   }
+  await assertDirectoryIdentity(directory, directoryIdentity);
   await syncDirectory(directory);
+  await assertDirectoryIdentity(directory, directoryIdentity);
 
   const final = await inspectFounderNonceRecovery(ledgerPath);
   if (final.status !== 'ready' ||
@@ -365,7 +367,9 @@ export async function recoverFounderNonceLock({
 
   await unlink(final.lockPath);
   try {
+    await assertDirectoryIdentity(directory, directoryIdentity);
     await syncDirectory(directory);
+    await assertDirectoryIdentity(directory, directoryIdentity);
   } catch {
     throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', 'lock may already be absent');
   }
@@ -390,7 +394,8 @@ export async function recoverFounderNonceLock({
     ledger: final.ledger,
     ledgerModified: false,
     safeToRemove: false,
-    authorityGranted: false
+    authorityGranted: false,
+    warning: RECOVERY_WARNING
   };
 }
 
