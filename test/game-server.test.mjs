@@ -10,6 +10,7 @@ import { createGameServer } from '../game/server.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -1214,4 +1215,45 @@ test('server startup indexes large interleaved retained proposal/report history'
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
+});
+
+test('Source Observatory HTTP observations are hash-bound, actor-attributed, replay-safe and grant no XP', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', { type: 'draft', kind: 'observatory', title: 'Source Observatory', intent: 'Record falsifiable research notes with explicit unknowns.' });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const creationId = published.body.result.creationId;
+  const before = await founder.request('/api/state');
+  const actorId = before.body.viewer?.id || 'damien';
+  const actorRole = before.body.viewer?.role || 'founder';
+  const note = { claim: 'The model says the bridge is open.', sourceKind: 'model-assertion', source: 'A model response; no external source retrieved.', falsifier: 'Independent inspection finds it closed.', uncertainty: 'No independent observation yet.', nextTest: 'Inspect the primary source directly.' };
+  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, ...note })).digest;
+  const observationId = 'source-observation-' + digest;
+  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, ...note };
+  const first = await founder.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const after = await founder.request('/api/state');
+  const retained = after.body.world.events.filter(event => event.type === 'source-observation-recorded');
+  assert.equal(retained.length, 1);
+  assert.equal(retained[0].actor.id, actorId);
+  assert.equal(retained[0].actor.role, actorRole);
+  assert.equal(retained[0].bindingMode, 'USER_SELECTED');
+  assert.equal(retained[0].sourceRetrieval, 'NOT_PERFORMED');
+  assert.equal(retained[0].modelAssertions, 'LEADS_ONLY');
+  assert.equal(after.body.world.xp, before.body.world.xp);
+  const revision = after.body.world.revision;
+  const replay = await founder.request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  const afterReplay = await founder.request('/api/state');
+  assert.equal(afterReplay.body.world.revision, revision);
+  assert.equal(afterReplay.body.world.xp, before.body.world.xp);
+  assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  const mismatch = await founder.request('/api/action', { ...action, requestId: 'source-observation-' + '0'.repeat(64) });
+  assert.equal(mismatch.response.status, 400);
+  const finalState = await founder.request('/api/state');
+  assert.equal(finalState.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
 });

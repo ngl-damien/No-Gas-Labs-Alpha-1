@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -135,4 +137,41 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+test('Source Observatory notes are actor-attributed, version-bound, idempotent and non-rewarding',async()=>{
+  const start=createWorld({id:'source-observation-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Record a falsifiable claim with its source.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The model says the bridge is open.',sourceKind:'model-assertion',source:'A model response; no external source retrieved.',falsifier:'Independent inspection finds it closed.',uncertainty:'No independent observation yet.',nextTest:'Inspect the primary source directly.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const action={type:'record-source-observation',creationId,version:1,observationId,...note};
+  const recorded=await applyAction(published.world,action,founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  assert.deepEqual(recorded.result,{observationId,duplicate:false});
+  assert.equal(recorded.world.xp,published.world.xp);
+  const event=recorded.world.events.at(-1);
+  assert.equal(event.type,'source-observation-recorded');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,'founder');
+  assert.equal(event.bindingMode,'USER_SELECTED');
+  assert.equal(event.sourceRetrieval,'NOT_PERFORMED');
+  assert.equal(event.independentVerification,'NOT_PERFORMED');
+  assert.equal(event.modelAssertions,'LEADS_ONLY');
+  assert.equal(event.execution,'NOT_EXECUTED');
+  assert.equal(event.requestId,observationId);
+  assert.deepEqual(event.actionResult,{observationId,duplicate:false});
+  await validateWorld(recorded.world);
+  const revision=recorded.world.revision;
+  const duplicate=await applyAction(recorded.world,action,founder,{now:'2026-10-17T12:00:03.000Z'});
+  assert.deepEqual(duplicate.result,{observationId,duplicate:true});
+  assert.equal(duplicate.world,recorded.world);
+  assert.equal(duplicate.world.revision,revision);
+  assert.equal(duplicate.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  const tampered=structuredClone(recorded.world);
+  tampered.events.at(-1).bindingMode='INDEPENDENTLY_VERIFIED';
+  await assert.rejects(validateWorld(tampered));
+  await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
+  await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
 });
