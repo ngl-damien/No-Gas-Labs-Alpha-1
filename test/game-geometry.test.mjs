@@ -580,8 +580,9 @@ test('Decision Docket map objects are reachable, quest-routeable and cleared on 
 });
 
 
-function makeLifecycleView(t) {
+function makeLifecycleView(t, { entryVisible = false } = {}) {
   let modalOpen = false;
+  const doorway = { hidden: !entryVisible };
   let nextFrameId = 0;
   const frames = new Map();
   const documentListeners = new Map();
@@ -590,6 +591,7 @@ function makeLifecycleView(t) {
   const document = {
     hidden: false,
     body: { classList: { contains: name => name === 'modal-open' && modalOpen } },
+    getElementById: id => id === 'doorway' ? doorway : null,
     addEventListener: (name, listener) => {
       const listeners = documentListeners.get(name) || new Set();
       listeners.add(listener);
@@ -666,11 +668,46 @@ function makeLifecycleView(t) {
         if (!observer.disconnected) observer.callback();
       }
     },
+    setDoorwayVisible(value) {
+      doorway.hidden = !value;
+      for (const observer of mutationObservers) {
+        if (!observer.disconnected) observer.callback();
+      }
+    },
     dispatchVisibility() {
       for (const listener of documentListeners.get('visibilitychange') || []) listener();
     }
   };
 }
+
+test('world rendering stays idle behind the entry doorway until the player enters', t => {
+  const fixture = makeLifecycleView(t, { entryVisible: true });
+  const { view, frames } = fixture;
+
+  assert.equal(view.paused, true);
+  assert.equal(frames.size, 0, 'the entry screen must not run a hidden world animation loop');
+
+  fixture.setDoorwayVisible(false);
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'entering the world starts exactly one frame loop');
+
+  fixture.setDoorwayVisible(true);
+  assert.equal(view.paused, true);
+  assert.equal(frames.size, 0, 'showing the entry screen pauses the world again');
+
+  fixture.document.hidden = true;
+  fixture.dispatchVisibility();
+  fixture.setDoorwayVisible(false);
+  assert.equal(view.paused, true, 'hiding the doorway cannot resume a background WebView');
+
+  fixture.document.hidden = false;
+  fixture.dispatchVisibility();
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'the world resumes only when both the doorway is closed and the WebView is visible');
+
+  view.destroy();
+  assert.ok(fixture.mutationObservers.every(observer => observer.disconnected));
+});
 
 test('world animation pauses behind sheets and in the background, then resumes once', t => {
   const fixture = makeLifecycleView(t);
