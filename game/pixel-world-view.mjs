@@ -818,7 +818,7 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
-const MAP_OVERLAY_SELECTOR = '#quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, #sheet-backdrop, #sheet, #portal, #toast';
+const MAP_OVERLAY_SELECTOR = '#quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, #sheet-backdrop, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
@@ -839,6 +839,7 @@ export class PixelWorldView extends WorldView {
 
   resize() {
     super.resize();
+    this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
   }
 
@@ -875,6 +876,23 @@ export class PixelWorldView extends WorldView {
     return Object.freeze(overlays);
   }
 
+  playUiVisible() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return false;
+    try {
+      const playUi = document.getElementById('play-ui');
+      return !!playUi && playUi.hidden !== true;
+    } catch {
+      return false;
+    }
+  }
+
+  refreshMapOverlayRectsIfNeeded() {
+    const visible = this.playUiVisible();
+    if (visible === this.mapOverlayVisibility) return;
+    this.mapOverlayVisibility = visible;
+    this.mapOverlayRects = this.measureMapOverlayRects();
+  }
+
   observeMapOverlays() {
     if (!this.resizeObserver?.observe || typeof document === 'undefined' ||
         typeof document.querySelectorAll !== 'function') return;
@@ -883,6 +901,7 @@ export class PixelWorldView extends WorldView {
         try { this.resizeObserver.observe(element); } catch {}
       }
     } catch {}
+    this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
   }
 
@@ -1358,7 +1377,12 @@ export class PixelWorldView extends WorldView {
   }
 
   render() {
+    this.refreshMapOverlayRectsIfNeeded();
     this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
+    if (this.canvas.dataset) {
+      this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
+      this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
+    }
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     context.clearRect(0, 0, this.width, this.height);
