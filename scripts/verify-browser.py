@@ -695,7 +695,8 @@ def shared(browser,url,data,out):
         assert pending_challenge['action']['observationId']==source_observation['observationId']
         committed_challenge=visitor.request.get(url+'api/state').json()
         challenge_events=[event for event in committed_challenge['world']['events'] if event['type']=='source-observation-challenged']
-        assert len(challenge_events)==1 and challenge_events[0]['challengeText']==challenge_text
+        challenge_diagnostic={'expected':challenge_text,'events':challenge_events,'revision':committed_challenge['world']['revision'],'xp':committed_challenge['world']['xp'],'before_revision':before_challenge['world']['revision']}
+        assert len(challenge_events)==1 and challenge_events[0].get('challengeText')==challenge_text, json.dumps(challenge_diagnostic,ensure_ascii=False)
         assert challenge_events[0]['actor']['id']=='damien' and challenge_events[0]['actor']['role']=='founder'
         assert committed_challenge['world']['revision']==before_challenge['world']['revision']+1
         assert committed_challenge['world']['xp']==before_challenge['world']['xp']==100
