@@ -1198,6 +1198,8 @@ function buildFieldForgeSection(){
 function openForge(){
   if(viewer.role==='founder'){
     openWorkshop();
+    $('sheet-title').textContent='Forge';
+    $('sheet-kicker').textContent='FOUNDER-GATED MAKING · PLAYER FIELD KIT';
     const content=$('sheet-content');
     if(content)content.append(buildFieldForgeSection());
     return;

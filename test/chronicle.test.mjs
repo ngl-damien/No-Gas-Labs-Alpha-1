@@ -1176,3 +1176,37 @@ test("Chronicle keeps the exact Decision Chamber follow-up reference while prese
   assert.match(entry.warning, /No retained artifact version is linked/i);
   assert.doesNotMatch(entry.summary, /verified|approved|authorized/i);
 });
+
+
+test("forged field items become Forge records with explicit source-binding limits", () => {
+  const actor = { id: "witness-1", name: "Witness", role: "witness" };
+  const world = {
+    creations: [],
+    events: [
+      { id: "discover-source", type: "discover", locationId: "river", actor, at: "2026-10-27T10:00:00.000Z" },
+      { id: "forge-event", type: "field-item-forged", itemId: "field-item-1", slotId: "scouting", sourceEventId: "discover-source", actor, at: "2026-10-27T10:01:00.000Z" },
+    ],
+  };
+  const before = structuredClone(world);
+  const entry = projectChronicle({ world }).entries.find(item => item.id === "world:forge-event");
+  assert.equal(entry.title, "Personal field item forged");
+  assert.equal(entry.category, "FORGE · PLAYER INVENTORY");
+  assert.match(entry.detail, /Item ID: field-item-1/);
+  assert.match(entry.detail, /Equipment slot: scouting/);
+  assert.match(entry.detail, /Source event: discover-source/);
+  assert.match(entry.detail, /Source type: discover/);
+  assert.match(entry.summary, /not a truth verdict/);
+  assert.equal(entry.warning, "");
+
+  const projection = projectInstitutionRecordWorldObjects({ world, places: PLACES, isWalkable: () => true });
+  const object = projection.objects.find(item => item.entryId === "world:forge-event");
+  assert.ok(object, "the Forge event should be navigable as an institutional world object");
+  assert.equal(object.locationId, "forge");
+  assert.equal(object.title, entry.title);
+  assert.deepEqual(world, before, "Chronicle and map projection must not mutate retained history");
+
+  const mismatched = structuredClone(world);
+  mismatched.events[1].actor = { id: "another-witness", name: "Another Witness", role: "witness" };
+  const rejected = projectChronicle({ world: mismatched }).entries.find(item => item.id === "world:forge-event");
+  assert.match(rejected.warning, /does not match the field-item actor/);
+});

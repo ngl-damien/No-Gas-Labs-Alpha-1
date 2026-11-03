@@ -167,7 +167,7 @@ test('Forge creates an actor-owned field item from one earlier retained source a
   assert.ok(scouting.choices.some(choice=>choice.eventId===forgeEvent.id&&choice.kind==='forged-field-item'));
 
   const worldObjects=projectInstitutionRecordWorldObjects({world:forged.world,places:PLACES,isWalkable:()=>true});
-  const forgeObject=worldObjects.objects.find(object=>object.entryId===forgeEvent.id);
+  const forgeObject=worldObjects.objects.find(object=>object.entryId===`world:${forgeEvent.id}`);
   assert.equal(forgeObject.locationId,'forge','the Forge retains its own playable institutional record');
 
   const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:02.000Z'});

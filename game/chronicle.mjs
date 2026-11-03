@@ -8,6 +8,7 @@ const PLACE_NAMES = Object.freeze({
   overlook: "The Long View",
   ruins: "The Unfinished",
   "town-square": "TownSquare",
+  forge: "Forge",
   guild_hall: "Guild Hall",
   evidence_archive: "Evidence Archive",
   decision_chamber: "Decision Chamber",
@@ -225,7 +226,7 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, creations, notes, collaboratorResponse = null) {
+function worldEntry(event, index, creations, notes, collaboratorResponse = null, worldEventSnapshots = [], worldEventPositionsById = new Map()) {
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -264,6 +265,35 @@ function worldEntry(event, index, creations, notes, collaboratorResponse = null)
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+  } else if (type === "field-item-forged") {
+    const itemId = text(event?.itemId);
+    const slotId = text(event?.slotId);
+    const sourceEventId = text(event?.sourceEventId);
+    const sourcePositions = sourceEventId ? worldEventPositionsById.get(sourceEventId) || [] : [];
+    const sourcePosition = sourcePositions.length === 1 ? sourcePositions[0] : -1;
+    const source = sourcePosition >= 0 ? worldEventSnapshots[sourcePosition] : null;
+    const eventActorId = text(event?.actor?.id);
+    const eventActorRole = text(event?.actor?.role);
+    entry.title = "Personal field item forged";
+    entry.category = "FORGE · PLAYER INVENTORY";
+    entry.summary = "A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
+    entry.detail = [
+      `Item ID: ${itemId || "not identified"}`,
+      `Equipment slot: ${slotId || "not identified"}`,
+      `Source event: ${sourceEventId || "not identified"}`,
+      source ? `Source type: ${text(source.type) || "unknown"}` : null,
+      `Institution: ${PLACE_NAMES.forge}`,
+    ].filter(Boolean).join(" · ");
+    if (!itemId || !slotId || !sourceEventId) {
+      entry.warning = "The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
+    } else if (sourcePositions.length !== 1) {
+      entry.warning = "The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
+    } else if (sourcePosition >= index) {
+      entry.warning = "The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
+    } else if (!eventActorId || !eventActorRole ||
+               text(source?.actor?.id) !== eventActorId || text(source?.actor?.role) !== eventActorRole) {
+      entry.warning = "The referenced source event does not match the field-item actor; this record is not projected as a validated owned item.";
+    }
   } else if (type === "contribute" || type === "report") {
     const isReport = type === "report";
     const records = isReport ? notes.reports : notes.contributions;
@@ -614,15 +644,24 @@ export function projectChronicle({ world = {}, kernel = null, collaboratorRespon
   const collaboratorResponseByEventId = new Map(
     responseProjection.map(object => [object.eventId, object])
   );
+  const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const worldEventPositionsById = new Map();
+  for (let index = 0; index < worldEventSnapshots.length; index += 1) {
+    const id = text(worldEventSnapshots[index]?.id);
+    if (!id) continue;
+    const positions = worldEventPositionsById.get(id) || [];
+    positions.push(index);
+    worldEventPositionsById.set(id, positions);
+  }
 
-  for (let index = 0; index < worldEvents.length; index += 1) {
-    const event = safeEventSnapshot(worldEvents[index]);
+  for (let index = 0; index < worldEventSnapshots.length; index += 1) {
+    const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, creations, notes, collaboratorResponseByEventId.get(event.id) || null));
+    entries.push(worldEntry(event, index, creations, notes, collaboratorResponseByEventId.get(event.id) || null, worldEventSnapshots, worldEventPositionsById));
   }
 
   const kernelSnapshots = [];

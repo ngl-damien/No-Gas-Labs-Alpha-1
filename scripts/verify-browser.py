@@ -1507,7 +1507,7 @@ def shared(browser,url,data,out):
         close_sheet(a)
         a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Forge',exact=True).click()
-        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Making Bench')
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Forge')
         forge_slot=a.locator('#sheet [data-forge-slot="adversarial"]')
         expect(forge_slot).to_have_count(1)
         forge_choice=forge_slot.locator('select[data-forge-choice="adversarial"]')
