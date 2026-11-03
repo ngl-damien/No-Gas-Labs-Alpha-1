@@ -1606,3 +1606,21 @@ Next ranked actions:
 3. Preserve the explicit-key guard only through a clean reconciliation with the current service-store/game-server lineage; do not transplant the stale PR #251 server wholesale.
 4. Keep the live Founder trust-root/signing boundary blocked on Damien-controlled provisioning/custody rather than generating or enrolling keys.
 5. Resume linked-repository bootstraps only when the required authorized device is available.
+
+
+### Run 35 final reinspection addendum — Worker B advanced the Forge branch again (2026-11-03 UTC)
+
+After the prior Run 35 checkpoint append, Worker B advanced PR #298 from `327ebcb87edb1a24589fd131834a8ec96a7bf4ee` to `da53c8b6cf95887d15429dacaa88e7123b2f4374`. The single changed path is `scripts/verify-browser.py`. The new diagnostic refreshes the XP/Armor Bearer baseline after selecting a different loadout source, waits for the exact `Challenge · missing-evidence` label, and checks the event delta for exactly one `field-item-equipped` event bound to the selected source. This responds to the prior failure at line 1577 without weakening the revision assertion.
+
+Current PR #298 exact-head evidence at `da53c8b`:
+- Verify [41562312323](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562312323): passed.
+- Genesis [41562312413](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562312413): passed.
+- Browser [41562312371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562312371): in progress at final inspection.
+- Android [41562312332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562312332): in progress at final inspection.
+
+Worker A reconciled PR #300 child branch to this latest parent using merge commit `8042572801ed86f232829fec75c9352d6c41674f`, whose parents are `da53c8b...` and prior child `6a67b58...`. A compare from current parent `da53c8b...` to child `804257...` shows only `test/checkpoint-symlink-safety.test.mjs` changed (+97/-2); the Android platform fallback case remains included. Current child PR #300 exact-head checks:
+- Verify [41562409961](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562409961): in progress.
+- Genesis [41562409964](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562409964): passed.
+- Browser [41562409966](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41562409966): in progress.
+
+No PR was merged. The child remains draft/open/unmerged; its prior exact-head Verify/Genesis passes do not replace the new head's checks. Main remains `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`.
