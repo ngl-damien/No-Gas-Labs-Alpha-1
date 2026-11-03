@@ -204,7 +204,7 @@ test("a self-pinned attacker cannot choose the trust path, clock, nonce set or v
 
 test("NOT_ENROLLED sentinel fails closed", () => {
   const dir = path.join(tmpdir(), "ngl-auth-ne-" + process.pid);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {
     const trustPath = path.join(dir, "founder.pub.json");
     writeFileSync(trustPath, JSON.stringify({
@@ -214,7 +214,7 @@ test("NOT_ENROLLED sentinel fails closed", () => {
       mode: null,
       public_key_jwk: null,
       fingerprint: null,
-    }));
+    }), { mode: 0o600 });
     assert.equal(loadTrustAnchor(trustPath).enrolled, false);
     assert.equal(loadTrustAnchor(trustPath).reason, "NOT_ENROLLED");
     withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath }, () => {
