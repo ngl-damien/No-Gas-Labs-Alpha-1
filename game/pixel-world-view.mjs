@@ -818,7 +818,7 @@ export class PixelWorldView extends WorldView {
       return;
     }
     event.preventDefault?.();
-    if (nearest.distance <= 160) {
+    if (nearest.distance < 160) {
       this.interact(target.id, 'npc');
       return;
     }
@@ -1307,8 +1307,7 @@ export class PixelWorldView extends WorldView {
     const near = this.nearest();
     const modalOpen = document.body.classList.contains('modal-open');
     const promptRange = near?.type === 'npc' ? 160 : 145;
-    const promptVisible = !!near && (near.type === 'npc'
-      ? near.distance <= promptRange : near.distance < promptRange) && !modalOpen;
+    const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
