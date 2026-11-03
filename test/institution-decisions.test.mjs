@@ -891,7 +891,7 @@ test('process death before atomic rename leaves the canonical decision envelope 
     "for await (const line of createInterface({ input: process.stdin })) {",
     "  if (line === 'commit') await store.setPolicy(founder, policy);",
     "}",
-  ].join("\\n");
+  ].join("\n");
   const child = spawn(process.execPath, ['--input-type=module', '-e', workerScript], {
     env: { ...process.env, NGL_DECISIONS_TEST_DIR: directory },
     stdio: ['pipe', 'ignore', 'pipe', 'ipc']
@@ -921,7 +921,7 @@ test('process death before atomic rename leaves the canonical decision envelope 
 
   try {
     assert.equal(await bounded(nextMessage(), 'native-hook worker did not open the decision store'), 'READY');
-    child.stdin.end('commit\\n');
+    child.stdin.end('commit\n');
     assert.equal(
       await bounded(nextMessage(), 'native-hook worker did not reach the pre-rename boundary'),
       'BEFORE_RENAME_AFTER_TEMP_FSYNC'
@@ -932,7 +932,7 @@ test('process death before atomic rename leaves the canonical decision envelope 
 
     const lockPath = join(directory, '.decisions.lock');
     assert.equal((await lstat(lockPath)).isFile(), true, 'process death must leave the writer lease visible');
-    const pendingFiles = (await readdir(directory)).filter(name => /^\\.decisions-[a-f0-9-]+\\.tmp$/.test(name));
+    const pendingFiles = (await readdir(directory)).filter(name => /^\.decisions-[a-f0-9-]+\.tmp$/.test(name));
     assert.equal(pendingFiles.length, 1, 'the fully written temporary envelope must remain visible after SIGKILL');
     const pending = JSON.parse(await readFile(join(directory, pendingFiles[0]), 'utf8'));
     assert.equal(pending.payload.projection.policy.id, policy.id, 'the candidate exists only in the orphaned temporary file');
