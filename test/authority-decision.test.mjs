@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync, createHash, sign } from "node:crypto";
+import { generateKeyPairSync, createHash, sign, randomUUID } from "node:crypto";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -171,4 +171,60 @@ test("receipt chain links prevHash", () => {
   const b = linkReceipt({ prevHash: a.blockHash, payload: { x: 2 }, signed: { s: 2 } });
   assert.equal(b.prevHash, a.blockHash);
   assert.notEqual(a.blockHash, b.blockHash);
+});
+
+test("an enrolled trust anchor must bind its fingerprint to the exact public JWK", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-fingerprint-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true });
+  try {
+    const enrolled = keyPair();
+    const attacker = keyPair();
+    const trustPath = path.join(dir, "founder.pub.json");
+    writeFileSync(trustPath, JSON.stringify({
+      schema: "ngl.founder-trust-anchor.v1",
+      status: "ENROLLED",
+      enrolled: true,
+      mode: "TEST_ONLY",
+      public_key_jwk: attacker.jwk,
+      // The receipt claims the enrolled key's pin while substituting another key.
+      fingerprint: enrolled.fingerprint,
+    }));
+    const payload = makeDecisionPayload({
+      proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+    });
+    const forgedWithPinnedLabel = signPayload(attacker.privateKey, payload, enrolled.fingerprint);
+
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "FINGERPRINT_MISMATCH");
+    assert.throws(
+      () => authorizationEvent({ signed: forgedWithPinnedLabel, payload, trustPath }),
+      /FOUNDER_NOT_ENROLLED:FINGERPRINT_MISMATCH/
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("trust anchors reject private or non-canonical JWK fields", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-private-jwk-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true });
+  try {
+    const kp = keyPair();
+    const trustPath = path.join(dir, "founder.pub.json");
+    const privateJwk = kp.privateKey.export({ format: "jwk" });
+    writeFileSync(trustPath, JSON.stringify({
+      schema: "ngl.founder-trust-anchor.v1",
+      status: "ENROLLED",
+      enrolled: true,
+      mode: "TEST_ONLY",
+      public_key_jwk: privateJwk,
+      fingerprint: kp.fingerprint,
+    }));
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
