@@ -920,12 +920,14 @@ export class PixelWorldView extends WorldView {
   updateNpcControls(modalOpen = false) {
     const group = this.npcControlGroup;
     if (!group || !(this.npcControlButtons instanceof Map)) return;
-    group.hidden = modalOpen === true;
+    const playUiVisible = typeof document !== 'undefined' && this.playUiVisible();
+    const unavailable = modalOpen === true || !playUiVisible;
+    group.hidden = unavailable;
     for (const npc of GUILD_NPCS) {
       const button = this.npcControlButtons.get(npc.roleId);
       if (!button) continue;
-      button.disabled = modalOpen === true;
-      if (modalOpen) continue;
+      button.disabled = unavailable;
+      if (unavailable) continue;
       const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
         ? Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
         : Infinity;
@@ -946,7 +948,7 @@ export class PixelWorldView extends WorldView {
   }
 
   handleNpcAction(id) {
-    if (typeof document !== 'undefined' &&
+    if (typeof document === 'undefined' || !this.playUiVisible() ||
         document.body?.classList?.contains?.('modal-open') === true) return;
     const nearest = this.nearest(id, 'npc');
     if (nearest?.type !== 'npc') return;
