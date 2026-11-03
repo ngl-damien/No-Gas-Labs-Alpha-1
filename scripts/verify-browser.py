@@ -652,7 +652,7 @@ def shared(browser,url,data,out):
         b.locator('#places-button').click()
         b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
-        expect(b.locator('[data-source-observation-card]')).to_have_count(1)
+        expect(b.locator('[data-source-observation-card]')).to_have_count(2)
         expect(b.locator('#sheet')).to_contain_text('Model assertions are leads only, not evidence.')
         close_sheet(b)
         visit(b,'The shared observatory')
