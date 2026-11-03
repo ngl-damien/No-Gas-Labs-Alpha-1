@@ -737,12 +737,7 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
       view.player = { x: npc.x + 160, y: npc.y + 10 };
       view.route = [];
       pointerDown(event);
-      assert.deepEqual(interaction, {
-        type: 'institution',
-        id: npc.routeLocation,
-        npcRoleId: npc.roleId,
-        npcName: npc.name
-      }, 'the exact 160-unit interaction boundary must agree with the NPC interaction contract');
+      assert.equal(interaction, null, 'the existing NPC interaction contract is exclusive: exactly 160 units remains approach-only');
       assert.equal(prevented, 3);
       assert.deepEqual(view.world, worldBefore, 'approach and conversation leave revision, events, XP, and world state unchanged');
     } finally {
@@ -821,8 +816,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
 
   const boundary = renderProbe(390, 160);
-  assert.ok(boundary.labels.includes('TAP · TALK · ' + npc.shortName));
-  assert.equal(boundary.dataset.nearbyNpcRole, npc.roleId);
+  assert.equal(boundary.dataset.nearbyNpcRole, 'none');
+  assert.equal(boundary.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(boundary.attributes['aria-description'], undefined);
+  assert.equal(boundary.labels.length, 0);
 
   const distant = renderProbe(390, 161);
   assert.equal(distant.dataset.nearbyNpcRole, 'none');
