@@ -195,3 +195,37 @@ The current-head Browser run has now completed successfully: [41638570851](https
 6. Refresh the main checkpoint only after the proposed #314/#317/#320/#323/#326 checkpoint ownership is reconciled. Main remains unchanged.
 
 No merge, release, deployment, spending, key/credential operation, permission change, external publication, or Founder-reserved decision occurred. This is a run checkpoint, not a claim of uninterrupted work between runs.
+
+
+---
+
+## Worker A execution update — 2026-11-03 — Founder nonce recovery diagnostics
+
+Main baseline remains `cc317d49c8fdf003c78aa40f38a177095019066e`. PR #328 is the newest Worker A security child: [PR #328](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/328), branch `security/inspect-stale-founder-nonce-recovery-lease-20261103`, exact head `b3ac34e09982be1b9f349954f77fdb4d13a9ce16`, based on PR #327 exact head `d9425d409a32b16f7b9bf0a60ddca3ad44837def`.
+
+### Implemented and verified
+
+- Read-only nonce-ledger inspection now uses `O_RDONLY`; the explicit recovery path retains `O_RDWR` for fsync. Regression injects `EROFS` for writable opens.
+- Recovery-lease inspection now reports descriptor-validated file metadata and advisory PID state. Unknown/malformed/unsafe leases remain blocked; no diagnostic authorizes removal.
+- Public `inspectFounderNonceRecovery()` cannot accept `ignoreRecoveryLease`; only the private state inspector used after exclusive lease acquisition can bypass the check.
+- Exact-head Verify [41667304966](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41667304966) PASS; hosted preflight ready with zero warnings/failures, Node 24.22.1 tests, Python inspector, build and institutional exercise all exit successfully. Receipt [13246727686](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41667304966/artifacts/13246727686).
+- Genesis Evidence Invariant [41667305132](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41667305132) PASS.
+- Browser Acceptance [41667304945](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41667304945) PASS, 12/12 journeys; artifact [13246253947](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41667304945/artifacts/13246253947).
+- Parent PR #327 exact head now has Verify [41656959123](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41656959123), Genesis [41656959387](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41656959387), and Browser [41656959128](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41656959128) all PASS.
+
+### Reconfirmed security boundary
+
+- PR #16 is closed/unmerged; PR #18 is merged. Fresh final #16 patch scan has no `demonstrate()` or `QUEST_AUTHORIZED` path; both `generateKeyPairSync` matches are in the Experiment 001 test file. The historical self-signing allegation is superseded.
+- Current main `game/server.mjs` imports `openDecisions`, not `authorizationEvent()`. Its `getFounderKey()` creates/persists a random local `founder.key` if absent; this is a local bearer/session credential, not a cryptographic Founder signature or proof of Damien's identity. Main's `founder.pub.json` remains `NOT_ENROLLED`. No key or host trust path was provisioned.
+- PR #316 actual head is `206e617510f63098018513c77621be673dc92f2c`; its stale description head and Browser status were corrected. It remains helper-level and stacked on #312.
+- Worker B PR #326 head `60349b68f1b700acab66a359478416767f016d14` passed Verify [41664503323](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41664503323), Genesis [41664503776](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41664503776), and Browser [41664503534](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41664503534), 12/12. G6 remains IN PROGRESS; source retrieval/independent verification and physical-device acceptance remain absent. Do not edit #309-owned `game/world-view.mjs` concurrently.
+- Linked-repository source remains uninspected where root `AGENTS.md` is missing or required bootstrap scripts cannot run. Registered devices were offline; no local checkout/preflight/test is claimed.
+
+### Next ranked actions
+
+1. Keep #328 and its #327 → #325 → #324 → #316 → #312 parent chain draft/unmerged; review the combined nonce-recovery threat model, including old writer versions, same-host/PID-namespace assumptions and manual lease cleanup.
+2. Resolve Founder-controlled host trust-root/key custody and canonical live mutation-boundary integration only through an explicit Founder-controlled action. Do not generate/enroll keys or provision production paths.
+3. Worker B: reconcile #309/#326 renderer ownership, then add event-backed Source Observation counts; keep G6 IN PROGRESS until source retrieval, independent verification and physical-device evidence exist.
+4. Keep the main checkpoint stale-state warning visible; do not overwrite main `LATEST_CHECKPOINT.md` until #314/#317/#320/#323/#326 checkpoint ownership is reconciled.
+
+No merge, release, deployment, spending, key/credential operation, permission change, external publication or Founder-reserved decision occurred.
