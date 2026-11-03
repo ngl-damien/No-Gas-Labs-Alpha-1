@@ -165,19 +165,39 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   });
   const output = textOf(root);
   assert.match(output, /SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE/);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /1 uniquely linked source observation/);
+  assert.match(output, /1 linked challenge/);
+  assert.match(output, /1 linked response record/);
+  assert.match(output, /Model output only; no primary source retrieved\./);
+  assert.match(output, /A direct inspection finds it closed\./);
+  assert.match(output, /No independent observation\./);
+  assert.match(output, /Inspect the bridge\./);
+  assert.match(output, /Source retrieval NOT_PERFORMED/);
+  assert.match(output, /independent verification NOT_PERFORMED/);
+  assert.match(output, /model assertions LEADS_ONLY/);
+  assert.match(output, /execution NOT_EXECUTED/);
   assert.match(output, /1 uniquely linked challenge\(s\) await an author response/);
   assert.match(output, /Only the original note author can respond/);
   assert.match(output, /not a verdict, independent evidence, or authority/);
   assert.match(output, /<img src=x onerror=alert\(1\)>/);
   assert.equal(walk(root).filter(item => item.tagName === 'img').length, 0,
-    'claim text must be rendered as text, never parsed as markup');
+    'claim and source text must be rendered as text, never parsed as markup');
+  const registerCards = walk(root).filter(item => item.dataset?.sourceObservationRegisterRecord);
+  assert.equal(registerCards.length, 1);
+  assert.equal(registerCards[0].dataset.sourceObservationRegisterRecord.startsWith('source-observation-'), true);
+  const registerButton = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
+  assert.ok(registerButton);
+  assert.equal(registerButton.dataset.creationId, creationId);
+  assert.equal(registerButton.dataset.version, '1');
+  registerButton.onclick();
   const buttons = walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge);
   assert.equal(buttons.length, 1);
   assert.equal(buttons[0].dataset.creationId, creationId);
   assert.equal(buttons[0].dataset.version, '1');
   buttons[0].onclick();
-  assert.deepEqual(opened, [[creationId, 1]]);
-  assert.deepEqual(world, before, 'opening the docket does not mutate world state');
+  assert.deepEqual(opened, [[creationId, 1], [creationId, 1]]);
+  assert.deepEqual(world, before, 'opening the register and docket does not mutate world state');
 }));
 
 test('answered source challenges leave the response queue but remain in the Chronicle', () => withDocument(() => {
@@ -190,11 +210,38 @@ test('answered source challenges leave the response queue but remain in the Chro
   });
   const root = element('div');
   renderEvidenceArchive(root, { world, shared: true });
+
   const output = textOf(root);
   assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
   assert.match(output, /No unanswered Source Observation challenges/);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /AUTHOR RESPONSE RETAINED/);
+  assert.match(output, /The note is a lead only; retrieval remains outstanding\./);
   assert.match(output, /Author response to source challenge/);
   assert.match(output, /DISSENT & RESPONSE/);
+}));
+
+test('Evidence Archive register retains an unchallenged Source Observation as a research object', () => withDocument(() => {
+  const { world, creationId } = sourceObservationWorld();
+  world.events = world.events.filter(event => event.type !== 'source-observation-challenged');
+  const before = structuredClone(world);
+  const opened = [];
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world, shared: true,
+    onOpenArtifact: (id, version) => opened.push([id, version])
+  });
+  const output = textOf(root);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /1 uniquely linked source observation/);
+  assert.match(output, /No challenge is retained against this observation yet/);
+  assert.match(output, /Source retrieval NOT_PERFORMED/);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  const button = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
+  assert.ok(button);
+  button.onclick();
+  assert.deepEqual(opened, [[creationId, 1]]);
+  assert.deepEqual(world, before, 'register inspection is read-only');
 }));
 
 test('unlinked retained challenge events are not silently described as an empty response queue', () => withDocument(() => {
