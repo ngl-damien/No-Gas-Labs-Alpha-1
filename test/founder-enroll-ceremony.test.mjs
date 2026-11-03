@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,6 +42,19 @@ test('enrollment candidate remains NOT_ENROLLED until a separate custody decisio
   assert.equal(typeof candidate.fingerprint, 'string');
   assert.equal(candidate.fingerprint.length, 64);
   assert.equal(Object.hasOwn(candidate.public_key_jwk, 'd'), false);
+  assert.equal(Object.isFrozen(candidate.public_key_jwk), true);
+  const originalX = candidate.public_key_jwk.x;
+  assert.throws(() => { candidate.public_key_jwk.x = 'tampered'; }, TypeError);
+  assert.equal(candidate.public_key_jwk.x, originalX);
+  const expectedFingerprint = createHash('sha256')
+    .update(JSON.stringify({
+      kty: candidate.public_key_jwk.kty,
+      crv: candidate.public_key_jwk.crv,
+      x: candidate.public_key_jwk.x,
+      y: candidate.public_key_jwk.y
+    }))
+    .digest('hex');
+  assert.equal(candidate.fingerprint, expectedFingerprint);
   assert.match(candidate.instruction, /separate, explicit enrollment step/);
 });
 
