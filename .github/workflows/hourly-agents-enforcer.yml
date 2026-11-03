@@ -26,6 +26,21 @@ jobs:
           node-version: 24
       - name: Verify governed inputs and preserve a unique preflight receipt
         run: |
+          for target in \
+            .github/workflows/hourly-agents-enforcer.yml \
+            test/hourly-agents-enforcer.test.mjs \
+            docs/operations/hourly-agents/REGISTRY.json \
+            docs/operations/hourly-agents/STUTTER_STEP_STEERING.md \
+            docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md \
+            docs/operations/hourly-agents/DO_NOT_DELETE.md \
+            src/authority/decision.js \
+            game/server.mjs
+          do
+            if ! test -f "$target"; then
+              echo "missing preflight target: $target" >&2
+              exit 1
+            fi
+          done
           node scripts/validate-agent-governance.mjs \
             --path .github/workflows/hourly-agents-enforcer.yml \
             --path test/hourly-agents-enforcer.test.mjs \
