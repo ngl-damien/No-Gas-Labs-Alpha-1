@@ -308,3 +308,10 @@ Next run: poll #333 Browser `41701921044`; recheck PR #321 current head `2746866
 7. Do not inspect linked-repository source until root instructions and mandatory bootstrap execution are satisfied.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder key operation, host trust-root provisioning, production ledger operation, or Founder-reserved decision occurred. No uninterrupted work between runs is claimed.
+
+
+## Worker A Run 13 final verification correction — 2026-11-03
+
+- PR #336 exact head `b85047af71374910c897081a0236aa375f8ea3de` completed all three exact-head workflows: Verify/world-projection 41707557896 PASS, Genesis Evidence Invariant 41707557936 PASS, Browser Acceptance 41707558012 PASS (12/12). Preflight artifact 13265985830; Browser artifact 13266421639, ZIP SHA-256 `bf5aa9901bac2f33598b0b61ee47d7da3f4bab3d895d951e5b61c7afc47a1472`. Browser warnings remain non-blocking: `punycode`, `url.parse()`, and Node 20 action-runtime pins; PR #335 owns action modernization.
+- PR #321 has advanced beyond the earlier Run 13 steering head through the checkpoint and registry final-verification commits. The latest observed head before this steering correction is `b3b8e63657403444694705a2ddefc163014cd4a3`. Do not transfer any previous #321 check results to the new branch head created by this update; re-fetch the exact head and all four relevant checks on the next observation.
+- Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`; main LATEST_CHECKPOINT remains stale at `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. Run 13 checkpoint is in this PR branch, not main.
