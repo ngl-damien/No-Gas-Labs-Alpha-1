@@ -372,7 +372,7 @@ function worldEntry(event, index, creations, notes) {
         : "This is an author-entered note, not an independently verified claim.";
     entry.title = `Source observation · ${text(event?.claim) || "untitled claim"}`;
     entry.category = "RESEARCH NOTE";
-    entry.summary = `${actor} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
+    entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
     entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}.`;
     entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
   } else if (type === "discover") {
