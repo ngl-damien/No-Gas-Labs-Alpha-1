@@ -56,6 +56,7 @@ test('Source Observatory starts empty rather than inventing a starter observatio
   assert.match(html, /Model assertion \(lead only; not evidence\)/);
   assert.match(html, /MAX_OBSERVATIONS=100/);
   assert.match(html, /MAX_FIELD_CHARACTERS=500/);
+  assert.match(html, /maxlength="1000"/);
   assert.doesNotMatch(html, /\bfetch\s*\(/);
   assert.doesNotMatch(html, /\bXMLHttpRequest\b|\bWebSocket\b|sendBeacon/);
 
@@ -124,10 +125,10 @@ test('Source Observatory enforces required attribution, Unicode bounds and the o
   assert.equal(elements.get('observations').children.length, 1);
   assert.match(elements.get('status').textContent, /claim and its source/);
 
-  elements.get('claim').value = 'x'.repeat(501);
+  elements.get('claim').value = String.fromCodePoint(0x1f600).repeat(501);
   elements.get('source').value = 'source';
   elements.get('add-observation').onclick();
-  assert.match(elements.get('status').textContent, /500 Unicode characters/);
+  assert.match(elements.get('status').textContent, /500 Unicode code points/);
   assert.equal(elements.get('observations').children.length, 1);
 
   for (let index = 0; index < 100; index += 1) {
@@ -154,4 +155,15 @@ test('Source Observatory discloses local-only notes and rejects unlisted or prot
     assert.equal(elements.get('observations').children.length, 1);
     assert.match(elements.get('status').textContent, /Choose a listed source class/);
   }
+});
+
+test('Source Observatory accepts 500 supplementary Unicode code points', () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  assert.match(html, /maxlength="1000"/);
+  const { elements } = harness(html);
+  elements.get('claim').value = String.fromCodePoint(0x1f600).repeat(500);
+  elements.get('source').value = 'Primary source label';
+  elements.get('add-observation').onclick();
+  assert.equal(elements.get('observations').children.length, 1);
+  assert.match(elements.get('status').textContent, /Observation added/);
 });
