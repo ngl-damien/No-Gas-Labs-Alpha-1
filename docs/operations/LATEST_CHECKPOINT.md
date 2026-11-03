@@ -272,3 +272,5 @@ No merge or deployment was performed.
 - The classic top-down tile-and-sprite transformation, physical Android-device acceptance, and independently authenticated Founder Gate remain unfinished.
 - Draft child only. No merge, release, deployment, Founder decision, XP award, canonical event, credential change or permission change.
 - First exact-head Verify run 41649638021 exposed one assertion that expected wording not present in the Chronicle. The queue itself removed the answered item and retained the response entry; the assertion now checks the actual DISSENT & RESPONSE category. Exact-head rerun is required.
+- Follow-up hardening: the docket now fails closed on oversized snapshots and warns when retained challenge events cannot be uniquely linked; those cases are not mislabeled as an empty queue. Added regressions for both conditions.
+

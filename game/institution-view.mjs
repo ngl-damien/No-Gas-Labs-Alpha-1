@@ -86,6 +86,14 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(warning);
   return;
  }
+ // Match the bounds enforced by projectSourceObservationRecords. An oversized
+ // snapshot is unavailable, not an empty queue.
+ if(world.events.length>100_000||world.creations.length>20_000) {
+  const warning=el('p','The Source Observation snapshot exceeds the bounded projection limit. No response action is offered and the queue is not treated as empty.');
+  warning.className='evidence-warning';
+  container.append(warning);
+  return;
+ }
  let records;
  try { records=projectSourceObservationRecords(world.events,world.creations); }
  catch {
@@ -103,11 +111,19 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
  const linked=records.filter(record=>record?.projectionStatus==='linked');
  const unlinkedCount=records.length-linked.length;
  const pending=[],ambiguous=[];
+ let projectedChallengeCount=0;
  for(const record of linked) for(const challenge of Array.isArray(record.challenges)?record.challenges:[]) {
+  projectedChallengeCount+=1;
   const item={record,challenge};
   if(challenge?.responseStatus==='unanswered')pending.push(item);
   else if(challenge?.responseStatus==='ambiguous')ambiguous.push(item);
  }
+ let retainedChallengeCount=0;
+ for(let index=0;index<world.events.length;index+=1) {
+  const event=world.events[index];
+  if(event&&typeof event==='object'&&event.type==='source-observation-challenged')retainedChallengeCount+=1;
+ }
+ const unprojectedChallengeCount=Math.max(0,retainedChallengeCount-projectedChallengeCount);
  const newestFirst=(left,right)=>
   String(right.challenge?.at||'').localeCompare(String(left.challenge?.at||''))||
   String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
@@ -119,8 +135,16 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   warning.className='evidence-warning';
   container.append(warning);
  }
+ if(unprojectedChallengeCount>0) {
+  const warning=el('p',`${unprojectedChallengeCount} retained challenge event(s) could not be uniquely linked to a valid observation. No response action is offered; inspect the Chronicle.`);
+  warning.className='evidence-warning';
+  container.append(warning);
+ }
  if(!pending.length&&!ambiguous.length) {
-  container.append(el('p','No unanswered Source Observation challenges. The Chronicle keeps every retained challenge and author response.'));
+  const emptyMessage=unlinkedCount===0&&unprojectedChallengeCount===0
+   ?'No unanswered Source Observation challenges. The Chronicle keeps every retained challenge and author response.'
+   :'No uniquely linked unanswered challenge is actionable in this snapshot. Unlinked or ambiguous history remains in the Chronicle.';
+  container.append(el('p',emptyMessage));
   return;
  }
  for(const {record,challenge} of pending.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {

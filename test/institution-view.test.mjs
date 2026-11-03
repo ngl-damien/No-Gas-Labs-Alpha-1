@@ -197,6 +197,30 @@ test('answered source challenges leave the response queue but remain in the Chro
   assert.match(output, /DISSENT & RESPONSE/);
 }));
 
+test('unlinked retained challenge events are not silently described as an empty response queue', () => withDocument(() => {
+  const { world, founder } = sourceObservationWorld();
+  world.events[2].actor = founder;
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.match(output, /retained challenge event\(s\) could not be uniquely linked/);
+  assert.match(output, /No uniquely linked unanswered challenge is actionable/);
+  assert.doesNotMatch(output, /No unanswered Source Observation challenges/);
+  assert.match(output, /Source observation challenged/);
+}));
+
+test('oversized Source Observation snapshots fail closed instead of presenting an empty queue', () => withDocument(() => {
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world: { events: new Array(100_001), creations: [] },
+    shared: true
+  });
+  const output = textOf(root);
+  assert.match(output, /exceeds the bounded projection limit/);
+  assert.doesNotMatch(output, /No unanswered Source Observation challenges/);
+}));
+
 test('ambiguous Source Observation response history is visible but never offered as a new response action', () => withDocument(() => {
   const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
   for (let index = 1; index <= 2; index += 1) {
