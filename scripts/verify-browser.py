@@ -1294,16 +1294,34 @@ def shared(browser,url,data,out):
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
-        expect(frame.locator('#sources article')).to_have_count(1)
+        expect(frame.locator('#observations article')).to_have_count(0)
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
+        frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
+        frame.locator('#falsifier').fill('A reproducible counterexample.')
         frame.locator('#uncertainty').fill('A note is not a verdict.')
-        frame.locator('#add-source').click()
-        expect(frame.locator('#status')).to_have_text('Observation added to this open artifact. Download to keep these notes.')
-        expect(frame.locator('#sources article')).to_have_count(2)
-        assert frame.locator('#sources b').count()==0
+        frame.locator('#next-test').fill('Retrieve and inspect the primary source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#status')).to_have_text('Observation added to this open artifact. No source was fetched or independently verified.')
+        expect(frame.locator('#observations article')).to_have_count(1)
+        assert frame.locator('#observations b').count()==0
+        expect(frame.locator('#observations')).to_contain_text('Possible falsifier: A reproducible counterexample.')
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
         with b.expect_download() as downloaded:frame.locator('#download').click()
-        notes=json.loads(Path(downloaded.value.path()).read_text());assert notes['sources'][1]['claim']=='<b>Source note</b> — café 🌍'
+        notes=json.loads(Path(downloaded.value.path()).read_text())
+        assert notes['schema']=='ngl.source-observatory.v2'
+        assert notes['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        observation=notes['observations'][0]
+        assert observation['claim']=='<b>Source note</b> — café 🌍'
+        assert observation['sourceKind']=='model-assertion'
+        assert observation['falsifier']=='A reproducible counterexample.'
+        assert observation['uncertainty']=='A note is not a verdict.'
+        assert observation['nextTest']=='Retrieve and inspect the primary source.'
         b.locator('#portal-close').click()
         visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
