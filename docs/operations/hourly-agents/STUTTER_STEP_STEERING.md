@@ -143,3 +143,15 @@ The current-head Browser run has now completed successfully: [41638570851](https
 5. Revalidate/port PR #275's HTTP forged-field regression only after reviewing closed #274 ancestry against current main and PR #316.
 6. Leave PR #319 as superseded/overlapping pending Worker B disposition; do not merge independently.
 7. Do not inspect or modify linked repository source until each repository's root instructions and mandatory bootstrap can be satisfied.
+
+
+---
+
+## Worker A Run 06 — 2026-11-03 13:37 UTC
+
+- Rehydrated root `AGENTS.md` and the complete canonical shared protocol in the required sequential order. Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`; main `LATEST_CHECKPOINT.md` remains stale at declared head `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`. No local preflight/test was possible: no checkout, Node 22.16.0 versus repository Node >=24, and both registered remote devices offline.
+- Latest Worker B reinspection supersedes Run 41's earlier docs head: PR #323 is now `749cefdf84fc8602bb09bbcd3c6ccdd0159087c6`, with Verify 41646608957 PASS, Genesis 41646608731 PASS, Browser 41646608705 PASS 12/12. Its latest commit is a test-only expected-skill snapshot update; G6 remains IN PROGRESS and the #323 → #320 → #317 → #315 → #314 → #312 stack is not integrated.
+- PR #324 exact head `770bd3a20a75d9d00d504839e3bfdccf32383a8e` has Verify 41645115308 FAIL (802/803; failing file `test/founder-nonce-recovery.test.mjs`), Genesis 41645115251 PASS, Browser 41645115330 PASS. Review comment [6605428943](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/324#issuecomment-6605428943) records the hidden test-file failure diagnostics and a possible same-UID new-writer race between final lock `lstat` and `unlink`.
+- PR #316 remains helper-level with trust anchor `NOT_ENROLLED`; no Founder key or host trust/nonce paths were provisioned. PR #16's historical allegation remains superseded by closed #16 / merged #18.
+- Nine linked repositories still lack root `AGENTS.md`; AI-BI's required `init_node.sh` is mode 100644; governance's bootstrap could not be run without a shell/device. No linked source was inspected.
+- Full run evidence and next ranked actions: `docs/operations/checkpoints/2026-11-03-worker-a-run-06.md`. This is a durable handoff, not a claim of continuous work between runs.
