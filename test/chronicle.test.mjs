@@ -713,3 +713,32 @@ test("Source Observation notes remain visible as user-bound, explicitly unverifi
   assert.match(entry.warning, /export origin is not cryptographically established/);
   assert.match(entry.detail, /direct inspection finds it closed/);
 });
+
+test("source-observation challenges appear as linked dissent, not adjudication or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "source-note-event", type: "source-observation-recorded",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:07:00.000Z", claim: "The bridge is open.",
+    },
+    {
+      id: "source-challenge-event", type: "source-observation-challenged",
+      challengeId: "challenge-1", observationId: "source-observation-1",
+      creationId: "creation-observatory", version: 1,
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-10-26T10:08:00.000Z",
+      challengeType: "missing-evidence",
+      challengeText: "No retrievable primary source is attached."
+    }
+  );
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-challenge-event");
+  assert.equal(entry.category, "DISSENT & CHALLENGE");
+  assert.equal(entry.targetTitle, "Source Observatory");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.summary, /preserved a challenge/i);
+  assert.match(entry.summary, /does not decide truth/i);
+  assert.match(entry.detail, /No retrievable primary source is attached/);
+  assert.match(entry.warning, /attributed dissent, not evidence, a verdict, or authority/i);
+});
