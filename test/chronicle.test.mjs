@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { projectChronicle } from "../game/chronicle.mjs";
-import { institutionActivityCount } from "../game/world-view.mjs";
+import { institutionActivityCount, PLACES } from "../game/world-view.mjs";
 import { projectInstitutionRecordWorldObjects, hasCompleteInstitutionKernelSnapshot } from "../game/institution-record-objects.mjs";
 import { projectDecisionDocket } from "../game/quests.mjs";
 import { projectCollaboratorPackets } from "../game/collaborator-contracts.mjs";
