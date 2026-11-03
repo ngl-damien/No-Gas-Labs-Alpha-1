@@ -244,7 +244,7 @@ No merge or deployment was performed.
 **Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
 **Repository:** ngl-damien/No-Gas-Labs-Alpha-1.  
 **Main baseline:** cc317d49c8fdf003c78aa40f38a177095019066e.  
-**Parent stack:** PR #323 at exact head 749cefdf84fc8602bb09bbcd3c6ccdd0159087c6; child proposal PR #325, branch game/evidence-archive-response-queue-20261103.
+**Parent stack:** PR #323 at exact head 749cefdf84fc8602bb09bbcd3c6ccdd0159087c6; child proposal PR #326, branch game/evidence-archive-response-queue-20261103.
 
 ### Rehydration and preflight
 
