@@ -11,6 +11,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
+import android.view.ViewGroup;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -35,6 +36,39 @@ public final class MainActivityTest {
     @Rule
     public final ActivityScenarioRule<MainActivity> activityRule =
             new ActivityScenarioRule<>(MainActivity.class);
+
+    @Test
+    public void webViewIsDetachedBeforeDestroy() throws Exception {
+        MainActivity activity = activity();
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        AtomicReference<Boolean> attachedAtDestroy = new AtomicReference<>(true);
+        AtomicReference<Boolean> attachedBeforeDestroy = new AtomicReference<>(false);
+        AtomicReference<Boolean> detachedAfterDestroy = new AtomicReference<>(false);
+        AtomicReference<WebView> probe = new AtomicReference<>();
+
+        instrumentation.runOnMainSync(() -> {
+            WebView observed = new WebView(activity) {
+                @Override
+                public void destroy() {
+                    attachedAtDestroy.set(isAttachedToWindow());
+                    super.destroy();
+                }
+            };
+            activity.addContentView(observed, new ViewGroup.LayoutParams(1, 1));
+            probe.set(observed);
+        });
+        instrumentation.waitForIdleSync();
+        instrumentation.runOnMainSync(() -> {
+            WebView observed = probe.get();
+            attachedBeforeDestroy.set(observed.isAttachedToWindow());
+            MainActivity.destroyWebView(observed);
+            detachedAfterDestroy.set(observed.getParent() == null);
+        });
+
+        assertTrue("the probe WebView was attached before cleanup", attachedBeforeDestroy.get());
+        assertFalse("destroy() must never be called while the WebView is attached", attachedAtDestroy.get());
+        assertTrue("the WebView is detached after cleanup", detachedAfterDestroy.get());
+    }
 
     @Test
     public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed() throws Exception {

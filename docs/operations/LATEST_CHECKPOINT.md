@@ -1213,3 +1213,66 @@ The current Forge feature already represented a player's earlier retained activi
 No merge, release, deployment, spending, external publication, credential/permission change, Founder acceptance, or canonical XP/authority transition occurred.
 
 - Ledger formatting correction: the five updated gate rows G1/G2/G4/G6/G7 were normalized to the existing spaced Markdown table delimiters; evidence content and gate statuses are unchanged.
+
+
+## Run 37 — 2026-11-03 — Android teardown and entry-screen rendering lifecycle
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.  
+**Current main baseline:** `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; unchanged and not integrated with the proposed game stack.  
+**Prior durable checkpoint:** this branch's Run 36 checkpoint, blob `35199f954c08ebfc12e2010e7d80053b4b7a73ba`.  
+**Canonical checkpoint condition:** `docs/operations/LATEST_CHECKPOINT.md` remains absent on main. It exists on this proposed branch; PR #307 is a separate main-based proposal that also restores/updates the checkpoint. Reconcile those histories deliberately; do not treat either branch's checkpoint as already canonical on main.
+
+### Rehydration and coordination
+
+- Read root `AGENTS.md` and the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` in order. Exact branch hashes: root `a4beeee1c0ec46faab28502957c0e53850b2855d`; protocol `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`.
+- Read the current checkpoint, MMORPG completion contract and ledger; inspected all nested AGENTS paths applicable to Android, `game/`, and `test/`. The relevant nested paths returned 404; root instructions remain applicable.
+- Inspected the live main baseline, PRs #295–#306, Worker A's latest relevant PR #304 and Run 38 handoff on PR #283, and newly opened separate governance PRs #307/#308. #307/#308 are based on main and do not own the Android/game source paths changed here. No duplicate Android teardown or entry-doorway pause implementation was present in the active stack.
+- Local portable preflight and local tests could not run: the container has Node 22.16.0 rather than Node 24; `git ls-remote` failed because GitHub DNS could not resolve; both registered Desktop Commander devices are offline. The manual instruction sequence was followed. Hosted exact-head Verify remains the available preflight route.
+
+### Exact prior-stack observations
+
+**PR #301** exact head `8c2c953c8d88ebe53388f660cc9c02de39e4cfb6`: Verify `41568800680`, Genesis `41568800673`, Browser `41568800670` (19/19), and Android `41568800678` passed. Android reported 6/6 instrumentation tests.
+
+**PR #304** exact head `7aa280870dcc4f6849e408d9f246a8f3aadb1815`: Verify `41580757144` and Genesis `41580757098` passed; Android `41580757112` passed; Browser `41580757101` was cancelled. This is Worker A's shared preflight/receipt child in the proposed game stack.
+
+**PR #305** exact head `a218df5eb162918971192ac7d29640c65b1e3812`: Verify `41581489584` and Genesis `41581489624` passed; Android `41581489569` failed. Downloaded and inspected diagnostics artifact `13206484986`. Its instrumentation XML reports 6 tests, 1 failure, 0 errors and 0 skipped; five tests passed, while `bundledWorldStartsPrivatelyAndSharedModeFailsClosed` timed out waiting for `document.readyState === 'complete' && !!document.getElementById('start-shared')`. At failure, the WebView URL was the expected appassets game entry, progress was 70, the Activity remained attached/alive, and the title had loaded. Logcat contains seven occurrences of `WebView.destroy() called while WebView is still attached to window.`, plus renderer-process crashes and repeated system-service ANRs. This is an observed cleanup defect and a failing readiness test, not proof that cleanup caused the timeout.
+
+**PR #306** exact head `9d7ba40e000a6f77c95cefb61d114067b46c6a7c`: Verify `41583611654` and Genesis `41583611681` passed; Browser Acceptance `41583611717` passed 19/19. Its Android run `41583611650` failed with `INSTRUMENTATION_ABORTED: System has crashed`. Downloaded and inspected diagnostics artifact `13207648354`: instrumentation reported an incomplete run (expected 6 tests, received 4); logcat shows many system-service ANRs, repeated WebView renderer crashes, CPU reports at 100% total with 81–91% kernel time, `DeadSystemException` after the system process died, and the attached-WebView destruction warning still present. The Android process then aborts in the dead-system condition. The final outcome is an emulator/system failure; it is not a clean app-level assertion failure and does not establish that PR #306's animation-epoch guard is defective.
+
+### Selected objective and rationale
+
+G7 Android-first mobile experience is an explicit MMORPG release gate and the active stack now has two consecutive Android failures after an earlier 6/6 pass. The highest-leverage bounded action was to correct the directly observed native teardown contract and remove avoidable world rendering before the player enters. This addresses concrete lifecycle/resource waste without relaxing any acceptance assertion or changing game-state rules.
+
+### Changes on PR #309
+
+**Branch:** `android/detach-webview-before-destroy-20261103`  
+**PR:** [#309](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/309), draft/open/unmerged; child of PR #306 exact base head `9d7ba40e000a6f77c95cefb61d114067b46c6a7c`.  
+**Current code head:** `8a267c8b8d0bd58ceff864aa0043badfdcd957ea`.  
+**Commit sequence:** `7f9db90648258482c8429b5e5d04d135b3f59f14` (native teardown), `7193cf071cc4feec32b888fd993d5f4bc1a15891` (native regression), `4e3a9d87e35e8e1e8a91d05fb74742c3acc238a9` (entry pause), `5f413316013e82d06499381e1ca57b52e4e7a20f` (entry lifecycle test), `8a267c8b8d0bd58ceff864aa0043badfdcd957ea` (independent resume guard).
+
+Changed paths:
+- `android/app/src/main/java/labs/nogas/commonground/MainActivity.java`: `destroyWebView()` stops loading, replaces the client, removes the WebView from its parent, fails closed if any parent remains, then destroys it. `onDestroy()` clears the Activity field before using this helper.
+- `android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java`: `webViewIsDetachedBeforeDestroy` uses a probe WebView to observe attachment at the exact call to `destroy()`; it must be attached before cleanup and detached during destruction.
+- `game/world-view.mjs`: the visible entry `#doorway` is now a paused lifecycle state. A MutationObserver watches its `hidden` attribute alongside the existing modal state. The render loop starts only after entry closes, pauses if the entry screen reappears, and the `resume()` guard independently refuses to run behind the doorway.
+- `test/game-geometry.test.mjs`: deterministic regression `world rendering stays idle behind the entry doorway until the player enters` proves zero scheduled frames while the entry is visible, exactly one on entry, pause on re-entry, no resume while the WebView is backgrounded, and observer cleanup.
+
+The entry regression proves scheduling behavior in a deterministic lifecycle harness; it is not a measured CPU benchmark. The WebView probe exercises the shared teardown helper; hosted Android acceptance must still exercise the full Activity lifecycle. Neither change modifies quests, canonical events, XP, inventory, Founder authority, credentials, or player progress.
+
+### Exact-head PR #309 verification at handoff
+
+- Genesis Evidence Invariant `41586226899`: passed.
+- Verify `41586226957`: in progress.
+- Browser Acceptance `41586226907`: pending.
+- Android Alpha-1 `41586226897`: in progress; portable preflight and environment setup had passed, Android SDK setup was still running at the last poll.
+- No result from PR #306 or any other head is transferred to PR #309.
+
+### Remaining limits and next ranked actions
+
+1. Recheck all four exact-head PR #309 workflows. Inspect the new Android diagnostics artifact, especially whether attached-WebView warnings disappear and whether the emulator still reports system-server/Google service ANRs.
+2. If Android still crashes after the teardown and entry-pause regressions pass, treat the system crash as a separate unresolved emulator/runtime issue. Inspect the first system-server/watchdog failure, emulator CPU/RAM configuration, and test-runner duration before changing game behavior or relaxing tests.
+3. Keep the G7 ledger IN PROGRESS until a stable exact-head Android emulator pass and a declared supported physical-device journey exist. Emulator acceptance is not physical-device acceptance.
+4. Resume the requested top-down pixel-art tile/sprite world renderer after this mobile reliability gate is stable. The current renderer remains painterly/vector; this run did not claim to deliver the RuneScape/Endless Online visual direction.
+5. Keep Founder Gate authentication/key custody blocked from consequential use until independently established Founder identity, key custody, and live authorization checks are evidenced.
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder decision, physical-device test, or canonical game-state mutation occurred.

@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -322,6 +323,19 @@ public final class MainActivity extends Activity {
         if (webView != null) webView.onResume();
     }
 
+    static void destroyWebView(WebView view) {
+        if (view == null) return;
+        view.stopLoading();
+        view.setWebViewClient(new WebViewClient());
+        if (view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        if (view.getParent() != null) {
+            throw new IllegalStateException("WebView must be detached before destroy.");
+        }
+        view.destroy();
+    }
+
     @Override
     protected void onDestroy() {
         if (nativeWorldFiles != null) {
@@ -329,10 +343,9 @@ public final class MainActivity extends Activity {
             nativeWorldFiles = null;
         }
         if (webView != null) {
-            webView.stopLoading();
-            webView.setWebViewClient(new WebViewClient());
-            webView.destroy();
+            WebView current = webView;
             webView = null;
+            destroyWebView(current);
         }
         super.onDestroy();
     }
