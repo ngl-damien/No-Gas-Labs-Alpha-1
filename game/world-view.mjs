@@ -562,7 +562,7 @@ export class WorldView {
     this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.decisionDocketProjection=null;this.decisionDocketStale=false;this.decisionDocketUnverified=false;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.collaboratorResponseObjects=projectCollaboratorResponseWorldObjects(this.world);this.institutionRecordObjects=[];this.institutionRecordKernelComplete=false;this.institutionRecordKernelPresent=false;this.institutionRecordMalformed=0;this.institutionRecordRejected=0;this.institutionRecordOverflow=0;this.institutionRecordUnmapped=0;this.institutionRecordTruncated=0;this.questMarker=null;this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.discoveryScope=null;this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;this.paused=true;this.animation=null;this.animationEpoch=0;this.destroyed=false;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>{const released=this.keys.delete(e.key.toLowerCase());if(released&&this.keys.size===0&&!this.input.x&&!this.input.y&&!this.route.length){this.moving=false;this.callbacks.onPosition(this.getPlayer());}};this.onBlur=()=>{const active=this.moving||this.keys.size>0||this.input.x!==0||this.input.y!==0||this.route.length>0;this.keys.clear();this.input={x:0,y:0};this.cancelRoute();this.moving=false;if(active)this.callbacks.onPosition(this.getPlayer());};
-    this.onVisibilityChange=()=>this.syncLifecycle();this.onModalMutation=()=>this.syncLifecycle();
+    this.onVisibilityChange=()=>this.syncLifecycle();this.onLifecycleMutation=()=>this.syncLifecycle();
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};const marker=this.questMarker;if(marker&&Math.hypot(target.x-marker.x,target.y-marker.y)<=26){this.goTo(marker.targetId,marker.targetType);canvas.focus({preventScroll:true});return;}this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();
     this.scheduleFrame=(epoch=this.animationEpoch)=>{
@@ -584,12 +584,14 @@ export class WorldView {
     };
     document.addEventListener?.('visibilitychange',this.onVisibilityChange);
     if(typeof MutationObserver==='function'){
-      this.modalObserver=new MutationObserver(this.onModalMutation);
+      this.modalObserver=new MutationObserver(this.onLifecycleMutation);
       this.modalObserver.observe(document.body,{attributes:true,attributeFilter:['class']});
+      const doorway=document.getElementById?.('doorway');
+      if(doorway)this.modalObserver.observe(doorway,{attributes:true,attributeFilter:['hidden']});
     }
     this.syncLifecycle();
   }
-  syncLifecycle(){const hidden=Boolean(document.hidden),modalOpen=Boolean(document.body?.classList?.contains('modal-open'));if(hidden||modalOpen)this.pause();else this.resume();}
+  syncLifecycle(){const hidden=Boolean(document.hidden),modalOpen=Boolean(document.body?.classList?.contains('modal-open')),doorwayVisible=document.getElementById?.('doorway')?.hidden===false;if(hidden||modalOpen||doorwayVisible)this.pause();else this.resume();}
   pause(){if(this.destroyed||this.paused)return;this.paused=true;this.animationEpoch+=1;if(this.animation!==null){cancelAnimationFrame(this.animation);this.animation=null;}this.onBlur();}
   resume(){if(this.destroyed||!this.paused||document.hidden||document.body?.classList?.contains('modal-open'))return;this.paused=false;this.previous=undefined;this.scheduleFrame();}
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
