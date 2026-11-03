@@ -271,6 +271,24 @@ test('read-only inspection reports an active recovery lease as blocked', async t
   assert.equal(await exists(value.recoveryLeasePath), true);
 });
 
+test('public inspection cannot bypass a present recovery lease with caller options', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath, { ignoreRecoveryLease: true });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-lease-present-manual-inspection-required');
+  assert.equal(result.recoveryLease.owner.processProbe, 'possibly-alive');
+  assert.equal(result.recoveryLeaseSafeToRemove, false);
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+});
+
 test('read-only inspection reports an absent recovery-lease PID but never authorizes cleanup', async t => {
   const value = await fixture(t);
   await writeFile(value.recoveryLeasePath, canonical({
