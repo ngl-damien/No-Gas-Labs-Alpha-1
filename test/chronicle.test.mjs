@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { sourceObservationRequestMaterial } from "../game/research-records.mjs";
 
 function fixture() {
   const world = {
@@ -667,4 +669,47 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /untrusted text/i);
+});
+
+test("Source Observation notes remain visible as user-bound, explicitly unverified Chronicle objects", () => {
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  const creationId = "chronicle-source-observatory";
+  const at = "2026-10-26T10:00:00.000Z";
+  const note = {
+    claim: "The model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  const digest = createHash("sha256").update(sourceObservationRequestMaterial({
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+  })).digest("hex");
+  const world = {
+    creations: [{
+      id: creationId, kind: "observatory", title: "Source Observatory",
+      version: 1, publishedAt: at, versions: []
+    }],
+    events: [
+      { id: "publish-source", type: "publish", creationId, version: 1, actor, at },
+      {
+        id: "source-note", type: "source-observation-recorded", actor,
+        at: "2026-10-26T10:01:00.000Z",
+        observationId: "source-observation-" + digest, creationId, version: 1, ...note,
+        originSchema: "ngl.source-observatory.v2", bindingMode: "USER_SELECTED",
+        sourceRetrieval: "NOT_PERFORMED", independentVerification: "NOT_PERFORMED",
+        modelAssertions: "LEADS_ONLY", execution: "NOT_EXECUTED",
+        normalizedRecordDigest: digest
+      }
+    ],
+    reports: [], contributions: [], discoveries: []
+  };
+  const entry = projectChronicle({ world, kernel: { events: [], works: {} } }).entries
+    .find(item => item.id === "world:source-note");
+  assert.equal(entry.category, "RESEARCH NOTE");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /Model assertions are leads only, not evidence/);
+  assert.match(entry.warning, /export origin is not cryptographically established/);
+  assert.match(entry.detail, /direct inspection finds it closed/);
 });

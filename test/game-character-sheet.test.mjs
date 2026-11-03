@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -742,4 +744,42 @@ test('Restorer requires one unique earlier repair event joined to the published 
   const rejected = projectCharacter(ambiguous, founder);
   assert.equal(rejected.skills.find(skill => skill.id === 'restorer').count, 0,
     'two earlier repairs for the same base version make the method-to-publication join ambiguous');
+});
+
+test('Source Recorder skill counts only the actor\'s uniquely linked notes and grants no XP', () => {
+  const creationId = 'source-observatory-character';
+  const creation = publishedCreation(creationId, [t1]);
+  const note = {
+    claim: 'A model says the bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'Model output only; no source retrieved.',
+    falsifier: 'A direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the bridge.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observation = event('source-observation-event', 'source-observation-recorded', founder, t2, {
+    observationId: 'source-observation-' + digest,
+    creationId, version: 1, ...note,
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  });
+  const world = {
+    xp: 999,
+    creations: [creation],
+    events: [publication('publish-source-observatory', founder, creationId, 1, t1), observation]
+  };
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-recorder').count, 0);
 });
