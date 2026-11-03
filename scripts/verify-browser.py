@@ -68,6 +68,7 @@ def basic(page,url,out,label):
     page.goto(url,wait_until='networkidle')
     page.locator('#start-private').click()
     page.locator('#world').wait_for(state='visible')
+    assert page.locator('#world').get_attribute('data-world-renderer') == 'pixel-v1', 'The active world must use the top-down pixel renderer'
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
     character=page.locator('#character-button')
     expect(character).to_be_visible()
@@ -217,6 +218,7 @@ def phone_toolbar_layout(browser,url,width):
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
+    assert page.locator('#world').get_attribute('data-world-renderer') == 'pixel-v1', 'The active world must use the top-down pixel renderer'
         toolbar=page.locator('.tool-buttons')
         expect(toolbar).to_be_visible()
         buttons=toolbar.locator(':scope > button')
@@ -248,6 +250,7 @@ def institutional_locations(browser,url,out):
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
+    assert page.locator('#world').get_attribute('data-world-renderer') == 'pixel-v1', 'The active world must use the top-down pixel renderer'
         cases=[
             ('The Relay','Carry the question.','Draft a portable request →'),
             ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
