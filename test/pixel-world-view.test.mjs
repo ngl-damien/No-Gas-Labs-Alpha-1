@@ -419,6 +419,95 @@ test('map label placement clamps visible panels and hides fully off-screen label
   assert.equal(reads, 0);
 });
 
+test('map labels move around reserved HUD panels and fail closed on unsafe obstacle geometry', () => {
+  const camera = { x: 0, y: 0 };
+  const overlay = { left: 100, top: 90, right: 220, bottom: 115 };
+  const moved = projectMapLabelPosition(0, 0, 320, 240, camera, 1, 80, 20, 8, [overlay]);
+  assert.ok(moved);
+  const rect = {
+    left: 160 + moved.x - 40,
+    top: 120 + moved.y - 20,
+    right: 160 + moved.x + 40,
+    bottom: 120 + moved.y
+  };
+  assert.equal(rect.top, 124, 'the preferred panel moves below the quest-card obstruction');
+  assert.ok(rect.top >= overlay.bottom + 4 || rect.bottom <= overlay.top - 4 ||
+    rect.left >= overlay.right + 4 || rect.right <= overlay.left - 4);
+
+  assert.equal(projectMapLabelPosition(
+    0, 0, 320, 240, camera, 1, 80, 20, 8,
+    [{ left: 0, top: 0, right: 320, bottom: 240 }]
+  ), null, 'a panel is suppressed when every safe placement is obscured');
+
+  let reads = 0;
+  const hostile = Object.defineProperty({}, 'left', {
+    enumerable: true,
+    get() { reads += 1; return 100; }
+  });
+  assert.equal(projectMapLabelPosition(0, 0, 320, 240, camera, 1, 80, 20, 8, [hostile]), null);
+  assert.equal(reads, 0, 'untrusted overlay accessors are never invoked');
+});
+
+test('map renderer measures visible HUD overlays relative to its canvas', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const selectors = [];
+  const elements = [
+    { getBoundingClientRect: () => ({ left: 30, top: 40, right: 200, bottom: 160 }) },
+    { getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0 }) },
+    { getBoundingClientRect: () => ({ left: 500, top: 30, right: 600, bottom: 90 }) }
+  ];
+  globalThis.document = {
+    querySelectorAll(selector) {
+      selectors.push(selector);
+      return elements;
+    }
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { getBoundingClientRect: () => ({ left: 10, top: 20 }) };
+  view.width = 390;
+  view.height = 844;
+  try {
+    const overlays = view.measureMapOverlayRects();
+    assert.deepEqual(overlays, [{ left: 20, top: 20, right: 190, bottom: 140 }]);
+    assert.ok(Object.isFrozen(overlays));
+    assert.ok(Object.isFrozen(overlays[0]));
+    assert.match(selectors[0], /#quest-card/);
+    assert.match(selectors[0], /\.world-tools/);
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+});
+
+test('drawMapLabel reserves earlier panels so stacked institutional labels do not collide', () => {
+  const calls = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.width = 320;
+  view.height = 240;
+  view.zoom = 1;
+  view.camera = { x: 0, y: 0 };
+  view.mapAvoidRects = [];
+  view.ctx = {
+    font: '',
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    textAlign: 'center',
+    measureText: value => ({ width: Array.from(value).length * 6 }),
+    fillRect: (...args) => calls.push({ type: 'fill', args }),
+    strokeRect: (...args) => calls.push({ type: 'stroke', args })
+  };
+  view.text = (value, x, y) => calls.push({ type: 'text', value, x, y });
+
+  view.drawMapLabel('FIRST LABEL', 0, 0, 11);
+  view.drawMapLabel('SECOND LABEL', 0, 0, 11);
+  assert.equal(view.mapAvoidRects.length, 2);
+  const [first, second] = view.mapAvoidRects;
+  assert.ok(first.bottom + 4 <= second.top || second.bottom + 4 <= first.top ||
+    first.right + 4 <= second.left || second.right + 4 <= first.left);
+  assert.equal(calls.filter(call => call.type === 'fill').length, 2);
+});
+
 test('drawMapLabel clamps a partially visible panel and omits a wholly off-screen panel', () => {
   const calls = [];
   const view = Object.create(PixelWorldView.prototype);
