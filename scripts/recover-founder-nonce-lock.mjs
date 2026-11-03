@@ -532,6 +532,10 @@ export async function recoverFounderNonceLock({
       throw failure('FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
     }
 
+    const finalPendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
+    if (finalPendingTemporaryFiles.length !== 0) {
+      throw failure('FOUNDER_NONCE_RECOVERY_STATE_CHANGED', 'temporary nonce files appeared before owner-lock removal');
+    }
     await unlink(final.lockPath);
     try {
       await assertDirectoryIdentity(directory, directoryIdentity);
