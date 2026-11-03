@@ -318,15 +318,15 @@ test("trust-anchor loader rejects a path swapped to a symlink during descriptor 
   writeFileSync(trustPath, JSON.stringify(anchorFor(keyPair())), { mode: 0o600 });
   writeFileSync(replacementPath, JSON.stringify(anchorFor(keyPair())), { mode: 0o600 });
 
-  const originalReadFileSync = fs.readFileSync;
+  const originalReadSync = fs.readSync;
   let swapped = false;
-  fs.readFileSync = (target, ...args) => {
+  fs.readSync = (descriptor, buffer, offset, length, position) => {
     if (!swapped) {
       swapped = true;
       unlinkSync(trustPath);
       fs.symlinkSync(replacementPath, trustPath);
     }
-    return originalReadFileSync(target, ...args);
+    return originalReadSync(descriptor, buffer, offset, length, position);
   };
   syncBuiltinESMExports();
   try {
@@ -335,7 +335,7 @@ test("trust-anchor loader rejects a path swapped to a symlink during descriptor 
     assert.equal(trust.enrolled, false);
     assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
   } finally {
-    fs.readFileSync = originalReadFileSync;
+    fs.readSync = originalReadSync;
     syncBuiltinESMExports();
     rmSync(dir, { recursive: true, force: true });
   }
