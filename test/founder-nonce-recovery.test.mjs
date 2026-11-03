@@ -546,7 +546,7 @@ test('read-only inspection blocks a temporary nonce file created during its snap
     "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
     "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
     "console.log(JSON.stringify({ status: result.status, reason: result.reason, pendingTemporaryFiles: result.pendingTemporaryFiles }));"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
