@@ -31,4 +31,5 @@ jobs:
           name: agent-preflight-${{ github.run_id }}-${{ github.run_attempt }}
           path: .runtime/agent-preflight-ci-*.json
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14

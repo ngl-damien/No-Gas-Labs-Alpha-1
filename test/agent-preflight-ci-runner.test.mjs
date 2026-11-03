@@ -77,5 +77,6 @@ test('Verify workflow preserves the unique preflight receipt even when verificat
   assert.match(workflow, /uses: actions\/upload-artifact@v4/);
   assert.match(workflow, /path: \.runtime\/agent-preflight-ci-\*\.json/);
   assert.match(workflow, /if-no-files-found: warn/);
+  assert.match(workflow, /include-hidden-files: true/);
   assert.match(workflow, /retention-days: 14/);
 });
