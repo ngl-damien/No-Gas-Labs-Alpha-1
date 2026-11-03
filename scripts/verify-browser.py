@@ -689,6 +689,11 @@ def shared(browser,url,data,out):
         challenge_details.locator('select').select_option('missing-evidence')
         challenge_details.locator('textarea').fill(challenge_text)
         challenge_details.get_by_role('button',name='Preserve dissent',exact=True).click()
+        # The local receipt is written before the network outcome is known. Wait
+        # for the simulated 503 toast so the server-side route.fetch has finished
+        # committing before the independent state read below.
+        expect(a.locator('#toast')).to_contain_text('Challenge response lost after commit')
+        assert lost_challenge['remaining'] is False, 'The simulated response loss must finish after the server commit'
         pending_challenge_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
         assert pending_challenge_raw, 'A lost response must preserve the exact challenge receipt in the Relay queue'
         pending_challenge=json.loads(pending_challenge_raw)
