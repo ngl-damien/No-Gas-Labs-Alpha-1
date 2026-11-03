@@ -187,6 +187,7 @@ def basic(page,url,out,label):
     expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
     page.locator('[data-source-observation-import-confirm]').click()
     expect(page.locator('[data-source-observation-card]')).to_have_count(1)
+    close_sheet(page)
     page.locator('#character-button').click()
     expect(page.locator('#sheet')).to_contain_text('Source Recorder')
     close_sheet(page)
