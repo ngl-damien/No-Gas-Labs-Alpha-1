@@ -201,3 +201,26 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test('CI preflight scopes Founder verification, live Gate regressions and unique receipts', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  assert.match(command, /node scripts\\/run-agent-preflight-ci\\.mjs/);
+  for (const path of [
+    'docs/operations/LATEST_CHECKPOINT.md',
+    'authority/index.html',
+    'src/authority/decision.js',
+    'test/decision-chamber.test.js',
+    'test/decision-context-binding.test.js',
+    'test/decision-world-integration.test.js',
+    'game/server.mjs',
+    'src/institution/decisions.mjs',
+    'test/game-decisions.test.mjs',
+    'scripts/run-agent-preflight-ci.mjs',
+    'test/agent-preflight-ci-runner.test.mjs'
+  ]) {
+    assert.ok(command.includes('--path ' + path), 'missing preflight target: ' + path);
+  }
+  assert.match(command, /--checkpoint docs\\/operations\\/LATEST_CHECKPOINT\\.md/);
+  assert.doesNotMatch(command, /--receipt/);
+});
