@@ -619,11 +619,11 @@ function makeLifecycleView(t, { entryVisible = false } = {}) {
       constructor(callback) {
         this.callback = callback;
         this.disconnected = false;
+        this.targets = [];
         mutationObservers.push(this);
       }
       observe(target, options) {
-        this.target = target;
-        this.options = options;
+        this.targets.push({ target, options });
       }
       disconnect() {
         this.disconnected = true;
@@ -660,18 +660,23 @@ function makeLifecycleView(t, { entryVisible = false } = {}) {
     positions,
     frames,
     document,
+    doorway,
     documentListeners,
     mutationObservers,
     setModalOpen(value) {
       modalOpen = value;
       for (const observer of mutationObservers) {
-        if (!observer.disconnected) observer.callback();
+        const observesBodyClass = observer.targets.some(({ target, options }) =>
+          target === document.body && options.attributeFilter?.includes('class'));
+        if (!observer.disconnected && observesBodyClass) observer.callback();
       }
     },
     setDoorwayVisible(value) {
       doorway.hidden = !value;
       for (const observer of mutationObservers) {
-        if (!observer.disconnected) observer.callback();
+        const observesDoorwayHidden = observer.targets.some(({ target, options }) =>
+          target === doorway && options.attributeFilter?.includes('hidden'));
+        if (!observer.disconnected && observesDoorwayHidden) observer.callback();
       }
     },
     dispatchVisibility() {
@@ -685,6 +690,9 @@ test('world rendering stays idle behind the entry doorway until the player enter
   const { view, frames } = fixture;
 
   assert.equal(view.paused, true);
+  assert.ok(fixture.mutationObservers.some(observer => observer.targets.some(({ target, options }) =>
+    target === fixture.doorway && options.attributeFilter?.includes('hidden'))),
+  'the lifecycle observer must watch the entry doorway hidden attribute');
   assert.equal(frames.size, 0, 'the entry screen must not run a hidden world animation loop');
 
   fixture.setDoorwayVisible(false);
