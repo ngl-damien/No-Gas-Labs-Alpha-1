@@ -166,13 +166,14 @@ function guildNpcAccessibilityText(readiness) {
   const descriptions = GUILD_NPCS.map(npc => {
     const entry = byRole.get(npc.roleId);
     if (!entry) return npc.name + ': packet state unavailable.';
+    const countPhrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
     const packetState = entry.status === 'ready'
-      ? `a source-bound packet is available with ${entry.inputCount} retained event references`
+      ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}`
       : entry.status === 'partial'
-        ? `a source-bound packet is available with ${entry.inputCount} retained event references, but source snapshot identity is incomplete`
+        ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}, but source snapshot identity is incomplete`
         : `no bounded packet is currently available${entry.reason ? ': ' + entry.reason : ''}`;
     const omitted = entry.omittedCount > 0
-      ? ` ${entry.omittedCount} additional eligible event references are omitted from this bounded packet.`
+      ? ` ${countPhrase(entry.omittedCount, 'additional eligible event reference is omitted', 'additional eligible event references are omitted')} from this bounded packet.`
       : '';
     return `${npc.name}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
   });

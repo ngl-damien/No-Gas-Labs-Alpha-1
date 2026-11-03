@@ -585,7 +585,7 @@ test('pixel map exposes bounded Guild Hall packet status in its accessible descr
 
   assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified/);
   assert.match(attributes['aria-label'], /Hostile Archivist:.*source-bound packet is available with 3 retained event references/);
-  assert.match(attributes['aria-label'], /Polymath Tutor:.*source-bound packet is available with 1 retained event references/);
+  assert.match(attributes['aria-label'], /Polymath Tutor:.*source-bound packet is available with 1 retained event reference/);
   assert.match(attributes['aria-label'], /not autonomous AI agents/);
 
   const labels = [];
