@@ -10,6 +10,13 @@ test('hourly enforcer has read-only repository permissions and a bounded job', (
   assert.match(workflow, /timeout-minutes:\s*5/);
 });
 
+test('hourly enforcer requires every preflight target to exist before invoking the validator', () => {
+  assert.ok(workflow.includes('for target in \\'));
+  assert.ok(workflow.includes('if ! test -f "$target"; then'));
+  assert.ok(workflow.includes('missing preflight target: $target'));
+  assert.ok(workflow.includes('exit 1'));
+});
+
 test('hourly enforcer preflights every governed input with a unique receipt', () => {
   for (const path of [
     '.github/workflows/hourly-agents-enforcer.yml',
