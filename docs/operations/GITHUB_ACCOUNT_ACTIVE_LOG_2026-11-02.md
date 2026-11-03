@@ -31,7 +31,7 @@ All repository names and status values below came from the connected account's r
 | Default branch | All 93 use `main` | No default-branch naming variance; does not prove branch synchronization |
 | Permissions | All 93 return full admin/maintain/push/pull/triage | Broad control plane; no permission changes made |
 | Code search | Only `AI-BI-Intelligence-node-gate` and `evidenceos` indexed | Search misses in the other 91 do not prove code absence |
-| Archived lineage | 27 archived repositories use the `featherstone-` prefix | Possible historical mirrors; compare ancestry/tree hashes before calling them duplicates |
+| Archived lineage | All 28 archived repositories use the `featherstone-` prefix | Possible historical mirrors; compare ancestry/tree hashes before calling them duplicates |
 | Canonical status | Alpha-1 is the stated canonical executable nucleus; 92 other repos remain in account inventory | Ownership is not canonicality; classify and selectively assimilate |
 
 ## Complete repository inventory
@@ -186,7 +186,7 @@ Before inspection, root `AGENTS.md` and the complete canonical `docs/operations/
 
 ## Not yet audited
 
-All PR diffs/reviews beyond sampled titles; closed/merged PR history; every branch and divergence; commit freshness across all repositories; workflow run health; rulesets/branch protection; dependency/security alerts; secret scanning; forks; releases/deployments; package registries; and repository contents/instructions outside Alpha-1. No settings, secrets, permissions, branches, or repository contents were changed by this audit except this proposed documentation addition.
+All PR diffs/reviews beyond sampled titles; closed/merged PR history; every branch and divergence; commit freshness across all repositories; workflow run health; rulesets/branch protection; dependency/security alerts; secret scanning; forks; releases/deployments; package registries; and repository contents/instructions outside Alpha-1. No settings, secrets, permissions, or existing repository contents were changed by this audit except this proposed documentation addition.
 
 ## Next steps
 
