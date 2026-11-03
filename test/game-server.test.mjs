@@ -1252,6 +1252,9 @@ test('Source Observatory HTTP observations are hash-bound, actor-attributed, rep
   assert.equal(afterReplay.body.world.revision, revision);
   assert.equal(afterReplay.body.world.xp, before.body.world.xp);
   assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  const badDigestId = 'source-observation-' + '0'.repeat(64);
+  const badDigest = await founder.request('/api/action', { ...action, requestId: badDigestId, observationId: badDigestId });
+  assert.equal(badDigest.response.status, 400);
   const mismatch = await founder.request('/api/action', { ...action, requestId: 'source-observation-' + '0'.repeat(64) });
   assert.equal(mismatch.response.status, 400);
   const finalState = await founder.request('/api/state');
