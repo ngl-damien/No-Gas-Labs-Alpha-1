@@ -12,8 +12,9 @@ const LOCK_SCHEMA = 'ngl.ledger-lock.v1';
 const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_NONCE_COUNT = 100_000;
 const TEMPORARY_NONCE_FILE = /^\.founder-nonce-[0-9a-f-]{36}\.tmp$/;
+const RECOVERY_WARNING = 'PID probes are advisory only. PID reuse, namespaces, permissions, and races can mislead; use only after confirming the owner is stopped on this same host/PID namespace. This tool never grants Founder authority.';
 
-function failure(code, detail = '') {
+function failure(code, detail = '')
   const error = new Error(detail ? code + ':' + detail : code);
   error.code = code;
   return error;
@@ -229,16 +230,39 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
   const lockPath = join(directory, '.founder-nonce.lock');
   const lock = await inspectWriterLock(lockPath);
+  const pendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
+  const ledger = await readNonceLedger(absoluteLedgerPath);
+  await assertDirectoryIdentity(directory, directoryIdentity);
 
   if (lock.status === 'missing') {
-    return {
-      status: 'no-lock',
+    const finalLock = await inspectWriterLock(lockPath);
+    if (finalLock.status !== 'missing') {
+      return {
+        status: 'blocked',
+        reason: 'lock-appeared-during-recovery-inspection',
+        lockPath,
+        safeToRemove: false,
+        authorityGranted: false
+      };
+    }
+    const common = {
       lockPath,
       ledgerPath: absoluteLedgerPath,
+      ledger,
+      pendingTemporaryFiles,
       safeToRemove: false,
-      requiresHumanConfirmation: false
+      requiresHumanConfirmation: false,
+      pidProbeAdvisoryOnly: true,
+      ledgerModified: false,
+      authorityGranted: false,
+      warning: RECOVERY_WARNING
     };
+    if (pendingTemporaryFiles.length) {
+      return { ...common, status: 'manual-inspection-required', reason: 'orphaned-temporary-files-remain-without-an-owner-lock' };
+    }
+    return { ...common, status: 'no-lock' };
   }
+
   if (lock.status !== 'present' || lock.format !== 'owner-metadata' ||
       lock.owner?.schema !== LOCK_SCHEMA) {
     return {
@@ -248,7 +272,8 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
       lockFormat: lock.format ?? null,
       lockReason: lock.reason ?? null,
       lockPath,
-      safeToRemove: false
+      safeToRemove: false,
+      authorityGranted: false
     };
   }
   if (lock.owner.processProbe !== 'not-found') {
@@ -257,13 +282,10 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
       reason: 'owner-process-not-proven-absent',
       owner: lock.owner,
       lockPath,
-      safeToRemove: false
+      safeToRemove: false,
+      authorityGranted: false
     };
   }
-
-  const pendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
-  const ledger = await readNonceLedger(absoluteLedgerPath);
-  await assertDirectoryIdentity(directory, directoryIdentity);
 
   const finalLock = await inspectWriterLock(lockPath);
   if (!sameLockObservation(lock, finalLock)) {
@@ -271,7 +293,8 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
       status: 'blocked',
       reason: 'lock-changed-during-recovery-inspection',
       lockPath,
-      safeToRemove: false
+      safeToRemove: false,
+      authorityGranted: false
     };
   }
 
@@ -285,7 +308,9 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
     safeToRemove: false,
     requiresHumanConfirmation: true,
     pidProbeAdvisoryOnly: true,
-    ledgerModified: false
+    ledgerModified: false,
+    authorityGranted: false,
+    warning: RECOVERY_WARNING
   };
   if (pendingTemporaryFiles.length) {
     return { ...common, status: 'manual-inspection-required', reason: 'pre-rename-or-orphaned-temporary-files-must-be-reviewed' };
