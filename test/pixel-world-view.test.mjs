@@ -920,10 +920,11 @@ test('accessible world-collaborator controls expose bounded approach/talk action
   }
 
   const body = new FakeElement('body');
+  const playUi = { hidden: true };
   const document = {
     body,
     createElement: tagName => new FakeElement(tagName),
-    getElementById: () => null,
+    getElementById: id => id === 'play-ui' ? playUi : null,
     querySelectorAll: () => body.children
   };
 
@@ -959,39 +960,59 @@ test('accessible world-collaborator controls expose bounded approach/talk action
     try {
       const group = view.npcControlGroup;
       assert.ok(group, 'the renderer should install an accessible collaborator group');
-      assert.equal(group.getAttribute?.('role') || group.attributes.role, 'group');
+      assert.equal(group.attributes.role, 'group');
       assert.equal(group.attributes['aria-label'], 'World collaborators');
       assert.equal(group.children.length, GUILD_NPCS.length);
       assert.equal(group.className, 'ngl-world-collaborator-controls');
+      assert.equal(group.hidden, true, 'NPC controls are unavailable before the playable world is entered');
 
-      const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-      const button = view.npcControlButtons.get(npc.roleId);
-      assert.ok(button);
-      assert.equal(button.dataset.guildNpcControl, npc.roleId);
-      assert.equal(button.dataset.guildNpcAction, 'approach');
-      assert.ok(Number.parseFloat(button.style.minWidth) >= 44);
-      assert.ok(Number.parseFloat(button.style.minHeight) >= 44);
-      assert.match(button.attributes['aria-label'], /Hostile Archivist/);
-      assert.match(button.attributes['aria-label'], /advisory only|advisory entry point/i);
+      for (const roleNpc of GUILD_NPCS) {
+        const roleButton = view.npcControlButtons.get(roleNpc.roleId);
+        assert.ok(roleButton, 'each bounded role needs a control');
+        assert.equal(roleButton.dataset.guildNpcControl, roleNpc.roleId);
+        assert.ok(Number.parseFloat(roleButton.style.minWidth) >= 44);
+        assert.ok(Number.parseFloat(roleButton.style.minHeight) >= 44);
+        assert.ok(roleButton.attributes['aria-label'].includes(roleNpc.name));
+        assert.ok(roleButton.attributes['aria-label'].includes(roleNpc.objective));
+        assert.equal(roleButton.disabled, true, 'controls stay disabled while the entry screen is active');
+      }
+
+      playUi.hidden = false;
+      view.player = { x: 230, y: 220 };
+      view.updateNpcControls(false);
+      assert.equal(group.hidden, false, 'entering the playable world enables collaborator navigation');
 
       const worldBefore = structuredClone(view.world);
-      view.player = { x: 230, y: 220 };
-      button.dispatch('click');
-      assert.ok(view.route.length > 0, 'the accessible action should route toward the exact NPC');
-      assert.equal(interaction, null, 'approach is not an interaction or canonical event');
-
-      view.player = { x: npc.x, y: npc.y + 10 };
-      view.route = [];
-      view.updateNpcControls(false);
-      assert.equal(button.dataset.guildNpcAction, 'talk');
-      assert.match(button.attributes['aria-label'], /^Talk to Hostile Archivist/);
-      button.dispatch('click');
-      assert.deepEqual(interaction, {
-        type: 'institution', id: npc.routeLocation,
-        npcRoleId: npc.roleId, npcName: npc.name
-      });
+      for (const npc of GUILD_NPCS) {
+        const button = view.npcControlButtons.get(npc.roleId);
+        const distance = Math.hypot(npc.x - view.player.x, npc.y + 10 - view.player.y);
+        if (distance >= 160) {
+          assert.equal(button.dataset.guildNpcAction, 'approach');
+          assert.match(button.attributes['aria-label'], /^Approach /);
+          button.dispatch('click');
+          assert.ok(view.route.length > 0, 'the accessible action should route toward the exact distant NPC');
+          assert.equal(interaction, null, 'approach is not an interaction or canonical event');
+          view.player = { x: npc.x, y: npc.y + 10 };
+          view.route = [];
+          view.target = null;
+          view.updateNpcControls(false);
+        }
+        assert.equal(button.dataset.guildNpcAction, 'talk');
+        assert.match(button.attributes['aria-label'], /^Talk to /);
+        button.dispatch('click');
+        assert.deepEqual(interaction, {
+          type: 'institution', id: npc.routeLocation,
+          npcRoleId: npc.roleId, npcName: npc.name
+        });
+        interaction = null;
+        view.player = { x: 230, y: 220 };
+        view.route = [];
+        view.target = null;
+        view.updateNpcControls(false);
+      }
       assert.deepEqual(view.world, worldBefore, 'approach and talk leave the retained world unchanged');
 
+      const archivistButton = view.npcControlButtons.get('archivist');
       group.dispatch('focusin');
       assert.equal(view.npcControlsVisible, true);
       assert.equal(group.style.clipPath, 'none', 'keyboard focus reveals the accessible control group');
@@ -1002,10 +1023,15 @@ test('accessible world-collaborator controls expose bounded approach/talk action
 
       view.updateNpcControls(true);
       assert.equal(group.hidden, true, 'modal sheets suppress the out-of-modal collaborator controls');
-      assert.equal(button.disabled, true);
+      assert.equal(archivistButton.disabled, true);
       view.updateNpcControls(false);
       assert.equal(group.hidden, false);
-      assert.equal(button.disabled, false);
+      assert.equal(archivistButton.disabled, false);
+
+      playUi.hidden = true;
+      view.updateNpcControls(false);
+      assert.equal(group.hidden, true, 'leaving the playable world hides the collaborator controls again');
+      assert.equal(archivistButton.disabled, true);
     } finally {
       view.destroy();
       assert.equal(body.children.length, 0, 'destroy removes the auxiliary accessibility controls');
