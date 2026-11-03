@@ -18,6 +18,7 @@ import {
   projectMapLabelPosition,
   projectQuestCompassIndicator,
   projectGuildNpcReadiness,
+  projectGuildNpcPointerTarget,
   PixelWorldView,
   GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
@@ -620,6 +621,205 @@ test('unregistered Guild Hall NPC targets fail closed without opening an institu
   assert.equal(interactions, 0);
 });
 
+
+test('touch pointer projection resolves each exact NPC sprite and rejects malformed coordinates', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  for (const npc of GUILD_NPCS) {
+    const target = projectGuildNpcPointerTarget(
+      { x: width / 2, y: height / 2 },
+      { x: npc.x, y: npc.y + 10 },
+      zoom, width, height
+    );
+    assert.deepEqual(target, {
+      id: npc.id, roleId: npc.roleId, name: npc.name, routeLocation: npc.routeLocation
+    });
+    assert.ok(Object.isFrozen(target));
+  }
+  assert.equal(projectGuildNpcPointerTarget({ x: -1, y: 422 }, { x: 0, y: 0 }, 1, width, height), null);
+  assert.equal(projectGuildNpcPointerTarget({ x: 195, y: 422 }, { x: 0, y: 0 }, 0, width, height), null);
+  assert.equal(projectGuildNpcPointerTarget(
+    { x: width / 2 + 1, y: height / 2 }, { x: Number.MAX_VALUE, y: 0 },
+    Number.MIN_VALUE, width, height
+  ), null);
+
+  let getterCalls = 0;
+  const hostilePoint = Object.defineProperty({}, 'x', {
+    get() { getterCalls += 1; return width / 2; }
+  });
+  assert.equal(projectGuildNpcPointerTarget(hostilePoint, { x: 0, y: 0 }, 1, width, height), null);
+  assert.equal(getterCalls, 0, 'pointer projections must not invoke accessor-backed coordinates');
+});
+
+test('touching a distant NPC routes toward it, then a second tap opens its owning institution', () => {
+  const savedGlobals = new Map();
+  const globalNames = [
+    'addEventListener', 'removeEventListener', 'requestAnimationFrame',
+    'cancelAnimationFrame', 'ResizeObserver', 'devicePixelRatio'
+  ];
+  for (const name of globalNames) savedGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+
+  const restoreGlobals = () => {
+    for (const name of globalNames) {
+      const descriptor = savedGlobals.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  };
+
+  try {
+    globalThis.addEventListener = () => {};
+    globalThis.removeEventListener = () => {};
+    let animationId = 0;
+    globalThis.requestAnimationFrame = () => ++animationId;
+    globalThis.cancelAnimationFrame = () => {};
+    globalThis.ResizeObserver = class {
+      constructor(callback) { this.callback = callback; }
+      observe() {}
+      disconnect() {}
+    };
+    globalThis.devicePixelRatio = 1;
+
+    const listeners = new Map();
+    const attributes = {};
+    let focusCalls = 0, prevented = 0, interaction = null;
+    const canvas = {
+      dataset: {},
+      style: {},
+      width: 0,
+      height: 0,
+      getContext: () => ({}),
+      getBoundingClientRect: () => ({ left: 10, top: 20, width: 390, height: 844 }),
+      addEventListener(type, handler) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(handler);
+      },
+      removeEventListener(type, handler) { listeners.get(type)?.delete(handler); },
+      focus() { focusCalls += 1; },
+      setAttribute(name, value) { attributes[name] = value; },
+      removeAttribute(name) { delete attributes[name]; }
+    };
+    const view = new PixelWorldView(canvas, { onInteract: value => { interaction = value; } });
+    try {
+      const pointerHandlers = listeners.get('pointerdown');
+      assert.equal(pointerHandlers?.size, 1, 'the pixel renderer replaces, rather than stacks on, the ground-only pointer handler');
+      assert.ok(pointerHandlers.has(view.onPointer));
+
+      const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
+      view.camera = { x: npc.x, y: npc.y + 10 };
+      view.player = { x: 230, y: 220 };
+      const event = {
+        clientX: 205,
+        clientY: 442,
+        preventDefault() { prevented += 1; }
+      };
+      const pointerDown = [...pointerHandlers][0];
+      const worldBefore = structuredClone(view.world);
+
+      pointerDown(event);
+      assert.ok(view.route.length > 0, 'a distant NPC tap should route the player toward the exact NPC');
+      assert.equal(view.target, null, 'arrival still requires an explicit second interaction');
+      assert.equal(interaction, null, 'approach is not a conversation or canonical event');
+      assert.equal(focusCalls, 1);
+
+      view.player = { x: npc.x, y: npc.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: npc.routeLocation,
+        npcRoleId: npc.roleId,
+        npcName: npc.name
+      });
+      assert.equal(focusCalls, 1, 'opening the institution must not have canvas focus stolen from its sheet');
+      assert.equal(prevented, 2);
+      assert.deepEqual(view.world, worldBefore, 'approach and conversation leave revision, events, XP, and world state unchanged');
+    } finally {
+      view.destroy();
+      assert.equal(listeners.get('pointerdown')?.size, 0, 'destroy removes the touch-aware pointer handler');
+    }
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('ordinary ground taps continue through the inherited movement handler', () => {
+  const npc = GUILD_NPCS[0];
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  view.camera = { x: npc.x, y: npc.y + 10 };
+  view.zoom = 1;
+  view.width = 390;
+  view.height = 844;
+  let fallbackCalls = 0;
+  view.handlePointer({ clientX: 0, clientY: 0 }, () => { fallbackCalls += 1; });
+  assert.equal(fallbackCalls, 1);
+});
+
+test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
+  const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
+  const renderProbe = (width, distance, modalOpen = false) => {
+    const labels = [];
+    const attributes = {};
+    const canvas = {
+      dataset: {},
+      setAttribute(name, value) { attributes[name] = value; },
+      removeAttribute(name) { delete attributes[name]; }
+    };
+    const context = new Proxy({
+      measureText: value => ({ width: String(value).length * 6 })
+    }, {
+      get(target, key) { return key in target ? target[key] : () => {}; },
+      set(target, key, value) { target[key] = value; return true; }
+    });
+    const view = Object.create(PixelWorldView.prototype);
+    Object.assign(view, {
+      ctx: context, canvas, width, height: 844, dpr: 1,
+      camera: { x: 0, y: 0 }, zoom: 1, route: [],
+      world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
+      presence: [], player: { id: 'render-probe', x: 100, y: 100 },
+      time: 0, moving: false, reduced: true,
+      guildNpcReadiness: [{ roleId: npc.roleId, status: 'ready' }]
+    });
+    for (const method of [
+      'drawLandscape', 'drawPlace', 'drawInstitution', 'drawWorkbench', 'drawBuilding',
+      'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
+      'drawQuestTarget', 'drawQuestCompass'
+    ]) view[method] = () => {};
+    view.nearest = () => ({ ...npc, type: 'npc', distance });
+    view.text = value => labels.push(value);
+
+    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    globalThis.document = { body: { classList: { contains: () => modalOpen } } };
+    try { view.render(); }
+    finally {
+      if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+      else delete globalThis.document;
+    }
+    return { labels, dataset: canvas.dataset, attributes };
+  };
+
+  const phone = renderProbe(390, 120);
+  assert.ok(phone.labels.includes('TAP · TALK · ' + npc.shortName));
+  assert.equal(phone.dataset.nearbyNpcRole, npc.roleId);
+  assert.equal(phone.dataset.nearbyNpcPacketState, 'ready');
+  assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
+  assert.match(phone.attributes['aria-description'], /advisory only/i);
+
+  const desktop = renderProbe(1440, 120);
+  assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
+
+  const distant = renderProbe(390, 161);
+  assert.equal(distant.dataset.nearbyNpcRole, 'none');
+  assert.equal(distant.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(distant.attributes['aria-description'], undefined);
+  assert.equal(distant.labels.length, 0);
+
+  const modal = renderProbe(390, 120, true);
+  assert.equal(modal.dataset.nearbyNpcRole, 'none');
+  assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(modal.attributes['aria-description'], undefined);
+  assert.equal(modal.labels.length, 0);
+});
 
 function guildNpcResearchWorld() {
   const founder = { id: 'founder-1', role: 'founder' };
