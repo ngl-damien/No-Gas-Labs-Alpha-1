@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { chmod, lstat, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -31,6 +33,7 @@ async function fixture(t, { withLedger = true, withLock = true, pid = 2147483647
   t.after(() => rm(directory, { recursive: true, force: true }));
   const ledgerPath = join(directory, 'founder-nonces.json');
   const lockPath = join(directory, '.founder-nonce.lock');
+  const recoveryLeasePath = join(directory, '.founder-nonce-recovery.lock');
   if (withLedger) {
     await writeFile(ledgerPath, canonical({ schema: LEDGER_SCHEMA, nonces: [NONCE] }), { mode: 0o600 });
   }
@@ -41,7 +44,7 @@ async function fixture(t, { withLedger = true, withLock = true, pid = 2147483647
       openedAt: new Date().toISOString()
     }), { mode: 0o600 });
   }
-  return { directory, ledgerPath, lockPath };
+  return { directory, ledgerPath, lockPath, recoveryLeasePath };
 }
 
 test('read-only inspection identifies a dead-owner nonce lock but never authorizes deletion', async t => {
@@ -83,6 +86,7 @@ test('explicit offline recovery removes only the stale lock and preserves the ex
   assert.equal(result.replacementLockPresent, false);
   assert.equal(result.ledgerModified, false);
   assert.equal(result.authorityGranted, false);
+  assert.equal(await exists(value.recoveryLeasePath), false);
   assert.deepEqual(await readFile(value.ledgerPath), before);
   assert.equal(await exists(value.lockPath), false);
 });
@@ -206,6 +210,7 @@ test('a stale lock with no ledger can be recovered without creating or inventing
   assert.equal(result.ledgerModified, false);
   assert.equal(await exists(value.ledgerPath), false);
   assert.equal(await exists(value.lockPath), false);
+  assert.equal(await exists(value.recoveryLeasePath), false);
 });
 
 test('an unrecognized lock schema blocks recovery instead of being treated as a Founder nonce lock', async t => {
@@ -219,4 +224,50 @@ test('an unrecognized lock schema blocks recovery instead of being treated as a 
   assert.equal(result.status, 'blocked');
   assert.equal(result.lockFormat, 'unrecognized-json');
   assert.equal(await exists(value.lockPath), true);
+});
+
+
+test('a concurrent recovery lease blocks a second recovery without changing the nonce ledger or writer lock', async t => {
+  const value = await fixture(t);
+  const before = await readFile(value.ledgerPath);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  await assert.rejects(
+    recoverFounderNonceLock({
+      ledgerPath: value.ledgerPath,
+      confirmOwnerStopped: true,
+      confirmSameHost: true
+    }),
+    /FOUNDER_NONCE_RECOVERY_IN_PROGRESS/
+  );
+  assert.equal(await exists(value.lockPath), true);
+  assert.equal(await exists(value.recoveryLeasePath), true);
+  assert.deepEqual(await readFile(value.ledgerPath), before);
+});
+
+test('read-only inspection reports an active recovery lease as blocked', async t => {
+  const value = await fixture(t);
+  await writeFile(value.recoveryLeasePath, canonical({
+    schema: 'ngl.founder-nonce-recovery.v1',
+    pid: process.pid,
+    openedAt: new Date().toISOString()
+  }), { mode: 0o600 });
+
+  const result = await inspectFounderNonceRecovery(value.ledgerPath);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'recovery-in-progress');
+  assert.equal(result.safeToRemove, false);
+  assert.equal(result.authorityGranted, false);
+});
+
+test('recovery CLI help loads without host configuration and documents the recovery lease', () => {
+  const scriptPath = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [scriptPath, '--help'], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Usage:/);
+  assert.match(result.stdout, /founder-nonce-recovery\.lock/);
 });

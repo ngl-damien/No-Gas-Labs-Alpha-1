@@ -9,12 +9,13 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 
 const NONCE_LEDGER_SCHEMA = 'ngl.founder-nonce-ledger.v1';
 const LOCK_SCHEMA = 'ngl.ledger-lock.v1';
+const RECOVERY_LEASE_SCHEMA = 'ngl.founder-nonce-recovery.v1';
 const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_NONCE_COUNT = 100_000;
 const TEMPORARY_NONCE_FILE = /^\.founder-nonce-[0-9a-f-]{36}\.tmp$/;
-const RECOVERY_WARNING = 'PID probes are advisory only. PID reuse, namespaces, permissions, and races can mislead; use only after confirming the owner is stopped on this same host/PID namespace. This tool never grants Founder authority.';
+const RECOVERY_WARNING = 'PID probes are advisory only. PID reuse, namespaces, permissions, and races can mislead; stop all older writers and confirm the owner is stopped on this same host/PID namespace. The recovery lease fences only writers running this version. This tool never grants Founder authority.';
 
-function failure(code, detail = '')
+function failure(code, detail = '') {
   const error = new Error(detail ? code + ':' + detail : code);
   error.code = code;
   return error;
@@ -221,7 +222,7 @@ function sameLockObservation(left, right) {
  * Read-only assessment. A missing PID is advisory, never proof by itself.
  * Pending pre-rename temporary files deliberately block automatic cleanup.
  */
-export async function inspectFounderNonceRecovery(ledgerPath) {
+export async function inspectFounderNonceRecovery(ledgerPath, { ignoreRecoveryLease = false } = {}) {
   if (typeof ledgerPath !== 'string' || !ledgerPath.trim() || !parse(ledgerPath).root) {
     throw failure('FOUNDER_NONCE_RECOVERY_ABSOLUTE_LEDGER_PATH_REQUIRED');
   }
@@ -231,6 +232,22 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
     throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_PATH_INVALID');
   }
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
+  const recoveryLeasePath = join(directory, '.founder-nonce-recovery.lock');
+  if (!ignoreRecoveryLease) {
+    try {
+      await lstat(recoveryLeasePath);
+      return {
+        status: 'blocked',
+        reason: 'recovery-in-progress',
+        recoveryLeasePath,
+        safeToRemove: false,
+        authorityGranted: false,
+        warning: RECOVERY_WARNING
+      };
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE');
+    }
+  }
   const lockPath = join(directory, '.founder-nonce.lock');
   const lock = await inspectWriterLock(lockPath);
   const pendingTemporaryFiles = await inspectPendingTemporaryFiles(directory);
@@ -326,6 +343,61 @@ export async function inspectFounderNonceRecovery(ledgerPath) {
  * nonce contents. The operator must confirm both that the owner is stopped and
  * that the lock belongs to this host/PID namespace.
  */
+async function acquireRecoveryLease(directory) {
+  const leasePath = join(directory, '.founder-nonce-recovery.lock');
+  let handle;
+  try {
+    handle = await open(leasePath, 'wx', 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST') throw failure('FOUNDER_NONCE_RECOVERY_IN_PROGRESS');
+    throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNAVAILABLE', error?.message || '');
+  }
+
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 ||
+        (typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LEASE_UNSAFE');
+    }
+    const identity = { dev: stat.dev, ino: stat.ino };
+    await handle.writeFile(canonical({
+      schema: RECOVERY_LEASE_SCHEMA,
+      pid: process.pid,
+      openedAt: new Date().toISOString()
+    }), 'utf8');
+    await handle.sync();
+    await syncDirectory(directory);
+    return { path: leasePath, handle, identity };
+  } catch (error) {
+    await handle.close().catch(() => {});
+    if (String(error?.code || '').startsWith('FOUNDER_NONCE_RECOVERY_')) throw error;
+    throw failure('FOUNDER_NONCE_RECOVERY_LEASE_DURABILITY_UNCERTAIN', error?.message || String(error));
+  }
+}
+
+async function releaseRecoveryLease(lease, directory) {
+  try {
+    const current = await lstat(lease.path);
+    if (current.isSymbolicLink() || !current.isFile() ||
+        current.dev !== lease.identity.dev || current.ino !== lease.identity.ino) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
+    }
+    await unlink(lease.path);
+    await syncDirectory(directory);
+  } catch (error) {
+    if (String(error?.code || '').startsWith('FOUNDER_NONCE_RECOVERY_')) throw error;
+    throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', error?.message || String(error));
+  } finally {
+    await lease.handle.close().catch(() => {});
+  }
+}
+
+/**
+ * Explicit offline recovery. It never removes pending temporary files or edits
+ * nonce contents. A durable recovery lease fences new nonce writers for the
+ * complete recovery interval. The operator must still confirm the old owner is
+ * stopped and that the lock belongs to this host/PID namespace.
+ */
 export async function recoverFounderNonceLock({
   ledgerPath,
   confirmOwnerStopped = false,
@@ -334,74 +406,106 @@ export async function recoverFounderNonceLock({
   if (confirmOwnerStopped !== true || confirmSameHost !== true) {
     throw failure('FOUNDER_NONCE_RECOVERY_CONFIRMATION_REQUIRED');
   }
-  const before = await inspectFounderNonceRecovery(ledgerPath);
-  if (before.status !== 'ready') {
-    throw failure('FOUNDER_NONCE_RECOVERY_NOT_READY', before.reason || before.status);
+  if (typeof ledgerPath !== 'string' || !parse(ledgerPath).root) {
+    throw failure('FOUNDER_NONCE_RECOVERY_ABSOLUTE_LEDGER_PATH_REQUIRED');
   }
 
-  const directory = dirname(resolve(ledgerPath));
+  const absoluteLedgerPath = resolve(ledgerPath);
+  const directory = dirname(absoluteLedgerPath);
   const directoryIdentity = await assertTrustedPrivateDirectory(directory);
-  const syncedLedger = await readNonceLedger(resolve(ledgerPath), { sync: true });
-  if (syncedLedger.sha256 !== before.ledger.sha256 ||
-      syncedLedger.nonceCount !== before.ledger.nonceCount) {
-    throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_CHANGED');
-  }
-  await assertDirectoryIdentity(directory, directoryIdentity);
-  await syncDirectory(directory);
-  await assertDirectoryIdentity(directory, directoryIdentity);
+  const recoveryLease = await acquireRecoveryLease(directory);
+  let result;
+  let operationError;
+  let keepRecoveryLease = false;
 
-  const final = await inspectFounderNonceRecovery(ledgerPath);
-  if (final.status !== 'ready' ||
-      !sameLockObservation(
-        { status: 'present', format: 'owner-metadata', owner: before.owner, file: before.lock },
-        { status: 'present', format: 'owner-metadata', owner: final.owner, file: final.lock }
-      ) ||
-      final.ledger.sha256 !== before.ledger.sha256 ||
-      final.pendingTemporaryFiles.length !== 0) {
-    throw failure('FOUNDER_NONCE_RECOVERY_STATE_CHANGED');
-  }
-  await assertDirectoryIdentity(directory, directoryIdentity);
-
-  const currentLock = await lstat(final.lockPath);
-  if (currentLock.isSymbolicLink() || !currentLock.isFile() ||
-      currentLock.dev !== before.lock.device || currentLock.ino !== before.lock.inode) {
-    throw failure('FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
-  }
-
-  await unlink(final.lockPath);
   try {
+    await assertDirectoryIdentity(directory, directoryIdentity);
+    const before = await inspectFounderNonceRecovery(absoluteLedgerPath, { ignoreRecoveryLease: true });
+    if (before.status !== 'ready') {
+      throw failure('FOUNDER_NONCE_RECOVERY_NOT_READY', before.reason || before.status);
+    }
+
+    const syncedLedger = await readNonceLedger(absoluteLedgerPath, { sync: true });
+    if (syncedLedger.sha256 !== before.ledger.sha256 ||
+        syncedLedger.nonceCount !== before.ledger.nonceCount) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LEDGER_CHANGED');
+    }
     await assertDirectoryIdentity(directory, directoryIdentity);
     await syncDirectory(directory);
     await assertDirectoryIdentity(directory, directoryIdentity);
-  } catch {
-    throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', 'lock may already be absent');
-  }
 
-  let replacementLockPresent = false;
-  try {
-    const after = await lstat(final.lockPath);
-    replacementLockPresent = after.dev !== currentLock.dev || after.ino !== currentLock.ino;
-    if (!replacementLockPresent) {
-      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT');
+    const final = await inspectFounderNonceRecovery(absoluteLedgerPath, { ignoreRecoveryLease: true });
+    if (final.status !== 'ready' ||
+        !sameLockObservation(
+          { status: 'present', format: 'owner-metadata', owner: before.owner, file: before.lock },
+          { status: 'present', format: 'owner-metadata', owner: final.owner, file: final.lock }
+        ) ||
+        final.ledger.sha256 !== before.ledger.sha256 ||
+        final.pendingTemporaryFiles.length !== 0) {
+      throw failure('FOUNDER_NONCE_RECOVERY_STATE_CHANGED');
     }
+    await assertDirectoryIdentity(directory, directoryIdentity);
+
+    const currentLock = await lstat(final.lockPath);
+    if (currentLock.isSymbolicLink() || !currentLock.isFile() ||
+        currentLock.dev !== before.lock.device || currentLock.ino !== before.lock.inode) {
+      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
+    }
+
+    await unlink(final.lockPath);
+    try {
+      await assertDirectoryIdentity(directory, directoryIdentity);
+      await syncDirectory(directory);
+      await assertDirectoryIdentity(directory, directoryIdentity);
+    } catch {
+      keepRecoveryLease = true;
+      throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', 'lock may already be absent');
+    }
+
+    try {
+      const after = await lstat(final.lockPath);
+      const replacementLockPresent = after.dev !== currentLock.dev || after.ino !== currentLock.ino;
+      if (replacementLockPresent) {
+        keepRecoveryLease = true;
+        throw failure('FOUNDER_NONCE_RECOVERY_NEW_LOCK_PRESENT');
+      }
+      keepRecoveryLease = true;
+      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+
+    result = {
+      status: 'recovered',
+      lockRemoved: true,
+      replacementLockPresent: false,
+      lockPath: final.lockPath,
+      ledgerPath: final.ledgerPath,
+      ledger: final.ledger,
+      ledgerModified: false,
+      safeToRemove: false,
+      authorityGranted: false,
+      warning: RECOVERY_WARNING
+    };
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    operationError = error;
+    if (error?.code === 'FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN' ||
+        error?.code === 'FOUNDER_NONCE_RECOVERY_NEW_LOCK_PRESENT' ||
+        error?.code === 'FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT' ||
+        error?.code === 'FOUNDER_NONCE_RECOVERY_LEASE_CHANGED') {
+      keepRecoveryLease = true;
+    }
   }
 
-  return {
-    status: 'recovered',
-    lockRemoved: true,
-    replacementLockPresent,
-    lockPath: final.lockPath,
-    ledgerPath: final.ledgerPath,
-    ledger: final.ledger,
-    ledgerModified: false,
-    safeToRemove: false,
-    authorityGranted: false,
-    warning: RECOVERY_WARNING
-  };
-}
+  if (keepRecoveryLease) {
+    await recoveryLease.handle.close().catch(() => {});
+    throw operationError || failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN');
+  }
 
+  await releaseRecoveryLease(recoveryLease, directory);
+  if (operationError) throw operationError;
+  return result;
+}
 function usage() {
   return [
     'Usage:',
@@ -410,6 +514,8 @@ function usage() {
     '',
     'NGL_FOUNDER_NONCE_LEDGER_PATH must name the absolute host-configured nonce ledger.',
     'The first form is read-only. The second removes only a validated stale lock; it never deletes pending temporary files or changes nonce contents.',
+    'Recovery holds .founder-nonce-recovery.lock to fence new writers; if it remains after interruption, inspect it manually before cleanup.',
+    'The lease coordinates only writers running this version; stop older writers before recovery.',
     'A PID probe is advisory. Confirm the owner is stopped and the lock belongs to this host/PID namespace.'
   ].join('\n');
 }
@@ -448,7 +554,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
-    const status = error?.code === 'FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN'
+    const status = String(error?.code || '').includes('DURABILITY_UNCERTAIN')
       ? 'durability-uncertain'
       : 'error';
     console.error(JSON.stringify({
