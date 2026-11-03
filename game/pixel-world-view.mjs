@@ -242,7 +242,7 @@ function drawPixelBuilding(context, x, y, roof, wall, trim) {
   context.fillRect(x + 19, y - 12, 6, 4);
 }
 
-const DECORATIONS = Array.from({ length: 96 }, (_, index) => ({
+const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   x: 48 + hash2(index + 11, 17) % 1504,
   y: 48 + hash2(index + 73, 29) % 904,
   type: index % 8 === 0 ? 'rock' : 'tree'

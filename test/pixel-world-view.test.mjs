@@ -6,11 +6,14 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
+import { isWalkable } from '../game/world-view.mjs';
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
   assert.equal(WORLD_TILE_SIZE, 32);
   assert.equal(classifyWorldTile(27, 15), 'water');
   assert.equal(classifyWorldTile(27, 11), 'bridge');
+  assert.equal(isWalkable(880, 368), true, 'the visible bridge must be traversable');
+  assert.equal(isWalkable(880, 496), false, 'the visible river must remain blocked outside a bridge');
   assert.equal(classifyWorldTile(12, 21), 'path');
   assert.equal(classifyWorldTile(32, 13), 'plaza');
   assert.equal(classifyWorldTile(2, 2), 'grass');
