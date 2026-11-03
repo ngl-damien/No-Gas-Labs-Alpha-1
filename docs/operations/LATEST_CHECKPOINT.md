@@ -1211,3 +1211,5 @@ The current Forge feature already represented a player's earlier retained activi
 4. Continue the next gameplay capability only after this durable inventory proof: a non-transferable personal item is not yet a transferable economy or a combat/encounter system. No conventional-combat preference is inferred.
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder acceptance, or canonical XP/authority transition occurred.
+
+- Ledger formatting correction: the five updated gate rows G1/G2/G4/G6/G7 were normalized to the existing spaced Markdown table delimiters; evidence content and gate statuses are unchanged.
