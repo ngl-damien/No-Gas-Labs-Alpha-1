@@ -732,6 +732,18 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
       });
       assert.equal(focusCalls, 1, 'opening the institution must not have canvas focus stolen from its sheet');
       assert.equal(prevented, 2);
+
+      interaction = null;
+      view.player = { x: npc.x + 160, y: npc.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: npc.routeLocation,
+        npcRoleId: npc.roleId,
+        npcName: npc.name
+      }, 'the exact 160-unit interaction boundary must agree with the NPC interaction contract');
+      assert.equal(prevented, 3);
       assert.deepEqual(view.world, worldBefore, 'approach and conversation leave revision, events, XP, and world state unchanged');
     } finally {
       view.destroy();
@@ -807,6 +819,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
+
+  const boundary = renderProbe(390, 160);
+  assert.ok(boundary.labels.includes('TAP · TALK · ' + npc.shortName));
+  assert.equal(boundary.dataset.nearbyNpcRole, npc.roleId);
 
   const distant = renderProbe(390, 161);
   assert.equal(distant.dataset.nearbyNpcRole, 'none');
