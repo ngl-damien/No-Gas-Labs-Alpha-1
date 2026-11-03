@@ -111,6 +111,29 @@ function assertNoSymlinkPathComponents(targetPath, code) {
   return absolute;
 }
 
+function assertTrustedDirectoryChain(directory, code) {
+  const absolute = path.resolve(directory);
+  const root = path.parse(absolute).root;
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  const inspect = candidate => {
+    let stat;
+    try { stat = lstatSync(candidate); }
+    catch { throw new Error(code); }
+    if (stat.isSymbolicLink() || !stat.isDirectory() ||
+        (uid !== null && stat.uid !== 0 && stat.uid !== uid) ||
+        ((stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0)) {
+      throw new Error(code);
+    }
+  };
+  inspect(root);
+  let current = root;
+  for (const part of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    inspect(current);
+  }
+  return absolute;
+}
+
 function assertPrivateDirectory(directory, code) {
   let stat;
   try { stat = lstatSync(directory); }
@@ -124,6 +147,7 @@ function assertPrivateDirectory(directory, code) {
 }
 
 function assertPrivateDirectoryIdentity(directory, identity, code) {
+  assertTrustedDirectoryChain(directory, code);
   const current = assertPrivateDirectory(directory, code);
   if (current.dev !== identity.dev || current.ino !== identity.ino) throw new Error(code);
 }
@@ -148,6 +172,7 @@ function loadHostTrustAnchor() {
   }
   const absoluteTrustPath = path.resolve(trustPath);
   const directory = path.dirname(absoluteTrustPath);
+  assertTrustedDirectoryChain(directory, "FOUNDER_TRUST_ROOT_UNSAFE");
   assertNoSymlinkPathComponents(absoluteTrustPath, "FOUNDER_TRUST_ROOT_UNSAFE");
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_TRUST_ROOT_UNSAFE");
   let stat;
@@ -244,8 +269,8 @@ function consumeFounderNonce(nonce) {
   }
   const ledgerPath = path.resolve(configuredPath);
   const directory = path.dirname(ledgerPath);
+  assertTrustedDirectoryChain(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
-  assertNoSymlinkPathComponents(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const lockPath = path.join(directory, ".founder-nonce.lock");
   if (ledgerPath === lockPath) throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
 
