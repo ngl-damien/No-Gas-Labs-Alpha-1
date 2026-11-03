@@ -982,3 +982,47 @@ test("post-rename directory-sync failure preserves explicit nonce durability unc
   assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
   assert.equal(existsSync(lockPath), false);
 });
+
+
+test("host trust anchor rejects a private leaf below a writable non-sticky ancestor", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-writable-parent-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  fs.chmodSync(dir, 0o777);
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_TRUST_ROOT_UNSAFE/
+    ));
+  } finally {
+    fs.chmodSync(dir, 0o700);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Founder nonce ledger rejects a private leaf below a writable non-sticky ancestor", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-ledger-writable-parent-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const unsafeParent = path.join(dir, "unsafe-parent");
+  const privateDirectory = path.join(unsafeParent, "private");
+  mkdirSync(privateDirectory, { recursive: true, mode: 0o700 });
+  fs.chmodSync(unsafeParent, 0o777);
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: path.join(privateDirectory, "founder-nonces.json"),
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_NONCE_LEDGER_UNSAFE/
+    ));
+  } finally {
+    fs.chmodSync(unsafeParent, 0o700);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
