@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPreflight, receiptDescriptorRootForPlatform } from '../scripts/validate-agent-governance.mjs';
 
-const protocolPath = 'docs/operations/RALPH_SHARtest('descriptor-relative preflight I/O is restricted to Linux procfs', () => {
+test('descriptor-relative preflight I/O is restricted to Linux procfs', () => {
   assert.equal(receiptDescriptorRootForPlatform('linux'), '/proc/self/fd');
   for (const platform of ['darwin', 'win32', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos', 'unknown']) {
     assert.equal(
@@ -18,6 +18,7 @@ const protocolPath = 'docs/operations/RALPH_SHARtest('descriptor-relative prefli
   }
 });
 
+const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = [
   'Required loop on every run',
   'Shared work coordination rules',
@@ -319,7 +320,6 @@ test('preflight blocks a transient final-file replacement after the trusted pare
     await rm(root, { recursive: true, force: true });
   }
 });
-
 
 test('preflight rejects an in-place trusted-file rewrite after the initial snapshot', {
   skip: process.platform !== 'linux' ? 'descriptor-relative trusted reads require Linux procfs' : false
