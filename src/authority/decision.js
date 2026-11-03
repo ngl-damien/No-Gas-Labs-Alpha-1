@@ -16,6 +16,39 @@ export const decisionDigest = (payload) =>
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.json");
 
+/**
+ * Recompute the trust-anchor pin using the exact public-JWK encoding used by
+ * founder-enroll-ceremony.mjs. Reject private or non-canonical JWK material.
+ */
+function fingerprintPublicJwk(jwk) {
+  if (!jwk || typeof jwk !== "object" || Array.isArray(jwk)) return null;
+  const prototype = Object.getPrototypeOf(jwk);
+  if (prototype !== Object.prototype && prototype !== null) return null;
+  const expected = ["kty", "crv", "x", "y"];
+  const keys = Reflect.ownKeys(jwk);
+  if (keys.length !== expected.length ||
+      keys.some((key) => typeof key !== "string" || !expected.includes(key))) return null;
+  for (const key of expected) {
+    const descriptor = Object.getOwnPropertyDescriptor(jwk, key);
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || descriptor.enumerable !== true) return null;
+  }
+  if (jwk.kty !== "EC" || jwk.crv !== "P-256") return null;
+  for (const coordinate of [jwk.x, jwk.y]) {
+    if (typeof coordinate !== "string") return null;
+    const bytes = Buffer.from(coordinate, "base64url");
+    if (bytes.length !== 32 || bytes.toString("base64url") !== coordinate) return null;
+  }
+  try {
+    const key = createPublicKey({ key: jwk, format: "jwk" });
+    if (key.asymmetricKeyType !== "ec") return null;
+  } catch {
+    return null;
+  }
+  return createHash("sha256")
+    .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
+    .digest("hex");
+}
+
 /** Load enrolled Founder trust anchor. Fails closed if missing or not enrolled. */
 export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
   if (!existsSync(trustPath)) {
@@ -25,8 +58,15 @@ export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
   if (!raw || raw.status === "NOT_ENROLLED" || raw.enrolled === false) {
     return Object.freeze({ enrolled: false, reason: "NOT_ENROLLED", path: trustPath, meta: raw });
   }
-  if (!raw.public_key_jwk || !raw.fingerprint) {
+  if (!raw.public_key_jwk || typeof raw.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(raw.fingerprint)) {
     return Object.freeze({ enrolled: false, reason: "MALFORMED_TRUST_ANCHOR", path: trustPath });
+  }
+  const actualFingerprint = fingerprintPublicJwk(raw.public_key_jwk);
+  if (!actualFingerprint) {
+    return Object.freeze({ enrolled: false, reason: "MALFORMED_TRUST_ANCHOR", path: trustPath, meta: raw });
+  }
+  if (actualFingerprint !== raw.fingerprint) {
+    return Object.freeze({ enrolled: false, reason: "FINGERPRINT_MISMATCH", path: trustPath, meta: raw });
   }
   if (raw.mode === "TEST_ONLY") {
     return Object.freeze({
