@@ -168,7 +168,7 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   assert.match(output, /SOURCE OBSERVATION REGISTER/);
   assert.match(output, /1 uniquely linked source observation/);
   assert.match(output, /1 linked challenge/);
-  assert.match(output, /1 linked response record/);
+  assert.match(output, /0 uniquely linked response record/);
   assert.match(output, /Model output only; no primary source retrieved\./);
   assert.match(output, /A direct inspection finds it closed\./);
   assert.match(output, /No independent observation\./);
