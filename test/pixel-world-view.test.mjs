@@ -225,6 +225,14 @@ test('quest map targets resolve the exact workbench and institution objectives',
     projectQuestMapTarget({ type: 'location', id: 'academy' }, { creations: [] }),
     { kind: 'location', id: 'academy', x: academy.x, y: academy.y, label: academy.name }
   );
+  for (const npc of GUILD_NPCS) {
+    assert.deepEqual(
+      projectQuestMapTarget({ type: 'location', id: npc.id }, { creations: [] }),
+      { kind: 'npc', id: npc.id, x: npc.x, y: npc.y + 10, label: npc.name },
+      'the retained Guild quest action must resolve to its exact institutional NPC'
+    );
+  }
+  assert.equal(projectQuestMapTarget({ type: 'location', id: 'guild-npc-unknown' }, { creations: [] }), null);
   assert.equal(projectQuestMapTarget({ type: 'location', id: 'not-a-place' }, { creations: [] }), null);
   assert.equal(projectQuestMapTarget({ type: 'workbench', recipe: 'unknown' }, { creations: [] }), null);
 });
@@ -484,18 +492,40 @@ test('quest compass rejects malformed viewport and hostile target accessors with
 });
 
 
-test('Guild Hall NPCs are fixed, bounded guides with no model or canonical authority', () => {
+test('institutional NPCs occupy their service locations and retain bounded advisory authority', () => {
   assert.deepEqual(
     GUILD_NPCS.map(({ roleId, name, objective }) => ({ id: roleId, name, objective })),
     projectCollaboratorPackets({ events: [], creations: [] })
-      .map(({ id, name, objective }) => ({ id, name, objective }))
+      .map(({ id, name, objective }) => ({ id: name === 'x' ? name : roleId, name, objective }))
   );
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.id)).size, GUILD_NPCS.length);
   assert.equal(new Set(GUILD_NPCS.map(npc => npc.roleId)).size, GUILD_NPCS.length);
   assert.ok(Object.isFrozen(GUILD_NPCS));
+  const serviceLocations = {
+    archivist: 'evidence_archive',
+    adversary: 'evidence_archive',
+    synthesizer: 'guild_hall',
+    tutor: 'academy'
+  };
+  const buildingBounds = {
+    evidence_archive: { left: 948, right: 1032, top: 86, bottom: 190 },
+    guild_hall: { left: 182, right: 278, top: 92, bottom: 190 },
+    academy: { left: 138, right: 222, top: 306, bottom: 450 }
+  };
   for (const npc of GUILD_NPCS) {
     assert.ok(Object.isFrozen(npc));
-    assert.equal(npc.routeLocation, 'guild_hall');
+    assert.equal(npc.routeLocation, serviceLocations[npc.roleId]);
+    const place = PLACES.find(candidate => candidate.id === npc.routeLocation);
+    assert.ok(place && place.type === 'institution', npc.name + ' must be assigned to a real institution');
+    assert.equal(npc.locationLabel, place.name.toUpperCase());
+    assert.ok(Math.hypot(place.x - npc.x, place.y - npc.y) >= 45 &&
+      Math.hypot(place.x - npc.x, place.y - npc.y) <= 125,
+    npc.name + ' must stand near the institution it serves');
+    const bounds = buildingBounds[npc.routeLocation];
+    const sprite = { left: npc.x - 24, right: npc.x + 24, top: npc.y - 20, bottom: npc.y + 20 };
+    assert.ok(sprite.right <= bounds.left || sprite.left >= bounds.right ||
+      sprite.bottom <= bounds.top || sprite.top >= bounds.bottom,
+    npc.name + ' sprite must not be hidden inside its institution building');
     assert.equal(npc.authority, 'advisory-only');
     assert.equal(npc.invokesModel, false);
     assert.equal(npc.mayWriteCanonicalState, false);
@@ -506,11 +536,11 @@ test('Guild Hall NPCs are fixed, bounded guides with no model or canonical autho
     assert.ok(npc.y >= 0 && npc.y <= WORLD_HEIGHT);
     assert.equal(isWalkable(npc.x, npc.y, []), true, npc.name + ' must stand on walkable terrain');
     assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
-      npc.name + ' must have a walkable route from Guild Hall');
+      npc.name + ' must have a walkable route from the shared-world spawn');
   }
 });
 
-test('quest navigation routes to each Guild Hall NPC but does not auto-interact on arrival', () => {
+test('quest navigation routes to each institutional NPC but does not auto-interact on arrival', () => {
   for (const npc of GUILD_NPCS) {
     const view = Object.create(PixelWorldView.prototype);
     view.player = { x: 230, y: 220 };
@@ -519,7 +549,9 @@ test('quest navigation routes to each Guild Hall NPC but does not auto-interact 
     view.target = 'old-target';
     view.targetType = 'place';
 
-    view.goTo(npc.id);
+    const target = projectQuestMapTarget({ type: 'location', id: npc.id }, view.world);
+    assert.ok(target, npc.name + ' should resolve from the retained quest action');
+    view.goTo(target.id, target.kind);
 
     assert.ok(view.route.length > 0, npc.name + ' should have a route');
     const destination = view.route[view.route.length - 1];
@@ -530,7 +562,7 @@ test('quest navigation routes to each Guild Hall NPC but does not auto-interact 
   }
 });
 
-test('speaking to a Guild Hall NPC routes to the existing collaborator workbench without mutating the world', () => {
+test('speaking to an institutional NPC opens its owning institution without mutating the world', () => {
   const world = {
     id: 'guild-npc-interaction-world',
     revision: 7,
@@ -563,11 +595,11 @@ test('speaking to a Guild Hall NPC routes to the existing collaborator workbench
     view.interact();
     assert.deepEqual(interaction, {
       type: 'institution',
-      id: 'guild_hall',
+      id: npc.routeLocation,
       npcRoleId: npc.roleId,
       npcName: npc.name
     });
-    assert.deepEqual(world, before, 'conversation only opens the existing Guild Hall workbench');
+    assert.deepEqual(world, before, 'conversation opens the owning institution without recording a world event');
   }
 });
 
@@ -673,7 +705,7 @@ test('Guild Hall NPC readiness fails closed on accessor-backed world snapshots',
     entry.sourceSnapshotStatus === 'incomplete'));
 });
 
-test('pixel map exposes bounded Guild Hall packet status in its accessible description and NPC labels', () => {
+test('pixel map exposes bounded collaborator status and owning institutions accessibly', () => {
   const world = guildNpcResearchWorld();
   const before = structuredClone(world);
   const view = Object.create(PixelWorldView.prototype);
@@ -692,8 +724,10 @@ test('pixel map exposes bounded Guild Hall packet status in its accessible descr
   view.updateResearchAccessibility();
 
   assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified/);
-  assert.match(attributes['aria-label'], /Hostile Archivist:.*source-bound packet is available with 3 retained event references/);
-  assert.match(attributes['aria-label'], /Polymath Tutor:.*source-bound packet is available with 1 retained event reference/);
+  assert.equal(view.canvas.dataset.guildNpcLocations,
+    'archivist=evidence_archive;adversary=evidence_archive;synthesizer=guild_hall;tutor=academy');
+  assert.match(attributes['aria-label'], /Hostile Archivist at EVIDENCE ARCHIVE:.*source-bound packet is available with 3 retained event references/);
+  assert.match(attributes['aria-label'], /Polymath Tutor at POLYMATH ACADEMY:.*source-bound packet is available with 1 retained event reference/);
   assert.match(attributes['aria-label'], /not autonomous AI agents/);
 
   const labels = [];
