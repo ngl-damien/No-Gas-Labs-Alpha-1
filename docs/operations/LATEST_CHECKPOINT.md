@@ -49,7 +49,7 @@ The current source-backed issue is separate: main's `src/authority/decision.js` 
 ## Verification evidence
 
 Intermediate code head `0941d65e0c1c28cfab962b11c96fbc3196619736`:
-- Verify job 125760864522 completed successfully in run 41588930882. Its preflight output reported `status: ready`, 30? target paths (29 at that intermediate head), `warnings: []`, `failures: []`. Node 24 test suite, Python inspector, package build, and institutional exercise all exited 0.
+- Verify job 125760864522 completed successfully in run 41588930882. Its preflight output reported `status: ready`, 29 target paths at that intermediate head; the final manifest adds `.github/workflows/verify.yml`, bringing the current manifest to 30 paths, `warnings: []`, `failures: []`. Node 24 test suite, Python inspector, package build, and institutional exercise all exited 0.
 - Genesis run 41588930963 completed successfully.
 - Browser run 41588930920 was still in progress at the last inspection.
 
