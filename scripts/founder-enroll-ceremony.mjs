@@ -95,6 +95,7 @@ export function writePrivateKeyFile(destination, privateJwk, options = {}) {
   const target = validatePrivateKeyDestination(destination, options);
   const parent = dirname(target);
   const payload = JSON.stringify(privateJwk, null, 2) + '\n';
+  const sync = options.fsyncSync ?? fsyncSync;
   let directoryFd;
   let fd;
   let identity;
@@ -133,7 +134,7 @@ export function writePrivateKeyFile(destination, privateJwk, options = {}) {
         throw failure('FOUNDER_PRIVATE_KEY_FILE_PERMISSIONS_UNSAFE', 'New private-key file is not a private regular file.');
       }
       writeFileSync(fd, payload);
-      fsyncSync(fd);
+      sync(fd);
       const after = fstatSync(fd);
       if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino || (after.mode & 0o077) !== 0) {
         throw failure('FOUNDER_PRIVATE_KEY_FILE_CHANGED', 'Private-key file identity or permissions changed during write.');
@@ -169,7 +170,7 @@ export function writePrivateKeyFile(destination, privateJwk, options = {}) {
     // the directory, leave the 0600 file for manual inspection and do not
     // print a candidate that could be mistaken for a completed export.
     try {
-      fsyncSync(directoryFd);
+      sync(directoryFd);
     } catch (error) {
       const uncertain = failure(
         'FOUNDER_PRIVATE_KEY_DIRECTORY_SYNC_UNCERTAIN',
