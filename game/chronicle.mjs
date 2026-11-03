@@ -341,6 +341,34 @@ function worldEntry(event, index, creations, notes) {
     } else if (target) {
       entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
     }
+  } else if (type === "source-observation-recorded") {
+    const sourceKinds = {
+      unspecified: "Not classified",
+      "direct-observation": "Direct observation",
+      "primary-source": "Primary source / document",
+      "secondary-source": "Secondary source / analysis",
+      "tool-output": "Tool output / execution receipt",
+      "user-report": "User-reported",
+      "model-assertion": "Model assertion (lead only; not evidence)",
+    };
+    entry.title = `Source observation recorded · ${text(event?.claim) || "untitled claim"}`;
+    entry.category = "SOURCE OBSERVATORY";
+    entry.summary = "An actor-attributed research note was retained against an exact published Source Observatory version. Its source class is author-selected; no source retrieval, independent verification, execution, truth verdict, XP or authority is implied.";
+    entry.detail = [
+      `Source class: ${sourceKinds[event?.sourceKind] || "unclassified"}`,
+      `Source / attribution: ${text(event?.source) || "not recorded"}`,
+      `Possible falsifier: ${text(event?.falsifier) || "not recorded"}`,
+      `Unknowns / uncertainty: ${text(event?.uncertainty) || "not recorded"}`,
+      `Next discriminating test: ${text(event?.nextTest) || "not recorded"}`,
+      `Assurance: retrieval ${event?.assurance?.sourceRetrieval || "unknown"} · independent verification ${event?.assurance?.independentVerification || "unknown"} · execution ${event?.assurance?.execution || "unknown"}`,
+    ].join(" · ");
+    if (event?.sourceKind === "model-assertion") {
+      entry.warning = "MODEL ASSERTION · LEAD ONLY · NOT EVIDENCE. The source was not fetched or independently verified.";
+    } else if (event?.sourceKind === "tool-output") {
+      entry.warning = "TOOL OUTPUT · ATTRIBUTED OUTPUT ONLY · NOT INDEPENDENT VERIFICATION. The source was not fetched or independently verified.";
+    } else {
+      entry.warning = "AUTHOR-SELECTED SOURCE CLASS · NOT INDEPENDENTLY VERIFIED. The source was not fetched or adjudicated.";
+    }
   } else if (type === "collaborator-response-recorded") {
     const roleNames = {
       archivist: "Hostile Archivist",
@@ -370,7 +398,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;

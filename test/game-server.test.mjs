@@ -1215,3 +1215,76 @@ test('server startup indexes large interleaved retained proposal/report history'
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
 });
+
+
+test('Source Observatory observations survive exact replay and restart without becoming XP or verified evidence', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'observatory', title: 'Shared Source Observatory',
+    intent: 'Retain falsifiable, source-attributed research notes.'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const firstPublication = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(firstPublication.response.status, 200, JSON.stringify(firstPublication.body));
+  const creationId = firstPublication.body.result.creationId;
+  const repair = await founder.request('/api/action', {
+    type: 'repair', creationId, expectedVersion: 1
+  });
+  assert.equal(repair.response.status, 200, JSON.stringify(repair.body));
+  const secondPublication = await founder.request('/api/action', {
+    type: 'publish', draftId: repair.body.result.draftId, expectedVersion: 1
+  });
+  assert.equal(secondPublication.response.status, 200, JSON.stringify(secondPublication.body));
+
+  const witness = f.client();
+  const arrival = await witness.request('/api/state');
+  assert.equal(arrival.response.status, 200);
+  assert.equal(arrival.body.viewer.role, 'witness');
+  const action = {
+    type: 'record-source-observation', creationId, version: 1,
+    claim: 'The source appears to support one bounded statement.',
+    sourceKind: 'model-assertion',
+    source: 'A model response pasted by a human; no URL was fetched.',
+    falsifier: 'A primary source contradicts the statement.',
+    uncertainty: 'The exact source passage remains uninspected.',
+    nextTest: 'Retrieve and compare the primary source.',
+    requestId: 'source-observation-retry-001'
+  };
+  const invalid = await witness.request('/api/action', { ...action, sourceKind: 'invented-class', requestId: 'source-observation-invalid-001' });
+  assert.equal(invalid.response.status, 400);
+  assert.equal(invalid.body.error.code, 'INVALID_SOURCE_KIND');
+
+  const first = await witness.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const replay = await witness.request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.sourceObservationId, first.body.result.sourceObservationId);
+
+  const state = await witness.request('/api/state');
+  const observations = state.body.world.events.filter(event => event.type === 'source-observation-recorded');
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0].actor.role, 'witness');
+  assert.equal(observations[0].version, 1, 'the note remains attached to retained v1 after v2 is published');
+  assert.deepEqual(observations[0].assurance, {
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED'
+  });
+  assert.equal(state.body.world.xp, 200, 'only the two publications contribute institution-wide XP');
+
+  await f.closeGame();
+  const restarted = await fixture(t, f.dataDir);
+  const restored = restarted.client();
+  const recovered = await restored.request('/api/state');
+  assert.equal(recovered.response.status, 200);
+  assert.equal(recovered.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  assert.equal(recovered.body.world.events.find(event => event.type === 'source-observation-recorded').sourceObservationId, first.body.result.sourceObservationId);
+  assert.equal(recovered.body.world.xp, 200);
+});
