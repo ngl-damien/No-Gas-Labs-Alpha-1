@@ -422,3 +422,65 @@ PR #326 already had a read-only response queue, but the Evidence Archive still l
 - Source Observation/dissent/response map counters remain a separate integration task because of #309 ownership of `game/world-view.mjs`. The pixel-art renderer is a first slice, not a complete RuneScape/Endless Online content recreation. Actual source retrieval, independent verification, and live Founder identity/key custody remain unverified.
 - Next: reconcile safe Android lifecycle changes without regressing current authority verification; add evidence/dissent/response counters to Evidence Archive and TownSquare; improve narrow-width map-label readability; expand terrain, avatar, NPC, and institution sprites; keep all world progression derived from retained events and proper human gates.
 
+
+
+---
+
+## Run 46 — 2026-11-03 — Worker B — Source Observation activity on the pixel world map
+
+**Objective:** make Evidence Archive and TownSquare map locations visibly reflect uniquely linked Source Observation notes, dissent challenges, author responses, pending responses, and retained events requiring review.
+
+### Rehydration, ownership, and preflight
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current `main` independently resolved through GitHub to `cc317d49c8fdf003c78aa40f38a177095019066e`. Main's checkpoint still names `ea025a587e0bb3113423ea67035ddfa83ea7dc9f`; its G0–G9 ledger remains `NOT ASSESSED`. The proposed MMORPG stack is not integrated.
+- Read root `AGENTS.md` alone, then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` alone before repository inspection. Read the latest proposed checkpoint (Run 45), MMORPG completion contract, and ledger.
+- Both registered Desktop Commander devices were observed offline. No local checkout or Node 24 runtime was available, so local portable preflight and local tests were not run. Followed the protocol's manual sequence and relied on the exact-head hosted preflight receipt; no local execution is claimed.
+- Checked nested `AGENTS.md` under `game/`, `test/`, `scripts/`, `docs/`, `docs/operations/`, `src/`, `src/world/`, `src/evidence/`, and `src/institution/`; all returned 404. Root instructions remain applicable.
+- Re-observed PR #326 exact head `60349b68f1b700acab66a359478416767f016d14`, PR #329 exact head `5ee7856f8cf44a971c95be0f6071fc18388399c0`, and Worker A's latest PR #330 exact head `20b636678c476d71ec8d027c475e608b32f94147`. PR #330's Founder nonce-recovery inspection lease/path hardening passed Verify, Genesis, and Browser; it does not overlap this game task.
+- Re-observed PR #309 and its lifecycle ownership of `game/world-view.mjs`. Its branch remains a highly divergent proposal and carries an older authority helper that trusts caller-supplied `verification.valid`; current main's `src/authority/decision.js` re-verifies the signature in-process. Do not merge or transplant #309 as-is. This change avoids `game/world-view.mjs`.
+- Current `docs/authority/founder.pub.json` still says `NOT_ENROLLED`; no live Founder key or authenticated Founder Gate is established.
+
+### Donor/mechanism review
+
+- `src/world/guild-hall.js`: Guild Hall projects `AUTHORIZED` only through `isVerifiedAuthorization`; proposal creation itself is not authority.
+- `src/evidence/content-addressed.js`: SHA-256 and byte length verify byte identity, not truth or authorship.
+- `src/institution/decisions.mjs`: decision operations require a host-authenticated actor; `APPROVE` records a disposition and never executes the proposed effect; its public summary is aggregate/read-only.
+- `src/authority/decision.js`: the current verifier rechecks the signed Founder payload in-process. The current trust anchor remains not enrolled.
+- `game/client.mjs`: The Relay stores the exact pending action, actor and request ID; exact retry reuses that ID and accepts the server's canonical state before clearing the local receipt.
+- Reused Alpha-1's `projectSourceObservationRecords` and Relay recovery patterns. No donor code was copied. External donor repositories whose root `AGENTS.md` was unavailable were not opened.
+
+### Change delivered
+
+- Draft child PR #331: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/331
+- Branch: `game/evidence-archive-map-projection-20261103`.
+- Parent: PR #329 exact head `5ee7856f8cf44a971c95be0f6071fc18388399c0`; PR #329 is a child of PR #326 exact head `60349b68f1b700acab66a359478416767f016d14`.
+- Exact code/test head: `46ad2ec4caa442e7f3537f4ac75896ebcd0cb738`.
+
+Implementation:
+- `game/pixel-world-view.mjs` now derives a read-only map summary from `projectSourceObservationRecords`. Only uniquely linked Source Observation notes and their uniquely linked challenges/responses count as linked activity.
+- Evidence Archive and TownSquare show compact map counters for linked notes, dissent challenges, author responses, pending responses, and retained research events that need review.
+- The canvas exposes the same counts through `data-source-observation-counts` and an accessible `aria-label`.
+- Missing/malformed collections and over-limit event streams are explicitly unavailable, not zero. Unlinked, malformed, duplicated, and ambiguous history contributes to review rather than being presented as resolved activity.
+- During source review, found that multiple response rows could be marked ambiguous by the projector but still be summed as resolved responses. Corrected aggregation to count responses only when `responseStatus === 'answered'`; added a duplicate-response-ID regression that keeps both rows in review.
+- `test/pixel-world-view.test.mjs` builds actual model events for a published Source Observatory, note, challenge and author response. It covers linked/answered, linked/pending, unlinked history, unavailable collections, hostile accessors, and ambiguous duplicate responses. It also asserts the projection does not mutate revision, XP, or event count.
+- `scripts/verify-browser.py` extends the existing two-session Relay journey to verify the map data attribute and accessible summary after the author's response is recovered.
+- No server action, canonical event schema, XP, inventory, quest state, authority, or Founder Gate changed. The map counts are navigational projections only; they do not adjudicate truth or claim source retrieval/independent verification.
+
+### Exact code/test-head verification — 46ad2ec4caa442e7f3537f4ac75896ebcd0cb738
+
+- Verify [41683806957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41683806957): **success**. Hosted preflight `ready`, 49 targets, 52 file records, zero warnings and zero failures. Node 24.22.1 full `node --test` exited 0; Python inspector exited 0; game package build exited 0; bounded institutional exercise exited 0 with `passed: true`. Preflight artifact [13255305178](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41683806957/artifacts/13255305178), uploaded ZIP SHA-256 `b5c01a59f7d17947d9a4786cedca02b29bd259b2913f80aa27c3e6002a14d8e1`.
+- Genesis Evidence Invariant [41683807000](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41683807000): **success**.
+- Browser Acceptance [41683806951](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41683806951): **success, 12/12 journeys**. The two-session shared-world journey verified the map counts and accessible label after the exact author-response retry. Other journeys passed desktop, phone, five institutional locations, 320/360/412 px toolbars with five controls and 44 px minimum targets, 320/412 px one-button layouts, standalone file, exact bytes, and shared restart. The institutional journey observed one moonshot proposal/world object, two experiment reports/research activity objects, one creation and 100 publication XP from the existing event-backed flow; the renderer did not create those rewards.
+- Browser artifact [13253323119](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41683806951/artifacts/13253323119), 5,407,843 bytes; uploaded ZIP SHA-256 `646cfb042c06ecc8a7d4000d76b5428c537df02049d803c9facf28cfbbe91b31`.
+- Browser logs emit existing Node 20 action deprecation warnings for checkout@v4, setup-node@v4, setup-python@v5 and upload-artifact@v4, plus `punycode` and `url.parse()` deprecations. They did not fail a journey.
+
+### State, limitations, and next action
+
+- PR #331 remains a draft child of #329; no merge, release or deployment occurred. Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`.
+- G6 remains **IN PROGRESS**. The map now surfaces proposed Source Observation activity at Evidence Archive/TownSquare, but the stack is unmerged. Source retrieval and independent verification remain `NOT_PERFORMED`; model assertions remain leads only. Counts do not establish truth, approval, authority, or external execution.
+- G7 remains **IN PROGRESS**. PR #309's 7/7 API 35 emulator instrumentation result is not physical-device acceptance, and its branch must be reconciled without regressing current-main signature verification.
+- G0–G5 and G8–G9 remain `NOT ASSESSED` in the proposed ledger. Main's ledger remains unchanged and `NOT ASSESSED`.
+- The classic top-down renderer is still an early slice; distinct institution silhouettes, narrow-width label contrast, full NPC/quest/encounter systems, actual source retrieval, independent verification, physical Android-device acceptance, and live Founder key enrollment remain unfinished.
+- Next highest-value work: improve pixel-world location readability and distinct institutional silhouettes without editing the lifecycle-owned `game/world-view.mjs`; then reconcile Android lifecycle changes with the current authority verifier and obtain physical-device evidence.
+- No merge, release, deployment, spending, external publication, key/credential/permission change, Founder decision, canonical world-state mutation, or XP award occurred.
