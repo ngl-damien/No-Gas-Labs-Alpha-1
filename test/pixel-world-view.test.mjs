@@ -16,6 +16,7 @@ import {
   projectQuestMapTarget,
   projectMapLabelMetrics,
   projectQuestCompassIndicator,
+  projectGuildNpcReadiness,
   PixelWorldView,
   GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
@@ -477,4 +478,120 @@ test('unregistered Guild Hall NPC targets fail closed without opening an institu
   assert.equal(view.nearest('guild-npc-not-registered', 'npc'), null);
   view.interact('guild-npc-not-registered', 'npc');
   assert.equal(interactions, 0);
+});
+
+
+function guildNpcResearchWorld() {
+  const founder = { id: 'founder-1', role: 'founder' };
+  const witness = { id: 'witness-1', role: 'witness' };
+  return {
+    id: 'guild-npc-readiness-world',
+    revision: 3,
+    creations: [],
+    events: [
+      {
+        id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
+        actor: founder, at: '2026-10-29T04:00:00.000Z',
+        title: 'Bounded test', hypothesis: 'A claim holds under a stated condition.',
+        falsifier: 'A repeatable counterexample',
+        evidenceNeeded: 'An independently observed measurement',
+        sourceCreationId: null, sourceVersion: null
+      },
+      {
+        id: 'report-event-1', type: 'experiment-reported', reportId: 'report-1',
+        moonshotId: 'moonshot-1', actor: witness, at: '2026-10-29T04:01:00.000Z',
+        procedure: 'Run the stated procedure once.',
+        observation: 'The expected result did not occur.',
+        reportedOutcome: 'failed', evidenceCreationId: null, evidenceVersion: null
+      },
+      {
+        id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
+        reportId: 'report-1', moonshotId: 'moonshot-1', actor: founder,
+        at: '2026-10-29T04:02:00.000Z', challengeType: 'methodology',
+        challengeText: 'The procedure omits a control.',
+        evidenceCreationId: null, evidenceVersion: null
+      }
+    ]
+  };
+}
+
+test('Guild Hall NPC packet readiness follows sealed source-bound collaborator packets without creating activity', () => {
+  const emptyWorld = { id: 'empty-guild-world', revision: 0, events: [], creations: [] };
+  const emptyBefore = structuredClone(emptyWorld);
+  const empty = projectGuildNpcReadiness(emptyWorld);
+  assert.deepEqual(empty.map(entry => ({
+    roleId: entry.roleId, status: entry.status, label: entry.label,
+    sourceSnapshotStatus: entry.sourceSnapshotStatus, inputCount: entry.inputCount
+  })), GUILD_NPCS.map(npc => ({
+    roleId: npc.roleId, status: 'unavailable', label: 'NO PACKET',
+    sourceSnapshotStatus: 'identified', inputCount: 0
+  })));
+  assert.deepEqual(emptyWorld, emptyBefore);
+
+  const world = guildNpcResearchWorld();
+  const before = structuredClone(world);
+  const ready = projectGuildNpcReadiness(world);
+  assert.deepEqual(ready.map(entry => entry.roleId), ['archivist', 'adversary', 'synthesizer', 'tutor']);
+  assert.ok(ready.every(entry => entry.status === 'ready' && entry.label === 'PACKET READY' &&
+    entry.sourceSnapshotStatus === 'identified' && entry.inputCount > 0));
+  assert.equal(ready.find(entry => entry.roleId === 'tutor').inputCount, 1);
+  assert.ok(Object.isFrozen(ready));
+  assert.ok(ready.every(entry => Object.isFrozen(entry)));
+  assert.ok(ready.every(entry => !Object.hasOwn(entry, 'prompt') && !Object.hasOwn(entry, 'packetJson')),
+    'the map exposes readiness only, never the collaborator prompt or packet contents');
+  assert.deepEqual(world, before, 'readiness projection must not mutate retained events or progression');
+
+  const partialWorld = guildNpcResearchWorld();
+  delete partialWorld.id;
+  delete partialWorld.revision;
+  const partial = projectGuildNpcReadiness(partialWorld);
+  assert.ok(partial.every(entry => entry.status === 'partial' &&
+    entry.label === 'READY · PARTIAL' && entry.sourceSnapshotStatus === 'incomplete'),
+    'available packets with incomplete snapshot identity remain visibly qualified');
+});
+
+test('Guild Hall NPC readiness fails closed on accessor-backed world snapshots', () => {
+  let getterCalls = 0;
+  const hostile = {};
+  for (const key of ['id', 'revision', 'events', 'creations']) {
+    Object.defineProperty(hostile, key, {
+      enumerable: true,
+      get() { getterCalls += 1; return key === 'events' || key === 'creations' ? [] : key === 'id' ? 'forged-world' : 1; }
+    });
+  }
+  const readiness = projectGuildNpcReadiness(hostile);
+  assert.equal(getterCalls, 0);
+  assert.ok(readiness.every(entry => entry.status === 'unavailable' &&
+    entry.sourceSnapshotStatus === 'incomplete'));
+});
+
+test('pixel map exposes bounded Guild Hall packet status in its accessible description and NPC labels', () => {
+  const world = guildNpcResearchWorld();
+  const before = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  view.world = world;
+  view.guildNpcReadiness = projectGuildNpcReadiness(world);
+  view.sourceObservationMapCounts = projectSourceObservationMapCounts(world);
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.questAction = null;
+  view.questTarget = null;
+  const attributes = {};
+  view.canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  view.updateResearchAccessibility();
+
+  assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified/);
+  assert.match(attributes['aria-label'], /Hostile Archivist:.*source-bound packet is available with 3 retained event references/);
+  assert.match(attributes['aria-label'], /Polymath Tutor:.*source-bound packet is available with 1 retained event references/);
+  assert.match(attributes['aria-label'], /not autonomous AI agents/);
+
+  const labels = [];
+  view.ctx = { fillStyle: '', font: '', textAlign: '', fillRect() {}, fillText() {} };
+  view.drawMapLabel = label => labels.push(label);
+  view.drawGuildNpc(GUILD_NPCS.find(npc => npc.roleId === 'archivist'));
+  assert.deepEqual(labels, ['ARCHIVIST', 'PACKET READY']);
+  assert.deepEqual(world, before);
 });

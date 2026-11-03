@@ -1,5 +1,5 @@
 import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
-import { projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
@@ -123,10 +123,62 @@ const GUILD_NPC_COLORS = Object.freeze(Object.fromEntries(
   })])
 ));
 
-const GUILD_NPC_ACCESSIBILITY_TEXT =
-  'Guild Hall bounded collaborator guides: ' +
-  GUILD_NPCS.map(npc => npc.name + ': ' + npc.objective).join(' ') +
-  ' These authored entry points do not invoke models, write canonical state, grant authority, award progress, certify truth, or declare mastery. Speaking to one opens the existing Guild Hall collaborator workbench.';
+function guildNpcStatusLabel(status) {
+  return status === 'ready' ? 'PACKET READY'
+    : status === 'partial' ? 'READY · PARTIAL'
+      : 'NO PACKET';
+}
+
+/**
+ * Project each authored Guild Hall guide's current bounded hand-off availability.
+ * This reads the sealed collaborator packet projection only: it never invokes a
+ * model, mutates the world, or treats packet availability as agent execution.
+ */
+export function projectGuildNpcReadiness(world) {
+  const packets = projectCollaboratorPackets(world);
+  const byRole = new Map(packets.filter(isCollaboratorPacket).map(packet => [packet.id, packet]));
+  return Object.freeze(GUILD_NPCS.map(npc => {
+    const packet = byRole.get(npc.roleId);
+    const sourceSnapshotStatus = packet?.sourceSnapshot?.status === 'identified'
+      ? 'identified' : 'incomplete';
+    const packetAvailable = packet?.available === true;
+    const status = packetAvailable
+      ? sourceSnapshotStatus === 'identified' ? 'ready' : 'partial'
+      : 'unavailable';
+    const inputCount = packetAvailable && Array.isArray(packet.inputRefs) ? packet.inputRefs.length : 0;
+    const omittedCount = Number.isSafeInteger(packet?.omittedCount) && packet.omittedCount >= 0
+      ? packet.omittedCount : 0;
+    return Object.freeze({
+      npcId: npc.id,
+      roleId: npc.roleId,
+      status,
+      label: guildNpcStatusLabel(status),
+      sourceSnapshotStatus,
+      inputCount,
+      omittedCount,
+      reason: !packetAvailable && typeof packet?.reason === 'string' ? packet.reason : null
+    });
+  }));
+}
+
+function guildNpcAccessibilityText(readiness) {
+  const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
+  const descriptions = GUILD_NPCS.map(npc => {
+    const entry = byRole.get(npc.roleId);
+    if (!entry) return npc.name + ': packet state unavailable.';
+    const packetState = entry.status === 'ready'
+      ? `a source-bound packet is available with ${entry.inputCount} retained event references`
+      : entry.status === 'partial'
+        ? `a source-bound packet is available with ${entry.inputCount} retained event references, but source snapshot identity is incomplete`
+        : `no bounded packet is currently available${entry.reason ? ': ' + entry.reason : ''}`;
+    const omitted = entry.omittedCount > 0
+      ? ` ${entry.omittedCount} additional eligible event references are omitted from this bounded packet.`
+      : '';
+    return `${npc.name}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
+  });
+  return 'Guild Hall bounded collaborator guides: ' + descriptions.join(' ') +
+    ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.';
+}
 function safeQuestTargetId(value) {
   return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
     !['constructor', 'prototype', '__proto__'].includes(value);
@@ -544,6 +596,7 @@ export class PixelWorldView extends WorldView {
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+    this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
@@ -606,24 +659,31 @@ export class PixelWorldView extends WorldView {
     super.setWorld(world, institutionSummary);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+      this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
     }
   }
 
   updateResearchAccessibility() {
     const counts = this.sourceObservationMapCounts;
+    const npcReadiness = Array.isArray(this.guildNpcReadiness)
+      ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
+    this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
+      `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
+    ).join(';');
+    const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
         'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
-        GUILD_NPC_ACCESSIBILITY_TEXT;
+        npcAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
         `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
-        GUILD_NPC_ACCESSIBILITY_TEXT;
+        npcAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -903,6 +963,8 @@ export class PixelWorldView extends WorldView {
     drawSprite(context, PIXEL_SPRITES.visitor, colors, npc.x, npc.y, 4);
     this.text(npc.sigil, npc.x, npc.y - 13, 9, '#e8e6dc', 'system-ui');
     this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
+    const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
+    this.drawMapLabel(readiness?.label ?? 'NO PACKET', npc.x, npc.y + 36, 8);
   }
 
   drawQuestTarget() {
@@ -1011,6 +1073,9 @@ export class PixelWorldView extends WorldView {
     const near = this.nearest();
     this.canvas.dataset.nearbyNpcRole =
       near?.type === 'npc' && near.distance < 145 ? near.roleId : 'none';
+    this.canvas.dataset.nearbyNpcPacketState = near?.type === 'npc'
+      ? this.guildNpcReadiness?.find(entry => entry.roleId === near.roleId)?.status ?? 'unavailable'
+      : 'none';
     if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
       const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
         : near.type === 'workbench' ? 'E · Make something'
