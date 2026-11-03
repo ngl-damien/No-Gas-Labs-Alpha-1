@@ -691,9 +691,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
-    const status = String(error?.code || '').includes('DURABILITY_UNCERTAIN')
+    const code = String(error?.code || '');
+    const status = code.includes('DURABILITY_UNCERTAIN')
       ? 'durability-uncertain'
-      : 'error';
+      : code.includes('STATE_UNCERTAIN')
+        ? 'state-uncertain'
+        : 'error';
     console.error(JSON.stringify({
       status,
       code: error?.code || 'FOUNDER_NONCE_RECOVERY_FAILED',
