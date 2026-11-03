@@ -27,4 +27,11 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
   assert.ok(diagnosticsStep.includes('android/app/build/outputs/androidTest-results/connected/debug/'));
   assert.equal(source.split('test/android-workflow.test.mjs').length - 1, 3,
     'the regression must be in both workflow path filters and the Android preflight');
+  assert.equal(source.split('test/game-artifacts.test.mjs').length - 1, 3,
+    'the Source Observatory test must be in both workflow path filters and the Android preflight');
+  assert.equal(source.split('--path game/artifacts.mjs').length - 1, 1,
+    'the Source Observatory implementation must be included in the Android preflight');
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.match(manifest.scripts['agent:preflight:ci'], /--path game\/artifacts\.mjs/);
+  assert.match(manifest.scripts['agent:preflight:ci'], /--path test\/game-artifacts\.test\.mjs/);
 });
