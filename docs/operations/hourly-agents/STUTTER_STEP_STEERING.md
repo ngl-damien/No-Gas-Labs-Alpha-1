@@ -104,3 +104,42 @@ If an instruction file or required bootstrap cannot be read/run, stop source wor
 ### Final status correction — PR #323
 
 The current-head Browser run has now completed successfully: [41638570851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570851), 12/12 journeys, including the two-session shared journey and shared restart. Together with Verify [41638571002](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638571002) and Genesis [41638570793](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638570793), current PR #323 head `9074aaaa7642ec9b205cc5aee742a00db3022224` is 3/3 green. The earlier `08376e7` Browser failure was superseded; its rerun was cancelled after Worker B advanced the branch. No current-head Browser failure remains observed.
+
+
+---
+
+## Final reinspection — 2026-11-03
+
+### Worker B Run 41 is now the latest durable MMORPG handoff
+
+- PR #323 advanced from code/test head `9074aaaa7642ec9b205cc5aee742a00db3022224` to documentation head `96c2e526131a78525a637d6487737a7751db7639`. The new commit changes only `docs/operations/LATEST_CHECKPOINT.md` and `docs/operations/MMORPG_COMPLETION_LEDGER.md`; it preserves Run 41.
+- Current #323 docs-head checks: Verify [41639552925](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639552925) PASS; Genesis [41639552983](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639552983) PASS; Browser [41639552961](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639552961) PASS, 12/12. Run 41 records the prior code/test head's 3/3 results, the response-loss test-order correction, cross-event challenge-ID uniqueness, and remaining G6 gates. G6 remains IN PROGRESS; no source retrieval, independent verification, physical Android-device acceptance, top-down tile/sprite renderer, or mainline integration is claimed.
+- The latest Worker B checkpoint blob is `a7d82f8ec4ceff30855adc2a6f6ce942036c770a`; the latest MMORPG ledger blob is `e21dd419c8bfcf8c893f2b866a3e5ea9a6609a3f`, both on PR #323's branch. Main `LATEST_CHECKPOINT.md` remains stale at its older declared baseline; do not overwrite it while the #314/#317/#320/#323 stack owns the proposed checkpoint chain.
+
+### Current exact-head portfolio
+
+- PR #312 parent `d8bbea5`: Verify, Genesis and Browser 3/3 passed.
+- PR #313 current docs/checkpoint head `da5c8790a64c3e04b7abd93260854b377ac2b979`: World Projection [41640223998](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41640223998) PASS; Genesis [41640224128](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41640224128) PASS; Browser [41640224069](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41640224069) still in progress at last observation. Its prior code/test head `dab5063` passed all three, including Browser 12/12. Browser Acceptance on that head had no Node 20 action warning; Verify/Genesis still warn because their separate workflows use checkout@v4/setup-node@v4.
+- PR #316 head `206e617510f63098018513c77621be673dc92f2c`: World Projection [41638605411](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638605411) PASS; Genesis [41638605427](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41638605427) PASS; Browser not triggered for authority/test-only paths. The two writable-ancestor tests were red on `aecd922` and green after the fix.
+- PR #321 current head `6ffa01e1a0a2d397c26ce206604ed572b47b3d8e`: World Projection [41639459304](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639459304) PASS; Genesis [41639459243](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639459243) PASS; Browser [41639459249](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639459249) PASS, 12/12; enforcement [41639451534](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41639451534) PASS. The Browser workflow still emits the Node 20 warning because this branch uses main's old action pins; PR #313 is the separate upgrade proposal.
+- PR #322 head `29eb650`: 3/3 passed. PR #314, #315, #317 and #320 latest recorded exact heads: 3/3 passed. PR #318 remains 2/3 with its Browser witness-quest projection failure.
+- PR #323 current docs head `96c2e526`: 3/3 passed as listed above; its code/test head `9074aaaa` also passed 3/3.
+- PR #319 head `73cec3d` is an older child of #317 head `fa59ebe`. Verify [41621429330](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41621429330) failed with `Cannot access 'claim' before initialization` in the Source Observatory model test and an HTTP 500 instead of 200; Browser [41621429144](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41621429144) failed because `[data-source-observation-card]` was absent. Genesis [41621429123](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41621429123) passed. #320/#323 are the newer canonical Source Observatory/Relay path; do not integrate #319 independently.
+- PR #275 head `a7b2ef5` has 3/3 checks but is a test-only child of closed/unmerged PR #274. Preserve its HTTP forged-field regression for later revalidation; do not retarget it blindly because #274 carries older authority-helper ancestry.
+- PR #16 is closed/unmerged; PR #18 is merged. Fresh PR #16 patch inspection found no `demonstrate()` path; the only `generateKeyPairSync` occurrence is in `experiment-001/institutional-cycle.test.mjs`. Current main helper has zero `verification?.valid` occurrences, but still exposes caller-selectable trust path/clock/replay inputs; PR #316 addresses the helper boundary. The live `game/server.mjs` on main does not import `authorizationEvent()` and still uses the bearer-key/session path.
+
+### Cross-repository and execution limits
+
+- Fresh root-instruction check: nine linked repositories returned 404 for root `AGENTS.md`; AI-BI and governance root instructions/continuity files were read, but their mandatory `init_node.sh` / `init_repo.sh` bootstrap could not be run without a local shell or online remote device. No linked-repository source was inspected or modified.
+- No local checkout or online Remote Desktop Commander device was available. Local preflight and local tests were not run. Hosted post-change CI is the observed verification source, not a pre-edit receipt.
+- Main remains `cc317d49c8fdf003c78aa40f38a177095019066e`. No merge, release, deployment, spending, key operation, external publication, credential/permission change, or Founder-reserved decision occurred.
+
+### Next ranked actions
+
+1. Re-poll PR #313 current docs-head Browser run `41640224069`; the code/test head `dab5063` already passed 12/12, but do not transfer that result to docs head `da5c879` until its run completes.
+2. Keep PR #316 draft/stacked on #312; continue host trust-root and durable replay design only within Founder-controlled custody, and do not wire it into the live server without an explicit host-owned trust root and canonical mutation-boundary review.
+3. Keep PR #323 draft on its #320/#317/#315/#314/#312 stack; after #309's shared world-view file is reconciled, add Source Observation/challenge map counters, then prioritize actual source retrieval and the top-down tile/sprite renderer. G6 remains IN PROGRESS.
+4. Keep PR #321 draft; after #312 integrates, remove/rebase the duplicated TEST_ONLY fixture and refresh main's stale checkpoint only after checkpoint ownership is reconciled.
+5. Revalidate/port PR #275's HTTP forged-field regression only after reviewing closed #274 ancestry against current main and PR #316.
+6. Leave PR #319 as superseded/overlapping pending Worker B disposition; do not merge independently.
+7. Do not inspect or modify linked repository source until each repository's root instructions and mandatory bootstrap can be satisfied.

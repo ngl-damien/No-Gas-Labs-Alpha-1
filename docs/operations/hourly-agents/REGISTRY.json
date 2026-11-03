@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "Main cc317d49 unchanged; PR #312 parent 3/3; PR #316 head 206e617: World Projection 41638605411 and Genesis 41638605427 passed (Browser not triggered for authority-only paths); PR #321 code/test head 67a2534 passed 3/3 and latest docs checkpoint head b629782 has checks queued; PR #322 head 29eb650 3/3; PR #323 current head 9074aaaa passed Verify 41638571002, Genesis 41638570793, Browser 41638570851 (12/12); earlier 08376e7 Browser failure was superseded and its rerun cancelled after branch advance; #313 2/3 inherited fixture; linked-repo bootstrap gates remain."
+      "current_pr_focus": "Main cc317d49 unchanged; #312 3/3; #313 current docs head da5c879: World Projection 41640223998 and Genesis 41640224128 passed, Browser 41640224069 in progress; code/test head dab5063 3/3 (Browser 12/12, no Node20 action warning in Browser workflow); #316 head 206e617 2/2 triggered workflows passed; #321 head 6ffa01e 3/3 plus enforcement; #323 docs head 96c2e52 3/3 (code/test head 9074aaaa also 3/3); #319 older child of #317 fails Verify/Browser; #275 3/3 but child of closed/unmerged #274; #313/#321 fixture backports are temporary until #312 integration; linked-repo bootstrap gates remain."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -63,7 +63,7 @@
         "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
         "source_inspection": "COMPLETED",
         "local_preflight": "NOT_RUN_NO_LOCAL_CHECKOUT_OR_ONLINE_REMOTE_DEVICE; hosted post-change preflight only",
-        "hosted_verification": "PR #316 exact head 206e617510f63098018513c77621be673dc92f2c: test-first head aecd922 exposed two writable-ancestor trust/nonce path gaps; final head passed World Projection 41638605411 (Node tests, Python inspector, package build, institutional exercise) and Genesis 41638605427. Browser not triggered for authority-only changes. PR #321 code/test head 67a2534 passed Verify 41637992508, Genesis 41637992674, Browser 41637992533; latest docs checkpoint head b629782 has fresh checks pending. PR #323 current head 9074aaaa passed Verify 41638571002, Genesis 41638570793, Browser 41638570851 (12/12).",
+        "hosted_verification": "PR #316 head 206e617: writable-ancestor trust/nonce tests red on aecd922, green after fix; World Projection 41638605411 and Genesis 41638605427 passed; Browser not triggered. PR #321 head 6ffa01e: World Projection 41639459304, Genesis 41639459243, Browser 41639459249 (12/12), enforcement 41639451534 all passed. PR #313 code/test head dab5063 passed World Projection 41639654818, Genesis 41639654561, Browser 41639654550 (12/12, no Node20 action warning); latest docs head da5c879 has World Projection 41640223998 and Genesis 41640224128 passed, Browser 41640224069 in progress. PR #323 docs head 96c2e52 passed Verify 41639552925, Genesis 41639552983 and Browser 41639552961 (12/12); Run 41 checkpoint/ledger preserved.",
         "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
         "latest_checkpoint": {
           "path": "docs/operations/LATEST_CHECKPOINT.md",
@@ -81,8 +81,9 @@
           },
           {
             "pr": 313,
-            "status": "OPEN_DRAFT",
-            "checks": "2/3 last observed; Verify stale Decision Chamber fixture failure"
+            "status": "OPEN_DRAFT_MAIN_BASED",
+            "checks": "Current docs head: World Projection 41640223998 PASS; Genesis 41640224128 PASS; Browser 41640224069 IN_PROGRESS. Prior code/test head dab5063 passed all 3, Browser 12/12, no Node20 action warning in Browser workflow.",
+            "head": "da5c8790a64c3e04b7abd93260854b377ac2b979"
           },
           {
             "pr": 314,
@@ -98,7 +99,7 @@
             "pr": 316,
             "status": "OPEN_DRAFT_CHILD_OF_312",
             "head": "206e617510f63098018513c77621be673dc92f2c",
-            "checks": "2/2 triggered workflows passed: World Projection 41638605411; Genesis Evidence Invariant 41638605427. Browser not triggered for authority-only paths."
+            "checks": "2/2 triggered workflows passed: World Projection 41638605411; Genesis 41638605427. Browser not triggered for authority-only paths."
           },
           {
             "pr": 317,
@@ -130,9 +131,9 @@
           },
           {
             "pr": 321,
-            "status": "OPEN_DRAFT",
-            "head": "b62978253578bc6bf1ec2e4a12632c5265bbebc4",
-            "checks": "Code/test head 67a2534 passed 3/3 (Verify 41637992508, Genesis 41637992674, Browser 41637992533); docs checkpoint head b629782 triggered fresh exact-head checks, pending at last observation."
+            "status": "OPEN_DRAFT_MAIN_BASED",
+            "head": "6ffa01e1a0a2d397c26ce206604ed572b47b3d8e",
+            "checks": "3/3 passed: World Projection 41639459304; Genesis 41639459243; Browser 41639459249 (12/12); enforcement 41639451534. Browser still emits Node20 warning from main action pins."
           },
           {
             "pr": 322,
@@ -143,17 +144,31 @@
           {
             "pr": 323,
             "status": "OPEN_DRAFT_CHILD_OF_320",
-            "head": "9074aaaa7642ec9b205cc5aee742a00db3022224",
-            "checks": "3/3 passed: Verify 41638571002; Genesis 41638570793; Browser 41638570851 (12/12). Earlier failure on superseded head 08376e7 was not reproduced on current head; old-head rerun cancelled after branch advance."
+            "head": "96c2e526131a78525a637d6487737a7751db7639",
+            "checks": "Docs head 3/3 passed: Verify 41639552925; Genesis 41639552983; Browser 41639552961 (12/12). Code/test head 9074aaaa also 3/3. Run41 checkpoint and ledger preserved; G6 IN PROGRESS."
+          },
+          {
+            "pr": 319,
+            "status": "OPEN_DRAFT_OLDER_CHILD_OF_317",
+            "head": "73cec3dfda6c77a4cae6a7af1677ce66695b3a9a",
+            "checks": "Genesis 41621429123 PASS; Verify 41621429330 FAIL (claim temporal-dead-zone + HTTP 500); Browser 41621429144 FAIL (source-observation card absent). Overlaps newer #320/#323; do not merge independently."
+          },
+          {
+            "pr": 275,
+            "status": "OPEN_DRAFT_CHILD_OF_CLOSED_274",
+            "head": "a7b2ef514f1d179054ea1381e265b8d680d059ac",
+            "checks": "3/3 passed (Verify 41391389434; Genesis 41391389494; Browser 41391389467). Test-only HTTP forged-field regression; parent #274 closed/unmerged; revalidate ancestry before porting."
           }
         ],
         "next_actions": [
-          "Re-poll PR #321 latest docs-only head b629782 after its three queued workflows complete; preserve the prior 67a2534 3/3 code/test result separately.",
-          "Keep PR #316 draft and stacked on #312; writable-ancestor trust/nonce path regressions now pass, but the helper remains outside the live game server and host trust/key provisioning remains a Founder-controlled gate.",
-          "Keep PR #323 current head 9074aaaa as 3/3 green (Browser 12/12); G6 remains IN PROGRESS and the Source Observatory stack is not integrated on main.",
-          "After #312 integrates, reconcile PR #321's duplicate TEST_ONLY fixture and rebase PR #313; do not transfer old-head workflow results.",
-          "Refresh main LATEST_CHECKPOINT.md only after #314/#317/#320 checkpoint ownership is reconciled; current main checkpoint remains stale.",
-          "Do not inspect or modify linked repository source until root AGENTS instructions and required bootstrap scripts can be read and executed."
+          "Re-poll PR #313 docs-head Browser run 41640224069; do not transfer the prior dab5063 code/test 3/3 result until da5c879 exact-head Browser completes.",
+          "Keep PR #316 draft/stacked on #312; host trust-root and durable replay remain helper-level and Founder-controlled; no key or live-server integration.",
+          "Keep PR #323 draft on the #320/#317/#315/#314/#312 stack; Run 41 exact-head checks are 3/3 green, but G6 remains IN PROGRESS and main has not received the stack.",
+          "After #312 integrates, reconcile the duplicate TEST_ONLY fixture on #313/#321, rebase #313 and re-run exact-head checks.",
+          "Revalidate/port PR #275's HTTP forged-field regression only after reviewing closed #274 ancestry; do not retarget blindly.",
+          "Leave PR #319 as superseded/overlapping pending Worker B disposition; preserve its failure evidence.",
+          "Refresh main LATEST_CHECKPOINT.md only after #314/#317/#320/#323 checkpoint ownership is reconciled; main remains stale.",
+          "Do not inspect or modify linked repository source until root AGENTS instructions and mandatory bootstrap scripts can be read and executed."
         ]
       },
       {
