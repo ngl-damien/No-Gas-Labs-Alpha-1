@@ -2554,11 +2554,37 @@ def main():
                             actual_url=page.url
                             try: title=page.title()
                             except Exception: title=''
+                            try:
+                                dom_state=page.evaluate("""() => {
+                                    const element=document.querySelector('#start-private');
+                                    const style=element?getComputedStyle(element):null;
+                                    const rect=element?.getBoundingClientRect();
+                                    return {
+                                        readyState:document.readyState,
+                                        startPrivateCount:document.querySelectorAll('#start-private').length,
+                                        startPrivate:element?{
+                                            outerHTML:element.outerHTML,
+                                            hidden:element.hidden,
+                                            disabled:element.disabled,
+                                            display:style?.display,
+                                            visibility:style?.visibility,
+                                            rect:rect?{x:rect.x,y:rect.y,width:rect.width,height:rect.height}:null
+                                        }:null,
+                                        frames:[...document.querySelectorAll('iframe')].map(frame=>({id:frame.id,name:frame.name,src:frame.src})),
+                                        shadowHosts:[...document.querySelectorAll('*')].filter(node=>node.shadowRoot).map(node=>({tag:node.tagName,id:node.id,entryCount:node.shadowRoot.querySelectorAll('#start-private').length})),
+                                        bodyChildCount:document.body?.children.length,
+                                        scripts:[...document.scripts].map(script=>({src:script.src,type:script.type}))
+                                    };
+                                }""")
+                            except Exception as diagnostic_error:
+                                dom_state={'error':str(diagnostic_error)}
                             diagnostics={
                                 'requestedUrl':standalone_url,
                                 'actualUrl':actual_url,
                                 'title':title,
                                 'body':body[:800],
+                                'dom':dom_state,
+                                'frames':[{'name':frame.name,'url':frame.url} for frame in page.frames],
                                 'error':str(error),
                                 'builtFileContainsEntryControl':True
                             }
