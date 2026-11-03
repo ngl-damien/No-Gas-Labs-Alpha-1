@@ -456,6 +456,7 @@ export function sourceObservationRequestMaterial({
     if (typeof value !== 'string') throw new TypeError(label + ' must be text or null.');
     return value.trim() || null;
   };
+  if (!['founder', 'witness'].includes(actorRole)) throw new TypeError('Actor role must be Founder or Witness.');
   if (!Number.isSafeInteger(version) || version < 1) throw new TypeError('Version must be a positive integer.');
   if (!sourceObservationSourceKinds.has(sourceKind)) throw new TypeError('Unknown source class.');
   return JSON.stringify({
@@ -562,7 +563,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus = publicationRows.length ? 'ambiguous' : 'unavailable';
       projectionReason = 'The selected version does not have one unique retained publication event.';
     } else if (projectionStatus === 'linked' &&
-      (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) ||
+      (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) || publicationRows[0].event.actor?.role !== 'founder' ||
        !isStrictTimestamp(target.version.publishedAt) ||
        publicationRows[0].event.at !== target.version.publishedAt ||
        Date.parse(event.at) < Date.parse(publicationRows[0].event.at))) {

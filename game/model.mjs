@@ -107,8 +107,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
           previous.uncertainty===uncertainty&&previous.nextTest===nextTest&&
           previous.normalizedRecordDigest===normalizedRecordDigest;
         if(!same)fail('SOURCE_OBSERVATION_ID_CONFLICT','This normalized observation identity is already bound to different actor or note content.',409);
-        result={observationId,duplicate:true};
-        break;
+        return {world:original,result:{observationId,duplicate:true}};
       }
       result={observationId,duplicate:false};
       recordEvent('source-observation-recorded',{
