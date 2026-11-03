@@ -282,7 +282,10 @@ function consumeFounderNonce(nonce) {
   assertTrustedDirectoryChain(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const lockPath = path.join(directory, ".founder-nonce.lock");
-  if (ledgerPath === lockPath) throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+  const recoveryLeasePath = path.join(directory, ".founder-nonce-recovery.lock");
+  if (ledgerPath === lockPath || ledgerPath === recoveryLeasePath) {
+    throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
+  }
   assertNoFounderNonceRecoveryLease(directory);
 
   let lockDescriptor;
