@@ -11,6 +11,7 @@ import {
   decisionDigest,
   verifyFounderDecision,
   authorizationEvent,
+  loadTrustAnchor,
   newNonce
 } from '../src/authority/decision.js';
 
@@ -67,7 +68,7 @@ const signed = {
   nonce: newNonce()
 };
 
-test('enrolled TEST_ONLY key authorizes the exact signed decision through the current API', () => {
+test('TEST_ONLY trust is inspectable and cryptographically valid but cannot authorize through a caller-selected path', () => {
   const verification = verifyFounderDecision({
     signed,
     payload,
@@ -76,10 +77,15 @@ test('enrolled TEST_ONLY key authorizes the exact signed decision through the cu
     now: 0
   });
   assert.equal(verification.valid, true);
-  const event = authorizationEvent({ signed, payload, trustPath, now: 0 });
-  assert.equal(event.proposal_id, 'p1');
-  assert.equal(event.verified_in_process, true);
-  assert.equal(event.trust_mode, 'TEST_ONLY');
+  assert.equal(loadTrustAnchor(trustPath).mode, 'TEST_ONLY');
+  assert.throws(
+    () => authorizationEvent({ signed, payload, trustPath, now: 0 }),
+    /FOUNDER_AUTHORIZATION_INPUT_INVALID/
+  );
+  assert.throws(
+    () => authorizationEvent({ signed, payload }),
+    /FOUNDER_TRUST_ROOT_UNCONFIGURED/
+  );
 });
 
 test('changing capability after signature invalidates the ruling', () => {
@@ -112,13 +118,18 @@ test('an expired exact signature is not current authority', () => {
   }), { valid: false, reason: 'DECISION_EXPIRED' });
 });
 
-test('authorizationEvent ignores caller-supplied verification.valid and re-verifies the signed receipt', () => {
+test('authorizationEvent rejects caller-supplied trust, clock, replay and verification inputs', () => {
   const forged = { ...signed, signature: Buffer.alloc(64).toString('base64url') };
   assert.throws(() => authorizationEvent({
     signed: forged,
     payload,
     trustPath,
     now: 0,
+    consumed_nonces: new Set(),
     verification: { valid: true }
-  }), /FOUNDER_DECISION_INVALID:SIGNATURE_INVALID/);
+  }), /FOUNDER_AUTHORIZATION_INPUT_INVALID/);
+  assert.throws(
+    () => authorizationEvent({ signed: forged, payload, verification: { valid: true } }),
+    /FOUNDER_AUTHORIZATION_INPUT_INVALID/
+  );
 });
