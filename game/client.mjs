@@ -204,8 +204,86 @@ function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;s
 }
 function previewDraft(draft){openPortal({title:draft.title,html:draft.html,kicker:'PRIVATE DRAFT',footer:[paragraph('Private preview · opaque sandbox · no live AI or network requests.'),button(`Publish v${draft.version}`,guarded(()=>publishDraft(draft)),{id:'portal-publish',class:'primary-button'})]})}
 async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 WORLD XP · +100 character XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
-function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
-  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));
+function openSourceObservation(creationId,versionNumber){
+  const creation=world.creations.find(item=>item.id===creationId);
+  const retained=creation?[creation,...(Array.isArray(creation.versions)?creation.versions:[])]:[];
+  const version=retained.find(item=>item.version===versionNumber);
+  if(!creation||creation.kind!=='observatory'||!version){
+    toast('That retained Source Observatory version is unavailable.',true);
+    openEvidenceArchive();
+    return;
+  }
+  const content=showSheet('Record a source observation','SOURCE OBSERVATORY · RIVER OF RECEIPTS');
+  content.append(
+    paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
+    paragraph('This is an actor-attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help')
+  );
+  const form=node('form',{class:'field-card','data-source-observation-form':'true'},[]);
+  const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
+  const sourceKind=node('select',{id:'source-observation-kind'},[
+    node('option',{value:'unspecified',text:'Not classified · author-selected'}),
+    node('option',{value:'direct-observation',text:'Direct observation · author-selected'}),
+    node('option',{value:'primary-source',text:'Primary source / document · author-selected'}),
+    node('option',{value:'secondary-source',text:'Secondary source / analysis · author-selected'}),
+    node('option',{value:'tool-output',text:'Tool output / execution receipt · attributed only'}),
+    node('option',{value:'user-report',text:'User-reported · author-selected'}),
+    node('option',{value:'model-assertion',text:'Model assertion · lead only, not evidence'})
+  ]);
+  const source=node('textarea',{id:'source-observation-source',maxlength:'1000',rows:'2',placeholder:'Document, author, URL, page or observation reference',required:'required'});
+  const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
+  const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
+  const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
+  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:'Retain source observation'});
+  const status=paragraph('The event contract fixes source retrieval and independent verification as NOT_PERFORMED, model assertions as LEADS_ONLY, and execution as NOT_EXECUTED. This records activity only; it awards no XP and does not complete a verification or Founder-approval gate.','form-help');
+  status.dataset.sourceObservationStatus='true';
+  form.append(
+    field('Claim under test · up to 500 Unicode code points','source-observation-claim',claim),
+    field('Source class · author-selected','source-observation-kind',sourceKind),
+    field('Source / attribution · up to 500 Unicode code points','source-observation-source',source),
+    field('Possible falsifier · optional','source-observation-falsifier',falsifier),
+    field('Unknowns / uncertainty · optional','source-observation-uncertainty',uncertainty),
+    field('Next discriminating test · optional','source-observation-next-test',nextTest),
+    status,
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      const note={
+        claim:claim.value.trim(),
+        sourceKind:sourceKind.value,
+        source:source.value.trim(),
+        falsifier:falsifier.value.trim()||null,
+        uncertainty:uncertainty.value.trim()||null,
+        nextTest:nextTest.value.trim()||null
+      };
+      const material=sourceObservationRequestMaterial({
+        actorId:viewer.id,actorRole:viewer.role,creationId,version:versionNumber,...note
+      });
+      if(!globalThis.crypto?.subtle)throw new Error('Web Crypto SHA-256 is unavailable in this browser context.');
+      const bytes=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(material));
+      const digest=Array.from(new Uint8Array(bytes),value=>value.toString(16).padStart(2,'0')).join('');
+      const observationId='source-observation-'+digest;
+      const result=await act({
+        type:'record-source-observation',requestId:observationId,observationId,
+        creationId,version:versionNumber,...note
+      });
+      toast(result?.duplicate===true
+        ?'That exact source observation was already retained. No duplicate event or XP was added.'
+        :'Source observation retained in the world · actor-attributed · no XP or truth verdict.');
+      openCreation(creationId,versionNumber);
+    }catch(error){
+      status.textContent='No confirmed response was received. If the exact local Relay receipt remains, retry it from The Relay before starting another note. '+(error?.message||'');
+      throw error;
+    }finally{
+      submit.disabled=false;
+    }
+  });
+}
+function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));sourceObservationList.append(node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId||''},children));}}content.append(node('span',{class:'pill',text:`${creation.kind} · published v${creation.version}`}),paragraph(creation.intent||'A small, playable creation in the Common Ground.'),node('div',{class:'button-row'},[button('Enter this creation ↗',()=>enterCreation(),{id:'enter-creation',class:'primary-button'})]));
+  const version=node('select',{id:'version-select'});for(const v of availableVersions)version.append(node('option',{value:v.version,text:`Version ${v.version}${v.version===creation.version?' · current':' · retained original bytes'}`}));version.value=String(selectedVersion);version.onchange=()=>{selectedVersion=Number(version.value);renderNotes();renderSourceObservations();syncChallengeTarget(true)};content.append(field('Version archive','version-select',version),paragraph('Versions are flat retained documents. A SHA-256 receipt establishes exact bytes, not the truth of any claim inside.','form-help'),node('div',{class:'receipt',text:`SHA-256 ${creation.receipt.digest}\n${creation.receipt.size.toLocaleString()} bytes · v${creation.version}`}));if(creation.kind==='observatory'){content.append(paragraph('Record a falsifiable source note in this version’s Chronicle. The source class is author-selected; retrieval and independent verification remain NOT_PERFORMED.','form-help'),button('Record a source observation →',()=>openSourceObservation(id,selectedVersion),{id:'source-observation-open',class:'secondary-button'}),sourceObservationList=node('div',{id:'source-observations'}));renderSourceObservations();}
   const notes=node('div',{id:'creation-notes'}),contribution=node('textarea',{id:'contribution-text',maxlength:'500',rows:'3',placeholder:'A useful response, question or counterexample…'});content.append(node('h3',{class:'section-title',text:'Leave a useful trace'}),field('Contribution · 500 characters','contribution-text',contribution),node('div',{class:'button-row'},[button('Add your contribution',guarded(async()=>{await act({type:'contribute',creationId:id,version:selectedVersion,text:contribution.value});contribution.value='';renderNotes();toast('Contribution preserved with your attribution. No XP awarded.')}),{id:'contribute-button',class:'secondary-button'})]),notes);
   const report=node('textarea',{id:'report-text',maxlength:'1000',rows:'2',placeholder:'What failed, what is unsupported, or what needs care?'});const reportDetails=node('details',{},[node('summary',{text:'Report a problem or unsupported claim'}),field('Report · 1000 characters','report-text',report),node('div',{class:'button-row'},[button('Preserve this report',guarded(async()=>{await act({type:'report',creationId:id,version:selectedVersion,text:report.value});report.value='';renderNotes();toast('Report preserved against that exact version.')}),{id:'report-button',class:'secondary-button'})])]);content.append(reportDetails);
   const challengeDetails=node('details',{id:'contradiction-clerk'},[node('summary',{text:'Ask the Contradiction Clerk to challenge this version'})]);
@@ -243,7 +321,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   content.append(challengeDetails);
   if(focusChallenge){challengeDetails.open=true;challengeDetails.querySelector('summary')?.focus();}
   if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
-  function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=renderNotes;renderNotes();
+  function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations()};renderNotes();renderSourceObservations();
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
 function appendRelayRecovery(content){
@@ -555,7 +633,7 @@ function openEvidenceArchive(){
 
   const researchEvents=projectResearchRecords(events,creations);
   const sourceObservationRecords=projectSourceObservationRecords(events,creations);
-  content.append(node('h3',{class:'section-title',text:'IMPORTED SOURCE OBSERVATIONS'}));
+  content.append(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS'}));
   if(!sourceObservationRecords.length)content.append(paragraph('No source observations have been retained in this world yet.','empty-note'));
   for(const record of sourceObservationRecords){
     const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId});

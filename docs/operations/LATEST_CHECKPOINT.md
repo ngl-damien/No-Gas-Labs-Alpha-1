@@ -143,3 +143,50 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - PR #317 is a draft child of #315; #315 is a draft child of #314; #314 is a draft child of #312. Do not merge this child independently of its parent stack.
 - Next: explicitly test the Source Observation import through the shared-mode Relay pending receipt by committing on the server and dropping the first response, then retrying through Relay and proving one event/revision. The current browser run exercises private import/re-import; the HTTP test exercises shared idempotent replay, but the new action's combined UI/offline path is not yet independently exercised. Continue to preserve dissent, falsifiers, and unknowns as authored records, not verdicts.
 - The classic top-down tile-and-sprite world renderer and physical Android-device acceptance remain unfinished product priorities.
+
+
+---
+
+## Run 40 — 2026-11-03 — Worker B — Source Observatory offline and ambiguous-outcome recovery
+
+**Repository:** ngl-damien/No-Gas-Labs-Alpha-1  
+**Main baseline observed:** cc317d49c8fdf003c78aa40f38a177095019066e  
+**Canonical candidate:** PR #320, branch game/source-observation-in-world-form-20261103, code/test head be516a5a1f11182afea95dd070fee0aa945cee04, child of PR #317 exact base abc71df5965864cefd46adcdccf6c3b660bd4282 → #315 → #314 → #312.
+
+### Rehydration and ownership
+
+- Read current root AGENTS.md and the complete docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md; their Git blob identities matched between main and the PR #320 branch. Hosted preflight also fingerprinted both exact files.
+- Read the preceding durable checkpoint (Run 39), MMORPG_COMPLETION_CONTRACT.md, and the full MMORPG_COMPLETION_LEDGER.md.
+- Checked nested instructions for docs/, docs/operations/, docs/operations/hourly-agents/, src/, src/authority/, src/institution/, test/, game/, and scripts/; all returned 404. Root instructions remain applicable.
+- No pre-edit local portable preflight or local Node 24 test was possible: Remote Desktop Commander returned no online device, and the available container has Node 22 while the repository requires Node 24. Hosted Verify ran the canonical CI preflight after the change; that receipt is post-change evidence.
+- Re-read Worker A's latest security result, PR #316 head dbcf3d916a7b5cef5d3368e8e2a02666ce4095c8. Its new regression preserves the nonce ledger and lock after post-rename directory-fsync uncertainty; its exact-head Verify, Genesis, and Browser workflows passed. It remains helper-level: no host trust root or Founder key was provisioned, and the live game server does not import its authorization helper.
+- Re-read Worker A's PR #321 steering/portfolio update. It is documentation-only and preserves the linked-repository bootstrap gates.
+- Reconciled overlapping Source Observatory work: #318 remains a separate overlapping implementation with a Browser quest-projection failure; #319 is a separate import-path Relay test proposal with Verify and Browser failures; #317 is the evidence-green event core; #320 is the canonical direct-form child being extended here. Do not merge #318/#319 independently or duplicate their changes.
+- Main's game/model.mjs, game/server.mjs, game/client.mjs, game/quests.mjs, and game/research-records.mjs still do not contain the proposed record-source-observation action, direct form, projector, or Source Recorder. The feature remains proposed, not integrated on main.
+
+### Selection and change
+
+The highest-leverage remaining gap on the current candidate was not another note form: it was proof that the existing in-world Source Observation action survives both sides of unreliable connectivity without manufacturing canonical state.
+
+This run changed only scripts/verify-browser.py on PR #320. The executable browser journey now verifies two distinct failure modes:
+
+1. **Failure before server receipt:** the browser request is aborted before it reaches the service. The exact local Relay receipt survives; an independent state read observes no Source Observation event, no revision increase, and no XP. The Witness retries the exact actor/action/request ID through The Relay; the server then retains exactly one event and one revision.
+2. **Commit followed by lost response:** a second, distinct note is committed by the service, but the browser receives a simulated 503. An independent API state read observes the second event and revision before the Relay retry. Retrying the exact receipt leaves two total events and the same revision—no third event or extra progression.
+
+The same journey checks actor/role and retained-version binding, stable observation/request identity, fixed NOT_PERFORMED / LEADS_ONLY / NOT_EXECUTED assurance fields, unchanged XP, actor-scoped quest completion, Source Recorder projection, Chronicle/Evidence Archive visibility, second-session visibility, and text-only rendering of user content.
+
+The runtime feature already present in PR #320 remains a direct in-world form on each retained Observatory version, using the #317 server-validated append-only event, existing Relay receipt, and deterministic projections. Recording a note is attributed research activity, not source retrieval, independent verification, a truth verdict, approval, XP, or authority.
+
+### Exact-head verification — code/test head be516a5a1f11182afea95dd070fee0aa945cee04
+
+- Verify [41628266077](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41628266077): **success**. Node 24 node --test exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise passed. Preflight artifact [13225953863](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41628266077/artifacts/13225953863): ready, 45 targets, 48 file records, zero warnings and zero failures. Receipt JSON SHA-256 7e0787f6ce994d4af62e5e4d31f9e96d1d0c882e1425b224827acc95896ad900.
+- Genesis Evidence Invariant [41628266145](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41628266145): **success**.
+- Browser Acceptance [41628266063](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41628266063): **success**, 12/12 journeys. The two-session shared journey includes both new Source Observation recovery cases. Artifact [13226508337](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41628266063/artifacts/13226508337), SHA-256 e45539d80aba011209256d6353f97cd65ccb47f8da8cb861e923487be20284bf.
+- The Browser run also passed desktop, phone, five institutional locations, two-session shared world, 320/360/412 px toolbar checks, one-button layouts, standalone export, exact-byte checks, and shared restart. Its logs retain Node 20 action deprecation and Node punycode / url.parse deprecation warnings; these are workflow/runtime warnings, not failed journeys.
+
+### Boundaries and handoff
+
+- PR #320 remains open/draft and must travel with its parent stack; no merge, release, deployment, key operation, permission change, or Founder decision occurred.
+- G6 remains **IN PROGRESS**. Main has not received this stack. Source retrieval, independent verification, and execution remain NOT_PERFORMED / NOT_EXECUTED; user/model-authored notes do not establish the truth of claims.
+- No physical Android-device acceptance is claimed. Browser acceptance is hosted Chromium on Ubuntu, not an Android device. The classic top-down tile-and-sprite world renderer remains unfinished, as does live Founder identity/key custody and cryptographic authorization integration.
+- Next: reconcile the parent stack and exact-head evidence before any integration; then build an actual source-retrieval/inspection path that preserves origin, retrieved bytes, independent verification, falsifiers, and dissent as separate states. Keep the pixel-art world renderer and physical Android acceptance as distinct product gates.
