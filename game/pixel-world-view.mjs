@@ -110,6 +110,22 @@ function createQuestMapTarget(kind, id, x, y, label) {
   return Object.freeze({ kind, id, x, y, label: questTargetLabel(label, 'Next objective') });
 }
 
+/** Keep canvas map labels at a stable CSS-pixel size despite world zoom. */
+export function projectMapLabelMetrics(screenFontSize, zoom, viewportWidth) {
+  if (!Number.isFinite(screenFontSize) || screenFontSize < 8 || screenFontSize > 18 ||
+      !Number.isFinite(zoom) || zoom <= 0 || zoom > 4 ||
+      !Number.isFinite(viewportWidth) || viewportWidth < 64) return null;
+  const maxScreenWidth = Math.max(48, Math.min(220, viewportWidth - 16));
+  return Object.freeze({
+    fontSize: screenFontSize / zoom,
+    maxWidth: maxScreenWidth / zoom,
+    minWidth: Math.min(48, maxScreenWidth) / zoom,
+    horizontalPadding: 8 / zoom,
+    verticalPadding: 5 / zoom,
+    lineWidth: 1.5 / zoom
+  });
+}
+
 /**
  * Resolve a quest action to one exact, already-projected world object.
  * This is a read-only navigation hint: it never advances the objective.
@@ -186,6 +202,42 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
   }
 
   return null;
+}
+
+/**
+ * Project an off-screen quest destination to the nearest safe viewport edge.
+ * A null result means the target is already visible or the projection is unsafe.
+ */
+export function projectQuestCompassIndicator(target, camera, width, height, zoom, margin = 26) {
+  const targetX = ownDataValue(target, 'x');
+  const targetY = ownDataValue(target, 'y');
+  const cameraX = ownDataValue(camera, 'x');
+  const cameraY = ownDataValue(camera, 'y');
+  const label = ownDataValue(target, 'label');
+  if (![targetX, targetY, cameraX, cameraY, width, height, zoom, margin].every(Number.isFinite) ||
+      zoom <= 0 || width < 64 || height < 64 || margin < 8 ||
+      margin * 2 >= Math.min(width, height)) return null;
+
+  const screenX = width / 2 + (targetX - cameraX) * zoom;
+  const screenY = height / 2 + (targetY - cameraY) * zoom;
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return null;
+  if (screenX >= margin && screenX <= width - margin &&
+      screenY >= margin && screenY <= height - margin) return null;
+
+  const dx = screenX - width / 2;
+  const dy = screenY - height / 2;
+  if (dx === 0 && dy === 0) return null;
+  const scale = Math.min(
+    dx === 0 ? Infinity : (width / 2 - margin) / Math.abs(dx),
+    dy === 0 ? Infinity : (height / 2 - margin) / Math.abs(dy)
+  );
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return Object.freeze({
+    x: width / 2 + dx * scale,
+    y: height / 2 + dy * scale,
+    angle: Math.atan2(dy, dx),
+    label: questTargetLabel(label, 'Next objective')
+  });
 }
 
 export const WORLD_TILE_SIZE = 32;
@@ -504,7 +556,7 @@ export class PixelWorldView extends WorldView {
     this.canvas.dataset.activeQuestTarget = `${this.questTarget.kind}:${this.questTarget.id}`;
     this.canvas.dataset.activeQuestTargetLabel = this.questTarget.label;
     this.canvas.setAttribute('aria-label',
-      `${this.researchAccessibilityLabel} Active quest target: ${this.questTarget.label}. This marker is a read-only navigation cue; it does not record progress or award XP.`);
+      `${this.researchAccessibilityLabel} Active quest target: ${this.questTarget.label}. The map shows its world location and an edge compass when it is outside the current view. Navigation is read-only and does not record progress or award XP.`);
   }
 
   sourceObservationMapLine() {
@@ -521,27 +573,41 @@ export class PixelWorldView extends WorldView {
     context.fillText(String(value), x, y);
   }
 
-  drawMapLabel(value, x, y, size = 9) {
+  drawMapLabel(value, x, y, size = 11) {
     const context = this.ctx;
     const source = String(value);
-    const maximumCharacters = Math.max(4, Math.floor((190 - 12) / size));
+    const metrics = projectMapLabelMetrics(size, this.zoom, this.width);
+    if (!metrics) return;
+    context.font = metrics.fontSize + 'px ui-monospace, monospace';
     const characters = Array.from(source);
-    const label = characters.length > maximumCharacters
-      ? characters.slice(0, maximumCharacters - 1).join('') + '…' : source;
-    context.font = size + 'px ui-monospace, monospace';
-    const width = Math.min(190, Math.max(44, Math.ceil(context.measureText(label).width) + 12));
+    const originalLength = characters.length;
+    const maxTextWidth = metrics.maxWidth - 2 * metrics.horizontalPadding;
+    let label = source;
+    while (characters.length > 1 && context.measureText(label).width > maxTextWidth) {
+      characters.pop();
+      label = characters.join('');
+    }
+    if (characters.length < originalLength) {
+      while (characters.length > 1 &&
+          context.measureText(characters.join('') + '…').width > maxTextWidth) characters.pop();
+      label = characters.join('') + '…';
+    }
+    const width = Math.min(metrics.maxWidth, Math.max(metrics.minWidth,
+      Math.ceil(context.measureText(label).width) + 2 * metrics.horizontalPadding));
     const left = Math.round(x - width / 2);
-    const top = Math.round(y - size - 5);
+    const top = Math.round(y - metrics.fontSize - metrics.verticalPadding);
+    const height = metrics.fontSize + 2 * metrics.verticalPadding;
     context.fillStyle = '#0c0d0b';
-    context.fillRect(left, top, width, size + 9);
+    context.fillRect(left, top, width, height);
     context.strokeStyle = '#e8e6dc';
-    context.lineWidth = 1;
-    context.strokeRect(left + 0.5, top + 0.5, width - 1, size + 8);
-    this.text(label, x, y, size, '#e8e6dc');
+    context.lineWidth = metrics.lineWidth;
+    context.strokeRect(left + metrics.lineWidth / 2, top + metrics.lineWidth / 2,
+      width - metrics.lineWidth, height - metrics.lineWidth);
+    this.text(label, x, y, metrics.fontSize, '#f5f1e6');
   }
 
   drawResearchCounterPanel(x, y) {
-    this.drawMapLabel(this.sourceObservationMapLine(), x, y, 9);
+    this.drawMapLabel(this.sourceObservationMapLine(), x, y, 10);
   }
 
   drawLandscape() {
@@ -594,9 +660,9 @@ export class PixelWorldView extends WorldView {
       context.fillStyle = '#d8d1ad';
       context.fillRect(stall.x - 14, 424, 28, 3);
     }
-    this.drawMapLabel('TOWNSQUARE', 1040, 468, 10);
-    this.drawMapLabel((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 489, 8);
-    this.drawResearchCounterPanel(1040, 510);
+    this.drawMapLabel('TOWNSQUARE', 1040, 478, 12);
+    this.drawMapLabel((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 508, 10);
+    this.drawResearchCounterPanel(1040, 538);
   }
 
   drawInstitution(place) {
@@ -616,10 +682,10 @@ export class PixelWorldView extends WorldView {
     const roof = roofColors[place.id] || '#536d53';
     drawPixelBuilding(this.ctx, place.x, place.y + 8, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
-    this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 34, 9);
-    this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 54, 8);
+    this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
+    this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 68, 10);
     if (place.id === 'evidence_archive') {
-      this.drawResearchCounterPanel(place.x, place.y + 74);
+      this.drawResearchCounterPanel(place.x, place.y + 98);
     }
   }
 
@@ -668,7 +734,7 @@ export class PixelWorldView extends WorldView {
         context.fillRect(x + offset - 9, y + 5, 18, 5);
       }
     }
-    this.text(place.name.toUpperCase(), x, y + 43, 8, '#293c30');
+    this.drawMapLabel(place.name.toUpperCase(), x, y + 43, 11);
   }
 
   drawWorkbench() {
@@ -686,7 +752,7 @@ export class PixelWorldView extends WorldView {
     context.fillStyle = '#a95f3e';
     context.fillRect(x + 18, y - 28, 5, 18);
     context.fillRect(x + 13, y - 28, 15, 5);
-    this.text('THE MAKING BENCH', x, y + 48, 9, '#293c30');
+    this.drawMapLabel('THE MAKING BENCH', x, y + 48, 11);
   }
 
   drawBuilding(creation) {
@@ -700,14 +766,14 @@ export class PixelWorldView extends WorldView {
     const x = creation.position.x, y = creation.position.y;
     drawPixelBuilding(this.ctx, x, y + 8, colors[creation.kind] || '#596d5a', '#c9c7a5', '#354538');
     const title = Array.from(String(creation.title || 'Untitled'));
-    this.text(title.length > 20 ? title.slice(0, 19).join('') + '…' : title.join(''), x, y + 34, 8, '#293c30');
-    this.text(String(creation.kind || 'artifact').toUpperCase() + ' · v' + creation.version, x, y + 46, 7, '#445b49');
+    this.drawMapLabel(title.length > 20 ? title.slice(0, 19).join('') + '…' : title.join(''), x, y + 46, 10);
+    this.drawMapLabel(String(creation.kind || 'artifact').toUpperCase() + ' · v' + creation.version, x, y + 74, 9);
   }
 
   drawMoonshotObject(object) {
     drawSprite(this.ctx, PIXEL_SPRITES.moonshot, SPRITE_COLORS.moonshot, object.x, object.y + 12, 4);
-    this.text(String(object.title || 'MOONSHOT').slice(0, 16), object.x, object.y + 27, 7, '#e8e6dc');
-    this.text('R' + object.attemptCount + ' · C' + object.challengeCount, object.x, object.y + 38, 7, '#e8e6dc');
+    this.drawMapLabel(String(object.title || 'MOONSHOT').slice(0, 16), object.x, object.y + 34, 10);
+    this.drawMapLabel('R' + object.attemptCount + ' · C' + object.challengeCount, object.x, object.y + 62, 9);
   }
 
   drawResearchActivityObject(object) {
@@ -715,7 +781,7 @@ export class PixelWorldView extends WorldView {
     const sprite = challenge ? PIXEL_SPRITES.challenge : PIXEL_SPRITES.moonshot;
     const colors = challenge ? SPRITE_COLORS.challenge : SPRITE_COLORS.moonshot;
     drawSprite(this.ctx, sprite, colors, object.x, object.y + 8, 3);
-    this.text(String(object.title || 'RESEARCH').slice(0, 14), object.x, object.y + 20, 7, '#e8e6dc');
+    this.drawMapLabel(String(object.title || 'RESEARCH').slice(0, 14), object.x, object.y + 30, 10);
   }
 
   drawPlayer(player, other = false) {
@@ -730,30 +796,59 @@ export class PixelWorldView extends WorldView {
   drawQuestTarget() {
     const target = this.questTarget;
     if (!target) return;
-    const context = this.ctx;
     const label = Array.from(target.label).slice(0, 18).join('');
-    const caption = 'NEXT QUEST · ' + label;
-    context.font = '10px ui-monospace, monospace';
-    const width = Math.min(220, Math.max(112, Math.ceil(context.measureText(caption).width) + 18));
-    const left = Math.round(target.x - width / 2);
-    const top = Math.round(target.y - 88);
-    context.fillStyle = '#0c0d0b';
-    context.fillRect(left, top, width, 23);
-    context.strokeStyle = '#e8e6dc';
-    context.lineWidth = 2;
-    context.strokeRect(left + 1, top + 1, width - 2, 21);
+    this.drawMapLabel('NEXT QUEST · ' + label, target.x, target.y - 68, 11);
+    const context = this.ctx;
     context.fillStyle = '#c77b48';
-    context.fillRect(left + 6, top + 6, 6, 11);
-    this.text(caption, target.x + 4, top + 15, 9, '#e8e6dc');
-    context.fillStyle = '#c77b48';
-    context.fillRect(target.x - 2, top + 23, 4, 25);
+    context.fillRect(target.x - 2, target.y - 60, 4, 40);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = 2;
     context.beginPath();
-    context.arc(target.x, target.y - 3, 15, 0, Math.PI * 2);
+    context.arc(target.x, target.y - 3, 17, 0, Math.PI * 2);
     context.stroke();
     context.fillStyle = '#c77b48';
-    context.fillRect(target.x - 4, target.y - 7, 8, 8);
+    context.fillRect(target.x - 5, target.y - 8, 10, 10);
+  }
+
+  drawQuestCompass() {
+    const indicator = projectQuestCompassIndicator(
+      this.questTarget, this.camera, this.width, this.height, this.zoom
+    );
+    this.canvas.dataset.questCompass = indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
+    if (!indicator) return;
+    const context = this.ctx;
+    context.save();
+    context.translate(indicator.x, indicator.y);
+    context.rotate(indicator.angle);
+    context.fillStyle = '#0c0d0b';
+    context.strokeStyle = '#e8e6dc';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(14, 0);
+    context.lineTo(-8, -9);
+    context.lineTo(-3, 0);
+    context.lineTo(-8, 9);
+    context.closePath();
+    context.fill();
+    context.stroke();
+    context.restore();
+
+    const caption = 'NEXT · ' + Array.from(indicator.label).slice(0, 14).join('');
+    context.save();
+    context.font = '11px ui-monospace, monospace';
+    const width = Math.min(this.width - 16, Math.max(92, Math.ceil(context.measureText(caption).width) + 18));
+    const left = Math.max(8, Math.min(this.width - width - 8, indicator.x - width / 2));
+    const top = Math.max(8, Math.min(this.height - 30,
+      indicator.y < this.height / 2 ? indicator.y + 18 : indicator.y - 34));
+    context.fillStyle = '#0c0d0b';
+    context.fillRect(left, top, width, 24);
+    context.strokeStyle = '#e8e6dc';
+    context.lineWidth = 1.5;
+    context.strokeRect(left + 0.75, top + 0.75, width - 1.5, 22.5);
+    context.fillStyle = '#f5f1e6';
+    context.textAlign = 'center';
+    context.fillText(caption, left + width / 2, top + 16);
+    context.restore();
   }
 
   render() {
@@ -815,5 +910,6 @@ export class PixelWorldView extends WorldView {
       this.text(label, x, y + 3, 10, '#293c30');
     }
     context.restore();
+    this.drawQuestCompass();
   }
 }
