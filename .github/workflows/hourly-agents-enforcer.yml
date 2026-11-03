@@ -1,0 +1,54 @@
+name: hourly-agents-enforcer
+on:
+  push:
+    paths:
+      - 'docs/operations/hourly-agents/**'
+      - 'docs/operations/LATEST_CHECKPOINT.md'
+      - 'docs/authority/founder.pub.json'
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify registry exists
+        run: |
+          test -f docs/operations/hourly-agents/REGISTRY.json
+          grep -q 6ac6c77de7ac81918e446a49ea330eb6 docs/operations/hourly-agents/REGISTRY.json
+          grep -q 6ac307e1e9bc8191ae21d22f94743802 docs/operations/hourly-agents/REGISTRY.json
+          test -f docs/operations/LATEST_CHECKPOINT.md
+      - name: Verify steering files exist
+        run: |
+          test -f docs/operations/hourly-agents/STUTTER_STEP_STEERING.md
+          test -f docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md
+          test -f docs/operations/hourly-agents/DO_NOT_DELETE.md
+      - name: Verify do_not_delete flag preserved
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open("docs/operations/hourly-agents/REGISTRY.json"))
+          agents = data.get("agents") or []
+          if len(agents) < 2:
+              sys.exit("expected at least two registered agents")
+          for a in agents:
+              if a.get("do_not_delete") is not True:
+                  sys.exit(f"do_not_delete missing or false for {a.get('id')}")
+          print("do_not_delete enforced for all agents")
+          PY
+      - name: Report authority hole status
+        run: |
+          if grep -q 'verification?.valid' src/authority/decision.js; then
+            echo "HOLE OPEN — needs fix/authority-verifyFounderDecision-no-trust-caller-valid"
+          else
+            echo "caller-supplied verification?.valid pattern not found"
+          fi
+          if test -f docs/authority/founder.pub.json; then
+            echo "trust anchor exists"
+          else
+            echo "trust anchor absent — expected until genuine Founder ceremony"
+          fi
+      - name: Report lab-queue path
+        run: |
+          if test -d lab-queue; then ls -la lab-queue; else echo "lab-queue not yet populated"; fi

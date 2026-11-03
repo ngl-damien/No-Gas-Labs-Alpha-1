@@ -1,0 +1,32 @@
+{
+  "agents": [
+    {
+      "id": "6ac6c77de7ac81918e446a49ea330eb6",
+      "name": "NGL Repository Stutter-Step Loop",
+      "platform": "ChatGPT scheduled task",
+      "cadence": "hourly",
+      "configured": "2026-10-20T16:39:00Z",
+      "status": "enabled-degraded-free-tier",
+      "do_not_delete": true,
+      "steer_via": "github",
+      "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
+      "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
+      "current_pr_focus": "#301 8c2c953c supersedes #300"
+    },
+    {
+      "id": "6ac307e1e9bc8191ae21d22f94743802",
+      "name": "Independent Forensic Audit + Build NGL MMORPG",
+      "platform": "ChatGPT scheduled task",
+      "cadence": "hourly",
+      "configured": "2026-10-04T21:14:00-05:00",
+      "status": "enabled-degraded-free-tier",
+      "do_not_delete": true,
+      "steer_via": "github",
+      "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
+      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
+      "repo_delta": "93 vs 95"
+    }
+  ],
+  "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
+  "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out"
+}
