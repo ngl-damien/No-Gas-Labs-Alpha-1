@@ -356,8 +356,9 @@ export class PixelWorldView extends WorldView {
     }
     this.canvas.dataset.sourceObservationCounts =
       `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
+    const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
     this.canvas.setAttribute('aria-label',
-      `No Gas Labs top-down pixel-art world. Evidence Archive: ${counts.notes} linked Source Observation notes, ${counts.dissent} linked dissent challenges, ${counts.responses} linked author responses, ${counts.pending} pending author responses, and ${counts.review} retained records requiring review. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`);
+      `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.`);
   }
 
   sourceObservationMapLine() {
