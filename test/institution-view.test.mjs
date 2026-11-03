@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import assert from 'node:assert/strict';
 import { renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 
@@ -25,6 +27,55 @@ function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
 const gate = { policy: null, decisions: [] };
+
+
+function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const creationId = 'creation-observatory';
+  const publishedAt = '2026-10-27T09:00:00.000Z';
+  const note = {
+    claim,
+    sourceKind: 'model-assertion',
+    source: 'Model output only; no primary source retrieved.',
+    falsifier: 'A direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the bridge.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const challengeId = 'source-challenge-1';
+  const world = {
+    creations: [{
+      id: creationId, kind: 'observatory', title: 'Source Observatory',
+      version: 1, publishedAt, versions: []
+    }],
+    events: [
+      { id: 'publish-observatory', type: 'publish', creationId, version: 1, actor: founder, at: publishedAt },
+      {
+        id: 'source-observation-event', type: 'source-observation-recorded',
+        observationId, creationId, version: 1, actor: founder, at: '2026-10-27T09:01:00.000Z',
+        ...note, originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+        modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
+      },
+      {
+        id: 'source-challenge-event', type: 'source-observation-challenged',
+        challengeId, observationId, creationId, version: 1, actor: witness,
+        at: '2026-10-27T09:02:00.000Z', challengeType: 'missing-evidence',
+        challengeText: 'No retrievable primary source is attached.'
+      }
+    ],
+    reports: [],
+    contributions: [],
+    discoveries: []
+  };
+  return { world, creationId, observationId, challengeId, founder, witness };
+}
+
+
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
@@ -100,6 +151,73 @@ test('TownSquare warns about ungrouped events and accepted work without history 
   assert.match(output, /1 accepted work record\(s\) have no retained event history/);
 }));
 
+
+
+test('Evidence Archive queues only uniquely linked unanswered Source Observation challenges and opens the exact version', () => withDocument(() => {
+  const claim = '<img src=x onerror=alert(1)> A model says the bridge is open.';
+  const { world, creationId } = sourceObservationWorld({ claim });
+  const before = structuredClone(world);
+  const opened = [];
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world, shared: true,
+    onOpenArtifact: (id, version) => opened.push([id, version])
+  });
+  const output = textOf(root);
+  assert.match(output, /SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE/);
+  assert.match(output, /1 uniquely linked challenge\(s\) await an author response/);
+  assert.match(output, /Only the original note author can respond/);
+  assert.match(output, /not a verdict, independent evidence, or authority/);
+  assert.match(output, /<img src=x onerror=alert\(1\)>/);
+  assert.equal(walk(root).filter(item => item.tagName === 'img').length, 0,
+    'claim text must be rendered as text, never parsed as markup');
+  const buttons = walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge);
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].dataset.creationId, creationId);
+  assert.equal(buttons[0].dataset.version, '1');
+  buttons[0].onclick();
+  assert.deepEqual(opened, [[creationId, 1]]);
+  assert.deepEqual(world, before, 'opening the docket does not mutate world state');
+}));
+
+test('answered source challenges leave the response queue but remain in the Chronicle', () => withDocument(() => {
+  const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
+  world.events.push({
+    id: 'source-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'source-response-1', challengeId, observationId, creationId, version: 1,
+    actor: founder, at: '2026-10-27T09:03:00.000Z',
+    responseText: 'The note is a lead only; retrieval remains outstanding.'
+  });
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.match(output, /No unanswered Source Observation challenges/);
+  assert.match(output, /Author response to source challenge/);
+  assert.match(output, /does not establish independent evidence/);
+}));
+
+test('ambiguous Source Observation response history is visible but never offered as a new response action', () => withDocument(() => {
+  const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
+  for (let index = 1; index <= 2; index += 1) {
+    world.events.push({
+      id: 'ambiguous-response-event-' + index,
+      type: 'source-observation-challenge-responded',
+      responseId: 'ambiguous-response-' + index,
+      challengeId, observationId, creationId, version: 1, actor: founder,
+      at: '2026-10-27T09:0' + (2 + index) + ':00.000Z',
+      responseText: 'An independently retained response ' + index + '.'
+    });
+  }
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationAmbiguousChallenge).length, 1);
+  assert.match(output, /ambiguous response history/i);
+  assert.match(output, /No response is selected or counted/);
+  assert.match(output, /Source observation challenged/);
+}));
 
 test('Evidence Archive exposes retained failed observations and rejected decisions as inspectable objects', () => withDocument(() => {
   const root = element('div');

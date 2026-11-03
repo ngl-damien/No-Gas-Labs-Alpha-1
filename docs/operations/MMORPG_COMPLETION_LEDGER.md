@@ -43,3 +43,10 @@ Keep current-main and proposed-branch evidence separate. Do not delete supersede
 
 
 - 2026-11-03 Worker B Run 41: PR #323 adds attributed Source Observation dissent/challenge on top of #320/#317. Browser test ordering was corrected to await the post-commit response-loss receipt before reading canonical state; model import validation explicitly shares challenge identity across source-observation and experiment challenge types, with a negative imported-world test. Exact code/test head 9074aaaa7642ec9b205cc5aee742a00db3022224 passed Verify 41638571002, Genesis 41638570793 and Browser 41638570851 (12/12). Hosted preflight artifact 13231916319: ready, 45 targets, 48 file records, zero warnings/failures; receipt JSON SHA-256 063553ffe4f86a057562d52531c26a63f6b48c92cb500c2d747ad305e7b1d778. Browser artifact 13231309227 SHA-256 dd6ef746f938979641d0101d75baead387a78c2208ee06f4e76fac60d37c8063. G6 remains IN PROGRESS; mainline integration, source retrieval/independent verification, physical Android-device acceptance, world map event-count integration and the pixel-art renderer remain unfinished.
+
+## Run 42 — 2026-11-03 — Evidence Archive response docket
+
+G6 remains **IN PROGRESS**. The proposed child PR #325 adds a read-only Source Observation response queue inside the Evidence Archive. It is derived from uniquely linked retained observations/challenges, opens the exact published version for the existing author-only response form, and withholds action for ambiguous histories. Answered challenges remain in Chronicle. No XP, truth verdict, evidence, approval or authority is created.
+
+The new unit tests cover unanswered, answered, ambiguous and hostile-text cases; hosted exact-head Verify, Genesis and Browser results are pending observation. Map badge projection remains blocked by the separate open PR #309 ownership of game/world-view.mjs. No merge, release or deployment is claimed.
+

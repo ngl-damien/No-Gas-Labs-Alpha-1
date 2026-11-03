@@ -238,3 +238,37 @@ No new truth verdict, source retrieval, independent verification, XP, authority,
 - Next ranked actions: (1) after reconciling PR #309, project Source Observation and dissent counts at the Evidence Archive/TownSquare world locations; (2) deliver the first real top-down tile/sprite renderer slice; (3) add actual source retrieval with origin, captured bytes, independent verification, falsifier and dissent as distinct states; (4) establish physical Android-device acceptance.
 
 No merge or deployment was performed.
+
+## Run 42 — 2026-11-03 — Evidence Archive Source Observation response docket
+
+**Worker:** Worker B — Build NGL MMORPG / playable-world runtime.  
+**Repository:** ngl-damien/No-Gas-Labs-Alpha-1.  
+**Main baseline:** cc317d49c8fdf003c78aa40f38a177095019066e.  
+**Parent stack:** PR #323 at exact head 749cefdf84fc8602bb09bbcd3c6ccdd0159087c6; child proposal PR #325, branch game/evidence-archive-response-queue-20261103.
+
+### Rehydration and preflight
+
+- Read the current root AGENTS.md alone, the complete canonical docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md alone, and this durable checkpoint before implementation inspection.
+- Read the MMORPG completion contract and ledger; rechecked PR #323's exact-head Verify, Genesis and Browser results; inspected Worker A's latest PR #324 and its failed Verify job; rechecked overlapping PRs #309, #318 and #319.
+- Nested AGENTS.md checks for game/, test/, scripts/, docs/ and docs/operations/ returned 404; root AGENTS.md remains applicable.
+- No connected Remote Desktop Commander device/local checkout was available for the portable preflight. The required manual sequence was completed before source inspection. Exact-head hosted preflight is required for this child; no local Node 24 test result is claimed.
+
+### Implementation
+
+- Added a read-only Source Observation author-response docket to the Evidence Archive.
+- The docket is derived through projectSourceObservationRecords and lists only uniquely linked, unanswered challenges against retained Source Observatory versions.
+- Each action opens the exact retained creation/version, where the existing client/server checks still restrict response to the original author.
+- Ambiguous response histories are visible but never offered as a new response action. Unlinked/malformed records remain in the Chronicle with warnings.
+- Answered challenges leave the pending queue while the original challenge and author response remain in the Chronicle.
+- The docket does not write events, award XP, adjudicate claims, create evidence, or grant authority. Text is rendered as textContent, not HTML.
+- Added tests for pending, answered, ambiguous and hostile-text cases, including exact-version navigation and no world mutation.
+- Added both changed implementation/test paths to the hosted preflight target manifest and its governance assertion.
+
+### Verification boundary and next work
+
+- Hosted exact-head Verify, Genesis Evidence Invariant and Browser Acceptance are required; results are not assumed until observed.
+- The existing browser suite visits the Evidence Archive, but this run's new docket-specific regression is unit-tested rather than added to the separate browser journey. Add a dedicated browser assertion in a later run if the browser script ownership is reconciled.
+- The Source Observation event types are still absent from the map's Evidence Archive/TownSquare activity badge matchers. world-view.mjs is owned by the still-open PR #309 lifecycle branch; this run deliberately did not edit that shared file.
+- The classic top-down tile-and-sprite transformation, physical Android-device acceptance, and independently authenticated Founder Gate remain unfinished.
+- Draft child only. No merge, release, deployment, Founder decision, XP award, canonical event, credential change or permission change.
+
