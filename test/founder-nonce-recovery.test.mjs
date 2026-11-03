@@ -326,3 +326,47 @@ test('unreadable post-unlink owner-lock inspection retains the recovery fence', 
   assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain when final lock state is unreadable');
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore, 'nonce ledger bytes must remain unchanged');
 });
+
+
+test('read-only recovery inspection opens the nonce ledger without write access', async t => {
+  const value = await fixture(t);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { constants as fsConstants } from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fsPromises.open;",
+    "let ledgerAccessMode = null;",
+    "fsPromises.open = async (target, flags, ...args) => {",
+    "  if (String(target) === process.env.TEST_LEDGER) {",
+    "    ledgerAccessMode = flags & fsConstants.O_ACCMODE;",
+    "    if (ledgerAccessMode !== fsConstants.O_RDONLY) {",
+    "      const error = new Error('read-only filesystem denies writable open');",
+    "      error.code = 'EROFS';",
+    "      throw error;",
+    "    }",
+    "  }",
+    "  return originalOpen(target, flags, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { inspectFounderNonceRecovery } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "const result = await inspectFounderNonceRecovery(process.env.TEST_LEDGER);",
+    "console.log(JSON.stringify({ status: result.status, ledger: result.ledger, ledgerAccessMode }));"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'ready');
+  assert.equal(observed.ledger.exists, true);
+  assert.equal(observed.ledger.nonceCount, 1);
+  assert.equal(observed.ledgerAccessMode, 0, 'read-only inspection must request O_RDONLY');
+});
