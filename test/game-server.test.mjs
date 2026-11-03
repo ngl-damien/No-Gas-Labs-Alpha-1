@@ -55,6 +55,72 @@ async function fixture(t, dataDir, options = {}) {
   }
   return { ...game, dataDir, url, client };
 }
+
+
+async function createLocalDevelopmentServer({ dataDir }) {
+  const env = { ...process.env, NODE_ENV: "development", HOST: "127.0.0.1", PORT: "0", NGL_DATA_DIR: dataDir };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ["game/server.mjs"], {
+    cwd: new URL("../", import.meta.url),
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  let port;
+  try {
+    port = await new Promise((resolvePort, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Local development CLI did not become ready: " + output));
+      }, 5_000);
+      child.on("error", error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on("exit", (code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(output || ("Local development CLI exited before readiness (" + code + ", " + signal + ")")));
+      });
+      child.stdout.on("data", chunk => {
+        output += chunk;
+        const match = /listening on 127\\.0\\.0\\.1:(\\d+)/.exec(output);
+        if (match && !settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolvePort(Number(match[1]));
+        }
+      });
+      child.stderr.on("data", chunk => { output += chunk; });
+    });
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit");
+      child.kill("SIGTERM");
+      await exited;
+    }
+    throw error;
+  }
+  let closed = false;
+  return {
+    address() { return { port }; },
+    async closeGame() {
+      if (closed) return;
+      closed = true;
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = once(child, "exit");
+      child.kill("SIGTERM");
+      await exited;
+    },
+  };
+}
+
 async function publish(founder, title = 'Observed bytes') {
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'custom', title, intent: 'Preserve exact locally authored bytes', html: '<!doctype html><html><body><button onclick="this.textContent=\'Done\'">Try</button></body></html>' });
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
@@ -255,12 +321,23 @@ test('published world and accepted kernel history survive restart; generated key
   const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
-  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
-  t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
-  await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
+  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-'));
+  const first = await createLocalDevelopmentServer({ dataDir: secretDir });
+  t.after(async () => { await first.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
+  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim();
+  assert.ok(secret.length >= 32);
+  const metadata = await lstat(join(secretDir, 'founder.key'));
+  assert.equal(metadata.mode & 0o077, 0, 'generated local Founder key must exclude group and other access');
+  const exported = await fetch(`http://127.0.0.1:${first.address().port}/api/export`);
   assert.equal((await exported.text()).includes(secret), false);
+  await first.closeGame();
+
+  const second = await createLocalDevelopmentServer({ dataDir: secretDir });
+  try {
+    assert.equal((await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(), secret);
+  } finally {
+    await second.closeGame();
+  }
 });
 
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
@@ -364,7 +441,7 @@ test('an exclusive store lease rejects a second writer and is released by closeG
 
 test('the direct CLI starts the HTTP service and releases its exclusive writer lease on SIGTERM without logging secrets', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-cli-'));
-  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env: { ...process.env, HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['game/server.mjs'], { cwd: new URL('../', import.meta.url), env: { ...process.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0', NGL_DATA_DIR: dataDir, NGL_FOUNDER_KEY: KEY }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stderr.on('data', chunk => { output += chunk; });
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; } await rm(dataDir, { recursive: true, force: true }); });
   const port = await new Promise((resolvePort, reject) => {
@@ -1214,4 +1291,71 @@ test('server startup indexes large interleaved retained proposal/report history'
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
+});
+
+
+test("programmatic server factory requires an explicit Founder key before creating runtime data", async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), "ngl-direct-founder-key-"));
+  const dataDir = join(parentDir, "runtime");
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "development";
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null }),
+      error => error.code === "FOUNDER_KEY_REQUIRED"
+    );
+    await assert.rejects(lstat(dataDir), { code: "ENOENT" });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test("programmatic callers cannot opt into generated Founder keys", async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), "ngl-programmatic-founder-key-"));
+  const dataDir = join(parentDir, "runtime");
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "development";
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null, requireExplicitFounderKey: false, allowGeneratedFounderKey: true }),
+      error => error.code === "FOUNDER_KEY_REQUIRED"
+    );
+    await assert.rejects(lstat(dataDir), { code: "ENOENT" });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test("network-bound development CLI refuses to mint a Founder credential without explicit configuration", async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), "ngl-network-founder-key-"));
+  const dataDir = join(parentDir, "runtime");
+  const env = { ...process.env, NODE_ENV: "development", PORT: "0", NGL_DATA_DIR: dataDir };
+  delete env.HOST;
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ["game/server.mjs"], {
+    cwd: new URL("../", import.meta.url),
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.on("data", chunk => { output += chunk; });
+  child.stderr.on("data", chunk => { output += chunk; });
+  const exited = once(child, "exit");
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGTERM");
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: "ENOENT" });
 });
