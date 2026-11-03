@@ -695,9 +695,11 @@ test('offline recovery refuses owner-lock removal when its recovery lease is rep
 });
 
 
-test('recovery release preserves a replacement lease after a live-owner precondition blocks recovery', async t => {
-  const value = await fixture(t, { pid: process.pid });
+test('recovery release preserves a replacement lease after an unsafe owner-lock precondition blocks recovery', async t => {
+  const value = await fixture(t);
   const ledgerBefore = await readFile(value.ledgerPath);
+  await chmod(value.lockPath, 0o644);
+  const lockBefore = await readFile(value.lockPath);
   const replacementOpenedAt = '2001-01-01T00:00:00.000Z';
   const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
   const childSource = [
@@ -754,7 +756,9 @@ test('recovery release preserves a replacement lease after a live-owner precondi
   assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LEASE_CHANGED');
   assert.equal(observed.directoryReads, 2, 'the replacement occurs during the first read-only state inspection');
   assert.equal(observed.replaced, true);
-  assert.equal(await exists(value.lockPath), true, 'the live owner's lock must remain');
+  assert.equal(await exists(value.lockPath), true, 'the unsafe owner lock must remain');
+  assert.deepEqual(await readFile(value.lockPath), lockBefore);
+  assert.equal((await lstat(value.lockPath)).mode & 0o777, 0o644);
   assert.equal(await exists(value.recoveryLeasePath), true, 'release must not unlink the replacement lease');
   assert.equal(JSON.parse(await readFile(value.recoveryLeasePath, 'utf8')).openedAt, replacementOpenedAt);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
