@@ -185,7 +185,7 @@ function readNonceLedger(filePath) {
     if (!opened.isFile() || !sameFileSnapshot(before, opened)) {
       throw new Error("FOUNDER_NONCE_LEDGER_CHANGED");
     }
-    const bytes = readBoundedDescriptor(descriptor, 16_384);
+    const bytes = readFileSync(descriptor);
     const after = lstatSync(filePath);
     const afterDescriptor = fstatSync(descriptor);
     if (after.isSymbolicLink() || !after.isFile() ||
@@ -378,7 +378,7 @@ function loadTrustAnchorFromPath(trustPath, expectedStat = null) {
           (expectedStat && !sameFileSnapshot(expectedStat, opened))) {
         throw new Error("TRUST_ANCHOR_CHANGED");
       }
-      const bytes = readFileSync(descriptor);
+      const bytes = readBoundedDescriptor(descriptor, 16_384);
       const after = lstatSync(trustPath);
       const afterDescriptor = fstatSync(descriptor);
       if (after.isSymbolicLink() || !after.isFile() ||
