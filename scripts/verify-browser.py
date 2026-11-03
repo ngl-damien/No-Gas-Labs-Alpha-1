@@ -671,7 +671,9 @@ def shared(browser,url,data,out):
             try: payload=route.request.post_data_json
             except Exception: payload={}
             if lost_challenge['remaining'] and payload.get('type')=='challenge-source-observation':
+                lost_challenge['payload']=payload
                 committed=route.fetch()
+                lost_challenge['response']=committed.json()
                 assert committed.status==200, 'The service must commit the challenge before the simulated response loss'
                 lost_challenge['remaining']=False
                 route.fulfill(status=503,content_type='application/json',body=json.dumps({
@@ -695,7 +697,7 @@ def shared(browser,url,data,out):
         assert pending_challenge['action']['observationId']==source_observation['observationId']
         committed_challenge=visitor.request.get(url+'api/state').json()
         challenge_events=[event for event in committed_challenge['world']['events'] if event['type']=='source-observation-challenged']
-        challenge_diagnostic={'expected':challenge_text,'events':challenge_events,'revision':committed_challenge['world']['revision'],'xp':committed_challenge['world']['xp'],'before_revision':before_challenge['world']['revision']}
+        challenge_diagnostic={'expected':challenge_text,'events':challenge_events,'revision':committed_challenge['world']['revision'],'xp':committed_challenge['world']['xp'],'before_revision':before_challenge['world']['revision'],'pending':pending_challenge,'route':lost_challenge,'existing_request_ids':[event.get('requestId') for event in committed_challenge['world']['events'] if event.get('requestId')]}
         assert len(challenge_events)==1 and challenge_events[0].get('challengeText')==challenge_text, json.dumps(challenge_diagnostic,ensure_ascii=False)
         assert challenge_events[0]['actor']['id']=='damien' and challenge_events[0]['actor']['role']=='founder'
         assert committed_challenge['world']['revision']==before_challenge['world']['revision']+1
