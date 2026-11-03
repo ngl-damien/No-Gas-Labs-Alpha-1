@@ -826,3 +826,128 @@ test('recovery release preserves a replacement lease after an unsafe owner-lock 
   assert.equal(JSON.parse(await readFile(value.recoveryLeasePath, 'utf8')).openedAt, replacementOpenedAt);
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
 });
+
+test('offline recovery revalidates owner-lock contents after the final temporary-file scan', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const lockBefore = await lstat(value.lockPath);
+  const replacementOpenedAt = '2002-01-01T00:00:00.000Z';
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalReaddir = fsPromises.readdir;",
+    "const originalWriteFile = fsPromises.writeFile;",
+    "let directoryReads = 0;",
+    "let replaced = false;",
+    "fsPromises.readdir = async (target, ...args) => {",
+    "  const entries = await originalReaddir(target, ...args);",
+    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "    directoryReads += 1;",
+    "    if (!replaced && directoryReads === 5) {",
+    "      replaced = true;",
+    "      const receipt = JSON.stringify({",
+    "        openedAt: process.env.TEST_REPLACEMENT_OPENED_AT,",
+    "        pid: process.pid,",
+    "        schema: 'ngl.ledger-lock.v1'",
+    "      });",
+    "      await originalWriteFile(process.env.TEST_OWNER_LOCK, receipt, { mode: 0o600 });",
+    "    }",
+    "  }",
+    "  return entries;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  const result = await recoverFounderNonceLock({",
+    "    ledgerPath: process.env.TEST_LEDGER,",
+    "    confirmOwnerStopped: true,",
+    "    confirmSameHost: true",
+    "  });",
+    "  console.log(JSON.stringify({ status: result.status, directoryReads, replaced, pid: process.pid }));",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), directoryReads, replaced, pid: process.pid }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_OWNER_LOCK: value.lockPath,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule,
+      TEST_REPLACEMENT_OPENED_AT: replacementOpenedAt
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LOCK_CHANGED');
+  assert.equal(observed.directoryReads, 5, 'the replacement occurs after the final temporary-file scan');
+  assert.equal(observed.replaced, true);
+  const lockAfter = await lstat(value.lockPath);
+  assert.equal(lockAfter.dev, lockBefore.dev, 'the owner lock was rewritten in place, not replaced by a new inode');
+  assert.equal(lockAfter.ino, lockBefore.ino);
+  const retained = JSON.parse(await readFile(value.lockPath, 'utf8'));
+  assert.equal(retained.pid, observed.pid, 'the active replacement owner must remain recorded');
+  assert.equal(retained.openedAt, replacementOpenedAt);
+  assert.equal(await exists(value.recoveryLeasePath), true, 'an owner-lock identity change retains the recovery fence for manual inspection');
+  const retainedLease = JSON.parse(await readFile(value.recoveryLeasePath, 'utf8'));
+  assert.equal(retainedLease.schema, 'ngl.founder-nonce-recovery.v1');
+  assert.equal(retainedLease.pid, observed.pid);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
+
+test('recovery CLI labels post-unlink owner-lock uncertainty distinctly', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryScript = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalLstat = fsPromises.lstat;",
+    "const originalUnlink = fsPromises.unlink;",
+    "let ownerLockUnlinked = false;",
+    "fsPromises.unlink = async (target, ...args) => {",
+    "  const result = await originalUnlink(target, ...args);",
+    "  if (String(target) === process.env.TEST_OWNER_LOCK) ownerLockUnlinked = true;",
+    "  return result;",
+    "};",
+    "fsPromises.lstat = async (target, ...args) => {",
+    "  if (ownerLockUnlinked && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "    const error = new Error('injected post-unlink inspection failure');",
+    "    error.code = 'EACCES';",
+    "    throw error;",
+    "  }",
+    "  return originalLstat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
+    "await import(process.env.TEST_RECOVERY_MODULE);"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_OWNER_LOCK: value.lockPath,
+      TEST_RECOVERY_SCRIPT: recoveryScript,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 1, child.stderr);
+  const observed = JSON.parse(child.stderr);
+  assert.equal(observed.status, 'state-uncertain');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LOCK_STATE_UNCERTAIN');
+  assert.equal(observed.safeToRemove, false);
+  assert.equal(observed.authorityGranted, false);
+  assert.equal(await exists(value.lockPath), false, 'the original lock was already unlinked before inspection failed');
+  assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain for manual inspection');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
