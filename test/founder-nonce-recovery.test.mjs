@@ -271,3 +271,58 @@ test('recovery CLI help loads without host configuration and documents the recov
   assert.match(result.stdout, /Usage:/);
   assert.match(result.stdout, /founder-nonce-recovery\.lock/);
 });
+
+test('unreadable post-unlink owner-lock inspection retains the recovery fence', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalLstat = fsPromises.lstat;",
+    "const originalUnlink = fsPromises.unlink;",
+    "let ownerLockUnlinked = false;",
+    "fsPromises.unlink = async (target, ...args) => {",
+    "  const result = await originalUnlink(target, ...args);",
+    "  if (String(target) === process.env.TEST_OWNER_LOCK) ownerLockUnlinked = true;",
+    "  return result;",
+    "};",
+    "fsPromises.lstat = async (target, ...args) => {",
+    "  if (ownerLockUnlinked && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "    const error = new Error('injected post-unlink inspection failure');",
+    "    error.code = 'EACCES';",
+    "    throw error;",
+    "  }",
+    "  return originalLstat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  await recoverFounderNonceLock({",
+    "    ledgerPath: process.env.TEST_LEDGER,",
+    "    confirmOwnerStopped: true,",
+    "    confirmSameHost: true",
+    "  });",
+    "  console.log('UNEXPECTED_SUCCESS');",
+    "  process.exitCode = 1;",
+    "} catch (error) {",
+    "  console.log('ERROR:' + (error?.code || error?.message || String(error)));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_OWNER_LOCK: value.lockPath,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /ERROR:FOUNDER_NONCE_RECOVERY_LOCK_STATE_UNCERTAIN/);
+  assert.equal(await exists(value.lockPath), false, 'the original owner lock was already durably removed');
+  assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain when final lock state is unreadable');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore, 'nonce ledger bytes must remain unchanged');
+});

@@ -462,17 +462,24 @@ export async function recoverFounderNonceLock({
       throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', 'lock may already be absent');
     }
 
+    let after;
     try {
-      const after = await lstat(final.lockPath);
-      const replacementLockPresent = after.dev !== currentLock.dev || after.ino !== currentLock.ino;
-      if (replacementLockPresent) {
-        keepRecoveryLease = true;
-        throw failure('FOUNDER_NONCE_RECOVERY_NEW_LOCK_PRESENT');
-      }
-      keepRecoveryLease = true;
-      throw failure('FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT');
+      after = await lstat(final.lockPath);
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if (error?.code !== 'ENOENT') {
+        // The original lock was durably unlinked, but an unreadable final
+        // pathname cannot prove that no replacement lock exists. Keep the
+        // recovery fence in place until an operator can inspect the directory.
+        keepRecoveryLease = true;
+        throw failure('FOUNDER_NONCE_RECOVERY_LOCK_STATE_UNCERTAIN', error?.message || String(error));
+      }
+    }
+    if (after) {
+      const replacementLockPresent = after.dev !== currentLock.dev || after.ino !== currentLock.ino;
+      keepRecoveryLease = true;
+      throw failure(replacementLockPresent
+        ? 'FOUNDER_NONCE_RECOVERY_NEW_LOCK_PRESENT'
+        : 'FOUNDER_NONCE_RECOVERY_LOCK_STILL_PRESENT');
     }
 
     result = {
