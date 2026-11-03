@@ -45,7 +45,8 @@ const actionFields = {
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
-  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId']
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -129,6 +130,12 @@ function preflightAction(input) {
       preflightText(input.nextTest, 500, 'Next test', { nullable: true });
       break;
     }
+    case 'challenge-source-observation': {
+      requiredId(input.observationId, 'Source observation ID');
+      if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
+      preflightText(input.challengeText, 1000, 'Challenge text', { required: true });
+      break;
+    }
     case 'review-study': {
       requiredId(input.studyId, 'Study note ID');
       preflightText(input.response, 1000, 'Retrieval response', { required: true });
@@ -191,12 +198,12 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
-  const sourceObservationIds = new Set();
+  const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
@@ -346,6 +353,26 @@ function validateHistory(world) {
         throw new Error('Stored Source Observatory observation result mismatch.');
       }
       sourceObservationIds.add(event.observationId);
+      sourceObservationById.set(event.observationId, event);
+    }
+    if (event.type === 'source-observation-challenged') {
+      const target = sourceObservationById.get(event.observationId);
+      const targetIndex = target ? eventPositions.get(target) : -1;
+      if (typeof event.challengeId !== 'string' || !event.challengeId || sourceObservationChallengeIds.has(event.challengeId) ||
+          typeof event.observationId !== 'string' || !event.observationId || !target ||
+          typeof event.creationId !== 'string' || event.creationId !== target.creationId ||
+          !Number.isSafeInteger(event.version) || event.version !== target.version ||
+          !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' ||
+          !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
+          target.actor.id === event.actor.id || targetIndex < 0 || targetIndex >= eventPositions.get(event) ||
+          Date.parse(target.at) > Date.parse(event.at)) {
+        throw new Error('Stored source-observation challenge is malformed or does not target an earlier note from another actor');
+      }
+      sourceObservationChallengeIds.add(event.challengeId);
+      if (event.actionResult !== undefined &&
+          (Object.keys(event.actionResult).sort().join(',') !== 'challengeId' || event.actionResult.challengeId !== event.challengeId)) {
+        throw new Error('Stored source-observation challenge result mismatch');
+      }
     }
     if (event.type === 'collaborator-response-recorded') {
       const index = eventPositions.get(event);
@@ -395,13 +422,14 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
       if (event.type === 'moonshot-proposed' && result.moonshotId !== event.moonshotId) throw new Error('Stored idempotency moonshot result mismatch');
       if (event.type === 'experiment-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency experiment report result mismatch');
       if (event.type === 'experiment-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency experiment challenge result mismatch');
+      if (event.type === 'source-observation-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency source-observation challenge result mismatch');
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
