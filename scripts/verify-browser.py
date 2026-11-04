@@ -1251,6 +1251,46 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
 
 
+
+def offline_pwa(browser,url,out):
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,service_workers='allow')
+    page=context.new_page();errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
+        active=page.evaluate("async()=>{const registration=await navigator.serviceWorker.ready;return registration.active?.state==='activated';}")
+        assert active, 'Offline shell service worker did not activate'
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)")
+        cache_state=page.evaluate("""async()=>{const names=await caches.keys();const paths=[];for(const name of names){for(const request of await (await caches.open(name)).keys())paths.push(new URL(request.url).pathname);}return {names,paths};}""")
+        assert '/pixel-world-view.mjs' in cache_state['paths'], 'PixelWorldView is not in the installed offline shell'
+        assert '/guild-npc-workbench.mjs' in cache_state['paths'], 'Guild NPC workbench is not in the installed offline shell'
+        # Remove the ordinary HTTP cache so the offline reload must use Cache Storage.
+        cdp=context.new_cdp_session(page)
+        cdp.send('Network.enable')
+        cdp.send('Network.clearBrowserCache')
+        context.set_offline(True)
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        draft(page,'loom','Offline field instrument')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
+        assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        expect(page.locator('#doorway')).to_be_visible()
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        assert not errors,errors
+        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'shared_api':'network-only','private_publications':1}
+    finally:
+        context.close()
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
