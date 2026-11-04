@@ -909,6 +909,11 @@ function institutionFeatures(rows) {
 // council banner, forge chimney, archive stacks, human-gate pillars, academy
 // spire, observatory telescope, or publication press.
 const INSTITUTION_ARCHITECTURE = Object.freeze({
+  quest_board: institutionFeatures([
+    [-42, -48, 84, 8, 'trim'], [-36, -40, 8, 38, 'wall'], [28, -40, 8, 38, 'wall'],
+    [-28, -36, 56, 28, 'accent'], [-20, -30, 10, 8, 'glow'], [-4, -30, 10, 8, 'wall'],
+    [12, -30, 10, 8, 'glow'], [-44, 0, 88, 8, 'trim']
+  ]),
   guild_hall: institutionFeatures([
     [-48, -64, 96, 7, 'trim'], [-4, -86, 8, 22, 'trim'],
     [-16, -82, 32, 12, 'accent'], [-42, -18, 8, 24, 'trim'], [34, -18, 8, 24, 'trim']
@@ -1519,7 +1524,8 @@ export class PixelWorldView extends WorldView {
       decision_chamber: '#3e5b50',
       academy: '#84916d',
       moonshot_field: '#526d60',
-      publication_house: '#a85f42'
+      publication_house: '#a85f42',
+      quest_board: '#7d855e'
     };
     const roof = roofColors[place.id] || '#536d53';
     drawInstitutionBuilding(this.ctx, place, roof, '#c6c7a5', '#344638');
@@ -1527,7 +1533,9 @@ export class PixelWorldView extends WorldView {
     this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
     const countLabel = place.id === 'council_chamber'
       ? (this.institutionCounts[place.id] || 0) + ' role attempts'
-      : (this.institutionCounts[place.id] || 0) + ' records';
+      : place.id === 'quest_board'
+        ? 'actor-scoped objectives'
+        : (this.institutionCounts[place.id] || 0) + ' records';
     this.drawMapLabel(countLabel, place.x, place.y + 68, 10);
     if (place.id === 'evidence_archive') {
       this.drawResearchCounterPanel(place.x, place.y + 98);
