@@ -847,7 +847,7 @@ test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking 
     }, () => {
       assert.throws(
         () => authorizationEvent({ signed, payload: fixture.payload }),
-        /FOUNDER_NONCE_DURABILITY_UNCERTAIN/
+        /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
       );
     });
     assert.equal(rewritten, true, "the rewrite must occur after release has observed the owner-lock pathname");
