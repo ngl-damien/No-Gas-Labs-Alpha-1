@@ -1,11 +1,38 @@
 import { validatedEventList, isVerifiedAuthorization } from "./project.js";
 
+function denseStringList(value, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      Object.keys(value).length !== value.length ||
+      Reflect.ownKeys(value).length !== value.length + 1) {
+    throw new Error("invalid " + label);
+  }
+  const values = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || descriptor.enumerable !== true || !Object.hasOwn(descriptor, "value") ||
+        typeof descriptor.value !== "string" || descriptor.value.trim().length === 0) {
+      throw new Error("invalid " + label);
+    }
+    values.push(descriptor.value);
+  }
+  return values;
+}
+
 export function projectGuildHall({
   institution, quest_id, events = [], agents = [], verifyAuthorization
 }) {
   if (!institution?.projection) throw new Error("institution projection required");
   const eventList = validatedEventList(events, "Guild Hall event");
-  const quest = institution.projection.quests?.[quest_id];
+  if (typeof quest_id !== "string" || quest_id.length === 0) {
+    throw new Error("quest_id required");
+  }
+  const projectedQuests = institution.projection.quests;
+  // Projection maps are ordinary objects. Bracket lookup alone can return an
+  // inherited Object.prototype member for an unknown quest ID (for example,
+  // "toString"), incorrectly passing the not-found check.
+  const quest = projectedQuests && Object.hasOwn(projectedQuests, quest_id)
+    ? projectedQuests[quest_id]
+    : undefined;
   if (!quest) throw new Error("quest not projected");
 
   const proposals = eventList.filter(event =>
@@ -22,13 +49,23 @@ export function projectGuildHall({
     ) ? "AUTHORIZED" : "PROPOSED"
   }));
 
-  const roster = agents.map(agent => Object.freeze({
-    agent_id: agent.agent_id,
-    capabilities: Array.isArray(agent.capabilities) ? [...agent.capabilities] : [],
-    can_contribute: (agent.capabilities || []).some(capability =>
-      quest.quest.capabilities.includes(capability)
-    )
-  }));
+  const agentList = validatedEventList(agents, "Guild Hall agent");
+  const roster = agentList.map(agent => {
+    const idProperty = Object.getOwnPropertyDescriptor(agent, "agent_id");
+    const capabilitiesProperty = Object.getOwnPropertyDescriptor(agent, "capabilities");
+    if (!idProperty || idProperty.enumerable !== true || !Object.hasOwn(idProperty, "value") ||
+        typeof idProperty.value !== "string" || idProperty.value.trim().length === 0 ||
+        (capabilitiesProperty &&
+          (capabilitiesProperty.enumerable !== true || !Object.hasOwn(capabilitiesProperty, "value")))) {
+      throw new Error("invalid Guild Hall agent");
+    }
+    const capabilities = denseStringList(capabilitiesProperty?.value ?? [], "Guild Hall agent capabilities");
+    return Object.freeze({
+      agent_id: idProperty.value,
+      capabilities: Object.freeze(capabilities),
+      can_contribute: capabilities.some(capability => quest.quest.capabilities.includes(capability))
+    });
+  });
 
   return Object.freeze({
     room: "Guild Hall",
