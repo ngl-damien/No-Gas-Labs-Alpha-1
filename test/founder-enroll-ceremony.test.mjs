@@ -99,27 +99,40 @@ test('actual CLI exits before emitting a candidate when no platform keystore is 
   assert.equal(result.status, 1);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /FOUNDER_KEYSTORE_UNAVAILABLE/);
-  assert.match(result.stderr, /No platform-backed non-extractable keystore is configured/);
+  assert.match(result.stderr, /No platform-backed,? non-extractable keystore is configured/);
   assert.doesNotMatch(result.stdout + result.stderr, /"private_key_jwk"|-----BEGIN PRIVATE KEY-----/);
 });
 
-test('raw private-key file export remains rejected before output', () => {
+test('actual CLI help exits successfully without generating or emitting a candidate', () => {
+  const scriptPath = fileURLToPath(new URL('../scripts/founder-enroll-ceremony.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [scriptPath, '--help'], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+  assert.match(result.stdout, /No key is generated/);
+  assert.doesNotMatch(result.stdout, /public_key_jwk/);
+});
+
+test('raw private-key file export is rejected before output in split and equals forms', () => {
   let logged = 0;
-  let caught;
-  assert.throws(
-    () => main(['--write-private-path', '/secure/founder.jwk'], {
-      log: () => { logged += 1; }
-    }),
-    error => {
-      caught = error;
-      return error.code === 'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED';
-    }
-  );
+  for (const args of [
+    ['--write-private-path', '/secure/founder.jwk'],
+    ['--write-private-path=/secure/founder.jwk']
+  ]) {
+    let caught;
+    assert.throws(
+      () => main(args, { log: () => { logged += 1; } }),
+      error => {
+        caught = error;
+        return error.code === 'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED';
+      }
+    );
+    assert.equal(
+      formatEnrollmentError(caught),
+      'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED: Raw private-key file export is disabled; use a platform-backed, non-extractable keystore flow before enrollment.'
+    );
+  }
   assert.equal(logged, 0);
-  assert.equal(
-    formatEnrollmentError(caught),
-    'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED: Raw private-key file export is disabled; use a platform-backed, non-extractable keystore flow before enrollment.'
-  );
 });
 
 test('unknown command-line arguments fail before output', () => {
