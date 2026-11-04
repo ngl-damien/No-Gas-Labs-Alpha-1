@@ -746,16 +746,23 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
   }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
-  await assertNoSymlinkPathComponents(dataDir);
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const dataDirectory = await assertPrivateDataDirectory(dataDir);
-  const key = await getFounderKey(dataDir, founderKey);
-  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
-  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
-      dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
-      dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
-      dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
-    throw new Error('Founder data directory changed during startup');
+  let dataDirectory, key, dataDirectoryAfterKeyRead;
+  try {
+    await assertNoSymlinkPathComponents(dataDir);
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    dataDirectory = await assertPrivateDataDirectory(dataDir);
+    key = await getFounderKey(dataDir, founderKey);
+    dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+    if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
+        dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
+        dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
+        dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
+      throw new Error('Founder data directory changed during startup');
+    }
+  } catch (error) {
+    if (!String(error.code || '').startsWith('FOUNDER_')) error.storageCode = error.code;
+    error.code = 'FOUNDER_STORAGE_INVALID';
+    throw error;
   }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
