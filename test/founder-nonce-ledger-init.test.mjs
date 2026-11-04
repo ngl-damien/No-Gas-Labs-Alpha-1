@@ -504,3 +504,23 @@ test('ledger-entry directory fsync uncertainty retains the ledger and owner lock
     assert.equal(JSON.parse(readFileSync(lockPath, 'utf8')).schema, 'ngl.ledger-lock.v1');
   } finally { cleanup(value); }
 });
+
+
+test('owner-lock release directory fsync uncertainty is explicit and cannot trigger a second initialization', () => {
+  const value = fixture();
+  const failed = runWithDirectorySyncFailure(value, 3);
+  try {
+    assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
+    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN/);
+    assert.equal(existsSync(failed.markerPath), true);
+    assert.equal(JSON.parse(failed.child.stdout.trim()).directorySyncs, 3);
+    assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
+    assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
+    assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+
+    const retry = run(value.ledgerPath, ['--confirm-no-prior-history']);
+    assert.equal(retry.status, 1);
+    assert.match(retry.stderr, /FOUNDER_NONCE_LEDGER_ALREADY_EXISTS/);
+    assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
+  } finally { cleanup(value); }
+});
