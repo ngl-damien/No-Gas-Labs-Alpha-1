@@ -1,6 +1,7 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
@@ -1381,6 +1382,7 @@ test('serves PWA metadata and keeps shared API paths outside the offline cache',
   const worker = await client.request('/sw.js');
   assert.equal(worker.response.status, 200);
   assert.match(worker.response.headers.get('content-type') || '', /javascript/);
+  assert.doesNotThrow(() => new vm.Script(worker.body));
   assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
 
   const icon = await client.request('/assets/app-icon.svg');
