@@ -380,8 +380,9 @@ function consumeFounderNonce(nonce) {
     try {
       releaseNonceLock(lockPath, lockIdentity, directory, lockSnapshot, lockReceipt);
       lockIdentity = null;
-    } catch {
+    } catch (error) {
       keepLock = true;
+      if (error?.message === "FOUNDER_NONCE_LEDGER_LOCK_CHANGED") throw error;
       throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN");
     }
   } catch (error) {
