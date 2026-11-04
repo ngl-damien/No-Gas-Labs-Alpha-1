@@ -752,6 +752,55 @@ test("decision payload snapshots and deeply freezes nested scope arrays", () => 
 });
 
 
+test("nonce writer cleanup retains a same-inode lock rewrite after a precommit ledger failure", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-writer-lock-cleanup-rewrite-" + randomUUID());
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+  const invalidLedger = Buffer.from('{"schema":"wrong","nonces":[]}');
+  const replacementOpenedAt = "2002-02-02T00:00:00.000Z";
+  writeFileSync(fixture.nonceLedgerPath, invalidLedger, { mode: 0o600 });
+  const originalLstat = fs.lstatSync;
+  let rewritten = false;
+
+  fs.lstatSync = (candidate, ...args) => {
+    const observed = originalLstat(candidate, ...args);
+    if (!rewritten && candidate === fixture.nonceLedgerPath) {
+      rewritten = true;
+      writeFileSync(lockPath, canonical({
+        schema: "ngl.ledger-lock.v1",
+        pid: process.pid,
+        openedAt: replacementOpenedAt,
+      }), { mode: 0o600 });
+    }
+    return observed;
+  };
+  syncBuiltinESMExports();
+
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_TAMPERED/
+      );
+    });
+    assert.equal(rewritten, true, "the rewrite must occur while the writer handles the precommit ledger read");
+    assert.equal(existsSync(lockPath), true, "failure cleanup must retain a changed owner receipt");
+    const retained = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(retained.pid, process.pid);
+    assert.equal(retained.openedAt, replacementOpenedAt);
+    assert.deepEqual(readFileSync(fixture.nonceLedgerPath), invalidLedger);
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), [".founder-nonce.lock", "founder-nonces.json"]);
+  } finally {
+    fs.lstatSync = originalLstat;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent processes serialize durable Founder nonce-ledger writes without losing entries", { timeout: 30000 }, async t => {
   const dir = path.join(tmpdir(), "ngl-auth-concurrency-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -814,6 +863,58 @@ test("concurrent processes serialize durable Founder nonce-ledger writes without
       if (worker.child.exitCode === null && worker.child.signalCode === null) worker.child.kill("SIGKILL");
     }
     await Promise.allSettled(workers.map(worker => worker.exit));
+  }
+});
+
+test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking it during release", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-writer-lock-rewrite-" + randomUUID());
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+  const replacementOpenedAt = "2001-01-01T00:00:00.000Z";
+  const originalLstat = fs.lstatSync;
+  let rewritten = false;
+  let lockPathLstatCalls = 0;
+
+  fs.lstatSync = (candidate, ...args) => {
+    const observed = originalLstat(candidate, ...args);
+    if (candidate === lockPath) {
+      lockPathLstatCalls += 1;
+      if (!rewritten && lockPathLstatCalls === 3) {
+        rewritten = true;
+        writeFileSync(lockPath, canonical({
+          schema: "ngl.ledger-lock.v1",
+          pid: process.pid,
+          openedAt: replacementOpenedAt,
+        }), { mode: 0o600 });
+      }
+    }
+    return observed;
+  };
+  syncBuiltinESMExports();
+
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
+      );
+    });
+    assert.equal(rewritten, true, "the rewrite must occur at the release check, after pre-commit ownership validation");
+    assert.equal(lockPathLstatCalls, 3, "two pre-commit pathname checks must precede the release check");
+    const retained = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(retained.pid, process.pid);
+    assert.equal(retained.openedAt, replacementOpenedAt);
+    const ledger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.deepEqual(ledger.nonces, [signed.nonce], "the nonce remains committed even though lock release is uncertain");
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), [".founder-nonce.lock", "founder-nonces.json"]);
+  } finally {
+    fs.lstatSync = originalLstat;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -1135,6 +1236,95 @@ test("a recovery lease appearing after writer lock creation fences nonce mutatio
     assert.equal(existsSync(fixture.nonceLedgerPath), false);
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
     assert.equal(existsSync(recoveryLeasePath), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("nonce writer refuses to publish after its owner lock disappears before ledger rename", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-writer-lock-precommit-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+    const originalFsyncSync = fs.fsyncSync;
+    let fileSyncs = 0;
+    let removed = false;
+    fs.fsyncSync = descriptor => {
+      if (fs.fstatSync(descriptor).isFile()) {
+        fileSyncs += 1;
+        if (fileSyncs === 2) {
+          removed = true;
+          unlinkSync(lockPath);
+        }
+      }
+      return originalFsyncSync(descriptor);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
+        );
+      });
+      assert.equal(fileSyncs, 2, "the lock is removed after its receipt and temporary ledger file are fsynced");
+      assert.equal(removed, true, "the test must remove the owner lock at the pre-rename boundary");
+      assert.equal(existsSync(fixture.nonceLedgerPath), false,
+        "a nonce must not be committed after ownership of the writer lock is lost");
+      assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\.founder-nonce-.*\.tmp$/.test(name)), false,
+        "the uncommitted temporary ledger file must be cleaned up");
+    } finally {
+      fs.fsyncSync = originalFsyncSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("nonce authorization reports uncertainty when its owner lock disappears during ledger rename", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-writer-lock-postcheck-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+    const originalRenameSync = fs.renameSync;
+    let removed = false;
+    fs.renameSync = (from, to) => {
+      if (!removed && to === fixture.nonceLedgerPath) {
+        removed = true;
+        unlinkSync(lockPath);
+      }
+      return originalRenameSync(from, to);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
+        );
+      });
+      assert.equal(removed, true, "the test must remove the owner lock after pre-rename validation");
+      const ledger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+      assert.deepEqual(ledger.nonces, [signed.nonce],
+        "the nonce commit is durable even though lock release is uncertain");
+      assert.equal(existsSync(lockPath), false, "the externally removed lock must not be recreated or mistaken for owned");
+    } finally {
+      fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
