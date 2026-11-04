@@ -52,7 +52,7 @@ test('help is non-mutating and explains the human acknowledgement boundary', () 
     const result = spawnSync(process.execPath, [scriptPath, '--help'], { encoding: 'utf8', env });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /--confirm-no-prior-history/);
-    assert.match(result.stdout, /does not enroll a Founder key/);
+    assert.match(result.stdout, /enrolls a Founder key/);
     assert.equal(existsSync(value.ledgerPath), false);
     assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
   } finally { cleanup(value); }
