@@ -81,19 +81,32 @@ function assertTrustedPrivateDirectory(directory) {
 }
 
 function assertDirectoryIdentity(directory, expected) {
-  const current = assertTrustedPrivateDirectory(directory);
+  let current;
+  try { current = assertTrustedPrivateDirectory(directory); }
+  catch { fail('FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED'); }
   if (current.dev !== expected.dev || current.ino !== expected.ino ||
       current.uid !== expected.uid || current.mode !== expected.mode) {
     fail('FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED');
   }
 }
 
-function syncDirectory(directory) {
+function syncDirectory(directory, expectedIdentity) {
   let descriptor;
   try {
-    descriptor = openSync(directory, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+    descriptor = openSync(directory, fsConstants.O_RDONLY |
+      (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0));
+    const opened = fstatSync(descriptor);
+    if (!opened.isDirectory() || opened.dev !== expectedIdentity.dev ||
+        opened.ino !== expectedIdentity.ino || opened.uid !== expectedIdentity.uid ||
+        opened.mode !== expectedIdentity.mode) {
+      fail('FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED');
+    }
     fsyncSync(descriptor);
-  } catch {
+  } catch (error) {
+    if (error?.code === 'FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED' ||
+        error?.code === 'ELOOP' || error?.code === 'ENOTDIR') {
+      fail('FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED');
+    }
     fail('FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN');
   } finally {
     if (descriptor !== undefined) {
@@ -185,7 +198,7 @@ function releaseOwnerLock(lockPath, identity, snapshot, receipt, directory, dire
   // narrow the same-UID race; a hostile writer racing after the final check remains out of scope.
   try { unlinkSync(lockPath); }
   catch { fail('FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN'); }
-  syncDirectory(directory);
+  syncDirectory(directory, directoryIdentity);
 }
 
 function verifyCreatedLedger(ledgerPath, expectedBytes) {
@@ -280,9 +293,12 @@ function provisionFounderNonceLedger() {
     }
     lockSnapshot = fstatSync(lockDescriptor);
     assertDirectoryIdentity(directory, directoryIdentity);
-    try { syncDirectory(directory); }
-    catch {
+    try {
+      syncDirectory(directory, directoryIdentity);
+      assertDirectoryIdentity(directory, directoryIdentity);
+    } catch (error) {
       keepLock = true;
+      if (error?.code === 'FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED') throw error;
       fail('FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN');
     }
     assertNoRecoveryLease(directory);
@@ -320,7 +336,7 @@ function provisionFounderNonceLedger() {
 
     assertDirectoryIdentity(directory, directoryIdentity);
     verifyCreatedLedger(ledgerPath, ledgerBytes);
-    syncDirectory(directory);
+    syncDirectory(directory, directoryIdentity);
     assertDirectoryIdentity(directory, directoryIdentity);
 
     try {
