@@ -519,17 +519,15 @@ export function projectQuestCompassCaptionPosition(anchorX, anchorY, viewportWid
   obstacles.push({
     left: anchorX - 16, top: anchorY - 16, right: anchorX + 16, bottom: anchorY + 16
   });
-  const preferredTop = anchorY < viewportHeight / 2
-    ? anchorY + 18
-    : anchorY - panelHeight - 10;
-  const alternateTop = preferredTop < anchorY
-    ? anchorY + 18
-    : anchorY - panelHeight - 10;
+  const belowTop = anchorY + 20;
+  const aboveTop = anchorY - panelHeight - 20;
+  const preferredTop = anchorY < viewportHeight / 2 ? belowTop : aboveTop;
+  const alternateTop = anchorY < viewportHeight / 2 ? aboveTop : belowTop;
   const candidates = [
     { left: anchorX - panelWidth / 2, top: preferredTop },
     { left: anchorX - panelWidth / 2, top: alternateTop },
-    { left: anchorX + 18, top: anchorY - panelHeight / 2 },
-    { left: anchorX - panelWidth - 18, top: anchorY - panelHeight / 2 },
+    { left: anchorX + 20, top: anchorY - panelHeight / 2 },
+    { left: anchorX - panelWidth - 20, top: anchorY - panelHeight / 2 },
     { left: anchorX - panelWidth / 2, top: margin },
     { left: anchorX - panelWidth / 2, top: viewportHeight - margin - panelHeight },
     { left: margin, top: anchorY - panelHeight / 2 },
