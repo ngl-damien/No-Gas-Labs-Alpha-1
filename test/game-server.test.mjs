@@ -1,9 +1,10 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
@@ -1365,4 +1366,68 @@ test('Source Observation challenges are actor-separated, append-only, replay-saf
   assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
   assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
   assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenge-responded').length, 1);
+});
+
+
+test('serves PWA metadata and keeps shared API paths outside the offline cache', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const manifest = await client.request('/manifest.webmanifest');
+  assert.equal(manifest.response.status, 200);
+  assert.match(manifest.response.headers.get('content-type') || '', /application\/manifest\+json/);
+  assert.equal(manifest.body.start_url, './');
+  assert.equal(manifest.body.display, 'standalone');
+  assert.equal(manifest.body.icons[0].src, './assets/app-icon.svg');
+
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  assert.match(worker.response.headers.get('content-type') || '', /javascript/);
+  assert.doesNotThrow(() => new vm.Script(worker.body));
+  assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
+
+  const icon = await client.request('/assets/app-icon.svg');
+  assert.equal(icon.response.status, 200);
+  assert.match(icon.response.headers.get('content-type') || '', /image\/svg\+xml/);
+  assert.ok(icon.body.includes('<svg'));
+});
+
+test('offline shell precaches and serves the complete current pixel-world import graph', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
+  assert.ok(core, 'service worker must declare an explicit shell cache');
+  const corePaths = [...core[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  const cached = new Set(corePaths.filter(path => path.endsWith('.mjs')).map(path => path.slice(1)));
+  for (const path of corePaths) {
+    const response = await client.request(path);
+    assert.equal(response.response.status, 200, path + ' must be served for atomic shell installation');
+  }
+  const visited = new Set();
+
+  async function visit(name) {
+    name = normalize(name).replace(/\\/g, '/');
+    assert.ok(name.endsWith('.mjs') && !name.startsWith('../'), 'browser import must stay inside game modules');
+    if (visited.has(name)) return;
+    visited.add(name);
+    const source = await readFile(new URL('../game/' + name, import.meta.url), 'utf8');
+    const imports = /\b(?:import\s+(?:[^'";]*?\s+from\s*)?|export\s+[^'";]*?\s+from\s*)(['"])([^'"\r\n]+)\1/g;
+    for (const match of source.matchAll(imports)) {
+      const specifier = match[2];
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      const child = normalize(join(dirname(name), specifier)).replace(/\\/g, '/');
+      if (child.endsWith('.mjs')) await visit(child);
+    }
+  }
+
+  await visit('client.mjs');
+  assert.ok(visited.has('pixel-world-view.mjs'));
+  assert.ok(visited.has('guild-npc-workbench.mjs'));
+  for (const module of visited) {
+    assert.ok(cached.has(module), 'offline shell does not precache ' + module);
+    const response = await client.request('/' + module);
+    assert.equal(response.response.status, 200, module + ' must be served by the game host');
+    assert.match(response.response.headers.get('content-type') || '', /javascript/);
+  }
 });
