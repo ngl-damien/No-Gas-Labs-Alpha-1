@@ -572,8 +572,8 @@ test('directory replacement at ledger open cannot publish a ledger into the repl
     assert.equal(swapped.child.status, 1, swapped.child.stdout + swapped.child.stderr);
     assert.match(swapped.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED/);
     assert.match(swapped.child.stdout, /"swapped":true/);
-    assert.equal(existsSync(join(swapped.replacementDirectory, 'founder-nonces.json')), false,
-      'the replacement directory must never receive a ledger');
+    assert.equal(existsSync(join(value.directory, 'founder-nonces.json')), false,
+      'the replacement directory at the configured path must never receive a ledger');
     const movedLedger = join(swapped.movedDirectory, 'founder-nonces.json');
     assert.equal(existsSync(movedLedger), true,
       'the opened directory may retain an incomplete artifact for manual inspection');
