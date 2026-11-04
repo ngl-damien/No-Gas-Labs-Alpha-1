@@ -366,7 +366,8 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
       return createQuestMapTarget('npc', npc.id, npc.x, npc.y + 10, npc.name);
     }
     const place = PLACES.find(item => item.id === id);
-    return place ? createQuestMapTarget('location', place.id, place.x, place.y, place.name) : null;
+    const label = place?.id === 'town-square' ? 'The Commons at TownSquare' : place?.name;
+    return place ? createQuestMapTarget('location', place.id, place.x, place.y, label) : null;
   }
 
   if (type === 'creation') {
