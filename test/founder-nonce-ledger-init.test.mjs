@@ -77,7 +77,7 @@ function runWithLedgerSyncFailure(value) {
     "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
     "await import(process.env.TEST_INIT_MODULE);",
     "console.log(JSON.stringify({ fileSyncs }));"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
