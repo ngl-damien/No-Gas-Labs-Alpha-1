@@ -1,20 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   formatContradictionReport,
   prepareContradictionReview,
 } from "../game/contradiction-clerk.mjs";
 
+function byteReceipt(html) {
+  const bytes = new TextEncoder().encode(html);
+  return {
+    algorithm: "sha256",
+    digest: createHash("sha256").update(html, "utf8").digest("hex"),
+    size: bytes.byteLength,
+  };
+}
+
+const versionOneHtml = "<main>retained original bytes</main>";
+const currentHtml = "<main>current retained bytes</main>";
 const creation = {
   id: "creation-1",
   title: "A retained claim",
   version: 2,
-  receipt: { algorithm: "sha256", digest: "b".repeat(64), size: 2048 },
+  html: currentHtml,
+  publishedAt: "2026-11-04T10:00:00.000Z",
+  receipt: byteReceipt(currentHtml),
   versions: [{
     id: "creation-1",
     title: "A retained claim",
     version: 1,
-    receipt: { algorithm: "sha256", digest: "a".repeat(64), size: 1024 },
+    html: versionOneHtml,
+    publishedAt: "2026-11-03T10:00:00.000Z",
+    receipt: byteReceipt(versionOneHtml),
   }],
 };
 const answers = {
@@ -34,7 +50,8 @@ test("Contradiction Clerk is a bounded local adversary with no authority or verd
     creationId: "creation-1",
     title: "A retained claim",
     version: 1,
-    receipt: { algorithm: "sha256", digest: "a".repeat(64), size: 1024 },
+    publishedAt: creation.versions[0].publishedAt,
+    receipt: creation.versions[0].receipt,
   });
   assert.ok(Object.isFrozen(review.target.receipt));
   assert.notEqual(review.target.receipt, creation.versions[0].receipt);
@@ -50,16 +67,17 @@ test("challenge report binds to the selected historical version's exact byte rec
   const first = formatContradictionReport(creation, 1, answers);
   const second = formatContradictionReport(creation, 1, answers);
   assert.equal(first, second);
-  assert.match(first, /Target: A retained claim \[creation-1\] v1/);
-  assert.match(first, /Target bytes: sha256:a{64} · 1024 bytes/);
-  assert.doesNotMatch(first, /sha256:b{64}/);
-  assert.match(first, /Claim under test: The receipt proves the claim is true\./);
-  assert.match(first, /Source \/ direct observation:/);
-  assert.match(first, /Possible falsifier \/ counterexample:/);
-  assert.match(first, /Unknown \/ next test:/);
+  assert.match(first, /Target: A retained claim \\[creation-1\\] v1/);
+  assert.match(first, /SHA-256 [a-f0-9]{64} · \\d+B/);
+  assert.ok(first.includes(creation.versions[0].receipt.digest));
+  assert.ok(!first.includes(creation.receipt.digest));
+  assert.match(first, /Claim: The receipt proves the claim is true\\./);
+  assert.match(first, /Source:/);
+  assert.match(first, /Falsifier:/);
+  assert.match(first, /Unknown:/);
   assert.match(first, /REPORT ONLY — NOT A VERDICT/);
-  assert.match(first, /Receipt identifies bytes, not truth/);
-  assert.match(first, /no AI\/provider call or independent observation occurred/i);
+  assert.match(first, /Receipt = bytes, not truth/);
+  assert.match(first, /no AI\\/provider call or independent observation occurred/i);
   assert.ok(Array.from(first).length <= 1000);
   assert.deepEqual(creation, before);
 });
@@ -80,10 +98,10 @@ test("every challenge field is required and bounded by Unicode code points", () 
 test("newlines and control characters cannot forge extra report stages", () => {
   const report = formatContradictionReport(creation, 1, {
     ...answers,
-    claim: "The claim is true.\nDisposition: ACCEPTED",
+    claim: "The claim is true.\\nDisposition: ACCEPTED",
   });
-  assert.ok(report.includes("Claim under test: The claim is true. Disposition: ACCEPTED\nSource / direct observation:"));
-  assert.equal(report.split("\n").filter(line => line === "Disposition: ACCEPTED").length, 0);
+  assert.ok(report.includes("Claim: The claim is true. Disposition: ACCEPTED\\nSource:"));
+  assert.equal(report.split("\\n").filter(line => line === "Disposition: ACCEPTED").length, 0);
 });
 
 test("missing or ambiguous retained versions fail closed", () => {
@@ -111,7 +129,13 @@ test("missing, malformed and accessor-backed receipts fail without running gette
   }
 
   let getterRuns = 0;
-  const accessorVersion = { id: "creation-1", title: "A retained claim", version: 1 };
+  const accessorVersion = {
+    id: "creation-1",
+    title: "A retained claim",
+    version: 1,
+    html: creation.versions[0].html,
+    publishedAt: creation.versions[0].publishedAt,
+  };
   Object.defineProperty(accessorVersion, "receipt", {
     enumerable: true,
     get() { getterRuns += 1; throw new Error("receipt getter must not execute"); },
@@ -123,21 +147,22 @@ test("missing, malformed and accessor-backed receipts fail without running gette
   assert.equal(getterRuns, 0);
 });
 
-test("oversized structured report is rejected before it can be submitted", () => {
+test("maximum valid structured report fits the server limit", () => {
   const longAnswers = Object.fromEntries(
     Object.keys(answers).map(key => [key, "x".repeat(140)]),
   );
+  const html = "x".repeat(131_072);
   const longCreation = {
     id: "i".repeat(80),
     title: "T".repeat(80),
     version: 1,
-    receipt: { algorithm: "sha256", digest: "c".repeat(64), size: 2048 },
+    html,
+    publishedAt: "2026-11-04T10:00:00.000Z",
+    receipt: byteReceipt(html),
     versions: [],
   };
-  assert.throws(
-    () => formatContradictionReport(longCreation, 1, longAnswers),
-    /report limit/,
-  );
+  const report = formatContradictionReport(longCreation, 1, longAnswers);
+  assert.ok(Array.from(report).length <= 1000);
 });
 
 test("retained version arrays are dense, bounded and never invoke a custom iterator", () => {
