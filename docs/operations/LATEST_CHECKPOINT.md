@@ -6,24 +6,29 @@
 
 **Current focus (2026-11-04):**
 
-- Current main HEAD is 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0. Its only commit after c8fd22289cf8405aff04aae4d3fd51c29c68e319 reverts an accidental 705-line test-file addition; it does not integrate the MMORPG stack. Main's G0–G9 ledger remains NOT ASSESSED.
-- Active proposed game stack: PR #350, branch game/player-guilds-guildhall-20261104, based on PR #349 at 4e9b599f7e9c6a7e8dda2210cee824cfaefa7281, head 27b7e1cd748d4a56ed961ac61595c10fb39e42fd. GitHub reports 270 commits ahead / 4 behind main; 16 changed files relative to its PR base. It remains draft/open and unmerged.
-- PR #350 contains the Commons/Guild Hall stack, read-only field satchel, actor-scoped membership/challenge quests, four-role Council coverage, and the new Council Dissent Dossier. The latest change revalidates the exact retained packet/response bytes, unique event/response IDs, actor/role, packet source IDs, validator status/reason and duplicate JSON keys; the room displays bounded role-specific notes, packet omissions, unknowns, contradictions/dissent and suggested checks. Rejected attempts remain preserved. This is a read-only review projection, not truth, consensus, approval, authority, execution or XP.
-- Exact-head hosted verification on 27b7e1cd: Verify 41844155517 PASS; Genesis Evidence Invariant 41844155305 PASS; Browser Acceptance 41844155267 PASS (13/13). Verify preflight: ready, 52 target records, zero warnings/failures; artifact 13329354619, 4,215 bytes, SHA-256 d84800c58262ccdf5556cb535a66a85dbfdae827f2c8d96e418ae060aabb8186. Browser artifact 13330048476, 6,368,283 bytes, SHA-256 38b671063e8d490492f4f27c578b4c10d33f7e2442618440f743786128f6c2b3.
-- Worker A's latest authority test branch is PR #353, head a5dded30355858e5f7d233c0357fdbd6194bec9d; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 all PASS. The signed authorization/nonce helper is present, but the live game Decision Chamber route still uses a Founder session and does not call authorizationEvent. The trust anchor remains NOT_ENROLLED. A source-specific handoff was posted on PR #348; no key was generated or enrolled.
-- PR #309 remains a separate Android lifecycle proposal at 9de3c5617f9dc0ebfe9211ed62489003b4b4032e, 419 ahead / 41 behind main. Android Alpha-1 emulator instrumentation passed 7/7 on API 35; no physical Android device was inspected.
-- Both registered Desktop Commander devices were offline. No local checkout, local preflight, or local test execution was available; the exact-head hosted workflows supplied the verification evidence. No merge, release, deployment, Founder decision, authority grant, key enrollment, or artificial XP award occurred.
+- Current main HEAD is `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`. The MMORPG proposal stack is not integrated; main's G0–G9 ledger remains NOT ASSESSED.
+- Active proposed stack: PR #350 branch `game/player-guilds-guildhall-20261104`, head `b856eacda86539743879cb702aaf3ef345658350`, based on PR #349 at `4e9b599f7e9c6a7e8dda2210cee824cfaefa7281`; PR #350 is 270 commits ahead / 4 behind main and remains draft/open/unmerged. Do not merge this divergent stack wholesale.
+- PR #350 supplies Commons/Guild Hall social actions, player-guild lifecycle, read-only field satchel, actor-scoped quests, four-role coverage and the read-only Council Dissent Dossier. Membership and satchel records are not ownership transfer, XP, truth, consensus, approval or authority.
+- Stacked child PR #355, head `b6cf0f21c113d4190f627a2c2a525b94d4d73cc6`, adds a provenance-bound Study Card collection. Child PR #356, head `d0a3c30bf80746832e1e33d6978178f7dfb85cc0`, hardens the local Contradiction Clerk's exact retained-version challenge binding. Both are draft/open/unmerged.
+- Child PR #357, branch `game/council-chamber-world-location-20261104`, code/test head `e93d278d8cd17b64563365048a052d304b8ae2e2`, adds a distinct walkable Council Chamber landmark between Guild Hall and Decision Chamber. It has its own pixel silhouette, touch-first prompt and direct route to the existing read-only Council Dissent Dossier. Its map count is derived from uniquely identified retained `collaborator-response-recorded` events and is labelled role attempts. It creates no new event, vote, consensus, XP, truth verdict, approval or authority. PR #357 is a draft child of #356 and remains unmerged.
+- Parent exact-head checks are green: PR #350 head `b856eac` Verify 41875875448, Genesis 41875875446, Browser 41875875492; PR #355 head `b6cf0f2` Verify 41893231019, Genesis 41893231099, Browser 41893231115; PR #356 head `d0a3c30` Verify 41897747795, Genesis 41897747800, Browser 41897747710 — all PASS.
+- PR #357 exact-head verification on `e93d278`: Verify 41905869466 PASS; Genesis Evidence Invariant 41905869470 PASS; Browser Acceptance 41905869489 PASS (13/13 journeys). Verify ran Node 24.22.2 full tests, Python inspector, game build and bounded institutional exercise, all exit 0. Hosted preflight was `ready` with 65 declared targets, 68 file records, zero warnings and zero failures; artifact 13360895389, 4,660 bytes, SHA-256 `2ef38feb1d440dbf993e8b756232c7c588cb492f74afd1a7c268ccffb6b0cbe9`.
+- PR #357 Browser artifact 13361760097 is 7,119,664 bytes, SHA-256 `fbfb2e2da0daa79d3174e4b140c0438801cd85970d1972bb137e6737c28775e9`. The 13 journeys observed offline PWA/private recovery, desktop, phone, institutional-location actions, two-session shared state including NPC/Relay recovery, four-role Council coverage, field satchel, player-guild lifecycle and the Founder gate's no-controls state, 320/360/412 px toolbar targets, one-button layouts, standalone bytes and restart recovery. This Browser suite did **not** click the newly added Council Chamber map landmark; the new route/count are covered by world-runtime unit tests, and the existing dossier UI is exercised through its prior entry point.
+- Browser Acceptance also emitted existing Node 20 action deprecation and `punycode`/`url.parse()` warnings from its workflow/toolchain. They are not attributed to the Council Chamber code.
+- Worker A's latest authority test proposal is PR #353, head `a5dded30355858e5f7d233c0357fdbd6194bec9d`; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 all PASS. The signed authorization/nonce helper remains unwired to the live game Decision Chamber mutation route; `docs/authority/founder.pub.json` remains NOT_ENROLLED. No key was generated or enrolled.
+- PR #309 remains a separate Android lifecycle proposal at `9de3c5617f9dc0ebfe9211ed62489003b4b4032e`; emulator instrumentation passed 7/7 on API 35, but no physical Android device was inspected.
+- Both registered Desktop Commander devices were offline and the container could not resolve github.com; no local checkout, local Node 24 test run or local preflight is claimed. The hosted preflight and exact-head workflows are the available execution evidence. No merge, release, deployment, Founder decision, authority grant, key enrollment or artificial XP award occurred.
 
 **Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
 
 **Next falsification targets:**
 
-- Worker A: wire the live /api/decisions/choose mutation to the signed authorization/nonce verifier or fail closed/disable APPROVE, REJECT and DEFER until the trust root is explicitly enrolled. Never generate, enroll or replace a Founder key on the Founder's behalf.
-- Extend Council Chamber browser and contract coverage across Archivist, Adversary, Synthesizer and Tutor. Preserve rejected attempts, contradictions, dissent and packet omissions; never turn four role responses into consensus or endorsement.
-- Implement transferable inventory/equipment only after a server-authoritative ownership model, atomic transfer event, idempotency, replay/conflict handling and audit trail exist. The field satchel remains read-only.
-- Reconcile PR #309 lifecycle work with the current authority path and test on a physical supported Android device; emulator evidence is not device acceptance.
-- Implement source retrieval and independent verification as separate observable states; keep missing, failed, contradicted and unverified results visible.
-- Integrate the large proposed stack incrementally; do not merge the 270-ahead branch wholesale.
+- Worker A: wire the live `/api/decisions/choose` mutation to the signed authorization/nonce verifier, or fail closed and disable APPROVE, REJECT and DEFER until the Founder explicitly enrolls a trust root. Never generate, enroll or replace a Founder key.
+- Worker B: add a direct mobile browser journey for walking to the new Council Chamber and opening its dossier after the shared browser journey file is no longer owned by active sibling PRs #343/#354. Extend browser coverage to Archivist, Synthesizer and Tutor; currently only the Adversary summary rendering branch is browser-exercised.
+- Implement transferable inventory/equipment only after a server-authoritative ownership model, atomic transfer event, idempotency, replay/conflict handling and audit trail exist. The field satchel and Study Cards do not imply transferable ownership.
+- Reconcile PR #309 lifecycle work with the current authority path and obtain physical supported-Android-device evidence; emulator/browser evidence is not device acceptance.
+- Implement source retrieval and independent verification as separate observable states. Preserve missing, failed, contradicted and unverified results; a model assertion or byte receipt is not truth.
+- Integrate the large proposed stack incrementally after reviewing exact bases, tests and collisions; do not merge the 270-ahead branch wholesale.
 
 **Checkpoint integrity:** this Markdown file is plain operational text, not a cryptographically sealed or tamper-evident record. No hash-chain receipt or Founder signature was generated or independently verified for this checkpoint in this run; do not treat the historical hash-chain placeholder as authority or evidence.
 
@@ -676,3 +681,52 @@ Both registered Desktop Commander devices remained offline, and the container co
 - Current main is 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0; its only new commit reverts the accidental founder-nonce-ledger initializer test-file addition. Main G0–G9 remain NOT ASSESSED. PR #350 is draft/unmerged, 270 ahead / 4 behind main; no mainline completion is claimed.
 - Authority handoff: the live Decision Chamber route remains session-based; founder.pub.json is NOT_ENROLLED and the signed verifier is not wired into game/server.mjs or src/institution/decisions.mjs. Handoff comment posted on PR #348. No key or decision was created.
 - Both registered desktop devices were offline; verification was hosted, not local. No merge, release, deployment, physical Android acceptance, Founder decision, authority grant, or XP award occurred.
+
+
+## Run 63 — 2026-11-04 — Worker B — Walkable Council Chamber
+
+**Objective:** promote the existing Council Dissent Dossier from a panel reachable through Guild Hall/Evidence Archive into a distinct, walkable world institution, while keeping the dossier read-only and its counts evidence-bound.
+
+### Rehydration, instruction sequence and coordination
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`. Current main observed at `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`.
+- Read root `AGENTS.md` (SHA `a4beeee1c0ec46faab28502957c0e53850b2855d`) first, then the complete shared protocol `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` (SHA `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). Also read the universal agent contract (SHA `49d66b1945b829c20beabf0d185d8c6a023e59d7`), bootstrap checkpoint (SHA `6d6b5492851ed68a18cfacf7219189108ce12ce1`), MMORPG completion contract (SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`), and prior checkpoint/ledger (SHAs `3cc7b71b14c9e0dbe8e34b594e144cfc1fa03604` / `8d8ae2e942da946ee8174a8ff2a423dd0356616a`).
+- Read vendor instruction pointers for Codex, Claude, Gemini and GitHub Copilot; they direct agents back to the root instructions and shared protocol. Checked nested instruction paths under `docs/`, `docs/operations/`, `game/`, `test/`, `scripts/`, `android/` and `src/`; none contained a nested `AGENTS.md`.
+- Read the hourly-agent registry and both steering documents plus `DO_NOT_DELETE.md`. Their older inventory/Forge/authority directives are historical leads and conflict with current source/PR state in places; current main, exact PR heads and CI evidence take precedence. No scheduled task was deleted or altered.
+- Latest Worker A result inspected: PR #353 exact head `a5dded30355858e5f7d233c0357fdbd6194bec9d`; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 PASS. Its live Decision Chamber integration and trust-anchor enrollment remain outstanding.
+- Re-observed proposed game stack: PR #350 head `b856eacda86539743879cb702aaf3ef345658350`, PR #355 head `b6cf0f21c113d4190f627a2c2a525b94d4d73cc6`, PR #356 head `d0a3c30bf80746832e1e33d6978178f7dfb85cc0`; their exact-head Verify/Genesis/Browser runs all passed. PRs #343 and #354 both own active browser-journey edits in `scripts/verify-browser.py`; this run deliberately did not edit that shared file.
+- Local preflight was unavailable because no authorized local checkout was available, the container had Node 22 and could not resolve github.com, and both registered Desktop Commander devices were offline. The manual instruction sequence was completed; hosted scoped preflight later supplied a machine-readable ready receipt.
+
+### Selection
+
+- The current proposed world already had a Guild Hall, Decision Chamber and Evidence Archive. The Council Dissent Dossier existed and could be opened from other institution panels, but there was no separate `council_chamber` entry in the walkable `PLACES` map. A dedicated location is a higher-leverage world-first improvement than another detached panel or status report.
+
+### Change delivered
+
+- Branch: `game/council-chamber-world-location-20261104`.
+- Draft child PR #357: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/357
+- Parent PR #356 exact base head: `d0a3c30bf80746832e1e33d6978178f7dfb85cc0`.
+- Code/test head verified: `e93d278d8cd17b64563365048a052d304b8ae2e2`.
+- Changed implementation/test paths: `game/world-view.mjs`, `game/pixel-world-view.mjs`, `game/client.mjs`, `test/game-geometry.test.mjs`, `test/pixel-world-view.test.mjs`, `package.json`, and `test/agent-governance.test.mjs`.
+- Adds a walkable Council Chamber at map coordinates (500, 190), with a distinct pixel-building silhouette, institution-specific activity label and touch-first/keyboard prompt. `openInstitutionLocation('council_chamber')` routes to the existing `openCouncilChamber()` read-only dossier.
+- The map counter projects only uniquely identified retained `collaborator-response-recorded` events and labels them role attempts. Duplicate event IDs are treated as ambiguous and unidentified response claims count as zero. The counter is institution-wide; it is not a personal mastery/XP score, vote count or endorsement.
+- Geometry tests require every institutional landmark, including Council Chamber, to be reachable from spawn and dispatch its own location identity. Negative tests cover duplicate and unidentified response records. Pixel tests cover the Council Chamber's distinct silhouette and role-attempt label. Hosted preflight target declarations now include `game/world-view.mjs` and `test/game-geometry.test.mjs`.
+- No canonical event schema, server mutation, quest completion, inventory ownership, XP, truth verdict, consensus, approval, human authority or Founder decision was added or changed.
+
+### Exact-head verification
+
+All three hosted workflows completed successfully on code/test head `e93d278d8cd17b64563365048a052d304b8ae2e2`:
+
+- Verify [41905869466](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41905869466): **PASS**. Node 24.22.2 full test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0. Scoped preflight: `status: ready`, 65 targets, 68 file records, `warnings: []`, `failures: []`. Receipt artifact [13360895389](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41905869466/artifacts/13360895389), 4,660 bytes, SHA-256 `2ef38feb1d440dbf993e8b756232c7c588cb492f74afd1a7c268ccffb6b0cbe9`.
+- Genesis Evidence Invariant [41905869470](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41905869470): **PASS**.
+- Browser Acceptance [41905869489](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41905869489): **PASS, 13/13 journeys**. It exercised offline PWA/private recovery, desktop, phone, institutional-location actions, the two-session shared world and its NPC/Relay, Council coverage, field-satchel, player-guild and Founder-gate scenarios, phone toolbar widths 320/360/412 px, one-button layouts, standalone bytes and restart recovery. Artifact [13361760097](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41905869489/artifacts/13361760097), 7,119,664 bytes, SHA-256 `fbfb2e2da0daa79d3174e4b140c0438801cd85970d1972bb137e6737c28775e9`.
+- The Browser suite did not directly click the newly added Council Chamber map landmark. Its world destination/dispatch and deterministic count are covered by Node tests; the existing Council Dissent Dossier UI is exercised through the earlier Guild Hall entry point. Direct mobile map-to-dossier browser acceptance remains an explicit next test.
+- Browser workflow emitted Node 20 action deprecation and `punycode`/`url.parse()` warnings from existing workflow/toolchain dependencies; all Browser steps nevertheless completed successfully.
+
+### Outcome, limits and next action
+
+- Observed: the source branch contains a separate Council Chamber world destination; world geometry dispatches its own identity; the new deterministic map count rejects ambiguous/unidentified response claims; all three exact-head hosted workflows passed; hosted preflight is ready with zero warnings/failures.
+- Not observed: a direct browser click on the new landmark, a physical Android installation/device journey, source retrieval, independent verification of external claims, full MMORPG completion, or mainline integration.
+- PR #357 remains draft/open/unmerged. Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`; G6 remains IN PROGRESS. No merge, release, deployment, credential change, Founder decision, authority grant, key enrollment or XP award occurred.
+- Next: after the active browser-script ownership in #343/#354 is reconciled, add a direct 320/390 px mobile journey that walks to Council Chamber, opens the dossier, and confirms that inspection changes neither revision nor XP. Then continue the four-role browser coverage; do not infer consensus from four retained attempts.
+
