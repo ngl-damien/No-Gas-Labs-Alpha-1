@@ -70,7 +70,7 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
 test('the playable map exposes every institutional function as a real destination',()=>{
- const expected=['guild_hall','council_chamber','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+ const expected=['guild_hall','council_chamber','forge','evidence_archive','decision_chamber','town-square','quest_board','academy','moonshot_field','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
@@ -78,6 +78,17 @@ test('the playable map exposes every institutional function as a real destinatio
  const council=institutions.find(place=>place.id==='council_chamber');
  assert.match(council.purpose,/deliberation only, never consensus or authority/);
 });
+test('Quest Board is a reachable institution and arrival does not create activity',t=>{
+ const {view,interactions}=makeView(t);
+ const board=PLACES.find(place=>place.id==='quest_board');
+ assert.ok(board);
+ assert.equal(board.type,'institution');
+ assert.match(board.purpose,/actor-scoped objectives/);
+ view.goTo('quest_board');
+ for(let i=0;i<350;i++)view.update(.045,i*45);
+ assert.deepEqual(interactions,[{type:'institution',id:'quest_board'}]);
+});
+
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
