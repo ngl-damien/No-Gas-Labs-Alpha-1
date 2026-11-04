@@ -360,6 +360,7 @@ test('Guild Hall challenge quest targets current-member reports, excludes outsid
   assert.equal(witnessOpen.action, null);
   assert.match(witnessOpen.blockedReason, /another current guild member/i,
     'the only other report belongs to an outsider, not a current member');
+  assert.deepEqual(world, before, 'opening the satchel and projecting quest state do not mutate the world');
 
   world.events.push({
     id: 'member-challenge-event', type: 'experiment-challenged', challengeId: 'member-challenge',
@@ -406,8 +407,9 @@ test('Guild Hall challenge quest targets current-member reports, excludes outsid
   assert.ok(world.events.some(event => event.id === 'member-challenge-event'),
     'the challenge remains in world history after its target leaves the guild');
   assert.equal(world.xp, 0, 'guild review and challenge objectives grant no XP');
-  assert.deepEqual(world, { ...before, xp: 0, events: world.events },
-    'quest and satchel projections do not mutate canonical world state');
+  const finalSnapshot = structuredClone(world);
+  getQuestTrail(world, founder);
+  assert.deepEqual(world, finalSnapshot, 'quest projection does not mutate canonical world state');
 });
 
 test('challenge quest requires canonical chronology even when report attribution is valid', () => {
