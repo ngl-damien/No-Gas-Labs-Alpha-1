@@ -879,6 +879,12 @@ const INSTITUTION_ARCHITECTURE = Object.freeze({
     [-48, -64, 96, 7, 'trim'], [-4, -86, 8, 22, 'trim'],
     [-16, -82, 32, 12, 'accent'], [-42, -18, 8, 24, 'trim'], [34, -18, 8, 24, 'trim']
   ]),
+  council_chamber: institutionFeatures([
+    [-50, -72, 100, 8, 'trim'], [-42, -64, 84, 8, 'wall'],
+    [-30, -56, 60, 12, 'accent'], [-42, -30, 8, 22, 'trim'],
+    [34, -30, 8, 22, 'trim'], [-16, -18, 32, 8, 'roof'],
+    [-8, -10, 16, 10, 'accent']
+  ]),
   forge: institutionFeatures([
     [-28, -100, 16, 46, 'trim'], [-32, -104, 24, 6, 'wall'],
     [10, -30, 22, 18, 'accent'], [14, -26, 14, 10, 'glow'], [-12, 4, 38, 6, 'trim']
@@ -1457,6 +1463,7 @@ export class PixelWorldView extends WorldView {
     }
     const roofColors = {
       guild_hall: '#506f54',
+      council_chamber: '#536b68',
       forge: '#a45e3d',
       evidence_archive: '#6f825e',
       decision_chamber: '#3e5b50',
@@ -1468,7 +1475,10 @@ export class PixelWorldView extends WorldView {
     drawInstitutionBuilding(this.ctx, place, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
     this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
-    this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' records', place.x, place.y + 68, 10);
+    const countLabel = place.id === 'council_chamber'
+      ? (this.institutionCounts[place.id] || 0) + ' role attempts'
+      : (this.institutionCounts[place.id] || 0) + ' records';
+    this.drawMapLabel(countLabel, place.x, place.y + 68, 10);
     if (place.id === 'evidence_archive') {
       this.drawResearchCounterPanel(place.x, place.y + 98);
     }
@@ -1727,6 +1737,8 @@ export class PixelWorldView extends WorldView {
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
+        : near.type === 'institution'
+          ? (this.width < 600 ? 'TAP · ENTER · ' : 'E · ENTER · ') + (near.id === 'council_chamber' ? 'COUNCIL' : 'INSTITUTION')
         : 'E · Discover';
       const x = this.player.x, y = this.player.y - 70;
       context.font = '11px ui-monospace, monospace';

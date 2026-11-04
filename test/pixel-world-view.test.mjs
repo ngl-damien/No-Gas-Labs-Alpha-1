@@ -6,7 +6,7 @@ import {
   worldTileAt,
   PIXEL_SPRITES
 } from '../game/pixel-world-view.mjs';
-import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT } from '../game/world-view.mjs';
+import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT, institutionActivityCount } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
@@ -62,6 +62,25 @@ test('pixel sprites use rectangular, bounded, data-only character grids', () => 
   assert.ok(Object.isFrozen(PIXEL_SPRITES));
 });
 
+
+test('Council Chamber shows unique retained role attempts as a read-only map count', () => {
+  const place = PLACES.find(candidate => candidate.id === 'council_chamber');
+  const response = { id: 'pixel-council-response-1', type: 'collaborator-response-recorded' };
+  const world = { events: [response] };
+  assert.equal(institutionActivityCount('council_chamber', world), 1);
+  assert.equal(institutionActivityCount('council_chamber', {
+    events: [response, { ...response, role: 'adversary' }]
+  }), 0, 'duplicate retained identity is ambiguous, not extra progress');
+  const labels = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.ctx = { fillStyle: '', fillRect: () => {} };
+  view.institutionCounts = { council_chamber: 1 };
+  view.text = () => {};
+  view.drawMapLabel = value => labels.push(value);
+  view.drawInstitution(place);
+  assert.ok(labels.includes('1 role attempts'));
+});
+
 test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
   const signatures = GUILD_NPCS.map(npc => {
     const rectangles = [];
@@ -82,7 +101,7 @@ test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
-    'guild_hall', 'forge', 'evidence_archive', 'decision_chamber',
+    'guild_hall', 'council_chamber', 'forge', 'evidence_archive', 'decision_chamber',
     'academy', 'moonshot_field', 'publication_house'
   ]);
   const signatures = places.map(place => {
