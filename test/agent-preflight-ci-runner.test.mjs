@@ -80,3 +80,12 @@ test('Verify workflow preserves the unique preflight receipt even when verificat
   assert.match(workflow, /include-hidden-files: true/);
   assert.match(workflow, /retention-days: 14/);
 });
+
+
+test('CI preflight manifest includes the explicit nonce-ledger initializer and its regressions', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const manifest = packageJson.scripts['agent:preflight:ci'];
+  assert.match(manifest, /--path scripts\/init-founder-nonce-ledger\.mjs/);
+  assert.match(manifest, /--path test\/founder-nonce-ledger-init\.test\.mjs/);
+  assert.match(packageJson.scripts['init:founder-nonce-ledger'], /node scripts\/init-founder-nonce-ledger\.mjs/);
+});
