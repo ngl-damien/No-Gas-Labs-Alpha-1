@@ -12,6 +12,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS} from './social.mjs';
 
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
@@ -21,7 +22,40 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;let commonsDraftText='';
+const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
+function readMutedCommonsAuthors(){
+  try{
+    const storage=globalThis.localStorage;
+    if(!storage)return {authors:[],available:false};
+    const raw=storage.getItem(COMMONS_MUTED_AUTHORS_KEY);
+    if(raw===null)return {authors:[],available:true};
+    const parsed=JSON.parse(raw);
+    if(!Array.isArray(parsed))return {authors:[],available:false};
+    const authors=[],seen=new Set();
+    for(const candidate of parsed.slice(0,100)){
+      if(!candidate||typeof candidate.id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(candidate.id)||
+         ['constructor','prototype','__proto__'].includes(candidate.id)||
+         !['founder','witness'].includes(candidate.role)||
+         typeof candidate.name!=='string'||!candidate.name.trim()||Array.from(candidate.name).length>80)continue;
+      const key=JSON.stringify([candidate.id,candidate.role]);
+      if(seen.has(key))continue;
+      seen.add(key);
+      authors.push({id:candidate.id,role:candidate.role,name:candidate.name.trim()});
+    }
+    return {authors,available:true};
+  }catch{return {authors:[],available:false};}
+}
+function writeMutedCommonsAuthors(authors){
+  try{
+    if(!Array.isArray(authors)||authors.length>100)throw new Error('Invalid mute list.');
+    globalThis.localStorage.setItem(COMMONS_MUTED_AUTHORS_KEY,JSON.stringify(authors));
+    return true;
+  }catch{
+    toast('Device storage could not save this local mute. No shared message or world state was changed.',true);
+    return false;
+  }
+}
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -64,11 +98,164 @@ async function openInstitution(locationId = null) {
   });
 }
 
+function openCommons(){
+  commonsDraftText='';
+  const content=showSheet('The Commons at TownSquare','PUBLIC CONVERSATION · HUMAN MODERATION');
+  activeNoteRenderer=()=>renderCommonsContent(content);
+  renderCommonsContent(content,{preserveInputs:false});
+}
+function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=null}={}){
+  if(content!==$('sheet-content')||$('sheet').hidden)return;
+  const preservedValues=new Map();
+  let focusedId=null,selectionStart=null,selectionEnd=null;
+  if(preserveInputs){
+    for(const field of content.querySelectorAll('input,textarea,select')){
+      if(field.id)preservedValues.set(field.id,field.value);
+    }
+    if(document.activeElement&&content.contains(document.activeElement)){
+      focusedId=document.activeElement.id||null;
+      if(typeof document.activeElement.selectionStart==='number'){
+        selectionStart=document.activeElement.selectionStart;
+        selectionEnd=document.activeElement.selectionEnd;
+      }
+    }
+    const priorComposer=content.querySelector('#commons-message');
+    if(priorComposer)commonsDraftText=priorComposer.value;
+  }
+  const muteState=readMutedCommonsAuthors();
+  const feed=projectTownSquare(world,viewer,{mutedAuthors:muteState.authors});
+  content.replaceChildren();
+  content.dataset.commonsPanel='true';
+  content.append(
+    paragraph(mode==='shared'
+      ? 'Messages are shared with the current game community. Reports are private to their author and the authenticated Founder.'
+      : 'Private-world messages stay on this device. Shared conversation requires the shared service.'),
+    paragraph('Conversation is not evidence, truth, approval, authority, verification, or XP. Human moderation can hide public text while preserving the original event in world history. Device-local mutes affect only this browser and never hide content for other players.','form-help'),
+    button('Institution records →',()=>openInstitution('town-square'),{class:'secondary-button','data-commons-institution-records':'true'})
+  );
+  const form=node('form',{id:'commons-compose','aria-label':'Post a Commons message'});
+  const textarea=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A question, useful invitation, absurdity, or field observation.',value:preserveInputs?(preservedValues.get('commons-message')??commonsDraftText):commonsDraftText});
+  const count=node('small',{id:'commons-message-count','aria-live':'polite',text:Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT});
+  textarea.addEventListener('input',()=>{commonsDraftText=textarea.value;count.textContent=Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
+  const post=button('Post to The Commons',guarded(async()=>{
+    const text=textarea.value.trim();
+    if(!text)throw new Error('Write a message before posting.');
+    await act({type:'post-message',text});
+    commonsDraftText='';
+    renderCommonsContent(content,{preserveInputs:false});
+    toast('Message retained. Conversation only; no XP or authority.');
+  }),{class:'primary-button','data-commons-post':'true'});
+  form.addEventListener('submit',event=>{event.preventDefault();post.click();});
+  form.append(textarea,count,post);
+  content.append(node('section',{class:'field-card'},[
+    node('div',{class:'eyebrow',text:'WRITE A MESSAGE'}),
+    form
+  ]));
+  content.append(node('h3',{class:'section-title',text:'RECENT MESSAGES · '+feed.totalMessages}));
+  if(feed.omittedMessageCount)content.append(paragraph(feed.omittedMessageCount+' earlier messages remain in the Chronicle and are not included in this bounded view.','form-help'));
+  if(!muteState.available)content.append(paragraph('Device-local mute preferences could not be read. Messages are shown without local filtering; no shared moderation state was changed.','evidence-warning'));
+  if(feed.mutedMessageCount)content.append(paragraph(feed.mutedMessageCount+' recent message'+(feed.mutedMessageCount===1?' is':'s are')+' hidden by device-local mutes. Other players still see their own unfiltered feed.','form-help'));
+  if(!feed.messages.length&&feed.mutedMessageCount===0)content.append(paragraph('The Commons is quiet. A first message creates a retained conversation event, not progress or proof.','form-help'));
+  else if(!feed.messages.length)content.append(paragraph('No recent messages are visible. Unmute an author below to restore this device’s view.','form-help'));
+  if(feed.mutedAuthors.length){
+    const mutedPanel=node('details',{id:'commons-muted-authors',class:'field-card'});
+    mutedPanel.append(node('summary',{text:'MUTED AUTHORS · THIS DEVICE · '+feed.mutedAuthors.length}));
+    for(const author of feed.mutedAuthors){
+      mutedPanel.append(node('div',{class:'button-row'},[
+        paragraph(author.name+' · '+String(author.role).toUpperCase()),
+        button('Unmute →',()=>{
+          const next=feed.mutedAuthors.filter(candidate=>candidate.id!==author.id||candidate.role!==author.role);
+          if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
+        },{class:'secondary-button','data-commons-unmute':author.id,'data-commons-unmute-role':author.role})
+      ]));
+    }
+    content.append(mutedPanel);
+  }
+  for(const message of feed.messages){
+    const card=node('article',{class:'field-card','data-commons-message-id':message.messageId});
+    card.append(
+      node('div',{class:'eyebrow',text:message.author.name+' · '+String(message.author.role).toUpperCase()}),
+      paragraph(new Date(message.at).toLocaleString()),
+      paragraph(message.text)
+    );
+    if(message.canMute&&muteState.available)card.append(button('Mute author on this device',()=>{
+      if(feed.mutedAuthors.length>=100){toast('The device-local mute list is full (100 authors).',true);return;}
+      const next=[...feed.mutedAuthors,{id:message.author.id,role:message.author.role,name:message.author.name}];
+      if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
+    },{class:'secondary-button','data-commons-mute':message.messageId}));
+    if(message.hidden)card.append(paragraph('Hidden by human moderation. The original message remains retained in history.','form-help'));
+    if(message.canReport){
+      const report=node('details',{class:'commons-report'});
+      report.append(node('summary',{text:'Report this message privately'}));
+      const reasonId='commons-report-reason-'+message.messageId;
+      const detailsId='commons-report-details-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Private report reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
+      const details=node('textarea',{id:detailsId,rows:'2',maxlength:'500',placeholder:'Why should a human review this message?',value:preserveInputs&&clearReportMessageId!==message.messageId?(preservedValues.get(detailsId)||''):''});
+      report.append(reason,details,button('Submit private report',guarded(async()=>{
+        await act({type:'report-message',messageId:message.messageId,reason:reason.value,details:details.value.trim()});
+        renderCommonsContent(content,{preserveInputs:true,clearReportMessageId:message.messageId});
+        toast('Private report retained for human review.');
+      }),{class:'secondary-button','data-commons-report':message.messageId}));
+      card.append(report);
+    }
+    if(viewer.role==='founder'&&message.pendingReportCount>0){
+      const review=node('div',{class:'button-row'});
+      const reasonId='commons-moderation-reason-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Human moderation reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
+      review.append(reason,button('Hide after human review',guarded(async()=>{
+        await act({type:'moderate-message',messageId:message.messageId,disposition:'hide',reason:reason.value});
+        toast('Message hidden; original history retained.');
+      }),{class:'secondary-button','data-commons-hide':message.messageId}));
+      card.append(review);
+    }
+    if(viewer.role==='founder'&&message.hidden){
+      const reasonId='commons-restore-reason-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Human restoration reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
+      card.append(node('div',{class:'button-row'},[
+        reason,
+        button('Restore retained message',guarded(async()=>{
+          await act({type:'moderate-message',messageId:message.messageId,disposition:'restore',reason:reason.value});
+          toast('Message restored; moderation history retained.');
+        }),{class:'secondary-button','data-commons-restore':message.messageId})
+      ]));
+    }
+    content.append(card);
+  }
+  if(viewer.role==='founder'&&feed.pendingReports.length){
+    const panel=node('section',{id:'commons-pending-reports',class:'field-card'});
+    panel.append(node('h3',{text:'PENDING PRIVATE REPORTS · '+feed.pendingReportTotal}));
+    for(const report of feed.pendingReports){
+      const item=node('details');
+      item.append(node('summary',{text:report.reason+' · '+report.reporter.name+' → '+report.messageAuthor.name}));
+      item.append(paragraph(report.details),paragraph(report.messageText,'form-help'));
+      panel.append(item);
+    }
+    if(feed.omittedPendingReportCount)panel.append(paragraph(feed.omittedPendingReportCount+' older pending reports are omitted from this view.','form-help'));
+    content.append(panel);
+  }
+  if(focusedId){
+    const focused=Array.from(content.querySelectorAll('[id]')).find(field=>field.id===focusedId);
+    if(focused){
+      focused.focus({preventScroll:true});
+      if(selectionStart!==null&&typeof focused.setSelectionRange==='function'){
+        const end=selectionEnd??selectionStart;
+        focused.setSelectionRange(Math.min(selectionStart,focused.value.length),Math.min(end,focused.value.length));
+      }
+    }
+  }
+}
 function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
-  if (id === 'decision_chamber' || id === 'town-square') return openInstitution(id);
+  if (id === 'town-square') return openCommons();
+  if (id === 'decision_chamber') return openInstitution(id);
   if (id === 'academy') return openAcademy();
   if (id === 'moonshot_field') return openMoonshotField();
   if (id === 'publication_house') return openPublicationHouse();
@@ -140,7 +327,7 @@ const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(i
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
-function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
+function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Field satchel · retained Commons activity'}));content.append(paragraph('A bounded, read-only index of this character’s own retained TownSquare messages. Each item points back to the Commons. Conversation is not evidence, truth, approval, authority or XP. Human-hidden posts remain in the record with the public redaction.','form-help'));if(!record.fieldSatchel.length)content.append(paragraph('No retained Commons messages are recorded for this character yet.'));if(record.fieldSatchelOmittedCount>0)content.append(paragraph('Showing the newest '+record.fieldSatchel.length+' of '+record.fieldSatchelTotal+' retained Commons messages. Older messages remain in the Chronicle.','form-help'));for(const item of record.fieldSatchel){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.status,date,'event '+item.eventId,'message '+item.messageId].join(' · ');const children=[node('h3',{text:item.title}),paragraph(details)];if(item.summary)children.push(paragraph(item.summary));if(item.action)children.push(button('Return to TownSquare →',()=>followQuestAction(item.action),{class:'list-button','data-field-satchel-return':item.eventId}));content.append(node('article',{class:'field-card','data-field-satchel-item':item.eventId},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
 function followResearchTarget(object,fallback,targetType){
   if(!object){fallback();return}
   closeSheet();
@@ -167,7 +354,7 @@ function followQuestAction(action){
   if(action.type==='location'&&typeof action.id==='string'){
     const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id);
     if(npc){closeSheet();view.goTo(action.id,'npc');return}
-    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive'].includes(action.id)){
+    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive','town-square'].includes(action.id)){
       closeSheet();view.goTo(action.id);return;
     }
   }
@@ -509,7 +696,7 @@ function openGuide(id){
   );
   if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
 }
-function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
+function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.id==='town-square'?'The Commons at TownSquare':place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.id==='town-square'?'The Commons at TownSquare':p.name}),node('small',{text:p.id==='town-square'?'Public conversation, private reports and retained human moderation.':p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[
     node('h3',{text:'The Contradiction Clerk'}),

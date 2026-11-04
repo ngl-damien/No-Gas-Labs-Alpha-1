@@ -260,6 +260,24 @@ function worldEntry(event, index, creations, notes) {
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+  } else if (type === "message-posted") {
+    entry.title = `Commons message · ${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"}`;
+    entry.category = "THE COMMONS";
+    entry.summary = "An actor-attributed TownSquare message was retained. Conversation only; not evidence, truth, approval, authority, or XP.";
+    entry.detail = text(event?.text);
+    entry.warning = "A message records what an actor said, not whether the statement is correct or independently observed.";
+  } else if (type === "message-reported") {
+    entry.title = "Commons message reported for human review";
+    entry.category = "THE COMMONS · PRIVATE REPORT";
+    entry.summary = "An actor privately requested human review. A report is not a verdict, finding, or proof of misconduct.";
+    entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Reason: ${text(event?.reason) || "not recorded"}`, `Details: ${text(event?.details) || "not recorded"}`].join(" · ");
+    entry.warning = "Report details are visible only to the reporting actor and authenticated Founder; other public views omit this event.";
+  } else if (type === "message-moderated") {
+    entry.title = `Commons message ${text(event?.disposition) || "moderated"} by the Founder`;
+    entry.category = "THE COMMONS · HUMAN MODERATION";
+    entry.summary = "A human changed the public presentation of a retained message. The original post and moderation history remain in the Chronicle.";
+    entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Disposition: ${text(event?.disposition) || "not recorded"}`, `Reason: ${text(event?.reason) || "not recorded"}`].join(" · ");
+    entry.warning = "Moderation changes visibility, not historical authorship, truth, evidence, approval, authority, or XP.";
   } else if (type === "contribute" || type === "report") {
     const isReport = type === "report";
     const records = isReport ? notes.reports : notes.contributions;

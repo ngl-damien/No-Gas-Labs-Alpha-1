@@ -1,6 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump this identifier whenever the service-worker logic or public shell changes.
-const CACHE_NAME = CACHE_PREFIX + '20261103-pixel-world-3';
+const CACHE_NAME = CACHE_PREFIX + '20261104-commons-1';
 
 // Cache only the public application shell. Shared APIs, authenticated state,
 // private server data, and retained artifact endpoints are deliberately excluded.
@@ -19,6 +19,7 @@ const CORE_SHELL = [
   '/guild-npc-workbench.mjs',
   '/collaborator-contracts.mjs',
   '/collaborator-response.mjs',
+  '/social.mjs',
   '/strict-json.mjs',
   '/model.mjs',
   '/artifacts.mjs',

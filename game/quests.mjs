@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { projectCommonsMessages } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -493,6 +494,8 @@ export function getQuestTrail(world, viewer) {
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
+  const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
+  const firstCommonsMessage = commonsMessages[0] || null;
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
@@ -830,6 +833,14 @@ export function getQuestTrail(world, viewer) {
             ? 'No remaining role has a currently available source-bound packet. Preserve a qualifying research input, then return.' : null,
         'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
+      trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+      ),
     ]);
   }
 
@@ -943,6 +954,14 @@ export function getQuestTrail(world, viewer) {
         !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
           ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
       'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
   ]);
 }
