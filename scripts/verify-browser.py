@@ -1402,14 +1402,15 @@ def shared(browser,url,data,out):
             if role=='synthesizer':
                 for dissent_id in make_council_response(role,payload)['dissentPreserved']:
                     expect(review).to_contain_text(dissent_id)
+            owner_after=owner.request.get(url+'api/state').json()
             before_read=visitor.request.get(url+'api/state').json()
             after_read=owner.request.get(url+'api/state').json()
             assert before_read['world']['revision']==after['world']['revision']
             assert before_read['world']['events']==after['world']['events']
             assert before_read['world']['xp']==after['world']['xp']
-            assert after_read['world']['revision']==after['world']['revision']
-            assert after_read['world']['events']==after['world']['events']
-            assert after_read['world']['xp']==after['world']['xp']
+            assert after_read['world']['revision']==owner_after['world']['revision']
+            assert after_read['world']['events']==owner_after['world']['events']
+            assert after_read['world']['xp']==owner_after['world']['xp']
             if next_role:
                 expect(page.locator(f'[data-council-next-role="guild-npc-{next_role}"]')).to_have_count(1)
             else:
