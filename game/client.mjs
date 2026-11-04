@@ -12,7 +12,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
-import {projectTownSquare,projectPlayerGuilds,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
+import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
@@ -840,6 +840,37 @@ function renderPlayerGuildBoard(board, sourceWorld){
       }
     }else{
       card.append(paragraph('You already belong to another guild. One active guild per session identity.','form-help'));
+    }
+    if(projection.viewerGuildId===guild.id){
+      const satchel=projectGuildFieldSatchel(sourceWorld,viewer);
+      const panel=node('section',{class:'field-card','data-guild-field-satchel':guild.id},[
+        node('h3',{text:'GUILD FIELD SATCHEL · '+(satchel.available?satchel.total:'UNAVAILABLE')}),
+        paragraph('Read-only index of public retained work by current members. Entries link back to their originating institution; they do not transfer ownership or grant evidence status, approval, authority, XP, or progress.','form-help')
+      ]);
+      if(!satchel.available){
+        panel.append(paragraph('Guild membership history is ambiguous or unavailable. No shared work items are projected.','evidence-warning'));
+      }else if(!satchel.items.length){
+        panel.append(paragraph('No public retained work from current members is available yet. Private drafts and private reports are not listed.','empty-note'));
+      }else{
+        if(satchel.omittedCount)panel.append(paragraph('Showing the newest 20 of '+satchel.total+' retained items; '+satchel.omittedCount+' additional items are outside the bounded projection.','form-help'));
+        for(const item of satchel.items.slice(0,20)){
+          const row=node('article',{class:'note-entry','data-guild-field-item':item.eventId},[
+            node('div',{class:'eyebrow',text:item.kind.toUpperCase().replaceAll('-',' ')}),
+            node('h4',{text:item.title}),
+            paragraph(item.summary),
+            paragraph(item.actor.name+' · '+String(item.actor.role).toUpperCase()+' · '+new Date(item.at).toLocaleString(),'attribution')
+          ]);
+          row.append(button('Inspect retained record →',()=>{
+            const action=item.action;
+            if(action.type==='creation')openCreation(action.creationId,action.version);
+            else if(action.type==='commons')openCommons();
+            else if(action.type==='moonshot')openMoonshotField(action.moonshotId);
+            else if(action.type==='archive')openEvidenceArchive();
+          },{class:'list-button','data-guild-field-open':item.eventId}));
+          panel.append(row);
+        }
+      }
+      card.append(panel);
     }
     board.append(card);
   }
