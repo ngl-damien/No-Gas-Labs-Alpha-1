@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
@@ -367,6 +368,7 @@ export function projectCharacter(world, viewer) {
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
+  const commonsMessages = projectCommonsMessages(world, viewer);
 
   const completedQuestObjectives = getQuestTrail(world, viewer)
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
@@ -393,6 +395,13 @@ export function projectCharacter(world, viewer) {
       count: matchedContributions.length,
       record: 'field notes',
       basis: 'Attributed notes attached to a published version.'
+    },
+    {
+      id: 'speaker',
+      label: 'Speaker',
+      count: commonsMessages.length,
+      record: 'retained Commons messages',
+      basis: 'Unique actor-attributed TownSquare posts. Conversation is not evidence, truth, approval, authority, mastery, or XP.'
     },
     {
       id: 'scholar',
