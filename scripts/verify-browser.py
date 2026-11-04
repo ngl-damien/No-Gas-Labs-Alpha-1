@@ -1391,7 +1391,100 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('Speaker')
         expect(a.locator('#sheet')).to_contain_text('1 recorded')
         close_sheet(a);close_sheet(b)
-        close_sheet(a)
+
+        def open_guild_hall(page):
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+            page.wait_for_timeout(8000)
+            for _ in range(24):
+                if page.locator('#sheet').is_visible():
+                    if page.locator('#sheet-title').text_content()=='Guild Hall':
+                        return
+                    close_sheet(page)
+                page.locator('#interact-button').click()
+                try:
+                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",timeout=500)
+                    return
+                except Exception:
+                    if page.locator('#sheet').is_visible():
+                        close_sheet(page)
+                    page.wait_for_timeout(350)
+            raise AssertionError('The player could not reach and interact with Guild Hall')
+
+        before_guild=owner.request.get(url+'api/state').json()
+        witness_guild_before=visitor.request.get(url+'api/state').json()
+        assert before_guild['viewer']['role']=='founder'
+        assert witness_guild_before['viewer']['role']=='witness'
+        before_guild_revision=before_guild['world']['revision']
+        before_guild_xp=before_guild['world']['xp']
+        assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
+        founder_id=before_guild['viewer']['id']
+        witness_id=witness_guild_before['viewer']['id']
+
+        open_guild_hall(a)
+        expect(a.locator('#player-guild-board')).to_be_visible()
+        a.locator('#player-guild-name').fill('Field Researchers')
+        a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        a.locator('#player-guild-create').click()
+        expect(a.locator('[data-player-guild-id]')).to_have_count(1)
+        created_state=visitor.request.get(url+'api/state').json()
+        guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
+        assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
+        guild_id=guild_events[0]['guildId']
+        assert guild_events[0]['actor']['id']==founder_id
+        assert created_state['world']['revision']==before_guild_revision+1
+        assert created_state['world']['xp']==before_guild_xp
+
+        open_guild_hall(b)
+        expect(b.locator('#player-guild-board')).to_be_visible()
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('Field Researchers')
+        member_card.locator(f'[data-player-guild-join="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD MEMBER')
+        expect(member_card).to_contain_text('MEMBERS 2/25')
+        leader_card=a.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(leader_card).to_contain_text('GUILD LEADER')
+        expect(leader_card).to_contain_text('MEMBERS 2/25')
+        assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
+        joined_state=owner.request.get(url+'api/state').json()
+        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
+        assert guild_events[1]['actor']['id']==witness_id
+        assert joined_state['world']['revision']==before_guild_revision+2
+        assert joined_state['world']['xp']==before_guild_xp
+
+        early_disband=owner.request.post(url+'api/action',data={
+            'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
+        })
+        assert early_disband.status_code==409
+        assert early_disband.json()['error']['code']=='GUILD_NOT_EMPTY'
+
+        member_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
+        expect(member_card).to_contain_text('MEMBERS 1/25')
+        expect(leader_card).to_contain_text('MEMBERS 1/25')
+        left_state=owner.request.get(url+'api/state').json()
+        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==['guild-created','guild-joined','guild-left']
+        assert guild_events[-1]['actor']['id']==witness_id
+        assert left_state['world']['revision']==before_guild_revision+3
+        assert left_state['world']['xp']==before_guild_xp
+
+        leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
+        expect(a.locator('[data-player-guild-id]')).to_have_count(0)
+        expect(a.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
+        final_guild_state=visitor.request.get(url+'api/state').json()
+        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in final_guild_events]==[
+            'guild-created','guild-joined','guild-left','guild-disbanded'
+        ]
+        assert [event['actor']['id'] for event in final_guild_events]==[
+            founder_id,witness_id,witness_id,founder_id
+        ]
+        assert final_guild_state['world']['revision']==before_guild_revision+4
+        assert final_guild_state['world']['xp']==before_guild_xp
+        close_sheet(a);close_sheet(b)
+
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
@@ -1408,7 +1501,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP'}
     finally:owner.close();visitor.close()
 
 
