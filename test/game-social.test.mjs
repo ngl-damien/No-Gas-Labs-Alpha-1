@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
-import { projectTownSquare, projectCommonsMessages } from '../game/social.mjs';
+import { projectTownSquare, projectCommonsMessages, projectGuildFieldSatchel } from '../game/social.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
 const witnessA = { id: 'witness-a', name: 'River Reader', role: 'witness' };
@@ -178,3 +180,138 @@ test('Commons view is bounded to the latest fifty posts while retaining older hi
   assert.equal(world.events.filter(event => event.type === 'message-posted').length, 51);
   assert.equal(world.xp, 0);
 });
+
+test('Guild Hall field satchel indexes current members’ retained work, dissent and research without mutation or XP', async () => {
+  let world = createWorld({ id: 'guild-field-satchel', now: at(0) });
+  const draft = await applyAction(world, {
+    type: 'draft', kind: 'observatory', title: 'Guild Source Observatory',
+    intent: 'Preserve one source claim beside its uncertainty and falsifier.'
+  }, founder, { now: at(1000) });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: at(2000) });
+  world = published.world;
+  const creationId = published.result.creationId;
+
+  const created = await applyAction(world, {
+    type: 'create-guild', name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.'
+  }, founder, { now: at(3000) });
+  world = created.world;
+  const guildId = created.result.guildId;
+  world = (await applyAction(world, {
+    type: 'join-guild', guildId
+  }, witnessA, { now: at(4000) })).world;
+
+  const posted = await post(world, witnessA, 5000, 'The source may be stale; keep the uncertainty visible.');
+  world = posted.world;
+  world = (await applyAction(world, {
+    type: 'contribute', creationId, version: 1,
+    text: 'The publication receipt identifies bytes, not source truth.'
+  }, witnessA, { now: at(6000) })).world;
+  world = (await applyAction(world, {
+    type: 'report', creationId, version: 1,
+    text: 'Independent retrieval has not been performed.'
+  }, witnessA, { now: at(7000) })).world;
+
+  const proposal = await applyAction(world, {
+    type: 'propose-moonshot',
+    title: 'Can the source be independently retrieved?',
+    hypothesis: 'A current primary source will support the narrow claim.',
+    falsifier: 'The current primary source contradicts the claim.',
+    evidenceNeeded: 'A directly retrieved source with a current timestamp.',
+    sourceCreationId: creationId, sourceVersion: 1
+  }, witnessA, { now: at(8000) });
+  world = proposal.world;
+  const experiment = await applyAction(world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Attempt to retrieve the cited primary source.',
+    observation: 'The source was not retrieved during this attempt.',
+    reportedOutcome: 'failed', evidenceCreationId: creationId, evidenceVersion: 1
+  }, founder, { now: at(9000) });
+  world = experiment.world;
+  world = (await applyAction(world, {
+    type: 'challenge-experiment-report',
+    reportId: experiment.result.reportId,
+    challengeType: 'reproducibility',
+    challengeText: 'The attempt record does not include a reproducible retrieval procedure.'
+  }, witnessA, { now: at(10000) })).world;
+
+  const note = {
+    claim: 'The cited primary source states that the bridge is open.',
+    sourceKind: 'primary-source',
+    source: 'City bridge status page; retrieval not performed.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'The cited page may be stale.',
+    nextTest: 'Retrieve the current page and compare its timestamp.'
+  };
+  const material = sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  });
+  const observationId = 'source-observation-' + createHash('sha256').update(material).digest('hex');
+  world = (await applyAction(world, {
+    type: 'record-source-observation', creationId, version: 1,
+    observationId, ...note
+  }, founder, {
+    now: at(11000), requestId: observationId, actionFingerprint: 'd'.repeat(64)
+  })).world;
+  const sourceChallenge = await applyAction(world, {
+    type: 'challenge-source-observation',
+    observationId, challengeType: 'missing-evidence',
+    challengeText: 'The source has not been retrieved, so its current wording is unknown.'
+  }, witnessA, { now: at(12000) });
+  world = sourceChallenge.world;
+  world = (await applyAction(world, {
+    type: 'respond-source-observation-challenge',
+    challengeId: sourceChallenge.result.challengeId,
+    responseText: 'Agreed. This note is a lead only; retrieval and independent verification remain outstanding.'
+  }, founder, { now: at(13000) })).world;
+
+  world = (await report(world, founder, 14000, posted.result.messageId, 'privacy', 'Review the public wording.')).world;
+  world = (await applyAction(world, {
+    type: 'moderate-message', messageId: posted.result.messageId,
+    disposition: 'hide', reason: 'privacy'
+  }, founder, { now: at(15000) })).world;
+
+  const before = structuredClone(world);
+  const founderSatchel = projectGuildFieldSatchel(world, founder);
+  const witnessSatchel = projectGuildFieldSatchel(world, witnessA);
+  const outsiderSatchel = projectGuildFieldSatchel(world, witnessB);
+
+  assert.equal(founderSatchel.available, true);
+  assert.equal(founderSatchel.guild.id, guildId);
+  assert.equal(founderSatchel.guild.memberCount, 2);
+  assert.deepEqual(witnessSatchel.items.map(item => item.eventId), founderSatchel.items.map(item => item.eventId));
+  assert.equal(outsiderSatchel.guild, null);
+  assert.equal(outsiderSatchel.total, 0);
+  assert.ok(founderSatchel.total >= 10);
+
+  const kinds = new Set(founderSatchel.items.map(item => item.kind));
+  for (const kind of [
+    'published-artifact', 'commons-message', 'field-contribution', 'dissent-report',
+    'moonshot-proposal', 'experiment-report', 'experiment-challenge',
+    'source-observation', 'source-observation-challenge', 'source-observation-response'
+  ]) assert.ok(kinds.has(kind), 'missing guild satchel object kind: ' + kind);
+
+  const messageItem = founderSatchel.items.find(item => item.eventId === posted.world.events.at(-1).id);
+  assert.ok(messageItem);
+  assert.equal(messageItem.summary, '[Message hidden by human moderation.]');
+  assert.match(messageItem.status, /not evidence, approval, ownership, authority, or XP/i);
+  assert.ok(founderSatchel.items.every(item => Object.isFrozen(item) && Object.isFrozen(item.action)));
+  assert.deepEqual(world, before, 'opening the guild satchel must not mutate canonical history');
+  assert.equal(world.xp, 100, 'only the retained publication contributes XP');
+
+  await validateWorld(world);
+  world = (await applyAction(world, {
+    type: 'leave-guild', guildId
+  }, witnessA, { now: at(16000) })).world;
+  const afterDeparture = projectGuildFieldSatchel(world, founder);
+  assert.equal(afterDeparture.guild.memberCount, 1);
+  assert.equal(afterDeparture.items.some(item => item.actor.id === witnessA.id), false);
+  assert.equal(afterDeparture.items.some(item => item.eventId === posted.world.events.at(-1).id), false);
+  assert.equal(world.events.some(event => event.type === 'message-posted' && event.messageId === posted.result.messageId), true,
+    'departure changes the current roster projection, not the retained Commons history');
+  assert.equal(projectGuildFieldSatchel(world, witnessA).guild, null);
+  await validateWorld(world);
+});
+
