@@ -1088,12 +1088,17 @@ def shared(browser,url,data,out):
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
-        # The Founder approaches the actual Adversary sprite, explicitly talks, and receives
-        # only that role's source-bound packet.
+        # Close the preceding challenge sheet before using the hidden accessible NPC control:
+        # the control is deliberately disabled while any modal is open.
+        close_sheet(a)
+        a.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
         adversary_control=a.locator('[data-guild-npc-control="adversary"]')
         expect(adversary_control).to_have_count(1)
+        expect(adversary_control).to_be_enabled()
+        # The Founder approaches the actual Adversary sprite, explicitly talks, and receives
+        # only that role's source-bound packet.
         adversary_control.evaluate("(button)=>button.click()")
-        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='adversary'&&button.dataset.guildNpcAction==='talk')")
+        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='adversary'&&button.dataset.guildNpcAction==='talk')",timeout=60000)
         expect(adversary_control).to_have_attribute('data-guild-npc-action','talk')
         adversary_control.evaluate("(button)=>button.click()")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
@@ -1211,7 +1216,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest'}
     finally:owner.close();visitor.close()
 
 

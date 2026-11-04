@@ -541,3 +541,105 @@ Implementation:
 - The world remains an early pixel-art slice. Distinctive institutional silhouettes, actual NPC/agent capabilities and encounters, richer quest/objective interactions, source retrieval, independent verification, live Founder identity/key custody, and physical Android acceptance remain unfinished.
 - Some long map labels still truncate with an ellipsis; further visual work should preserve mobile legibility without letting label panels obscure the world.
 - No canonical event, XP, inventory, quest completion, truth verdict, approval, evidence, authority, Founder state, or production data was changed. No merge, release, deployment, credential/key change, or Founder decision occurred.
+
+
+---
+
+## Run 52 — 2026-11-03 — Worker B — Guild NPC collaboration through shared Relay
+
+### Rehydration and current baseline
+
+- Repository: ngl-damien/No-Gas-Labs-Alpha-1.
+- Current main observed at c8fd22289cf8405aff04aae4d3fd51c29c68e319; it is 2 commits ahead of the older cc317d49... baseline. Main's checkpoint still records ea025a587e0bb3113423ea67035ddfa83ea7dc9f, and main's G0–G9 ledger remains NOT ASSESSED.
+- Read root AGENTS.md first (SHA a4beeee1c0ec46faab28502957c0e53850b2855d), then the complete shared protocol (SHA 9a26ee4c17d2462dd66e99e90d258eaa9bcab79f), both on main and the current game branch. Branch copies are byte-identical.
+- Read this checkpoint, the MMORPG completion contract (SHA 024144ea9995c0d39ebf073e2f9cd4da0a4eda7e), and ledger (prior SHA 971d717fff45805f7989567067c72209929e4167).
+- Checked nested AGENTS.md under game/, test/, scripts/, docs/, and docs/operations/; all returned 404. The root instructions remain applicable.
+- Portable preflight could not be run locally: both registered Desktop Commander devices were offline. The manual instruction sequence was followed. Hosted Verify on the exact child PR head is the available executable preflight/test path; no local Node 24 or browser execution is claimed.
+- Re-observed PR #341, the active MMORPG NPC/workbench integration. Before the new shared-recovery test, exact head 4ed8c8aa176efda57510233782b8c64d7ded348c passed Verify 41760311283, Genesis 41760311292, and Browser Acceptance 41760311324 (12/12). PR #341 is a draft child of PR #338.
+- Re-observed Worker A's latest authority PR #342. Its test-first head e24b7258... exposed the intended same-inode writer-lock release defect: Verify failed only at nonce writer retains a same-inode owner-lock rewrite instead of unlinking it during release (Missing expected exception, 835/836 passed). Worker A subsequently advanced to implementation head e894d90a0a607dde0d2fa1d50e3caa5bbdb91633; Verify and Genesis were in progress and Browser pending at this observation. No final result is transferred to this game branch.
+- Comparing current main c8fd222... with PR #341's updated code/test head 3c2d3372f5468ce32b321dd96defabf3617a291e reports diverged, 170 commits ahead and 2 behind. Do not merge the stacked branch wholesale; reconcile the two main-only commits and authority changes first.
+
+### Donor and mechanism review
+
+- Reused Alpha-1's exact pending shared-action receipt and retry path in game/client.mjs; the test uses the existing Relay rather than inventing a second queue.
+- Reused the bounded role packet and structural response validator in game/collaborator-contracts.mjs and game/collaborator-response.mjs. A valid result means only schema/scope validity for human review.
+- Rechecked src/evidence/content-addressed.js: its SHA-256 receipt verifies byte identity, not truth.
+- Rechecked src/world/guild-hall.js: AUTHORIZED is projected only when isVerifiedAuthorization accepts the event through the verifier.
+- Rechecked src/authority/decision.js: the authorization entry point re-runs cryptographic Founder-decision verification in-process and ignores caller-supplied valid:true. No authority or key code was changed; no donor repository was copied wholesale.
+
+### Objective and change
+
+Objective: close the untested gap between the real Guild NPC workbench and unreliable shared-world connectivity. The prior NPC browser loop proved approach, explicit talk, exact institution/role-card focus, and read-only navigation, while collaborator response archival was exercised only in private mode. The shared-world journey already proved Relay recovery for Source Observations, but not for a response produced through an actual NPC workbench.
+
+- PR #341 branch: game/guild-npc-workbench-integration-20261104.
+- Parent code/test head before this change: 4ed8c8aa176efda57510233782b8c64d7ded348c.
+- Added shared two-session browser coverage in scripts/verify-browser.py:
+  1. Founder approaches the actual Adversary NPC and explicitly talks.
+  2. The Evidence Archive opens the exact Adversary role card and its source-bound packet.
+  3. A structurally valid response is prepared against an exact retained experiment-report event.
+  4. Playwright allows the server to commit record-collaborator-response, then simulates a lost 503 response.
+  5. An independent Witness-session state read checks exactly one retained response, original Founder actor/role, exact response bytes, revision +1, and unchanged XP.
+  6. The Founder resolves the pending action from The Relay using the exact request; the second state read checks no duplicate event/revision/XP.
+  7. Evidence Archive reopens the exact archived response; the Founder response quest records, council coverage projects 1/4, and the next objective routes to the Archivist NPC without a canonical mutation.
+- First test commit 7d92582eaa784c4d036ab9fbdb750c6551a37690 contained a malformed JavaScript assertion string. It was caught by immediate source reinspection and corrected in 3c2d3372f5468ce32b321dd96defabf3617a291e. The corrected source was fetched again; the pending-receipt assertion now has balanced quotes. Neither commit changes runtime behavior.
+- Branch game/guild-npc-relay-recovery-20261104 was created from 3c2d337... for the durable record and exact-head hosted acceptance. The browser result summary includes guildNpcCollaboratorRelay. Hosted verification for this new shared-mode journey is pending; do not claim it passed until exact-head workflow evidence is observed.
+
+### Epistemic and gameplay boundaries
+
+- The NPC and workbench remain advisory; no model/provider is invoked by the test.
+- Structural response validation is not truth, evidence, execution, endorsement, mastery, approval, or authority.
+- The response event is retained with actor attribution and exact packet/response receipts. Byte receipts establish identity of bytes only.
+- Quest coverage counts a retained response per role; rejected responses remain preserved attempts, not endorsements. No XP is awarded.
+- The lost-response test must prove one server commit followed by exact idempotent replay, not a second event.
+- No production world, canonical user state, Founder identity, key, authority, credential, permission, merge, release, or deployment was changed.
+
+### Gate state and next action
+
+- G6 remains IN PROGRESS. The proposed branch now connects an in-world bounded collaborator to a shared, recoverable response archive and actor-scoped role-coverage quest, but the exact new browser journey is awaiting hosted verification and the entire stack remains unmerged.
+- G7 remains IN PROGRESS. No physical Android-device acceptance is established; emulator results are not device verification.
+- Source retrieval and independent verification remain NOT_PERFORMED; the top-down world is still an early pixel-art slice, not a feature-complete MMORPG.
+- Next: obtain exact-head Verify/Genesis/Browser results for the child branch; if the shared Adversary/Relay journey passes, preserve the exact run IDs and artifact, then reconcile the NPC/workbench stack with main without reintroducing the stale caller-trusted authority implementation.
+
+## 2026-11-04 — Worker B Runs 58–59 — Guild Field Satchel and member-scoped challenge
+
+### Run 58 — shared work becomes inspectable Guild Hall content
+
+- PR #350 branch `game/player-guilds-guildhall-20261104`, based on PR #349 branch at `4e9b599f7e9c6a7e8dda2210cee824cfaefa7281`.
+- Code/test head `e8e41960e12ad29f0078c1ada082533808438d92` adds pure read-only `projectGuildFieldSatchel(world, viewer)` in `game/social.mjs`, Guild Hall rendering in `game/client.mjs`, unit coverage in `test/game-social.test.mjs`, and a two-session browser assertion.
+- The projection exposes only current guild members' uniquely linked retained public work: publications, Commons messages with hidden text redacted, field contributions, dissent reports, moonshot/experiment/Source Observation records, and bounded collaborator metadata. Ambiguous identities fail closed. Entries route to their originating institution.
+- The satchel is not inventory/equipment or transferable ownership. It creates no event, XP, evidence status, approval, truth verdict, or authority.
+- Exact-head Verify 41820585904 PASS, Genesis 41820586184 PASS, Browser 41820585919 PASS (13/13).
+
+### Run 59 — guild challenge quest is scoped to current members
+
+- PR #350 advanced to exact head `390a195703f21bc6ae5a57f233f5161fcc5b83e2`, with `game/quests.mjs`, `test/game-quests.test.mjs`, and `scripts/verify-browser.py` updated.
+- The experiment-challenge quest now targets a retained report by another current guild member. Outsider reports are excluded; the exact report remains the Moonshot Field objective; departure reopens the objective while the original report/challenge events remain retained.
+- Unit tests cover Founder/Witness challenge, outsider exclusion, exact target, departure, no XP and no world mutation. The two-session browser journey observes the generic objective before membership, guild-scoped objective after joining, and reopening after the report author leaves.
+- Exact-head Verify 41823755488 PASS (Node 24 full test command, Python inspector, game build, institutional exercise; hosted preflight ready with 53 target records and zero warnings/failures), Genesis 41823755440 PASS, Browser 41823755513 PASS (13/13).
+- Browser artifact 13318596672, 5,512,829 bytes, ZIP SHA-256 `311ee56d35f280d35499884d913ea21dfc606b297cb6c8b1ea1b692dc41643b1`. Preflight artifact 13317058991, SHA-256 `cd7ecd2c3e940371b12895f516373f483343f2de402c5a95429714ac370aee1c`.
+
+### Gate state and limits
+
+- G5 remains IN PROGRESS: Commons moderation and player-guild lifecycle are proposed, but player-to-player item ownership transfer/trading and guild leadership transfer are not implemented.
+- G6 remains IN PROGRESS: the satchel and member-scoped quest are proposed and unmerged. No source retrieval or independent verification is established.
+- G7 remains IN PROGRESS: browser/PWA/emulator evidence is not physical Android-device acceptance.
+- Main remains `c8fd22289cf8405aff04aae4d3fd51c29c68e319`; PR #350 remains open/draft/unmerged. No mainline capability is claimed.
+
+### Separate PR #343 shared NPC/Relay browser failure
+
+- PR #343 code/test head `0119e137828ea24d655c3166f4e8f67a1e380ce6` passed Verify 41763307372 and Genesis 41763307318, but Browser Acceptance 41763307432 failed.
+- The job reached and passed desktop, phone, and institutional-location journeys, then timed out at `scripts/verify-browser.py:1096` waiting for a `data-guild-npc-control="adversary"` / `data-guild-npc-action="talk"` control before the shared Adversary NPC journey.
+- PR #343 subsequently received documentation-only ledger commits `b30c09d47b8c7f73bd8c02e77e34363b5e94321d` and `3b897aedb004b8a8aa066a862b96e9d9888342e8`; no game source/test was changed by this handoff. No Browser rerun on the documentation-updated head is claimed.
+- Do not treat PR #350's 13/13 Browser pass as proof that PR #343's separate Adversary NPC/Relay journey passes. Worker B should re-observe and repair or explicitly supersede that child test before promoting the NPC/Relay evidence.
+
+### Execution limitations
+
+Both registered Desktop Commander devices remained offline, and the container could not resolve github.com for a local clone. No local checkout or local test run is claimed. Worker B's exact-head hosted preflight and CI receipts above are the available evidence. This checkpoint/ledger update is on PR #343's documentation branch only; main was not modified.
+
+### PR #343 current exact-head Browser result — 2026-11-04
+
+- Current documentation branch head before this addendum: `2882a562198c83eb82566ed263695d6261ccf26a` (ledger and checkpoint handoff commits included).
+- Verify 41825129383 PASS; Genesis 41825129360 PASS; Browser Acceptance 41825130411 FAIL.
+- Browser job passed desktop, phone, and institutional-location actions, then timed out after 30 seconds at `scripts/verify-browser.py:1096` waiting for a button with `data-guild-npc-control="adversary"` and `data-guild-npc-action="talk"`. The exact log records `Page.wait_for_function: Timeout 30000ms exceeded`.
+- This completed failure supersedes the earlier note that the documentation-updated Browser rerun was merely cancelled. The 3b897 ledger-only head had Browser 41824998093 CANCELLED; the current 2882 checkpoint head has the completed failure above.
+- The PR #350 13/13 Browser pass is a separate Guild Hall/Commons branch and does not prove this PR #343 Adversary NPC/Relay journey. Worker B must repair or explicitly supersede this child acceptance before claiming the NPC/Relay journey passed.
