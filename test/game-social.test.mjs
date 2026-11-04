@@ -102,12 +102,12 @@ test('Commons enforces per-actor rate limits, one report per actor, and report-b
 
   const target = world.events.find(event => event.type === 'message-posted');
   await assert.rejects(report(world, witnessA, 7000, target.messageId), error => error.code === 'SELF_REPORT');
+  await assert.rejects(
+    applyAction(world, { type: 'moderate-message', messageId: target.messageId, disposition: 'hide', reason: 'spam' }, founder, { now: at(6500) }),
+    error => error.code === 'MESSAGE_NOT_REPORTED'
+  );
   const firstReport = await report(world, witnessB, 7000, target.messageId);
   await assert.rejects(report(firstReport.world, witnessB, 8000, target.messageId), error => error.code === 'MESSAGE_ALREADY_REPORTED');
-  await assert.rejects(
-    applyAction(firstReport.world, { type: 'moderate-message', messageId: world.events.at(0).messageId, disposition: 'hide', reason: 'spam' }, founder, { now: at(9000) }),
-    error => error.code === 'MESSAGE_ALREADY_HIDDEN' || error.code === 'MESSAGE_NOT_REPORTED'
-  );
   await validateWorld(firstReport.world);
 });
 
