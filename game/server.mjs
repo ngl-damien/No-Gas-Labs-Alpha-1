@@ -1152,12 +1152,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     // Hostnames such as localhost depend on resolver/hosts-file state and must supply an explicit key.
     const loopbackDevelopment = process.env.NODE_ENV !== 'production' && ['127.0.0.1', '::1'].includes(host);
     server = await createGameServerInternal({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, allowGeneratedFounderKey: loopbackDevelopment });
-    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
-    const address = server.address();
-    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
+    // Install shutdown handlers before announcing readiness so an immediate
+    // supervisor/test SIGTERM cannot race the handler registration.
     let stopping = false;
     const shutdown = async () => { if (stopping) return; stopping = true; await server.closeGame(); };
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
+    const address = server.address();
+    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
     const safeStartupError = error.code === 'SERVICE_LOCKED' || (typeof error.code === 'string' && error.code.startsWith('FOUNDER_'));
