@@ -150,6 +150,10 @@ test('copied enrollment candidate is rejected and default authorization remains 
   const trustPath = join(directory, 'founder.pub.json');
   const { publicKey } = keyPair();
   const candidate = buildEnrollmentCandidate(publicKey);
+  const defaultTrust = loadTrustAnchor();
+  assert.equal(defaultTrust.enrolled, false);
+  assert.equal(defaultTrust.reason, 'NOT_ENROLLED');
+  assert.match(defaultTrust.meta.instruction, /Node-only enrollment CLI.*FOUNDER_KEYSTORE_UNAVAILABLE/);
 
   await writeFile(trustPath, JSON.stringify(candidate));
   const trust = loadTrustAnchor(trustPath);
