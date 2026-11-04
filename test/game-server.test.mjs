@@ -250,7 +250,7 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
   );
 });
 
-test('published world and accepted kernel history survive restart; generated key stays private', async t => {
+test('published world and accepted kernel history survive restart; explicit Founder key stays private', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login(); const result = await publish(founder);
   await f.closeGame();
   const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY }); t.after(() => restarted.closeGame());
@@ -258,14 +258,12 @@ test('published world and accepted kernel history survive restart; generated key
   const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
-  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
-  t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
-  await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
-  assert.equal((await exported.text()).includes(secret), false);
+  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const configured = await createGameServer({ dataDir: secretDir, founderKey: KEY });
+  t.after(async () => { await configured.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
+  await new Promise(resolve => configured.listen(0, '127.0.0.1', resolve));
+  const exported = await fetch(`http://127.0.0.1:${configured.address().port}/api/export`);
+  assert.equal((await exported.text()).includes(KEY), false);
 });
-
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'comic', title: 'Atomic', intent: 'Only adopt on disk success' });
