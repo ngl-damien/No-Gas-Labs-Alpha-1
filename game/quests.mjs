@@ -707,14 +707,6 @@ export function getQuestTrail(world, viewer) {
         !hasFirstPlace ? { type: 'workbench', recipe: 'comic' } : null
       ),
       trailMilestone(
-        'founder-commons-message', 'Leave a message in The Commons', 1,
-        firstCommonsMessage ? [firstCommonsMessage.id] : [],
-        firstCommonsMessage ? [firstCommonsMessage] : [],
-        firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
-        null,
-        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
-      ),
-      trailMilestone(
         'founder-walk-institution', 'Discover a guide', 1,
         locationEvents.map(event => event.id), locationEvents,
         hasFirstPlace && !hasWalked && nextGuide ? { type: 'location', id: nextGuide } : null,
@@ -841,6 +833,14 @@ export function getQuestTrail(world, viewer) {
             ? 'No remaining role has a currently available source-bound packet. Preserve a qualifying research input, then return.' : null,
         'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
+      trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+      ),
     ]);
   }
 
@@ -866,14 +866,6 @@ export function getQuestTrail(world, viewer) {
       !mapComplete ? 'Discover all four guide locations first.' :
         !workAvailable ? 'Wait for a Founder to publish a real place.' :
         !latestCreation ? 'No retained published place is available to open.' : null
-    ),
-    trailMilestone(
-      'witness-commons-message', 'Leave a message in The Commons', 1,
-      firstCommonsMessage ? [firstCommonsMessage.id] : [],
-      firstCommonsMessage ? [firstCommonsMessage] : [],
-      firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
-      null,
-      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
     trailMilestone(
       'witness-version-report', 'Submit a version-bound report', 1,
@@ -962,6 +954,14 @@ export function getQuestTrail(world, viewer) {
         !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
           ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
       'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
   ]);
 }
