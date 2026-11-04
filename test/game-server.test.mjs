@@ -1603,3 +1603,135 @@ test('shared player guilds reconcile across independent sessions with idempotent
 });
 
 
+test('direct server factory requires an explicit Founder key before creating runtime data', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-direct-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('programmatic factory cannot opt into generated Founder keys through caller-supplied flags', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-programmatic-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('production mode cannot bypass explicit Founder key configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('network-bound CLI refuses to mint a Founder credential without explicit configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-network-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = { ...process.env, NODE_ENV: 'development', PORT: '0', NGL_DATA_DIR: dataDir };
+  delete env.HOST;
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+});
+
+
+test('development CLI refuses localhost aliases before creating runtime data without an explicit Founder key', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-localhost-alias-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = {
+    ...process.env,
+    NODE_ENV: 'development',
+    HOST: 'localhost',
+    PORT: '0',
+    NGL_DATA_DIR: dataDir
+  };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+  t.after(async () => {
+    clearTimeout(timeout);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+
+  const [code, signal] = await exited;
+  clearTimeout(timeout);
+  assert.equal(signal, null, 'localhost must be rejected before hostname resolution or listen');
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' },
+    'the hostname alias must not create runtime state or a generated key');
+});
