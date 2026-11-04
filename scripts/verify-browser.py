@@ -997,6 +997,7 @@ def shared(browser,url,data,out):
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+        expect(b.get_by_role('button',name='Enter Council Chamber →',exact=True)).to_have_count(1)
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
         expect(b.locator('#contradiction-form')).to_be_visible()
@@ -1220,6 +1221,41 @@ def shared(browser,url,data,out):
         expect(a.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
         coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
         expect(coverage_quest).to_contain_text('1/4')
+        council_before_owner=owner.request.get(url+'api/state').json()
+        council_before_witness=visitor.request.get(url+'api/state').json()
+        a.get_by_role('button',name='Enter Council Chamber →',exact=True).click()
+        expect(a.locator('#sheet-title')).to_have_text('Council Chamber')
+        expect(a.locator('[data-council-coverage-progress="1/4"]')).to_have_count(1)
+        expect(a.locator('[data-council-next-role="guild-npc-archivist"]')).to_have_count(1)
+        adversary_slot=a.locator('[data-council-role="adversary"]')
+        expect(adversary_slot).to_have_attribute('data-council-status','human-review')
+        expect(adversary_slot).to_have_attribute('data-council-event-id',committed_response['id'])
+        expect(adversary_slot).to_have_attribute('data-council-response-id',committed_response['responseId'])
+        for missing_role in ['archivist','synthesizer','tutor']:
+            expect(a.locator(f'[data-council-role="{missing_role}"]')).to_have_attribute('data-council-status','awaiting')
+        expect(a.locator('#sheet')).to_contain_text('not consensus')
+        expect(a.locator('#sheet')).to_contain_text('not authority')
+        expect(a.locator('#sheet')).to_contain_text('Consequential decisions remain in the human-gated Decision Chamber')
+        a.screenshot(path=str(out/'guild-council-chamber.png'))
+        adversary_slot.get_by_role('button',name='Inspect exact retained response →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        focused_response_card=a.locator('[data-council-response-focus="true"]')
+        expect(focused_response_card).to_have_count(1)
+        expect(focused_response_card).to_be_visible()
+        expect(focused_response_card).to_be_focused()
+        assert focused_response_card.get_attribute('data-collaborator-response-id')==committed_response['responseId']
+        focused_response_card.locator('details.collaborator-response summary').click()
+        focused_response_field=focused_response_card.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(focused_response_field).to_have_count(1)
+        assert focused_response_field.input_value()==collaborator_response_text
+        council_after_owner=owner.request.get(url+'api/state').json()
+        council_after_witness=visitor.request.get(url+'api/state').json()
+        assert council_after_owner['world']['revision']==council_before_owner['world']['revision']
+        assert council_after_owner['world']['events']==council_before_owner['world']['events']
+        assert council_after_owner['world']['xp']==council_before_owner['world']['xp']
+        assert council_after_witness['world']['revision']==council_before_witness['world']['revision']
+        assert council_after_witness['world']['events']==council_before_witness['world']['events']
+        assert council_after_witness['world']['xp']==council_before_witness['world']['xp']
         close_sheet(a)
         character_before=visitor.request.get(url+'api/state').json()['world']
         a.locator('#character-button').click()
