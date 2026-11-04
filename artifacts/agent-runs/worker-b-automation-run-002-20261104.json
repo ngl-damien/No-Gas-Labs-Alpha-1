@@ -1,0 +1,74 @@
+{
+  "schema": "ngl.agent-preflight.v1",
+  "generatedAt": "2026-11-04T18:21:17.175Z",
+  "repositoryRoot": "C:\\Users\\desti\\source\\ngl-workerb-run12-20261104",
+  "status": "ready",
+  "entry": "AGENTS.md",
+  "protocol": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+  "targets": [
+    "scripts/verify-browser.py",
+    "docs/operations/LATEST_CHECKPOINT.md",
+    "docs/operations/MMORPG_COMPLETION_LEDGER.md"
+  ],
+  "checkpoint": "docs/operations/LATEST_CHECKPOINT.md",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "kind": "root-instructions",
+      "sha256": "229814aa5140c7b7415c979c0309f94625bb7625472616abef953dbd34895cb2",
+      "bytes": 4671
+    },
+    {
+      "path": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+      "kind": "shared-protocol",
+      "sha256": "85bd8175251cce96166809d701225a26d31693e0e99234f47fa6513c31fe14c2",
+      "bytes": 14878
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "vendor-pointer",
+      "sha256": "942f862a6ef7998fd3036ff50b53a73dfec4912d79ed67eb9d219efbe0abbdf1",
+      "bytes": 408
+    },
+    {
+      "path": "GEMINI.md",
+      "kind": "vendor-pointer",
+      "sha256": "22e89de24bb461fd36457eae49fdbdab58609cedf6e3a02566235f1a21f6f944",
+      "bytes": 408
+    },
+    {
+      "path": "CODEX.md",
+      "kind": "vendor-pointer",
+      "sha256": "cf15aac70aab7840e30beb0242ff09e4c8cf9e9cf0e0047ba20c174451c50e17",
+      "bytes": 407
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "kind": "vendor-pointer",
+      "sha256": "d24017606443bbf6836603cf316a16c9737e6d9d3cf2a434855f56d728c1bc87",
+      "bytes": 449
+    },
+    {
+      "path": "scripts/verify-browser.py",
+      "kind": "target",
+      "sha256": "2ec1912cc40eb7189db2d94d956ddddf3ccdaec29c3e86bf02b7919771a35669",
+      "bytes": 159800
+    },
+    {
+      "path": "docs/operations/LATEST_CHECKPOINT.md",
+      "kind": "durable-checkpoint",
+      "sha256": "3b2088bd7465a587a5a37ac14522d26955b4706523ce4c482eb74eb86803a458",
+      "bytes": 99845
+    },
+    {
+      "path": "docs/operations/MMORPG_COMPLETION_LEDGER.md",
+      "kind": "target",
+      "sha256": "cf3cfd00753e29ac561c74014e129cd5177cadcaf2d4550dd46bdc398b20d5ac",
+      "bytes": 23487
+    }
+  ],
+  "warnings": [
+    "Receipt parent-directory race protection is unavailable on this platform; path-based receipt creation is best-effort."
+  ],
+  "failures": []
+}

@@ -1785,7 +1785,7 @@ def shared(browser,url,data,out):
             route.continue_()
         a.route('**/api/action',lose_guild_create_response)
         a.locator('#player-guild-create').click()
-        expect(a.locator('#toast')).to_contain_text('Response lost after commit')
+        expect(a.locator('#toast')).to_contain_text('Guild creation response lost after commit.')
         assert lost_guild_create['remaining'] is False
         pending_guild_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
         assert pending_guild_raw, 'A committed guild creation with a lost response must leave a local Relay receipt'
