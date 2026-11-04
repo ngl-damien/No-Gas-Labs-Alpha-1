@@ -292,6 +292,8 @@ def institutional_locations(browser,url,out):
         ]:
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
+            page.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+            expect(control).to_be_enabled()
             before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg=role)
@@ -1269,6 +1271,26 @@ def shared(browser,url,data,out):
         assert replayed_commons['world']['events'][-1]['requestId']==pending_commons['requestId']
 
         open_commons(b)
+        before_mute_state=visitor.request.get(url+'api/state').json()
+        b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
+        expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
+        expect(b.locator('#commons-muted-authors')).to_contain_text('Damien Featherstone')
+        muted_authors=json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))
+        assert muted_authors==[{'id':'damien','role':'founder','name':'Damien Featherstone'}]
+        after_mute_state=visitor.request.get(url+'api/state').json()
+        assert after_mute_state['world']['revision']==before_mute_state['world']['revision']
+        assert after_mute_state['world']['events']==before_mute_state['world']['events']
+        assert after_mute_state['world']['xp']==before_mute_state['world']['xp']
+        founder_mute_view=owner.request.get(url+'api/state').json()
+        assert any(event['type']=='message-posted' and event['messageId']==commons_message_id and event['text']==commons_text for event in founder_mute_view['world']['events'])
+        b.locator('#commons-muted-authors summary').click()
+        b.locator('[data-commons-unmute="damien"]').click()
+        expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_contain_text(commons_text)
+        assert json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))==[]
+        after_unmute_state=visitor.request.get(url+'api/state').json()
+        assert after_unmute_state['world']['revision']==before_mute_state['world']['revision']
+        assert after_unmute_state['world']['events']==before_mute_state['world']['events']
+        assert after_unmute_state['world']['xp']==before_mute_state['world']['xp']
         witness_quest=b.locator('[data-objective-id="witness-commons-message"]')
         expect(witness_quest).to_contain_text('OPEN')
         witness_text='A Witness can add conversation without acquiring Founder authority.'
@@ -1331,7 +1353,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → Witness private report → Founder hide/restore → retained history; no XP'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP'}
     finally:owner.close();visitor.close()
 
 
