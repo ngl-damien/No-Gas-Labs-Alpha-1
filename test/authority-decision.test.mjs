@@ -874,16 +874,20 @@ test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking 
   const replacementOpenedAt = "2001-01-01T00:00:00.000Z";
   const originalLstat = fs.lstatSync;
   let rewritten = false;
+  let lockPathLstatCalls = 0;
 
   fs.lstatSync = (candidate, ...args) => {
     const observed = originalLstat(candidate, ...args);
-    if (!rewritten && candidate === lockPath) {
-      rewritten = true;
-      writeFileSync(lockPath, canonical({
-        schema: "ngl.ledger-lock.v1",
-        pid: process.pid,
-        openedAt: replacementOpenedAt,
-      }), { mode: 0o600 });
+    if (candidate === lockPath) {
+      lockPathLstatCalls += 1;
+      if (!rewritten && lockPathLstatCalls === 3) {
+        rewritten = true;
+        writeFileSync(lockPath, canonical({
+          schema: "ngl.ledger-lock.v1",
+          pid: process.pid,
+          openedAt: replacementOpenedAt,
+        }), { mode: 0o600 });
+      }
     }
     return observed;
   };
@@ -899,7 +903,8 @@ test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking 
         /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
       );
     });
-    assert.equal(rewritten, true, "the rewrite must occur after release has observed the owner-lock pathname");
+    assert.equal(rewritten, true, "the rewrite must occur at the release check, after pre-commit ownership validation");
+    assert.equal(lockPathLstatCalls, 3, "two pre-commit pathname checks must precede the release check");
     const retained = JSON.parse(readFileSync(lockPath, "utf8"));
     assert.equal(retained.pid, process.pid);
     assert.equal(retained.openedAt, replacementOpenedAt);
@@ -1272,7 +1277,7 @@ test("nonce writer refuses to publish after its owner lock disappears before led
       assert.equal(removed, true, "the test must remove the owner lock at the pre-rename boundary");
       assert.equal(existsSync(fixture.nonceLedgerPath), false,
         "a nonce must not be committed after ownership of the writer lock is lost");
-      assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\\.founder-nonce-.*\\.tmp$/.test(name)), false,
+      assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\.founder-nonce-.*\.tmp$/.test(name)), false,
         "the uncommitted temporary ledger file must be cleaned up");
     } finally {
       fs.fsyncSync = originalFsyncSync;
