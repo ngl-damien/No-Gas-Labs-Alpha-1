@@ -338,7 +338,7 @@ function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION Â
   if(total>visibleCount)panel.append(paragraph('Showing the newest '+visibleCount+' of '+total+' cards. Older cards remain in the Chronicle.','form-help'));
   if(record.studyCardUnavailableCount>0)panel.append(paragraph(record.studyCardUnavailableCount+' study attempt(s) remain in the retained event history but are not shown as cards because their event identity, required note fields, source version, or chronology is missing, malformed, or ambiguous.','form-help'));
   if(!cards.length)panel.append(paragraph(record.studyCardUnavailableCount>0
-    ? 'No study cards can be projected from the retained attempts yet. The underlying events remain in history; inspect the event trail for missing or ambiguous records.'
+    ? 'No Study Cards can be projected yet. The underlying attempts remain in retained history; a card requires a unique event identity, complete note fields, and a valid published-version link.'
     : 'No linked study attempts have been recorded for this character yet.','empty-note'));
   for(const card of cards.slice(0,maxItems)){
     const row=node('article',{class:'note-entry','data-study-card':card.id},[
