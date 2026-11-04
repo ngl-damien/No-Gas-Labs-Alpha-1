@@ -524,3 +524,69 @@ test('owner-lock release directory fsync uncertainty is explicit and cannot trig
     assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
   } finally { cleanup(value); }
 });
+
+
+function runWithLedgerOpenSwap(value) {
+  const movedDirectory = value.directory + '-original';
+  const replacementDirectory = value.directory + '-replacement';
+  mkdirSync(replacementDirectory, { mode: 0o700 });
+  chmodSync(replacementDirectory, 0o700);
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fs.openSync;",
+    "let swapped = false;",
+    "fs.openSync = (target, ...args) => {",
+    "  if (!swapped && String(target).endsWith('/founder-nonces.json')) {",
+    "    fs.renameSync(process.env.TEST_DIRECTORY, process.env.TEST_MOVED_DIRECTORY);",
+    "    fs.renameSync(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY);",
+    "    swapped = true;",
+    "  }",
+    "  return originalOpen(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
+    "await import(process.env.TEST_INIT_MODULE);",
+    "console.log(JSON.stringify({ swapped }));"
+  ].join('\\n');
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_DIRECTORY: value.directory,
+      TEST_MOVED_DIRECTORY: movedDirectory,
+      TEST_REPLACEMENT_DIRECTORY: replacementDirectory,
+      TEST_INIT_SCRIPT: scriptPath,
+      TEST_INIT_MODULE: new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url).href
+    }
+  });
+  return { child, movedDirectory, replacementDirectory };
+}
+
+test('directory replacement at ledger open cannot publish a ledger into the replacement directory', () => {
+  const value = fixture();
+  const swapped = runWithLedgerOpenSwap(value);
+  try {
+    assert.equal(swapped.child.status, 1, swapped.child.stdout + swapped.child.stderr);
+    assert.match(swapped.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED/);
+    assert.match(swapped.child.stdout, /"swapped":true/);
+    assert.equal(existsSync(join(swapped.replacementDirectory, 'founder-nonces.json')), false,
+      'the replacement directory must never receive a ledger');
+    const movedLedger = join(swapped.movedDirectory, 'founder-nonces.json');
+    assert.equal(existsSync(movedLedger), true,
+      'the opened directory may retain an incomplete artifact for manual inspection');
+    assert.equal(lstatSync(movedLedger).size, 0,
+      'the initializer must detect the path swap before writing ledger bytes');
+    assert.equal(lstatSync(movedLedger).mode & 0o777, 0o600);
+    const movedLock = join(swapped.movedDirectory, '.founder-nonce.lock');
+    assert.equal(existsSync(movedLock), true, 'the original owner lock must remain for inspection');
+    assert.equal(lstatSync(movedLock).mode & 0o777, 0o600);
+    assert.equal(swapped.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
+  } finally {
+    rmSync(swapped.movedDirectory, { recursive: true, force: true });
+    rmSync(swapped.replacementDirectory, { recursive: true, force: true });
+    cleanup(value);
+  }
+});
