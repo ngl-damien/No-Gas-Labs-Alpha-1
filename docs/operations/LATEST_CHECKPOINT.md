@@ -781,3 +781,60 @@ All four hosted workflows completed successfully on code/test head `d53cfedb5e42
 - Not observed: direct canvas-tap selection of the landmark, physical Android installation/device acceptance, full MMORPG completion, source retrieval/independent verification, or mainline integration.
 - PR #358 and parent #357 remain draft/open/unmerged. Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`. G6 remains IN PROGRESS; G0–G4/G9 remain NOT ASSESSED; G5/G7/G8 remain IN PROGRESS. No merge, release, deployment, credential change, Founder decision, trust-anchor enrollment, authority grant or XP award occurred.
 - Next: reconcile the #316 authority API/test changes into the #350 → #357 game stack before promotion; add direct canvas-tap coverage and browser coverage for all four Council summary branches; continue with source retrieval/independent verification and actual inventory/equipment progression only after the relevant event and authority contracts are reconciled.
+
+
+## Run 65 — 2026-11-04 — Polymath Academy Study Shelf
+
+**Worker:** Worker B — MMORPG / playable-world delivery.  
+**Prior checkpoint:** Run 64.  
+**Baseline rehydrated:** root AGENTS.md, complete shared protocol, universal agent contract, bootstrap checkpoint, current checkpoint and MMORPG completion contract/ledger; current main and active game PRs #355–#359; Worker A authority PRs #316/#353; latest Worker A result #353; donor audit and recovered Mesh/Relay Java bridge mechanisms. The PR #358 branch tree showed no nested AGENTS.md under the touched game/, scripts/, test/, or .github/workflows/ paths. Local preflight could not run because no checkout was mounted and registered remote execution devices were offline; the required manual instruction sequence was followed. Hosted preflight below is post-change evidence.
+
+### Selected objective
+
+Put the already-existing actor-scoped Study Card projection inside the actual Polymath Academy world interaction, rather than leaving it primarily in Character Sheet and Guild Hall views. This was an unowned, bounded G6 improvement that turns retained research activity into an inspectable location object without inventing another state model.
+
+### Changes
+
+- Draft PR #359, branch game/academy-study-shelf-20261104, based on PR #358 head 2d2ee36206aacd439958532c923d26a50617d009.
+- Code/test head: c9b44b89456fc54def29165d64799b83b3b59884.
+- game/client.mjs: openAcademy() now appends appendStudyCardCollection(content, projectCharacter(world, viewer), { heading: 'ACADEMY STUDY SHELF', maxItems: 8 }). The shelf is a read-only, current-actor projection and returns to each card's exact retained source version.
+- Added scripts/verify-academy-study-shelf.py and .github/workflows/academy-study-shelf.yml.
+- Registered both new paths in package.json's hosted preflight target list and test/agent-governance.test.mjs.
+- The acceptance journey uses a disposable shared server: Founder publishes a source, a Witness records a real study note through the Academy UI, and a second Witness sees the retained note in shared history but receives no personal Study Card. The author can reopen the exact source version.
+- No new event type, inventory store, XP rule, mastery, evidence verdict, approval, or authority was added. The one canonical mutation is the explicit actor-authored study event; the card itself is a deterministic projection.
+
+### Exact verification observed
+
+**PR #359 code/test head c9b44b89456fc54def29165d64799b83b3b59884:**
+
+- Verify 41920419070: PASS. Node 24.22.1 full node --test command exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Hosted preflight status ready: 70 target paths, 73 file records, zero warnings and zero failures. Receipt artifact 13367565605, ZIP SHA-256 0265fb08c82f1f30e8279bac3cca44a19a5e9f5fa2eeca955db7a958a2a4c4dd.
+- Genesis Evidence Invariant 41920419016: PASS.
+- Browser Acceptance 41920418842: PASS, 13/13 journeys. The observed suite included offline PWA/private recovery with 24 cached entries, desktop and phone, institutional actions, two-session shared-world flows, mobile toolbar targets, standalone bytes and restart recovery. Artifact 13365799884, ZIP SHA-256 3898d86719ffd652af0e2f6efe8052f8786083f9f84e03b516712e759ca5099b.
+- Council Chamber mobile acceptance 41920419012: PASS at 320px and 390px. Direct canvas tap passed at both sizes; the populated 390px fixture inspected Archivist, Adversary, Synthesizer and Tutor summaries from two distinct Witness actors, with no world-state change. Artifact 13367141627, ZIP SHA-256 390aeca7dc7961efd31f6c11830d7a23f4f5c22be7008f905256daeb479b24e0.
+- Academy Study Shelf acceptance 41920419167: PASS, 2/2 journeys at 320px and 390px. Each journey observed one author card, zero cards for a second Witness, the retained note still visible to that other actor, no XP for study practice, read-only exact-source inspection, unchanged event history during inspection, and zero page errors. Artifact 13367365987, ZIP SHA-256 7bd64fdf4dbbdb4821ad2ec1e25c891b94f3fabeb27c0610283818d841541ec5.
+
+**Parent PR #358 latest code/test head 2d2ee36206aacd439958532c923d26a50617d009:**
+
+- Verify 41917671872: PASS.
+- Genesis Evidence Invariant 41917672037: PASS.
+- Browser Acceptance 41917671901: PASS, 13/13.
+- Council mobile 41917671864: PASS. This later head closed the previous direct-canvas-tap gap and exercised the four populated role-summary branches (the populated fixture was at 390px).
+
+### Other-worker and donor coordination
+
+- Worker A PR #353 remains at exact head a5dded30355858e5f7d233c0357fdbd6194bec9d; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 all passed. PR #316 still owns the signed-authority helper and legacy Decision Chamber test reconciliation. No duplicate authority edits were made.
+- Inspected docs/DONOR_REPOSITORY_AUDIT_2026-10-28.md, recovered RaeEvidenceBridge.java, and EvidenceAuthorizedTransition.java. Reused Alpha 1's existing retained-event/projection and Relay action path; did not copy donor code. The donor's evidence/authority separation and rejection retention remain useful patterns, but local replay/revocation state is not rollback-resistant and a hash does not prove truth.
+- TaskAgile remains reference-only for offline/touch patterns; client-held score/state is not canonical progress.
+
+### Remaining limits and blockers
+
+- PR #359 is draft/unmerged; its parent stack is proposed, not integrated. Main remains 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0.
+- Current-main Verify 41829838351 still fails 1/775 at test/decision-chamber.test.js:10: the legacy test calls the default NOT_ENROLLED Founder trust anchor and receives FOUNDER_NOT_ENROLLED. Worker A owns this through PR #316 and related PRs #312/#313/#321. Reconcile the game stack with that fail-closed API before integration.
+- Source retrieval and independent source verification remain NOT_PERFORMED.
+- The 320px/390px results are browser touch simulations, not physical Android-device acceptance. No physical device, OS build, install, or native Android journey was observed.
+- Full inventory/equipment ownership and player-to-player transfer, full operational readiness, and all MMORPG completion gates remain unestablished. G6 remains IN PROGRESS.
+- No merge, release, deployment, external publication, Founder decision, key enrollment, or authority transition occurred.
+
+### Next ranked action
+
+Rehydrate again before editing. First reconcile the #316 signed-authority API/test boundary with the #350→#359 game stack without duplicating Worker A's owned changes. Then choose the next unowned player-capability gap from the current G4/G6/G7 evidence: a real event-backed item/equipment loop or independently retrievable source-verification loop. Do not promote a Study Note into a Source Observation or verified claim without the corresponding independent source retrieval and observation.
