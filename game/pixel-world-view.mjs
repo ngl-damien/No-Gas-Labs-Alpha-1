@@ -479,57 +479,55 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
 
   const step = Math.max(8, Math.ceil(Math.max(width, height) / 512));
   const edgeDistances = [
-    { edge: 'left', distance: Math.abs(base.x - margin) },
-    { edge: 'right', distance: Math.abs(base.x - (width - margin)) },
-    { edge: 'top', distance: Math.abs(base.y - margin) },
-    { edge: 'bottom', distance: Math.abs(base.y - (height - margin)) }
+    { edge: 'left', distance: base.x - margin, order: 0 },
+    { edge: 'right', distance: width - margin - base.x, order: 1 },
+    { edge: 'top', distance: base.y - margin, order: 2 },
+    { edge: 'bottom', distance: height - margin - base.y, order: 3 }
   ];
-  edgeDistances.sort((left, right) => left.distance - right.distance);
-  const edge = edgeDistances[0].edge;
-  const vertical = edge === 'left' || edge === 'right';
-  const edgeX = edge === 'left' ? margin : edge === 'right' ? width - margin : base.x;
-  const edgeY = edge === 'top' ? margin : edge === 'bottom' ? height - margin : base.y;
-  const point = (x, y) => {
-    if (x < margin || x > width - margin || y < margin || y > height - margin || blocked(x, y)) return null;
-    return Object.freeze({ ...base, x, y });
-  };
+  edgeDistances.sort((left, right) => left.distance - right.distance || left.order - right.order);
 
-  // Search outward on the same edge first; the common mobile-card case exits quickly.
-  const primaryLimit = vertical ? height - margin * 2 : width - margin * 2;
-  for (let offset = step; offset <= primaryLimit + step; offset += step) {
-    const before = vertical
-      ? point(edgeX, base.y - offset)
-      : point(base.x - offset, edgeY);
-    if (before) return before;
-    const after = vertical
-      ? point(edgeX, base.y + offset)
-      : point(base.x + offset, edgeY);
-    if (after) return after;
-  }
+  let best = null;
+  let bestDistanceSquared = Infinity;
+  for (const { edge, distance } of edgeDistances) {
+    // No point on a farther edge can beat the best point already found.
+    if (best && distance * distance >= bestDistanceSquared) break;
 
-  // If that edge is fully covered, move to an adjacent edge from the nearest corner.
-  if (vertical) {
-    const startX = edgeX;
-    const direction = edge === 'left' ? 1 : -1;
-    for (let offset = 0; offset <= width - margin * 2; offset += step) {
-      const x = startX + direction * offset;
-      for (const y of [margin, height - margin]) {
-        const candidate = point(x, y);
-        if (candidate) return candidate;
+    const vertical = edge === 'left' || edge === 'right';
+    const edgeX = edge === 'left' ? margin
+      : edge === 'right' ? width - margin
+        : Math.max(margin, Math.min(width - margin, base.x));
+    const edgeY = edge === 'top' ? margin
+      : edge === 'bottom' ? height - margin
+        : Math.max(margin, Math.min(height - margin, base.y));
+    const edgeLength = vertical ? height - margin * 2 : width - margin * 2;
+    const maxSteps = Math.ceil(edgeLength / step);
+
+    // Search each edge from its nearest point to the base. The first clear
+    // sample on an edge is its nearest usable position; compare those across
+    // edges so a covered primary edge cannot hide a clear alternative.
+    for (let index = 0; index <= maxSteps; index += 1) {
+      const offsets = index === 0 ? [0] : [-index * step, index * step];
+      let foundOnEdge = false;
+      for (const offset of offsets) {
+        const candidate = point(
+          vertical ? edgeX : edgeX + offset,
+          vertical ? edgeY + offset : edgeY
+        );
+        if (!candidate) continue;
+        const dx = candidate.x - base.x;
+        const dy = candidate.y - base.y;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < bestDistanceSquared) {
+          best = candidate;
+          bestDistanceSquared = distanceSquared;
+        }
+        foundOnEdge = true;
+        break;
       }
-    }
-  } else {
-    const startY = edgeY;
-    const direction = edge === 'top' ? 1 : -1;
-    for (let offset = 0; offset <= height - margin * 2; offset += step) {
-      const y = startY + direction * offset;
-      for (const x of [margin, width - margin]) {
-        const candidate = point(x, y);
-        if (candidate) return candidate;
-      }
+      if (foundOnEdge) break;
     }
   }
-  return Object.freeze({ ...base, occluded: true });
+  return best || Object.freeze({ ...base, occluded: true });
 }
 
 export function projectQuestCompassCaptionPosition(anchorX, anchorY, viewportWidth, viewportHeight,
