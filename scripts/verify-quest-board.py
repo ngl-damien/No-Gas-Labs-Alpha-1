@@ -189,7 +189,7 @@ def run_viewport(browser, url, out, width):
         assert before['viewerRole'] == 'founder'
         open_quest_board(page)
         rows = assert_board(page, 'founder')
-        founder_first = page.locator('[data-objective-id="founder-first-place"]')
+        founder_first = page.locator('#sheet-content [data-objective-id="founder-first-place"]')
         expect(founder_first).to_have_count(1)
         if fixture:
             expect(founder_first.locator('.quest-step-state')).to_have_text('RECORDED')
