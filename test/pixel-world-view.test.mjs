@@ -896,9 +896,20 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       this.hidden = false;
       this.disabled = false;
       this.parentNode = null;
+      this._textContent = '';
+      this.textContentWrites = 0;
+      this.attributeWrites = 0;
       this.classList = { contains: () => false };
     }
-    setAttribute(name, value) { this.attributes[name] = String(value); }
+    get textContent() { return this._textContent; }
+    set textContent(value) {
+      const next = String(value);
+      if (this._textContent !== next) { this._textContent = next; this.textContentWrites += 1; }
+    }
+    setAttribute(name, value) {
+      const next = String(value);
+      if (this.attributes[name] !== next) { this.attributes[name] = next; this.attributeWrites += 1; }
+    }
     removeAttribute(name) { delete this.attributes[name]; }
     addEventListener(type, handler) {
       if (!this.listeners.has(type)) this.listeners.set(type, new Set());
@@ -978,6 +989,7 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       }
 
       playUi.hidden = false;
+      view.refreshMapOverlayRectsIfNeeded();
       view.player = { x: 230, y: 220 };
       view.updateNpcControls(false);
       assert.equal(group.hidden, false, 'entering the playable world enables collaborator navigation');
@@ -1011,6 +1023,17 @@ test('accessible world-collaborator controls expose bounded approach/talk action
         view.updateNpcControls(false);
       }
       assert.deepEqual(view.world, worldBefore, 'approach and talk leave the retained world unchanged');
+      const stableWrites = new Map(GUILD_NPCS.map(roleNpc => {
+        const roleButton = view.npcControlButtons.get(roleNpc.roleId);
+        return [roleNpc.roleId, { text: roleButton.textContentWrites, attributes: roleButton.attributeWrites }];
+      }));
+      view.updateNpcControls(false);
+      for (const roleNpc of GUILD_NPCS) {
+        const roleButton = view.npcControlButtons.get(roleNpc.roleId);
+        const before = stableWrites.get(roleNpc.roleId);
+        assert.equal(roleButton.textContentWrites, before.text, 'stable frames do not rewrite NPC button text');
+        assert.equal(roleButton.attributeWrites, before.attributes, 'stable frames do not rewrite NPC accessibility labels');
+      }
 
       const archivistButton = view.npcControlButtons.get('archivist');
       group.dispatch('focusin');
@@ -1029,6 +1052,7 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       assert.equal(archivistButton.disabled, false);
 
       playUi.hidden = true;
+      view.refreshMapOverlayRectsIfNeeded();
       view.updateNpcControls(false);
       assert.equal(group.hidden, true, 'leaving the playable world hides the collaborator controls again');
       assert.equal(archivistButton.disabled, true);
