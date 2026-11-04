@@ -1193,3 +1193,51 @@ test('offline recovery fails closed before acquiring a lease when both descripto
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
     'failure to pin the directory must preserve exact nonce-ledger bytes');
 });
+
+
+test('recovery CLI reports descriptor-handle refusal without touching recovery state', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryScript = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalStat = fsPromises.stat;",
+    "fsPromises.stat = async (target, ...args) => {",
+    "  const path = String(target);",
+    "  if (path.includes('/proc/self/fd/') || path.includes('/dev/fd/')) {",
+    "    const error = new Error('injected unavailable descriptor namespace');",
+    "    error.code = 'ENOENT';",
+    "    throw error;",
+    "  }",
+    "  return originalStat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
+    "await import(process.env.TEST_RECOVERY_MODULE);"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_RECOVERY_SCRIPT: recoveryScript,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 1, child.stderr);
+  const observed = JSON.parse(child.stderr);
+  assert.equal(observed.status, 'error');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_DIRECTORY_HANDLE_UNAVAILABLE');
+  assert.equal(observed.safeToRemove, false);
+  assert.equal(observed.authorityGranted, false);
+  assert.equal(await exists(value.lockPath), true,
+    'the CLI must preserve the existing owner lock when directory pinning is unavailable');
+  assert.equal(await exists(value.recoveryLeasePath), false,
+    'the CLI must fail before creating a recovery lease');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
+    'the CLI must preserve exact nonce-ledger bytes');
+});
