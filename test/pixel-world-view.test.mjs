@@ -518,6 +518,121 @@ test('map overlay cache refreshes when the playable UI becomes visible', () => {
   }
 });
 
+test('map overlay cache refreshes after layout mutations without per-frame measurement', () => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousMutationObserver = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');
+  let rect = { left: 20, top: 30, right: 150, bottom: 100 };
+  let queryCount = 0;
+  const observed = [];
+  const body = {};
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.target = null;
+      this.options = null;
+      this.disconnectCalls = 0;
+    }
+    observe(target, options) { this.target = target; this.options = options; }
+    disconnect() { this.disconnectCalls += 1; }
+    trigger() { this.callback([]); }
+  }
+  globalThis.MutationObserver = FakeMutationObserver;
+  globalThis.document = {
+    body,
+    getElementById(id) {
+      assert.equal(id, 'play-ui');
+      return { hidden: false };
+    },
+    querySelectorAll(selector) {
+      queryCount += 1;
+      assert.match(selector, /#quest-card/);
+      return [{ getBoundingClientRect: () => rect }];
+    }
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { getBoundingClientRect: () => ({ left: 10, top: 20 }) };
+  view.width = 320;
+  view.height = 240;
+  view.mapOverlayVisibility = true;
+  view.mapOverlayRects = [];
+  view.mapOverlayRectsDirty = false;
+  view.resizeObserver = { observe: element => observed.push(element) };
+
+  try {
+    view.observeMapOverlays();
+    const observer = view.mapOverlayMutationObserver;
+    assert.ok(observer instanceof FakeMutationObserver);
+    assert.equal(observer.target, body);
+    assert.deepEqual(observer.options, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'aria-expanded'],
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+    assert.deepEqual(view.mapOverlayRects, [{ left: 10, top: 10, right: 140, bottom: 80 }]);
+    const initialQueries = queryCount;
+    const initialObservations = observed.length;
+
+    rect = { left: 40, top: 50, right: 160, bottom: 120 };
+    observer.trigger();
+    assert.equal(view.mapOverlayRectsDirty, true);
+    assert.equal(queryCount, initialQueries,
+      'the mutation callback invalidates geometry without synchronously reading layout');
+    assert.deepEqual(view.mapOverlayRects, [{ left: 10, top: 10, right: 140, bottom: 80 }],
+      'the cached geometry remains stable until the next render');
+
+    view.refreshMapOverlayRectsIfNeeded();
+    assert.deepEqual(view.mapOverlayRects, [{ left: 30, top: 30, right: 150, bottom: 100 }]);
+    assert.equal(view.mapOverlayRectsDirty, false);
+    assert.equal(observed.length, initialObservations + 1,
+      'a dirty pass also observes newly-added overlay elements for later resizes');
+
+    const refreshedQueries = queryCount;
+    view.refreshMapOverlayRectsIfNeeded();
+    view.refreshMapOverlayRectsIfNeeded();
+    assert.equal(queryCount, refreshedQueries, 'stable frames reuse cached overlay geometry');
+  } finally {
+    view.mapOverlayMutationObserver?.disconnect?.();
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+    if (previousMutationObserver) Object.defineProperty(globalThis, 'MutationObserver', previousMutationObserver);
+    else delete globalThis.MutationObserver;
+  }
+});
+
+test('destroy disconnects the map-overlay mutation observer', () => {
+  const previousCancelAnimationFrame = Object.getOwnPropertyDescriptor(globalThis, 'cancelAnimationFrame');
+  const previousRemoveEventListener = Object.getOwnPropertyDescriptor(globalThis, 'removeEventListener');
+  let mutationDisconnects = 0;
+  let resizeDisconnects = 0;
+  let pointerRemovals = 0;
+  globalThis.cancelAnimationFrame = () => {};
+  globalThis.removeEventListener = () => {};
+  const view = Object.create(PixelWorldView.prototype);
+  view.npcControlGroup = { remove() {} };
+  view.npcControlButtons = new Map();
+  view.mapOverlayMutationObserver = { disconnect() { mutationDisconnects += 1; } };
+  view.canvas = { removeEventListener() { pointerRemovals += 1; } };
+  view.onPointer = () => {};
+  view.animation = 1;
+  view.resizeObserver = { disconnect() { resizeDisconnects += 1; } };
+
+  try {
+    view.destroy();
+    assert.equal(mutationDisconnects, 1);
+    assert.equal(view.mapOverlayMutationObserver, null);
+    assert.equal(resizeDisconnects, 1);
+    assert.equal(pointerRemovals, 1);
+    assert.equal(view.destroyed, true);
+  } finally {
+    if (previousCancelAnimationFrame) Object.defineProperty(globalThis, 'cancelAnimationFrame', previousCancelAnimationFrame);
+    else delete globalThis.cancelAnimationFrame;
+    if (previousRemoveEventListener) Object.defineProperty(globalThis, 'removeEventListener', previousRemoveEventListener);
+    else delete globalThis.removeEventListener;
+  }
+});
+
 test('drawMapLabel reserves earlier panels so stacked institutional labels do not collide', () => {
   const calls = [];
   const view = Object.create(PixelWorldView.prototype);
