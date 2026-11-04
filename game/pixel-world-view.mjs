@@ -1,5 +1,5 @@
 import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world-view.mjs';
-import { isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
@@ -106,7 +106,7 @@ const GUILD_NPC_POSITIONS = Object.freeze([
   { roleId: 'synthesizer', x: 150, y: 230, accent: '#536b68', sigil: 'S', routeLocation: 'guild_hall' },
   { roleId: 'tutor', x: 250, y: 470, accent: '#9a8b5b', sigil: 'T', routeLocation: 'academy' }
 ]);
-const COLLABORATOR_ROLE_CATALOGUE = projectCollaboratorPackets({ events: [], creations: [] });
+const COLLABORATOR_ROLE_CATALOGUE = COLLABORATOR_ROLES;
 const GUILD_NPC_SHORT_NAMES = Object.freeze({
   archivist: 'ARCHIVIST',
   adversary: 'ADVERSARY',

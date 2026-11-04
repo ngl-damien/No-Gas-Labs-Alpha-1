@@ -762,3 +762,129 @@ test('Founder and Witness challenge quests count only a different actor’s link
   assert.equal(witnessResponseQuest.complete, true);
   assert.deepEqual(witnessResponseQuest.evidence.map(item => item.id), ['witness-response-event']);
 });
+
+
+test('Guild response and council coverage quests route to the next available role and count one retained response per role', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  const initial = structuredClone(world);
+  const initialTrail = getQuestTrail(world, founder);
+  const responseQuest = initialTrail.find(item => item.id === 'founder-guild-response');
+  const coverageQuest = initialTrail.find(item => item.id === 'founder-guild-council-coverage');
+  assert.deepEqual(responseQuest.action, { type: 'location', id: 'guild-npc-archivist' });
+  assert.equal(coverageQuest.target, 4);
+  assert.equal(coverageQuest.progress, 0);
+  assert.deepEqual(coverageQuest.action, { type: 'location', id: 'guild-npc-archivist' });
+  assert.deepEqual(world, initial, 'quest projection and navigation hints do not mutate the world');
+
+  const response = (role, index, actor = founder, validationStatus = 'valid-for-human-review') => ({
+    id: 'collaborator-response-event-' + role + '-' + index,
+    type: 'collaborator-response-recorded',
+    responseId: 'collaborator-response-' + role + '-' + index,
+    role,
+    moonshotId: 'moon-1',
+    actor,
+    at: '2026-10-28T17:' + String(10 + index).padStart(2, '0') + ':00.000Z',
+    validationStatus,
+    validator: 'ngl.collaborator-response.v1'
+  });
+
+  world.events.push(response('archivist', 1, founder, 'rejected'));
+  let trail = getQuestTrail(world, founder);
+  let oneRole = trail.find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(trail.find(item => item.id === 'founder-guild-response').complete, true);
+  assert.equal(oneRole.progress, 1);
+  assert.deepEqual(oneRole.evidenceIds, ['collaborator-response-event-archivist-1']);
+  assert.deepEqual(oneRole.action, { type: 'location', id: 'guild-npc-adversary' });
+  assert.match(oneRole.interpretation, /Rejected responses count as preserved attempts, not endorsements/i);
+
+  world.events.push(response('archivist', 2));
+  trail = getQuestTrail(world, founder);
+  oneRole = trail.find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(oneRole.progress, 1, 'a second response from the same role does not inflate role coverage');
+  assert.deepEqual(oneRole.evidenceIds, ['collaborator-response-event-archivist-1']);
+
+  world.events.push(
+    response('adversary', 3),
+    response('synthesizer', 4),
+    response('tutor', 5)
+  );
+  const beforeFinalProjection = structuredClone(world);
+  trail = getQuestTrail(world, founder);
+  const complete = trail.find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(complete.complete, true);
+  assert.equal(complete.progress, 4);
+  assert.deepEqual(complete.evidenceIds, [
+    'collaborator-response-event-archivist-1',
+    'collaborator-response-event-adversary-3',
+    'collaborator-response-event-synthesizer-4',
+    'collaborator-response-event-tutor-5'
+  ]);
+  assert.equal(complete.action, null);
+  assert.deepEqual(world, beforeFinalProjection, 'coverage is a read-only projection of retained actor-attributed responses');
+});
+
+test('Guild council coverage ignores another actor and malformed response-validation states', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  world.events.push(
+    {
+      id: 'other-actor-response',
+      type: 'collaborator-response-recorded',
+      responseId: 'other-actor-response-id',
+      role: 'archivist',
+      moonshotId: 'moon-1',
+      actor: witness,
+      at: '2026-10-28T17:10:00.000Z',
+      validationStatus: 'valid-for-human-review',
+      validator: 'ngl.collaborator-response.v1'
+    },
+    {
+      id: 'invalid-status-response',
+      type: 'collaborator-response-recorded',
+      responseId: 'invalid-status-response-id',
+      role: 'synthesizer',
+      moonshotId: 'moon-1',
+      actor: founder,
+      at: '2026-10-28T17:11:00.000Z',
+      validationStatus: 'maybe-valid',
+      validator: 'ngl.collaborator-response.v1'
+    }
+  );
+  const quest = getQuestTrail(world, founder).find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(quest.progress, 0);
+  assert.deepEqual(quest.evidenceIds, []);
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-archivist' });
+});
+
+
+test('Guild Adversary stays unavailable until a retained experiment report supplies its bounded packet', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  const report = world.events.find(event => event.type === 'experiment-reported');
+  world.events = world.events.filter(event => event.type !== 'experiment-reported');
+  const response = (role, index) => ({
+    id: 'adversary-unlock-response-' + role,
+    type: 'collaborator-response-recorded',
+    responseId: 'adversary-unlock-response-id-' + role,
+    role,
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:' + String(20 + index).padStart(2, '0') + ':00.000Z',
+    validationStatus: 'valid-for-human-review',
+    validator: 'ngl.collaborator-response.v1'
+  });
+
+  let quest = getQuestTrail(world, founder).find(item => item.id === 'founder-guild-council-coverage');
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-archivist' });
+
+  world.events.push(response('archivist', 1), response('synthesizer', 2), response('tutor', 3));
+  quest = getQuestTrail(world, founder).find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(quest.progress, 3);
+  assert.equal(quest.complete, false);
+  assert.equal(quest.action, null);
+  assert.match(quest.blockedReason, /No remaining role has a currently available source-bound packet/i);
+
+  world.events.push(report);
+  quest = getQuestTrail(world, founder).find(item => item.id === 'founder-guild-council-coverage');
+  assert.equal(quest.progress, 3);
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-adversary' });
+  assert.equal(quest.complete, false);
+});

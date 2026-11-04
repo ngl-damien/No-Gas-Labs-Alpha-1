@@ -284,6 +284,28 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
+        for role,name,location in [
+            ('archivist','Hostile Archivist','Evidence Archive'),
+            ('adversary','Adversary','Evidence Archive'),
+            ('synthesizer','Synthesis Clerk','Guild Hall'),
+            ('tutor','Polymath Tutor','Polymath Academy')
+        ]:
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg=role)
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
+            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(role_card).to_be_visible()
+            expect(role_card).to_be_focused()
+            after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+            assert after==before, f'Opening {name} must not create a canonical event, revision, or XP'
+            assert page.locator('#creation-count').text_content()=='0', f'{name} must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', f'{name} must not award XP'
+            close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
@@ -324,6 +346,25 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        close_sheet(page)
+        guild_response_quest=page.locator('[data-objective-id="founder-guild-response"]')
+        expect(guild_response_quest).to_contain_text('OPEN')
+        expect(guild_response_quest.get_by_role('button',name='Go do this →',exact=True)).to_be_visible()
+        quest_route_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        guild_response_quest.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
+        expect(page.locator('#sheet')).to_be_hidden()
+        quest_route_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_route_after==quest_route_before, 'Following the Guild response quest to its NPC must not create an event, revision, or XP'
+        archivist_control=page.locator('[data-guild-npc-control="archivist"]')
+        expect(archivist_control).to_have_attribute('data-guild-npc-action','talk')
+        archivist_control.evaluate("(button)=>button.click()")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        archivist_card=page.locator('[data-collaborator-role="archivist"]')
+        expect(archivist_card).to_be_visible()
+        expect(archivist_card).to_be_focused()
+        quest_talk_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_talk_after==quest_route_before, 'Opening the quest-selected NPC workbench must remain read-only'
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
@@ -377,7 +418,7 @@ def institutional_locations(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
-        page.locator('details.collaborator-response summary').click()
+        page.locator('details.collaborator-response summary').filter(has_text='Inspect exact pasted response').click()
         archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
@@ -1046,7 +1087,113 @@ def shared(browser,url,data,out):
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
-        assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
+        # The Founder approaches the actual Adversary sprite, explicitly talks, and receives
+        # only that role's source-bound packet.
+        adversary_control=a.locator('[data-guild-npc-control="adversary"]')
+        expect(adversary_control).to_have_count(1)
+        adversary_control.evaluate("(button)=>button.click()")
+        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='adversary'&&button.dataset.guildNpcAction==='talk')")
+        expect(adversary_control).to_have_attribute('data-guild-npc-action','talk')
+        adversary_control.evaluate("(button)=>button.click()")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        adversary_packet=a.locator('[data-collaborator-role="adversary"]')
+        expect(adversary_packet).to_be_visible()
+        adversary_packet.locator('details.collaborator-packet summary').click()
+        handoff=adversary_packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        handoff_payload=json.loads(handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        target_event=next(record['eventId'] for record in handoff_payload['inputRecords'] if record['type']=='experiment-reported')
+        collaborator_response={
+            'targetEventId':target_event,
+            'challengeType':'methodology',
+            'challengeDraft':'The report does not specify the measurement control needed to reproduce the attempt.',
+            'distinctnessAssessment':'A bounded draft for human review against the exact supplied report and prior challenges.',
+            'duplicateOfEventIds':[],
+            'counterexample':'A controlled comparison could produce a different result.',
+            'evidenceNeeded':['A retained controlled replication with its measurement settings.'],
+            'unknowns':['No independent measurement or replication is supplied.']
+        }
+        collaborator_response_text=json.dumps(collaborator_response)
+        adversary_packet.locator('details.collaborator-response summary').click()
+        collaborator_response_field=adversary_packet.locator('textarea[aria-label="Adversary response JSON"]')
+        collaborator_response_field.fill(collaborator_response_text)
+        adversary_packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(adversary_packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+        before_collaborator=owner.request.get(url+'api/state').json()
+        assert before_collaborator['viewer']['role']=='founder'
+        founder_id=before_collaborator['viewer']['id']
+        before_collaborator_revision=before_collaborator['world']['revision']
+        before_collaborator_xp=before_collaborator['world']['xp']
+        lost_collaborator={'remaining':True,'payload':None,'response':None}
+        def lose_collaborator_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_collaborator['remaining'] and payload.get('type')=='record-collaborator-response':
+                lost_collaborator['payload']=payload
+                committed=route.fetch()
+                lost_collaborator['response']=committed.json()
+                assert committed.status==200, 'The service must commit the collaborator response before simulated response loss'
+                lost_collaborator['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Collaborator response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_collaborator_response)
+        adversary_packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(a.locator('#toast')).to_contain_text('Collaborator response lost after commit')
+        pending_collaborator_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_collaborator_raw, 'A committed collaborator response with a lost response must retain its exact Relay receipt'
+        pending_collaborator=json.loads(pending_collaborator_raw)
+        assert pending_collaborator['actorId']==founder_id and pending_collaborator['actorRole']=='founder'
+        assert pending_collaborator['action']['type']=='record-collaborator-response'
+        assert pending_collaborator['action']['role']=='adversary'
+        assert pending_collaborator['action']['responseText']==collaborator_response_text
+        assert pending_collaborator['requestId']==lost_collaborator['payload']['requestId']
+        committed_collaborator=visitor.request.get(url+'api/state').json()
+        committed_responses=[event for event in committed_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
+        assert len(committed_responses)==1, 'Independent state read must observe exactly one committed collaborator response'
+        committed_response=committed_responses[0]
+        assert committed_response['actor']['id']==founder_id and committed_response['actor']['role']=='founder'
+        assert committed_response['role']=='adversary'
+        assert committed_response['responseText']==collaborator_response_text
+        assert committed_response['validationStatus']=='valid-for-human-review'
+        assert committed_response['requestId']==pending_collaborator['requestId']
+        assert committed_collaborator['world']['revision']==before_collaborator_revision+1
+        assert committed_collaborator['world']['xp']==before_collaborator_xp, 'Archiving a collaborator response must not award XP'
+        a.unroute('**/api/action',lose_collaborator_response)
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-COLLABORATOR-RESPONSE')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact collaborator-response retry must clear the pending receipt'
+        recovered_collaborator=visitor.request.get(url+'api/state').json()
+        recovered_responses=[event for event in recovered_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
+        assert len(recovered_responses)==1, 'Exact retry must not append a duplicate collaborator response'
+        assert recovered_collaborator['world']['revision']==committed_collaborator['world']['revision']
+        assert recovered_collaborator['world']['xp']==before_collaborator_xp
+        assert recovered_responses[0]['responseId']==committed_response['responseId']
+        assert recovered_responses[0]['requestId']==pending_collaborator['requestId']
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
+        expect(a.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+        a.locator('details.collaborator-response summary').filter(has_text='Inspect exact pasted response').click()
+        archived_collaborator_field=a.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(archived_collaborator_field).to_have_count(1)
+        assert archived_collaborator_field.input_value()==collaborator_response_text
+        expect(a.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
+        expect(coverage_quest).to_contain_text('1/4')
+        close_sheet(a)
+        coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
+        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
+        assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
+        a.screenshot(path=str(out/'guild-npc-collaborator-relay.png'))
         close_sheet(a)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:

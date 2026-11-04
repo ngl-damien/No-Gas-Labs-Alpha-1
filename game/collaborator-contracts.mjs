@@ -77,6 +77,12 @@ const ROLE_SPECS = Object.freeze([
   }
 ]);
 
+export const COLLABORATOR_ROLES = Object.freeze(ROLE_SPECS.map(spec => Object.freeze({
+  id: spec.id,
+  name: spec.name,
+  objective: spec.objective
+})));
+
 function compactRecord(record) {
   const projection = record._projection || {};
   const actor = record.actor && typeof record.actor === 'object' ? record.actor : {};
