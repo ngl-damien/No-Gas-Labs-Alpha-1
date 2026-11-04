@@ -347,6 +347,25 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         close_sheet(page)
+        guild_response_quest=page.locator('[data-objective-id="founder-guild-response"]')
+        expect(guild_response_quest).to_contain_text('OPEN')
+        expect(guild_response_quest.get_by_role('button',name='Go do this →',exact=True)).to_be_visible()
+        quest_route_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        guild_response_quest.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#world')?.dataset.nearbyNpcRole==='archivist'")
+        expect(page.locator('#sheet')).to_be_hidden()
+        quest_route_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_route_after==quest_route_before, 'Following the Guild response quest to its NPC must not create an event, revision, or XP'
+        archivist_control=page.locator('[data-guild-npc-control="archivist"]')
+        expect(archivist_control).to_have_attribute('data-guild-npc-action','talk')
+        archivist_control.evaluate("(button)=>button.click()")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        archivist_card=page.locator('[data-collaborator-role="archivist"]')
+        expect(archivist_card).to_be_visible()
+        expect(archivist_card).to_be_focused()
+        quest_talk_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_talk_after==quest_route_before, 'Opening the quest-selected NPC workbench must remain read-only'
+        close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
