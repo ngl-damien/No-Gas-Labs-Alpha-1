@@ -635,3 +635,11 @@ Objective: close the untested gap between the real Guild NPC workbench and unrel
 ### Execution limitations
 
 Both registered Desktop Commander devices remained offline, and the container could not resolve github.com for a local clone. No local checkout or local test run is claimed. Worker B's exact-head hosted preflight and CI receipts above are the available evidence. This checkpoint/ledger update is on PR #343's documentation branch only; main was not modified.
+
+### PR #343 current exact-head Browser result — 2026-11-04
+
+- Current documentation branch head before this addendum: `2882a562198c83eb82566ed263695d6261ccf26a` (ledger and checkpoint handoff commits included).
+- Verify 41825129383 PASS; Genesis 41825129360 PASS; Browser Acceptance 41825130411 FAIL.
+- Browser job passed desktop, phone, and institutional-location actions, then timed out after 30 seconds at `scripts/verify-browser.py:1096` waiting for a button with `data-guild-npc-control="adversary"` and `data-guild-npc-action="talk"`. The exact log records `Page.wait_for_function: Timeout 30000ms exceeded`.
+- This completed failure supersedes the earlier note that the documentation-updated Browser rerun was merely cancelled. The 3b897 ledger-only head had Browser 41824998093 CANCELLED; the current 2882 checkpoint head has the completed failure above.
+- The PR #350 13/13 Browser pass is a separate Guild Hall/Commons branch and does not prove this PR #343 Adversary NPC/Relay journey. Worker B must repair or explicitly supersede this child acceptance before claiming the NPC/Relay journey passed.
