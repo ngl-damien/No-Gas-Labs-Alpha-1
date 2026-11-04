@@ -1738,7 +1738,7 @@ export class PixelWorldView extends WorldView {
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
         : near.type === 'institution'
-          ? (near.id === 'council_chamber' ? 'E · Enter Council Chamber' : 'E · Enter institution')
+          ? (this.width < 600 ? 'TAP · ENTER · ' : 'E · ENTER · ') + (near.id === 'council_chamber' ? 'COUNCIL' : 'INSTITUTION')
         : 'E · Discover';
       const x = this.player.x, y = this.player.y - 70;
       context.font = '11px ui-monospace, monospace';
