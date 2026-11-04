@@ -5,6 +5,6 @@
   "mode": null,
   "public_key_jwk": null,
   "fingerprint": null,
-  "instruction": "Founder must run scripts/founder-enroll-ceremony.mjs on a device they control. Private key NEVER leaves device (Android Keystore / secure enclave / IndexedDB non-extractable). Only the public JWK is written here. Until then authorizationEvent fails closed with FOUNDER_NOT_ENROLLED.",
+  "instruction": "Founder trust remains NOT_ENROLLED. Do not run the Node-only enrollment CLI as a key-generation step: it exits with FOUNDER_KEYSTORE_UNAVAILABLE and creates no key or candidate. Enrollment requires a platform-backed, non-extractable keystore on a Founder-controlled device, a challenge-signing proof of possession, independent custody verification, and a separate explicit Founder decision. No public JWK is trusted until that process is complete. authorizationEvent fails closed with FOUNDER_NOT_ENROLLED.",
   "updated": "2026-11-03T00:00:00Z"
 }
