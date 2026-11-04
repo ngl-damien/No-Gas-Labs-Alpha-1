@@ -182,7 +182,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       if(feed.mutedAuthors.length>=100){toast('The device-local mute list is full (100 authors).',true);return;}
       const next=[...feed.mutedAuthors,{id:message.author.id,role:message.author.role,name:message.author.name}];
       if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
-    }),{class:'secondary-button','data-commons-mute':message.messageId}));
+    },{class:'secondary-button','data-commons-mute':message.messageId}));
     if(message.hidden)card.append(paragraph('Hidden by human moderation. The original message remains retained in history.','form-help'));
     if(message.canReport){
       const report=node('details',{class:'commons-report'});
