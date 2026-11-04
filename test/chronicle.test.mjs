@@ -757,3 +757,38 @@ test("source-observation challenges appear as linked dissent, not adjudication o
   assert.match(response.detail, /source retrieval remains outstanding/i);
   assert.match(response.warning, /not independent evidence, adjudication, a truth verdict/i);
 });
+
+
+test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "commons-post-1", type: "message-posted", messageId: "message-1", channel: "commons",
+      text: "A statement can be retained without being treated as evidence.",
+      actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
+      reason: "privacy", details: "A human should review this wording.",
+      actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "commons-hide-1", type: "message-moderated", moderationId: "moderation-1", messageId: "message-1",
+      disposition: "hide", reason: "privacy",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const chronicle = projectChronicle({ world, kernel });
+  const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
+  const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
+  const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  assert.equal(post.category, "THE COMMONS");
+  assert.match(post.summary, /Conversation only; not evidence/i);
+  assert.match(post.detail, /retained without being treated as evidence/i);
+  assert.match(report.category, /PRIVATE REPORT/);
+  assert.match(report.summary, /not a verdict/i);
+  assert.match(report.warning, /reporting actor and authenticated Founder/i);
+  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.summary, /original post and moderation history remain/i);
+  assert.match(moderation.warning, /not historical authorship/i);
+});
