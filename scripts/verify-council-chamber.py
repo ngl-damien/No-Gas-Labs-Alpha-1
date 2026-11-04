@@ -99,7 +99,7 @@ def assert_council_room(page):
     )
 
 
-def assert_populated_council_room(page):
+def assert_populated_council_room(page, fixture):
     content = page.locator('#sheet-content')
     expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
     expect(content).to_have_attribute('data-council-chamber', 'true')
@@ -124,6 +124,8 @@ def assert_populated_council_room(page):
         details.locator('summary').click()
         for label in expected_labels:
             expect(details).to_contain_text(label)
+        if role == 'synthesizer':
+            expect(details).to_contain_text(fixture['challengeEventId'])
         expect(details).to_contain_text('not independent evidence, truth, execution')
     text = content.inner_text().lower()
     assert 'read-only' in text, 'Council inspection must disclose its read-only boundary.'
@@ -321,6 +323,10 @@ def seed_council_review_fixture(page):
 
       const final = await read();
       const responses = final.world.events.filter(event => event.type === 'collaborator-response-recorded');
+      const challengeEvent = final.world.events.find(event =>
+        event.type === 'experiment-challenged' && event.reportId === fixture.reportId
+      );
+      if (!challengeEvent) throw new Error('The independent challenge event was not retained in world history.');
       if (responses.length !== 4 || responses.some(event => event.validationStatus !== 'valid-for-human-review')) {
         throw new Error('The fixture did not retain four structurally valid, review-only role attempts.');
       }
@@ -334,11 +340,14 @@ def seed_council_review_fixture(page):
         validationStatuses: responses.map(event => event.validationStatus),
         reporterActorId: fixture.reporterActorId,
         challengerActorId: fixture.challengerActorId,
-        distinctActors: fixture.reporterActorId !== fixture.challengerActorId
+        distinctActors: fixture.reporterActorId !== fixture.challengerActorId,
+        challengeEventId: challengeEvent.id
       };
     }""", {
-      ...setup,
-      challengerActorId: rotated.id
+      'moonshotId': setup['moonshotId'],
+      'reportId': setup['reportId'],
+      'reporterActorId': setup['reporterActorId'],
+      'challengerActorId': rotated['id']
     })
 
 
@@ -445,7 +454,7 @@ def run_viewport(browser, url, out, width):
                 "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
                 timeout=30000
             )
-            assert_populated_council_room(page)
+            assert_populated_council_room(page, fixture)
             page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
             page.wait_for_timeout(750)
@@ -454,7 +463,7 @@ def run_viewport(browser, url, out, width):
                 "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
                 timeout=10000
             )
-            assert_populated_council_room(page)
+            assert_populated_council_room(page, fixture)
             populated_after = authoritative_snapshot(page)
             assert populated_after == populated_before, (
                 'Opening and expanding all four Council summaries must remain read-only.'
