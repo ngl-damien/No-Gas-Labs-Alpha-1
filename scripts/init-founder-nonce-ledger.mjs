@@ -298,7 +298,8 @@ function provisionFounderNonceLedger() {
       assertDirectoryIdentity(directory, directoryIdentity);
     } catch (error) {
       keepLock = true;
-      if (error?.code === 'FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED') throw error;
+      if (error?.code === 'FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED' ||
+          error?.code?.startsWith('FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN_')) throw error;
       fail('FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN');
     }
     assertNoRecoveryLease(directory);
