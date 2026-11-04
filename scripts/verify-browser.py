@@ -1094,6 +1094,11 @@ def shared(browser,url,data,out):
         # the control is deliberately disabled while any modal is open.
         close_sheet(a)
         a.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+        before_npc_state=owner.request.get(url+'api/state').json()
+        assert before_npc_state['viewer']['role']=='founder'
+        before_npc_revision=before_npc_state['world']['revision']
+        before_npc_events=before_npc_state['world']['events']
+        before_npc_xp=before_npc_state['world']['xp']
         adversary_control=a.locator('[data-guild-npc-control="adversary"]')
         expect(adversary_control).to_have_count(1)
         expect(adversary_control).to_be_enabled()
@@ -1104,6 +1109,10 @@ def shared(browser,url,data,out):
         expect(adversary_control).to_have_attribute('data-guild-npc-action','talk')
         adversary_control.evaluate("(button)=>button.click()")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        after_npc_state=visitor.request.get(url+'api/state').json()
+        assert after_npc_state['world']['revision']==before_npc_revision, 'NPC navigation/talk must not create a canonical revision'
+        assert after_npc_state['world']['events']==before_npc_events, 'NPC navigation/talk must not append a canonical event'
+        assert after_npc_state['world']['xp']==before_npc_xp, 'NPC navigation/talk must not award XP'
         adversary_packet=a.locator('[data-collaborator-role="adversary"]')
         expect(adversary_packet).to_be_visible()
         adversary_packet.locator('details.collaborator-packet summary').click()
