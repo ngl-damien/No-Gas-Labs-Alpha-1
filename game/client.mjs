@@ -12,7 +12,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
-import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS} from './social.mjs';
+import {projectTownSquare,projectPlayerGuilds,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
@@ -786,6 +786,315 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
 }
 
 
+function renderPlayerGuildBoard(board, sourceWorld){
+  if(!board?.isConnected||$('sheet').hidden)return;
+  const active=document.activeElement;
+  const activeId=board.contains(active)?active.id:null;
+  const activeValue=activeId&&'value' in active?active.value:undefined;
+  const selectionStart=activeId&&typeof active.selectionStart==='number'?active.selectionStart:null;
+  const selectionEnd=activeId&&typeof active.selectionEnd==='number'?active.selectionEnd:null;
+  const nameValue=board.querySelector('#player-guild-name')?.value||'';
+  const charterValue=board.querySelector('#player-guild-charter')?.value||'';
+  const projection=projectPlayerGuilds(sourceWorld,viewer);
+  board.replaceChildren();
+  board.append(node('h3',{class:'section-title',text:'PLAYER GUILDS'}));
+  board.append(paragraph(mode==='shared'
+    ? 'Open, shared groups in this server-authoritative world. One active guild per session identity; up to '+PLAYER_GUILD_MEMBER_LIMIT+' members. A session identity is not proof of a distinct human. Membership grants no Founder authority, moderation rights, XP, evidence status, or item ownership.'
+    : 'Private-mode guilds are local to this device and cannot be seen by other players. Use Shared World for shared membership. These records grant no Founder authority, moderation rights, XP, evidence status, or item ownership.','form-help'));
+  if(!projection.guilds.length){
+    board.append(paragraph('No open player guilds are retained yet. Founding one creates a public group with an append-only membership history.','empty-note'));
+  }
+  for(const guild of projection.guilds){
+    const card=node('article',{class:'field-card','data-player-guild-id':guild.id});
+    card.append(
+      node('h3',{text:guild.name}),
+      node('span',{class:'pill',text:'MEMBERS '+guild.memberCount+'/'+PLAYER_GUILD_MEMBER_LIMIT}),
+      paragraph(guild.charter),
+      paragraph('Leader: '+guild.leader.name+' · Members: '+guild.members.map(member=>member.name).join(', '),'form-help')
+    );
+    if(projection.viewerGuildId===guild.id){
+      card.append(node('span',{class:'pill',text:projection.viewerIsLeader?'GUILD LEADER':'GUILD MEMBER'}));
+      if(projection.viewerIsLeader){
+        if(guild.memberCount===1){
+          card.append(button('Disband this guild',guarded(async()=>{
+            await act({type:'disband-guild',guildId:guild.id});
+            toast('Guild closed. Its founding and membership events remain in the Chronicle.');
+          }),{class:'secondary-button','data-player-guild-disband':guild.id}));
+        }else{
+          card.append(paragraph('The leader cannot leave while other members remain. Leadership transfer is not implemented; members must leave before the guild can close.','form-help'));
+        }
+      }else{
+        card.append(button('Leave this guild',guarded(async()=>{
+          await act({type:'leave-guild',guildId:guild.id});
+          toast('Membership ended. The departure remains in the Chronicle.');
+        }),{class:'secondary-button','data-player-guild-leave':guild.id}));
+      }
+    }else if(!projection.viewerGuildId){
+      if(guild.memberCount>=PLAYER_GUILD_MEMBER_LIMIT){
+        card.append(paragraph('This guild is full.','empty-note'));
+      }else{
+        card.append(button('Join guild',guarded(async()=>{
+          await act({type:'join-guild',guildId:guild.id});
+          toast('Joined '+guild.name+'. No XP or institutional authority was granted.');
+        }),{class:'secondary-button','data-player-guild-join':guild.id}));
+      }
+    }else{
+      card.append(paragraph('You already belong to another guild. One active guild per session identity.','form-help'));
+    }
+    board.append(card);
+  }
+  if(!projection.viewerGuildId){
+    const nameInput=node('input',{id:'player-guild-name',maxlength:String(PLAYER_GUILD_NAME_LIMIT),placeholder:'e.g. Field Researchers',autocomplete:'off',value:nameValue});
+    const charterInput=node('textarea',{id:'player-guild-charter',maxlength:String(PLAYER_GUILD_CHARTER_LIMIT),rows:'3',placeholder:'What will this guild do?',value:charterValue});
+    board.append(node('article',{class:'field-card','data-player-guild-create':'true'},[
+      node('h3',{text:'Found a player guild'}),
+      field('Guild name · '+PLAYER_GUILD_NAME_LIMIT+' characters maximum','player-guild-name',nameInput),
+      field('Charter · '+PLAYER_GUILD_CHARTER_LIMIT+' characters maximum','player-guild-charter',charterInput),
+      button('Create guild',guarded(async()=>{
+        await act({type:'create-guild',name:nameInput.value,charter:charterInput.value});
+        toast('Guild founded. Its public history is retained; no XP or institutional authority was granted.');
+      }),{id:'player-guild-create',class:'primary-button'})
+    ]));
+  }
+  board.append(paragraph('No player trading, item transfer, blocking, or leadership transfer is implemented. Closed guilds remain in the event history.','form-help'));
+  if(activeId==='player-guild-name'||activeId==='player-guild-charter'){
+    const next=board.querySelector(activeId==='player-guild-name'?'#player-guild-name':'#player-guild-charter');
+    if(next){
+      next.focus({preventScroll:true});
+      if(activeValue!==undefined){
+        next.value=activeValue;
+        if(selectionStart!==null&&selectionEnd!==null)next.setSelectionRange(selectionStart,selectionEnd);
+      }
+    }
+  }
+}
+function renderGuildExpeditionDocket(projection,container){
+  const active=document.activeElement;
+  const focusedKey=container.contains(active)?active.getAttribute('data-expedition-docket-focus'):null;
+  container.replaceChildren();
+  container.append(node('h3',{id:'guild-expedition-docket-heading',class:'section-title',text:'RETAINED EXPEDITION DOSSIER'}));
+  container.append(paragraph('This in-world docket joins retained Moonshot proposals to self-reported attempts, preserved challenges and exact Relay folios. It is a navigation aid, not an adjudication: reports remain reports, dissent remains dissent, and structurally valid collaborator text is still untrusted.','form-help'));
+  if(projection.unlinkedResearchRecordCount){
+    container.append(paragraph(projection.unlinkedResearchRecordCount+' retained proposal, attempt or challenge record(s) have missing or ambiguous links. They remain in the Evidence Archive; no target is guessed.','evidence-warning'));
+  }
+  if(projection.omittedProposalCount){
+    container.append(paragraph('Showing the newest '+projection.expeditions.length+' uniquely linked proposals. '+projection.omittedProposalCount+' older proposal(s) remain inspectable in the Evidence Archive.','form-help'));
+  }
+  if(!projection.expeditions.length){
+    container.append(paragraph('No uniquely identified Moonshot proposal is available for a dossier yet. Frame a falsifiable question at the Moonshot Field. Ambiguous or rejected records are not erased.','empty-note'));
+  }
+  const statusLabel=value=>String(value||'unknown').replaceAll('-',' ').toUpperCase();
+  for(const expedition of projection.expeditions){
+    const card=node('article',{class:'field-card','data-expedition-docket-id':expedition.moonshotId});
+    card.append(
+      node('h4',{text:expedition.title}),
+      node('span',{class:'pill',text:'RETAINED PROPOSAL · NOT ADJUDICATED'}),
+      paragraph('Moonshot '+expedition.moonshotId+' · proposal '+expedition.eventId+' · '+expedition.actorRole+' '+expedition.actorId+' · '+expedition.at,'attribution'),
+      paragraph('Hypothesis: '+expedition.hypothesis),
+      paragraph('Falsifier: '+expedition.falsifier),
+      paragraph('Evidence needed: '+expedition.evidenceNeeded),
+      paragraph('Source link: '+statusLabel(expedition.sourceStatus)+'. A link identifies a retained version; it does not verify the hypothesis.','form-help'),
+      button('Open Moonshot Field →',()=>openMoonshotField(expedition.moonshotId),{
+        class:'list-button','data-expedition-docket-focus':'proposal:'+expedition.moonshotId
+      })
+    );
+    if(mode==='shared'){
+      card.append(
+        paragraph('The Decision Chamber is the human gate. Opening it does not submit or approve this Moonshot.','form-help'),
+        button('Open Decision Chamber →',()=>openInstitution('decision_chamber'),{
+          class:'list-button','data-expedition-docket-focus':'decision:'+expedition.moonshotId
+        })
+      );
+    }else{
+      card.append(paragraph('Decision Chamber is not connected in this private world. This dossier cannot submit or approve a decision.','form-help'));
+    }
+
+    const attempts=node('section',{class:'expedition-docket-section','aria-label':'Retained attempt reports'});
+    attempts.append(node('h5',{text:'ATTEMPT REPORTS · '+expedition.attemptCount+' RETAINED'}));
+    if(!expedition.attempts.length){
+      attempts.append(paragraph('No uniquely linked attempt report is retained for this proposal.','empty-note'));
+    }
+    for(const attempt of expedition.attempts){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-attempt-id':attempt.id});
+      item.append(
+        node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED · '+attempt.reportedOutcome.toUpperCase()}),
+        paragraph('Procedure: '+(typeof attempt.procedure==='string'&&attempt.procedure.trim()?attempt.procedure:'not recorded')),
+        paragraph('Observation: '+(typeof attempt.observation==='string'&&attempt.observation.trim()?attempt.observation:'not recorded')),
+        paragraph('Evidence link: '+statusLabel(attempt.evidenceStatus)+'. This is linkage only, not independent observation.','form-help'),
+        paragraph('By '+(attempt.actorRole||'unknown')+' '+(attempt.actorId||'unknown')+' · '+attempt.at,'attribution'),
+        node('code',{text:attempt.id}),
+        button('Inspect attempt →',()=>openMoonshotField(expedition.moonshotId,attempt.id),{
+          class:'list-button','data-expedition-docket-focus':'attempt:'+attempt.id
+        })
+      );
+      attempts.append(item);
+    }
+    if(expedition.omittedAttemptCount)attempts.append(paragraph(expedition.omittedAttemptCount+' older attempt report(s) remain in the Evidence Archive.','form-help'));
+    card.append(attempts);
+
+    const challenges=node('section',{class:'expedition-docket-section','aria-label':'Preserved challenges and dissent'});
+    challenges.append(node('h5',{text:'PRESERVED CHALLENGES · '+expedition.challengeCount+' RETAINED'}));
+    if(!expedition.challenges.length){
+      challenges.append(paragraph('No challenge record is linked to this proposal yet. The absence of a challenge is not a finding that a report is sound.','empty-note'));
+    }
+    for(const challenge of expedition.challenges){
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-challenge-id':challenge.id});
+      item.append(
+        node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
+        paragraph('Challenge type: '+challenge.challengeType.replaceAll('-',' ')),
+        paragraph('Target report link: '+statusLabel(challenge.targetReportStatus)+(challenge.targetReportStatus==='linked'?'':' · no target was inferred.'),'form-help'),
+        paragraph(challenge.challengeText||'No challenge text retained.'),
+        paragraph('By '+(challenge.actorRole||'unknown')+' '+(challenge.actorId||'unknown')+' · '+challenge.at,'attribution'),
+        node('code',{text:challenge.id}),
+        button('Inspect challenge →',()=>openMoonshotField(expedition.moonshotId,challenge.id),{
+          class:'list-button','data-expedition-docket-focus':'challenge:'+challenge.id
+        })
+      );
+      challenges.append(item);
+    }
+    if(expedition.omittedChallengeCount)challenges.append(paragraph(expedition.omittedChallengeCount+' older challenge(s) remain in the Evidence Archive.','form-help'));
+    card.append(challenges);
+
+    const responses=node('section',{class:'expedition-docket-section','aria-label':'Retained collaborator folios'});
+    responses.append(node('h5',{text:'RELAY FOLIOS · '+expedition.responseCount+' RETAINED'}));
+    if(!expedition.responses.length){
+      responses.append(paragraph('No source-bound collaborator response is retained for this proposal. A prompt or an unarchived provider reply does not count.','empty-note'));
+    }
+    for(const response of expedition.responses){
+      const status=response.validationStatus==='valid-for-human-review'
+        ?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED';
+      const item=node('div',{class:'expedition-docket-entry','data-expedition-response-id':response.responseId});
+      item.append(
+        node('span',{class:'pill',text:response.name+' · '+status}),
+        paragraph('By '+response.actorRole+' '+response.actorId+' · '+response.at,'attribution'),
+        paragraph('Source events: '+response.sourceEventIds.join(' · ')),
+        response.validationReason?paragraph('Structural result: '+response.validationReason,'evidence-warning'):paragraph('Structural validation is not truth, provider provenance, execution, approval or authority.','form-help'),
+        node('code',{text:response.responseId}),
+        button('Inspect retained folio →',()=>openEvidenceArchive(response.responseId),{
+          class:'list-button','data-expedition-docket-focus':'response:'+response.responseId
+        })
+      );
+      if(response.validationMismatch)item.append(paragraph('Recorded status '+(response.recordedValidationStatus||'unknown')+' disagreed with recomputed status '+(response.recomputedValidationStatus||'unknown')+'. Displayed as rejected.','evidence-warning'));
+      responses.append(item);
+    }
+    if(expedition.omittedResponseCount)responses.append(paragraph(expedition.omittedResponseCount+' older folio(s) remain in the Evidence Archive.','form-help'));
+    card.append(responses);
+    container.append(card);
+  }
+  if(focusedKey){
+    const target=Array.from(container.querySelectorAll('[data-expedition-docket-focus]'))
+      .find(item=>item.getAttribute('data-expedition-docket-focus')===focusedKey);
+    target?.focus({preventScroll:true});
+  }
+}
+function attachGuildHallDecisionDocket(content,decisionProjection,unavailable=false){
+  const section=node('section',{
+    id:'guild-decision-docket',
+    'aria-labelledby':'guild-decision-docket-heading'
+  });
+  section.append(
+    node('h3',{id:'guild-decision-docket-heading',class:'section-title',text:'DECISION DOCKET · HUMAN GATE'}),
+    paragraph('Retained decision-service proposals become inspectable Guild Hall objects. This docket is a bounded read-only projection: opening, refreshing or navigating creates no world event, XP, disposition or approval. The Decision Chamber remains the only location for Founder disposition controls.','form-help')
+  );
+  if(mode!=='shared'){
+    section.append(paragraph('The shared Decision Service is not connected in this private world. No local decision records or approvals are invented.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  section.append(button('Refresh decision docket',guarded(async()=>openGuildHall()),{
+    class:'secondary-button',
+    'data-refresh-decision-docket':'true'
+  }));
+  const projection=unavailable?projectDecisionDocket(null):decisionProjection;
+  if(!projection.available){
+    section.append(paragraph('Decision register unavailable or malformed. No empty docket is inferred; reconnect to inspect the current human-gated records.','evidence-warning'));
+    content.append(section);
+    return;
+  }
+  const countText=['PENDING','APPROVED','REJECTED','DEFERRED','EXPIRED']
+    .map(status=>status+' '+projection.counts[status]).join(' · ');
+  section.append(paragraph(
+    'Service revision '+projection.revision+' · head '+projection.head.slice(0,12)+'… · '+projection.decisionCount+' retained proposal(s)',
+    'attribution'
+  ));
+  section.append(paragraph('Status counts: '+countText,'form-help'));
+  if(projection.policy){
+    section.append(paragraph(
+      'Review policy '+projection.policy.id+' · revision '+projection.policy.revision+
+      ' · '+projection.policy.reviewWindowMs+' ms · set '+projection.policy.setAt,
+      'form-help'
+    ));
+  }else{
+    section.append(paragraph('No operational review policy is activated. No review window is running.','empty-note'));
+  }
+  if(!projection.decisions.length){
+    section.append(paragraph('No retained decision proposals are available.','empty-note'));
+  }
+  for(const decision of projection.decisions){
+    const card=node('article',{
+      class:'field-card',
+      'data-guild-decision-id':decision.id
+    });
+    card.append(
+      node('h4',{text:decision.title}),
+      node('span',{class:'pill',text:decision.status}),
+      paragraph('Decision '+decision.id+' · revision '+decision.revision+
+        ' · creator account '+decision.createdBy+' · '+decision.createdAt,'attribution'),
+      paragraph('Review expires '+decision.expiresAt,'form-help')
+    );
+    if(decision.expiredAt)card.append(paragraph('Expiry recorded '+decision.expiredAt,'form-help'));
+    if(decision.disposition)card.append(paragraph(
+      'Recorded disposition: '+decision.disposition.action+' by account '+
+      decision.disposition.actorId+' at '+decision.disposition.decidedAt+'.',
+      'form-help'
+    ));
+    card.append(button('Open in Decision Chamber →',()=>openInstitution('decision_chamber',decision.id),{
+      class:'list-button',
+      'data-decision-docket-focus':decision.id
+    }));
+    section.append(card);
+  }
+  if(projection.omittedDecisionCount)section.append(paragraph(
+    projection.omittedDecisionCount+' older decision record(s) remain in the service and are not shown in this bounded docket.',
+    'form-help'
+  ));
+  content.append(section);
+}
+
+function attachGuildHallExpeditionBoard(content){
+  const board=node('section',{id:'guild-expedition-board','aria-labelledby':'guild-expedition-heading'});
+  const heading=node('h3',{id:'guild-expedition-heading',class:'section-title',text:'EXPEDITION BOARD · CURRENT OBJECTIVES'});
+  const scope=viewer.role==='founder'?'Founder':'Witness';
+  const intro=paragraph(`Your ${scope} objective trail is a read-only projection of retained, actor-matched world activity. Follow an actionable route to the real activity; the route itself records nothing. Player-guild membership does not assign or authorize institutional work. Recorded activity is not a truth or mastery verdict.`,'form-help');
+  const summary=node('p',{id:'guild-expedition-summary',class:'form-help','aria-live':'polite'});
+  const list=node('ol',{id:'guild-expedition-objectives',class:'quest-trail','aria-label':'Current Questkeeper objectives'});
+  const docket=node('section',{id:'guild-expedition-docket','aria-labelledby':'guild-expedition-docket-heading'});
+  board.append(heading,intro,summary,list,docket);
+  content.append(board);
+  const render=()=>{
+    if(!board.isConnected||$('sheet').hidden)return;
+    const objectives=Array.isArray(currentQuestTrail)?currentQuestTrail:[];
+    const recorded=objectives.filter(item=>item.complete).length;
+    const actionable=objectives.filter(item=>!item.complete&&item.action).length;
+    const waiting=objectives.length-recorded-actionable;
+    summary.textContent=`${recorded} recorded · ${objectives.length} total · ${actionable} actionable · ${waiting} waiting on prerequisites or another actor.`;
+    renderQuestTrail(objectives,list,'data-expedition-objective-id');
+    renderGuildExpeditionDocket(getExpeditionDocket(world,{
+      collaboratorResponseObjects:currentCollaboratorResponseObjects
+    }),docket);
+  };
+  const previous=activeNoteRenderer;
+  activeNoteRenderer=()=>{if(previous)previous();render();};
+  render();
+}
+function attachPlayerGuildBoard(content){
+  const board=node('section',{id:'player-guild-board'});
+  content.append(board);
+  const previous=activeNoteRenderer;
+  activeNoteRenderer=()=>{if(previous)previous();renderPlayerGuildBoard(board,world);};
+  renderPlayerGuildBoard(board,world);
+}
+
 async function openGuildHall(focusRoleId = null){
   if(mode==='shared'){
     await openInstitution('guild_hall');
@@ -793,6 +1102,7 @@ async function openGuildHall(focusRoleId = null){
       appendContradictionClerk($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world,focusRoleId?[focusRoleId]:null,
         focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
+      attachPlayerGuildBoard($('sheet-content'));
       if(focusRoleId)focusGuildCollaborator($('sheet-content'),focusRoleId);
     }
     return;
@@ -802,6 +1112,7 @@ async function openGuildHall(focusRoleId = null){
   appendContradictionClerk(content);
   appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:null,
     focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
+  attachPlayerGuildBoard(content);
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
