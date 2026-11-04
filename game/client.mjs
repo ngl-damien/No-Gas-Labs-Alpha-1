@@ -913,6 +913,7 @@ async function openGuildHall(focusRoleId = null){
   if(mode==='shared'){
     await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
+      $('sheet-content').append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
       appendContradictionClerk($('sheet-content'));
       appendCollaboratorContracts($('sheet-content'),world,focusRoleId?[focusRoleId]:null,
         focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
@@ -923,6 +924,7 @@ async function openGuildHall(focusRoleId = null){
   }
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
+  content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendContradictionClerk(content);
   appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:null,
     focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
@@ -930,16 +932,93 @@ async function openGuildHall(focusRoleId = null){
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
+function openCouncilChamber(){
+  const coverageId=viewer.role==='founder'?'founder-guild-council-coverage':'witness-guild-council-coverage';
+  const coverage=getQuestTrail(world,viewer).find(item=>item.id===coverageId);
+  const content=showSheet('Council Chamber','GUILD HALL · ROLE COVERAGE · DELIBERATION ONLY');
+  content.dataset.councilChamber='true';
+  content.append(paragraph(
+    (mode==='shared'?'Currently loaded shared-world snapshot':'Private world snapshot')+
+    ' · actor '+viewer.name+' ('+viewer.role+'). This room is read-only; while disconnected, a shared snapshot may be stale.',
+    'form-help'
+  ));
+  if(!coverage){
+    content.append(paragraph('No actor-scoped Guild role-coverage projection is available. No progress is inferred.','empty-note'));
+    return;
+  }
+  const progress=Number.isSafeInteger(coverage.progress)&&coverage.progress>=0?coverage.progress:0;
+  const target=Number.isSafeInteger(coverage.target)&&coverage.target>0?coverage.target:GUILD_NPCS.length;
+  const evidence=Array.isArray(coverage.evidence)?coverage.evidence:[];
+  const evidenceByRole=new Map();
+  for(const item of evidence){
+    if(typeof item?.collaboratorRole==='string'&&!evidenceByRole.has(item.collaboratorRole))
+      evidenceByRole.set(item.collaboratorRole,item);
+  }
+  const events=Array.isArray(world?.events)?world.events:[];
+  content.append(node('article',{class:'field-card','data-council-coverage-progress':progress+'/'+target},[
+    node('h3',{text:progress+'/'+target+' role attempts retained'}),
+    paragraph('The four roles are bounded work categories, not four independent humans, votes, or endorsements.','form-help')
+  ]));
+  if(coverage.action?.type==='location'&&typeof coverage.action.id==='string'){
+    content.append(button('Go to next available role →',()=>followQuestAction(coverage.action),{
+      class:'primary-button','data-council-next-role':coverage.action.id
+    }));
+  }
+  if(typeof coverage.blockedReason==='string'&&coverage.blockedReason)
+    content.append(paragraph(coverage.blockedReason,'empty-note'));
+  for(const npc of GUILD_NPCS){
+    const item=evidenceByRole.get(npc.roleId)||null;
+    const matches=item?events.filter(event=>event?.id===item.id&&event?.type==='collaborator-response-recorded'&&
+      event?.role===npc.roleId&&event?.actor?.id===viewer.id&&event?.actor?.role===viewer.role):[];
+    const response=matches.length===1?matches[0]:null;
+    const status=!item?'awaiting':!response?'ambiguous':
+      response.validationStatus==='rejected'?'rejected':'human-review';
+    const labels={
+      awaiting:'AWAITING RESPONSE',
+      ambiguous:'AMBIGUOUS · NOT COUNTED',
+      rejected:'REJECTED · PRESERVED ATTEMPT',
+      'human-review':'STRUCTURE VALID · HUMAN REVIEW ONLY'
+    };
+    const card=node('article',{
+      class:'field-card','data-council-role':npc.roleId,'data-council-status':status,
+      ...(response?{'data-council-event-id':response.id,'data-council-response-id':response.responseId}:{})
+    },[
+      node('h3',{text:npc.name}),
+      node('span',{class:'pill',text:labels[status]}),
+      paragraph(npc.objective),
+      response
+        ? paragraph('Retained by '+(response.actor?.name||response.actor?.id||'Unknown actor')+' · '+response.at+' · event '+response.id,'attribution')
+        : paragraph(item
+          ? 'The quest projection has an entry, but its exact actor-bound event could not be resolved uniquely. Inspect the archive; this slot is not linked.'
+          : 'No response is retained for this role in your actor-scoped trail.','empty-note')
+    ]);
+    if(response){
+      card.append(paragraph('Source events: '+(Array.isArray(response.sourceEventIds)?response.sourceEventIds.join(' · '):'unavailable'),'form-help'));
+      if(response.validationReason)card.append(paragraph('Structural validator note: '+response.validationReason,'form-help'));
+      card.append(button('Inspect exact retained response →',()=>openEvidenceArchive(npc.roleId,response.responseId),{
+        class:'list-button','data-council-inspect-response':npc.roleId
+      }));
+    }
+    content.append(card);
+  }
+  if(progress>=target)
+    content.append(paragraph('All role slots have one retained attempt. This is not consensus, endorsement, adjudication, or approval.','form-help'));
+  content.append(paragraph(
+    'A structurally valid response is still untrusted input for human review. Rejected responses remain preserved attempts, not endorsements. This chamber creates no vote, event, XP, mastery, evidence status, truth verdict, or authority. Consequential decisions remain in the human-gated Decision Chamber.',
+    'form-help'
+  ));
+}
 function openForge(){
   if(viewer.role==='founder')return openWorkshop();
   const content=showSheet('Forge','FOUNDER-GATED CREATION');
   content.append(paragraph('Drafting, repair and publication require an authenticated Founder session. Witnesses can inspect published work and leave attributed contributions or reports.'));
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
-function openEvidenceArchive(focusRoleId = null){
+function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
   content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:['archivist','adversary'],
     'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
@@ -1189,9 +1268,15 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   content.append(node('h3',{class:'section-title',text:'BOUNDED COLLABORATOR RESPONSES'}));
   if(!collaboratorResponses.length)content.append(paragraph('No external collaborator responses have been preserved yet. A returned answer remains untrusted until a human explicitly archives it; archiving does not endorse its claims.','empty-note'));
   const collaboratorNames={archivist:'Hostile Archivist',adversary:'Adversary',synthesizer:'Synthesis Clerk',tutor:'Polymath Tutor'};
+  const focusMatches=typeof focusResponseId==='string'&&focusResponseId
+    ? collaboratorResponses.filter(entry=>entry?.responseId===focusResponseId) : [];
   for(const entry of collaboratorResponses){
     const valid=entry.validationStatus==='valid-for-human-review';
-    const card=node('article',{class:'field-card','data-collaborator-response-id':entry.responseId},[
+    const focusThisResponse=focusMatches.length===1&&entry===focusMatches[0];
+    const card=node('article',{
+      class:'field-card','data-collaborator-response-id':entry.responseId,
+      ...(focusThisResponse?{'data-council-response-focus':'true',tabindex:'-1'}:{})
+    },[
       node('h3',{text:(collaboratorNames[entry.role]||entry.role)+' · '+(valid?'STRUCTURE VALID · HUMAN REVIEW ONLY':'REJECTED · PRESERVED')}),
       paragraph('Moonshot '+entry.moonshotId+' · actor '+(entry.actor?.name||entry.actor?.id||'Unknown actor')+' · '+entry.at,'attribution'),
       paragraph('Source events: '+entry.sourceEventIds.join(' · ')),
@@ -1209,6 +1294,10 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
     ]);
     card.append(packetDetails,responseDetails,button('Open related Moonshot →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
     content.append(card);
+    if(focusThisResponse){
+      card.focus({preventScroll:true});
+      card.scrollIntoView?.({block:'nearest'});
+    }
   }
 
   const history=node('section',{class:'evidence-history'});
