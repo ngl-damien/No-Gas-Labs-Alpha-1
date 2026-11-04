@@ -1321,6 +1321,8 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Collaborator')
         expect(a.locator('#sheet')).to_contain_text('1 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('Council')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded distinct Guild Hall role attempts')
         expect(a.locator('#sheet')).to_contain_text('Rejected responses remain preserved attempts, not endorsements')
         character_after=visitor.request.get(url+'api/state').json()['world']
         assert character_after['revision']==character_before['revision'] and character_after['xp']==character_before['xp'], \
@@ -1555,6 +1557,16 @@ def shared(browser,url,data,out):
             ['adversary','archivist','synthesizer','tutor'],'4/4'
         )
         a.screenshot(path=str(out/'guild-council-four-role-dossier.png'))
+        close_sheet(a)
+        council_character_before=owner.request.get(url+'api/state').json()['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded distinct Guild Hall role attempts')
+        council_character_after=owner.request.get(url+'api/state').json()['world']
+        assert council_character_after['revision']==council_character_before['revision']
+        assert council_character_after['xp']==council_character_before['xp']
+        close_sheet(a)
 
         def open_commons(page):
             close_sheet(page)
@@ -1865,7 +1877,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change'}
     finally:owner.close();visitor.close()
 
 

@@ -407,6 +407,11 @@ export function projectCharacter(world, viewer) {
   );
   const collaboratorResponseCount = Array.isArray(collaboratorResponseObjective?.evidenceIds)
     ? collaboratorResponseObjective.evidenceIds.length : 0;
+  const councilCoverageObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-council-coverage'
+  );
+  const councilRoleCount = Array.isArray(councilCoverageObjective?.evidenceIds)
+    ? councilCoverageObjective.evidenceIds.length : 0;
 
   const skills = [
     {
@@ -478,6 +483,13 @@ export function projectCharacter(world, viewer) {
       count: collaboratorResponseCount,
       record: 'bounded collaborator-response attempts',
       basis: 'Unique actor-attributed responses to bounded Guild Hall role packets, including rejected attempts. Rejected responses remain preserved attempts, not endorsements; structure/scope validation is not provider identity, truth, independent observation, execution, mastery, approval, XP or authority.'
+    },
+    {
+      id: 'council',
+      label: 'Council',
+      count: councilRoleCount,
+      record: 'distinct Guild Hall role attempts',
+      basis: 'One actor-scoped retained response attempt per bounded Guild Hall role. Rejected attempts remain preserved attempts, not endorsements; role coverage is not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP.'
     },
     {
       id: 'researcher',
