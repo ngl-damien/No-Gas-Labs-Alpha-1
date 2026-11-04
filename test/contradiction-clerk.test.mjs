@@ -150,7 +150,7 @@ test("maximum valid structured report fits the server limit", () => {
   const longAnswers = Object.fromEntries(
     Object.keys(answers).map(key => [key, "x".repeat(140)]),
   );
-  const html = "x".repeat(131_072);
+  const html = "x".repeat(1_002_151);
   const longCreation = {
     id: "i".repeat(80),
     title: "T".repeat(80),
