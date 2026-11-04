@@ -1,0 +1,43 @@
+name: council-chamber-mobile-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/council-chamber-mobile.yml'
+      - 'game/client.mjs'
+      - 'game/pixel-world-view.mjs'
+      - 'game/world-view.mjs'
+      - 'scripts/verify-council-chamber.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Walk to and inspect the Council Chamber at 320px and 390px
+        run: python3 scripts/verify-council-chamber.py --out artifacts/council-chamber-mobile
+      - name: Preserve mobile route screenshots and state receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-council-chamber-mobile-acceptance
+          path: artifacts/council-chamber-mobile/
+          if-no-files-found: warn
+          retention-days: 14
