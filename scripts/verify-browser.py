@@ -1301,9 +1301,15 @@ def shared(browser,url,data,out):
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
         expect(b.locator('#commons-muted-authors')).to_have_count(1)
         b.locator('#commons-muted-authors summary').click()
-        expect(b.locator('#commons-muted-authors')).to_contain_text('Damien Featherstone')
+        founder_identity={
+            'id':before_commons['viewer']['id'],
+            'role':before_commons['viewer']['role'],
+            'name':before_commons['viewer']['name']
+        }
+        assert founder_identity['role']=='founder' and founder_identity['name']
+        expect(b.locator('#commons-muted-authors')).to_contain_text(founder_identity['name'])
         muted_authors=json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))
-        assert muted_authors==[{'id':'damien','role':'founder','name':'Damien Featherstone'}]
+        assert muted_authors==[founder_identity], 'Device-local mute must preserve the exact displayed actor identity'
         after_mute_state=visitor.request.get(url+'api/state').json()
         assert after_mute_state['world']['revision']==before_mute_state['world']['revision']
         assert after_mute_state['world']['events']==before_mute_state['world']['events']
