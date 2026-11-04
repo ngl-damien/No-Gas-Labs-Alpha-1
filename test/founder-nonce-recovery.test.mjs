@@ -1241,3 +1241,59 @@ test('recovery CLI reports descriptor-handle refusal without touching recovery s
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
     'the CLI must preserve exact nonce-ledger bytes');
 });
+
+test('recovery CLI reports the completed owner-lock removal when recovery-lease directory sync is uncertain', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryScript = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fsPromises.open;",
+    "let directorySyncs = 0;",
+    "fsPromises.open = async (target, ...args) => {",
+    "  const handle = await originalOpen(target, ...args);",
+    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "    const originalSync = handle.sync.bind(handle);",
+    "    handle.sync = async (...syncArgs) => {",
+    "      directorySyncs += 1;",
+    "      if (directorySyncs === 4) {",
+    "        const error = new Error('injected recovery-lease directory sync failure');",
+    "        error.code = 'EIO';",
+    "        throw error;",
+    "      }",
+    "      return originalSync(...syncArgs);",
+    "    };",
+    "  }",
+    "  return handle;",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
+    "await import(process.env.TEST_RECOVERY_MODULE);"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_DIRECTORY: value.directory,
+      TEST_RECOVERY_SCRIPT: recoveryScript,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 1, child.stderr);
+  const observed = JSON.parse(child.stderr);
+  assert.equal(observed.status, 'durability-uncertain');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_LEASE_RELEASE_DURABILITY_UNCERTAIN');
+  assert.deepEqual(observed.recoveryState, {
+    ownerLockRemoved: true,
+    ledgerModified: false,
+    recoveryLeaseRemovalDurabilityUncertain: true
+  });
+  assert.equal(await exists(value.lockPath), false, 'the owner lock was already removed before lease-release sync failed');
+  assert.equal(await exists(value.recoveryLeasePath), false, 'the lease unlink occurred, but its directory entry durability is uncertain');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore, 'the exact nonce ledger bytes must remain unchanged');
+});
