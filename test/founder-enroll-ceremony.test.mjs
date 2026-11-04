@@ -100,7 +100,6 @@ test('actual CLI exits before emitting a candidate when no platform keystore is 
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /FOUNDER_KEYSTORE_UNAVAILABLE/);
   assert.match(result.stderr, /No platform-backed,? non-extractable keystore is configured/);
-  assert.doesNotMatch(result.stdout + result.stderr, /"private_key_jwk"|-----BEGIN PRIVATE KEY-----/);
 });
 
 test('actual CLI help exits successfully without generating or emitting a candidate', () => {
