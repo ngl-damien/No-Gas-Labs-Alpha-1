@@ -17,6 +17,7 @@ import {
   projectMapLabelMetrics,
   projectMapLabelPosition,
   projectQuestCompassIndicator,
+  projectQuestCompassCaptionPosition,
   projectGuildNpcReadiness,
   projectGuildNpcPointerTarget,
   PixelWorldView,
@@ -546,6 +547,7 @@ test('map overlay cache refreshes after layout mutations without per-frame measu
     querySelectorAll(selector) {
       queryCount += 1;
       assert.match(selector, /#quest-card/);
+      assert.match(selector, /\.masthead/);
       return [{ getBoundingClientRect: () => rect }];
     }
   };
@@ -717,6 +719,33 @@ test('quest compass stays hidden for visible objectives and points to off-screen
   assert.equal(upperLeft.x, 26);
   assert.ok(upperLeft.y >= 26 && upperLeft.y <= 818);
   assert.ok(upperLeft.angle < -Math.PI / 2);
+});
+
+test('quest compass relocates off-screen arrows and captions around the mobile quest card', () => {
+  const questCard = Object.freeze({ left: 15, top: 88, right: 200, bottom: 420 });
+  const indicator = projectQuestCompassIndicator(
+    { x: 0, y: 300, label: 'The Relay' },
+    { x: 500, y: 500 },
+    390, 844, 0.78, 26, [questCard]
+  );
+  assert.ok(indicator);
+  assert.equal(indicator.x, 26);
+  assert.equal(indicator.y, 442);
+  assert.equal(indicator.occluded, undefined);
+  assert.ok(Object.isFrozen(indicator));
+  assert.ok(indicator.y - 16 >= questCard.bottom + 4);
+
+  const caption = projectQuestCompassCaptionPosition(
+    indicator.x, indicator.y, 390, 844, 120, 24, [questCard], 8
+  );
+  assert.deepEqual(caption, { left: 8, top: 462, width: 120, height: 24 });
+  assert.ok(Object.isFrozen(caption));
+  assert.ok(caption.top >= questCard.bottom + 4);
+});
+
+test('quest compass caption rejects unsafe rectangles and undersized viewports', () => {
+  assert.equal(projectQuestCompassCaptionPosition(26, 442, 390, 844, 120, 24, null), null);
+  assert.equal(projectQuestCompassCaptionPosition(26, 442, 64, 64, 120, 24), null);
 });
 
 test('quest compass rejects malformed viewport and hostile target accessors without reading them', () => {
