@@ -590,3 +590,56 @@ test('directory replacement at ledger open cannot publish a ledger into the repl
     cleanup(value);
   }
 });
+
+
+function runWithDescriptorNamespace(value, blockedRoots) {
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalStat = fs.statSync;",
+    "const blockedRoots = JSON.parse(process.env.TEST_BLOCKED_DESCRIPTOR_ROOTS);",
+    "fs.statSync = (target, ...args) => {",
+    "  if (blockedRoots.some(root => String(target).startsWith(root + '/'))) {",
+    "    const error = new Error('injected descriptor namespace unavailable'); error.code = 'ENOENT'; throw error;",
+    "  }",
+    "  return originalStat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
+    "await import(process.env.TEST_INIT_MODULE);",
+    "console.log('descriptor namespace child completed');"
+  ].join('\\n');
+  return spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_BLOCKED_DESCRIPTOR_ROOTS: JSON.stringify(blockedRoots),
+      TEST_INIT_SCRIPT: scriptPath,
+      TEST_INIT_MODULE: new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url).href
+    }
+  });
+}
+
+test('descriptor-relative initialization falls back to /dev/fd when /proc/self/fd is unavailable', () => {
+  const value = fixture();
+  try {
+    const result = runWithDescriptorNamespace(value, ['/proc/self/fd']);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /FOUNDER_NONCE_LEDGER_INITIALIZED/);
+    assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
+    assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+  } finally { cleanup(value); }
+});
+
+test('missing descriptor namespaces fail before creating a lock or ledger', () => {
+  const value = fixture();
+  try {
+    const result = runWithDescriptorNamespace(value, ['/proc/self/fd', '/dev/fd']);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_HANDLE_UNAVAILABLE/);
+    assert.equal(existsSync(value.ledgerPath), false);
+    assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+  } finally { cleanup(value); }
+});
