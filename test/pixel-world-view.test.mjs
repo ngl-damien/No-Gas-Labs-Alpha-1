@@ -102,8 +102,8 @@ test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
-    'guild_hall', 'council_chamber', 'forge', 'evidence_archive', 'decision_chamber',
-    'quest_board', 'academy', 'moonshot_field', 'publication_house'
+    'quest_board', 'guild_hall', 'council_chamber', 'forge', 'evidence_archive',
+    'decision_chamber', 'academy', 'moonshot_field', 'publication_house'
   ]);
   const signatures = places.map(place => {
     const rectangles = [];
