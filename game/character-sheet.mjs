@@ -361,8 +361,11 @@ export function projectCharacter(world, viewer) {
       left.event.id.localeCompare(right.event.id));
   const studyCardTotal = studyCardEntries.length;
   const studyCardOmittedCount = Math.max(0, studyCardTotal - 100);
-  const studyCardUnavailableCount = Math.max(0,
-    events.filter(event => event?.type === 'study').length - studyCardTotal);
+  const rawActorStudyEventCount = rows(world?.events).filter(event =>
+    event?.type === 'study' && event?.actor?.id === viewer?.id &&
+    event?.actor?.role === viewer?.role
+  ).length;
+  const studyCardUnavailableCount = Math.max(0, rawActorStudyEventCount - studyCardTotal);
   const studyCards = Object.freeze(studyCardEntries.slice(0, 100).map(({ event }) => {
     const sourceVersion = retainedVersions.get(versionKey(event.creationId, event.version));
     const review = studyReviewById.get(event.studyId);
