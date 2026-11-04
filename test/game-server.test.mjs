@@ -12,6 +12,7 @@ import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { projectPlayerGuilds } from '../game/social.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -1501,3 +1502,104 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(founderAfter.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
   assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
 });
+
+
+test('shared player guilds reconcile across independent sessions with idempotent append-only history', async t => {
+  const f = await fixture(t);
+  const leader = f.client();
+  const member = f.client();
+  const observer = f.client();
+  const [leaderInitial, memberInitial, observerInitial] = await Promise.all([
+    leader.request('/api/state'),
+    member.request('/api/state'),
+    observer.request('/api/state')
+  ]);
+  assert.equal(leaderInitial.body.viewer.role, 'witness');
+  assert.equal(memberInitial.body.viewer.role, 'witness');
+  assert.notEqual(leaderInitial.body.viewer.id, memberInitial.body.viewer.id);
+  const baselineXp = observerInitial.body.world.xp;
+
+  const createAction = {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.',
+    requestId: 'shared-guild-create-001'
+  };
+  const created = await leader.request('/api/action', createAction);
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.idempotentReplay, false);
+  const replayedCreate = await leader.request('/api/action', createAction);
+  assert.equal(replayedCreate.response.status, 200, JSON.stringify(replayedCreate.body));
+  assert.equal(replayedCreate.body.idempotentReplay, true);
+  assert.equal(replayedCreate.body.result.guildId, created.body.result.guildId);
+  const guildId = created.body.result.guildId;
+
+  const joinAction = { type: 'join-guild', guildId, requestId: 'shared-guild-join-001' };
+  const joined = await member.request('/api/action', joinAction);
+  assert.equal(joined.response.status, 200, JSON.stringify(joined.body));
+  const replayedJoin = await member.request('/api/action', joinAction);
+  assert.equal(replayedJoin.response.status, 200, JSON.stringify(replayedJoin.body));
+  assert.equal(replayedJoin.body.idempotentReplay, true);
+  assert.equal(replayedJoin.body.result.guildId, guildId);
+
+  const observerState = await observer.request('/api/state');
+  const projection = projectPlayerGuilds(observerState.body.world, observerState.body.viewer);
+  assert.equal(projection.guilds.length, 1);
+  assert.equal(projection.guilds[0].memberCount, 2);
+  assert.equal(projection.guilds[0].leader.id, leaderInitial.body.viewer.id);
+  assert.equal(projection.guilds[0].members.some(actor => actor.id === memberInitial.body.viewer.id), true);
+  assert.equal(observerState.body.world.xp, baselineXp);
+
+  const duplicateJoin = await member.request('/api/action', {
+    type: 'join-guild', guildId, requestId: 'shared-guild-duplicate-join-001'
+  });
+  assert.equal(duplicateJoin.response.status, 409);
+  assert.equal(duplicateJoin.body.error.code, 'GUILD_MEMBERSHIP_EXISTS');
+
+  const leaderLeave = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leader-leave-001'
+  });
+  assert.equal(leaderLeave.response.status, 409);
+  assert.equal(leaderLeave.body.error.code, 'GUILD_LEADER_CANNOT_LEAVE');
+
+  const earlyDisband = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-early-disband-001'
+  });
+  assert.equal(earlyDisband.response.status, 409);
+  assert.equal(earlyDisband.body.error.code, 'GUILD_NOT_EMPTY');
+
+  const left = await member.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leave-001'
+  });
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  const disbanded = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-disband-001'
+  });
+  assert.equal(disbanded.response.status, 200, JSON.stringify(disbanded.body));
+
+  const finalState = await observer.request('/api/state');
+  const finalProjection = projectPlayerGuilds(finalState.body.world, finalState.body.viewer);
+  assert.equal(finalProjection.guilds.length, 0);
+  assert.equal(finalProjection.history[0].status, 'disbanded');
+  assert.deepEqual(finalState.body.world.events.map(event => event.type), [
+    'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+  ]);
+  assert.equal(finalState.body.world.xp, baselineXp);
+
+  // The same event history must remain valid after a full service restart.
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+    const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
+    assert.deepEqual(restoredState.world.events.map(event => event.type), [
+      'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+    ]);
+    assert.equal(projectPlayerGuilds(restoredState.world).history[0].status, 'disbanded');
+    assert.equal(restoredState.world.xp, baselineXp);
+  } finally {
+    await restarted.closeGame();
+  }
+});
+
+
