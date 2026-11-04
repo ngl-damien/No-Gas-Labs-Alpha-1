@@ -743,6 +743,34 @@ test('quest compass relocates off-screen arrows and captions around the mobile q
   assert.ok(caption.top >= questCard.bottom + 4);
 });
 
+test('quest compass falls back to a clear opposite edge when the nearer edge and adjacent corners are covered', () => {
+  const overlays = [
+    { left: 0, top: 0, right: 60, bottom: 844 },
+    { left: 0, top: 0, right: 390, bottom: 60 },
+    { left: 0, top: 784, right: 390, bottom: 844 }
+  ];
+  const indicator = projectQuestCompassIndicator(
+    { x: 0, y: 500, label: 'The Relay' },
+    { x: 500, y: 500 },
+    390, 844, 0.78, 26, overlays
+  );
+  assert.ok(indicator);
+  assert.equal(indicator.x, 364);
+  assert.equal(indicator.y, 422);
+  assert.equal(indicator.angle, Math.PI);
+  assert.equal(indicator.occluded, undefined);
+  assert.ok(Object.isFrozen(indicator));
+
+  const fullyCovered = projectQuestCompassIndicator(
+    { x: 0, y: 500, label: 'The Relay' },
+    { x: 500, y: 500 },
+    390, 844, 0.78, 26,
+    [{ left: 0, top: 0, right: 390, bottom: 844 }]
+  );
+  assert.equal(fullyCovered?.occluded, true);
+  assert.ok(Object.isFrozen(fullyCovered));
+});
+
 test('quest compass caption rejects unsafe rectangles and undersized viewports', () => {
   assert.equal(projectQuestCompassCaptionPosition(26, 442, 390, 844, 120, 24, null), null);
   assert.equal(projectQuestCompassCaptionPosition(26, 442, 64, 64, 120, 24), null);
