@@ -1387,11 +1387,31 @@ def shared(browser,url,data,out):
             before_revision=before['world']['revision']
             before_xp=before['world']['xp']
             packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+            response_status=packet.locator(f'[data-collaborator-response-status="{role}"]')
+            try:
+                expect(response_status).to_contain_text('ARCHIVED',timeout=10000)
+            except Exception as error:
+                status_text=response_status.text_content()
+                toast_text=page.locator('#toast').text_content()
+                page.screenshot(path=str(out/f'failed-council-{role}-archive.png'))
+                raise AssertionError(
+                    f'{role} archive did not commit; status={status_text!r}; toast={toast_text!r}'
+                ) from error
             expect(page.locator('#toast')).to_contain_text('Untrusted collaborator response preserved')
+            owner_after_action=owner.request.get(url+'api/state').json()
             after=visitor.request.get(url+'api/state').json()
+            owner_role_events=[event for event in owner_after_action['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
             role_events=[event for event in after['world']['events']
                 if event['type']=='collaborator-response-recorded' and event['role']==role]
-            assert len(role_events)==1, f'{role} must have exactly one retained response'
+            assert len(owner_role_events)==1, (
+                f'{role} Founder projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in owner_after_action["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
+            assert len(role_events)==1, (
+                f'{role} Witness projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in after["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
             event=role_events[0]
             assert event['actor']['id']==founder_id and event['actor']['role']=='founder'
             assert event['sourceEventIds']==payload['inputRefs']
