@@ -580,6 +580,7 @@ def adversary_challenge_handoff(browser,url,out):
         page.get_by_role('button',name='Walk to Adversary',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         packet=page.locator('[data-collaborator-role="adversary"]')
+        expect(packet).to_be_focused()
         packet.locator('details.collaborator-packet summary').click()
         prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
         packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
@@ -679,8 +680,31 @@ def adversary_challenge_handoff(browser,url,out):
         close_sheet(page)
         character_xp=character_xp_components(page)
         assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        close_sheet(page)
+        npc_world_before=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        focused_roles=[]
+        npc_discoveries=set()
+        for npc_name,sheet_title,role_id in (
+            ('Hostile Archivist','Evidence Archive','archivist'),
+            ('Synthesis Clerk','Guild Hall','synthesizer'),
+            ('Polymath Tutor','Polymath Academy','tutor')
+        ):
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {npc_name}',exact=True).click()
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=sheet_title)
+            role_card=page.locator(f'[data-collaborator-role="{role_id}"]')
+            expect(role_card).to_be_focused()
+            npc_world_after=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {events:world.events,xp:world.xp}}")
+            new_events=[event for event in npc_world_after['events'] if event.get('id') not in npc_world_before['eventIds']]
+            unexpected_events=[event for event in new_events if event.get('type')!='discover']
+            assert not unexpected_events, f'{npc_name} navigation must not create NPC work or other canonical events: {unexpected_events!r}'
+            assert npc_world_after['xp']==npc_world_before['xp'], f'{npc_name} navigation must not award XP'
+            npc_discoveries.update(event.get('locationId') for event in new_events if event.get('type')=='discover' and isinstance(event.get('locationId'),str))
+            focused_roles.append(role_id)
+            close_sheet(page)
+        assert focused_roles==['archivist','synthesizer','tutor']
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'npcRolesFocused':focused_roles,'npcNavigationXpNeutral':True,'npcNavigationDiscoveries':sorted(npc_discoveries),'worldXp':0,'errors':errors}
     finally:
         context.close()
 
@@ -1452,6 +1476,170 @@ def player_guild_membership(browser,url,out):
         member_context.close()
 
 
+
+def commons_message_quest(browser,url,out):
+    """A real two-player mobile quest, projected only from each actor's retained post."""
+    errors=[]
+    speaker_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
+    other_context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
+
+    def character_record(page):
+        page.locator('#character-button').click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        summary=page.locator('#sheet .field-card').first.inner_text()
+        xp_match=re.search(r'(\d+)\s+character XP',summary)
+        assert xp_match,summary
+        skills={}
+        for skill_id in ['speaker','questkeeper']:
+            value=page.locator('#sheet [data-skill-id="'+skill_id+'"]').inner_text()
+            count_match=re.search(r'(\d+)\s+recorded\b',value)
+            assert count_match,value
+            skills[skill_id]=int(count_match.group(1))
+        return {'xp':int(xp_match.group(1)),'skills':skills}
+
+    try:
+        speaker_page,other_page=speaker_context.new_page(),other_context.new_page()
+        for page in [speaker_page,other_page]:
+            page.on('pageerror',lambda error:errors.append(str(error)))
+            page.goto(url,wait_until='networkidle')
+            page.locator('#start-shared').click()
+            page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+
+        speaker_initial=speaker_context.request.get(url+'api/state').json()
+        other_initial=other_context.request.get(url+'api/state').json()
+        speaker_actor,other_actor=speaker_initial['viewer'],other_initial['viewer']
+        assert speaker_actor['role']==other_actor['role']=='witness'
+        assert speaker_actor['id']!=other_actor['id'],'The two mobile sessions must be distinct actors'
+        baseline_world=speaker_initial['world']
+        baseline_revision=baseline_world['revision']
+        baseline_event_count=len(baseline_world['events'])
+        baseline_xp=baseline_world['xp']
+        assert other_initial['world']['revision']==baseline_revision
+
+        for page in [speaker_page,other_page]:
+            page.locator('#places-button').click()
+            page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+            objective=page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-commons-message"]')
+            expect(objective).to_be_visible()
+            expect(objective).to_contain_text('OPEN')
+            expect(objective).to_contain_text('0/1')
+
+        after_boards=speaker_context.request.get(url+'api/state').json()['world']
+        assert (after_boards['revision'],len(after_boards['events']),after_boards['xp'])==(
+            baseline_revision,baseline_event_count,baseline_xp
+        ),'Opening the expedition board must not mutate canonical world state'
+
+        speaker_page.locator('#sheet-close').click()
+        other_page.locator('#sheet-close').click()
+        speaker_before=character_record(speaker_page)
+        other_before=character_record(other_page)
+        assert speaker_before['skills']['speaker']==0
+        assert other_before['skills']['speaker']==0
+        speaker_page.locator('#sheet-close').click()
+        other_page.locator('#sheet-close').click()
+
+        message_text='A retained Commons message completes my Speaker quest.'
+        speaker_page.locator('#places-button').click()
+        speaker_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        speaker_page.locator('#commons-message').fill(message_text)
+        speaker_page.locator('#commons-post-message').click()
+        own_message=speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)
+        expect(own_message).to_be_visible()
+
+        posted_state=speaker_context.request.get(url+'api/state').json()
+        assert posted_state['world']['revision']==baseline_revision+1
+        assert posted_state['world']['xp']==baseline_xp,'A Commons post must not award world XP'
+        own_posts=[
+            event for event in posted_state['world']['events']
+            if event.get('type')=='message-posted' and event.get('actor',{}).get('id')==speaker_actor['id']
+        ]
+        assert len(own_posts)==1,'One UI post must produce exactly one actor-owned retained event'
+        retained=own_posts[0]
+        assert retained['actor']['role']=='witness'
+        assert retained['channel']=='commons' and retained['text']==message_text
+        assert sum(
+            event.get('type')=='message-posted' and event.get('messageId')==retained['messageId']
+            for event in posted_state['world']['events']
+        )==1,'The retained message ID must be unique in the public world projection'
+
+        # The other session sees the shared post, but its own actor-bound objective stays open.
+        other_page.locator('#places-button').click()
+        other_page.get_by_role('button',name='Walk to The Commons',exact=True).click()
+        other_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons'")
+        shared_message=other_page.locator('[data-commons-message-id]').filter(has_text=message_text)
+        expect(shared_message).to_be_visible()
+        other_posted=other_context.request.get(url+'api/state').json()
+        assert other_posted['world']['revision']==baseline_revision+1
+        assert other_posted['world']['xp']==baseline_xp
+        assert any(
+            event.get('type')=='message-posted' and event.get('messageId')==retained['messageId']
+            for event in other_posted['world']['events']
+        ),'The second session must observe the shared retained message'
+
+        other_page.locator('#sheet-close').click()
+        other_page.locator('#places-button').click()
+        other_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        other_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        other_objective=other_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-commons-message"]')
+        expect(other_objective).to_contain_text('OPEN')
+        expect(other_objective).to_contain_text('0/1')
+        other_page.locator('#sheet-close').click()
+        other_after=character_record(other_page)
+        assert other_after['skills']['speaker']==0,'Seeing another player’s post must not grant Speaker activity'
+        assert other_after['skills']['questkeeper']==other_before['skills']['questkeeper']
+        assert other_after['xp']==other_before['xp']
+        other_page.locator('#sheet-close').click()
+
+        speaker_page.locator('#sheet-close').click()
+        speaker_page.locator('#places-button').click()
+        speaker_page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        speaker_page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
+        speaker_objective=speaker_page.locator('#guild-expedition-objectives [data-expedition-objective-id="witness-commons-message"]')
+        expect(speaker_objective).to_contain_text('RECORDED')
+        expect(speaker_objective).to_contain_text('1/1')
+        expect(speaker_objective).to_contain_text('1 retained event')
+        speaker_page.locator('#sheet-close').click()
+
+        speaker_after=character_record(speaker_page)
+        assert speaker_after['skills']['speaker']==1
+        assert speaker_after['skills']['questkeeper']==speaker_before['skills']['questkeeper']+1
+        assert speaker_after['xp']==speaker_before['xp'],'Conversation must not grant character XP'
+        commons_card=speaker_page.locator('#sheet .field-card').filter(has_text=message_text)
+        expect(commons_card).to_have_count(1)
+        expect(commons_card).to_contain_text('retained conversation · not evidence or authority')
+        expect(commons_card).to_contain_text('location commons')
+        expect(commons_card).to_contain_text(message_text)
+        commons_card.get_by_role('button',name='Inspect retained object →',exact=True).click()
+        speaker_page.wait_for_function(
+            "()=>document.querySelector('#sheet-title')?.textContent==='The Commons'",
+            timeout=30000
+        )
+        expect(speaker_page.locator('[data-commons-message-id]').filter(has_text=message_text)).to_be_visible()
+        final_state=speaker_context.request.get(url+'api/state').json()
+        assert final_state['world']['revision']==baseline_revision+1,'Reading and routing to the satchel object must not append world events'
+        assert final_state['world']['xp']==baseline_xp
+        assert not errors,errors
+        speaker_page.screenshot(path=str(out/'commons-message-quest.png'))
+        return {
+            'journey':'commons-message-quest',
+            'passed':True,
+            'sessions':2,
+            'messageEvents':1,
+            'actorScoped':True,
+            'speakerCount':speaker_after['skills']['speaker'],
+            'questkeeperDelta':speaker_after['skills']['questkeeper']-speaker_before['skills']['questkeeper'],
+            'characterXpNeutral':True,
+            'worldXp':baseline_xp,
+            'satchelRoute':'The Commons',
+            'errors':errors
+        }
+    finally:
+        speaker_context.close()
+        other_context.close()
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -1478,6 +1666,7 @@ def main():
                     record(shared(browser,url,data,out))
                     record(town_square_social(browser,url,out))
                     record(player_guild_membership(browser,url,out))
+                    record(commons_message_quest(browser,url,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)

@@ -2,6 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectResearchRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
+import { projectCommonsMessages, projectPlayerGuilds } from './social.mjs';
 const questTrailContext = new WeakMap();
 function sealQuestTrail(world, viewer, entries) {
   const trail = Object.freeze(entries);
@@ -484,6 +485,44 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
 }
 
 
+
+const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
+/**
+ * Resolve one actor's current guild membership back to the unique retained
+ * event that established it. Membership is reversible; a leave/disband makes
+ * the objective open again. Malformed or ambiguous history fails closed.
+ */
+function currentPlayerGuildMembership(world, viewer, events) {
+  const guildEvents = trailRows(events).filter(event =>
+    PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES.has(event?.type)
+  );
+  const validIds = uniqueEventIds(events);
+  if (guildEvents.some(event =>
+    !validTrailRecordId(event?.id) || !validIds.has(event.id) ||
+    !validTrailActor(event?.actor) || !isStrictTimestamp(event?.at)
+  )) return { available: false, event: null };
+
+  try {
+    const name = typeof viewer?.name === 'string' && viewer.name.trim() &&
+      Array.from(viewer.name).length <= 80 ? viewer.name : 'Player';
+    const projection = projectPlayerGuilds(world, {
+      id: viewer.id, role: viewer.role, name
+    });
+    if (!projection.viewerGuildId) return { available: true, event: null };
+    const event = [...guildEvents].reverse().find(candidate =>
+      (candidate.type === 'guild-created' || candidate.type === 'guild-joined') &&
+      candidate.guildId === projection.viewerGuildId &&
+      candidate.actor?.id === viewer.id && candidate.actor?.role === viewer.role
+    );
+    return event ? { available: true, event } : { available: false, event: null };
+  } catch {
+    return { available: false, event: null };
+  }
+}
+
 const EXPEDITION_DOCKET_LIMIT = 3;
 const EXPEDITION_ACTIVITY_LIMIT = 3;
 const EXPEDITION_RESPONSE_LIMIT = 4;
@@ -846,6 +885,9 @@ export function getQuestTrail(world, viewer, options = null) {
     ? suppliedResponseObjects
     : projectCollaboratorResponseWorldObjects(world);
   const events = trailRows(world?.events);
+  const commonsMessages = projectCommonsMessages(world, viewer);
+  const firstCommonsMessage = commonsMessages[0] || null;
+  const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
   // Index the append-only event positions and exact retained versions once. The
@@ -1189,6 +1231,24 @@ export function getQuestTrail(world, viewer, options = null) {
           !firstCreation ? 'A published place is required before a version can be preserved.' : null
       ),
       trailMilestone(
+        'founder-player-guild-membership', 'Join a player guild or found one', 1,
+        guildMembership.event ? [guildMembership.event.id] : [],
+        guildMembership.event ? [guildMembership.event] : [],
+        guildMembership.available && !guildMembership.event
+          ? { type: 'location', id: 'guild_hall' } : null,
+        !guildMembership.available
+          ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+        'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+      ),
+      trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'commons' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+      ),
+      trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,
         observatoryPublications.map(event => event.id), observatoryPublications,
         !hasObservatory ? { type: 'workbench', recipe: 'observatory' } : null
@@ -1291,6 +1351,24 @@ export function getQuestTrail(world, viewer, options = null) {
         !workAvailable ? 'Wait for a Founder to publish a real place.' :
         !hasNote ? 'Leave an attributed field note before submitting a report.' :
         !latestCreation ? 'No retained published place is available to open.' : null
+    ),
+    trailMilestone(
+      'witness-player-guild-membership', 'Join a player guild or found one', 1,
+      guildMembership.event ? [guildMembership.event.id] : [],
+      guildMembership.event ? [guildMembership.event] : [],
+      guildMembership.available && !guildMembership.event
+        ? { type: 'location', id: 'guild_hall' } : null,
+      !guildMembership.available
+        ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+      'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'commons' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
     trailMilestone(
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,

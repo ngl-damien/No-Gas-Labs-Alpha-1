@@ -201,7 +201,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
     ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['restorer', 0], ['armor-bearer', 3]
+    ['speaker', 0], ['questkeeper', 3], ['restorer', 0], ['armor-bearer', 3]
   ]);
   assert.deepEqual([record.xp, record.publicationXp, record.questXp], [150, 100, 50]);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -1362,4 +1362,122 @@ test('duplicate denormalized activity rows cannot manufacture character skills',
   assert.equal(record.skills.find(skill => skill.id === 'explorer').count, 0);
   assert.equal(record.skills.find(skill => skill.id === 'observer').count, 0);
   assert.equal(record.skills.find(skill => skill.id === 'challenger').count, 0);
+});
+
+
+test('active player-guild membership completes Questkeeper status without awarding XP', () => {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const created = event('guild-created-xp', 'guild-created', founderActor, t1, {
+    guildId: 'guild-xp-1',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.'
+  });
+  const joined = event('guild-joined-xp', 'guild-joined', witnessActor, t2, {
+    guildId: 'guild-xp-1'
+  });
+  const left = event('guild-left-xp', 'guild-left', witnessActor, t3, {
+    guildId: 'guild-xp-1'
+  });
+  const disbanded = event('guild-disbanded-xp', 'guild-disbanded', founderActor, t4, {
+    guildId: 'guild-xp-1'
+  });
+  const world = {
+    id: 'guild-xp-world', revision: 1, xp: 9999, creations: [],
+    events: [created], discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const questkeeper = record => record.skills.find(skill => skill.id === 'questkeeper').count;
+
+  const founderMember = projectCharacter(world, founder);
+  assert.deepEqual([founderMember.xp, founderMember.questXp, questkeeper(founderMember)], [0, 0, 1]);
+
+  world.events.push(joined);
+  world.revision += 1;
+  const witnessMember = projectCharacter(world, witness);
+  assert.deepEqual([witnessMember.xp, witnessMember.questXp, questkeeper(witnessMember)], [0, 0, 1]);
+
+  world.events.push(left);
+  world.revision += 1;
+  const witnessLeft = projectCharacter(world, witness);
+  assert.deepEqual([witnessLeft.xp, witnessLeft.questXp, questkeeper(witnessLeft)], [0, 0, 0]);
+
+  world.events.push(disbanded);
+  world.revision += 1;
+  const founderDisbanded = projectCharacter(world, founder);
+  assert.deepEqual([founderDisbanded.xp, founderDisbanded.questXp, questkeeper(founderDisbanded)], [0, 0, 0]);
+  assert.equal(world.xp, 9999, 'the read model ignores untrusted world XP summaries and never mutates the world');
+});
+
+test('Commons messages become retained satchel objects and Speaker activity without XP', () => {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const founderPost = event('commons-character-founder-post', 'message-posted', founderActor, t2, {
+    messageId: 'commons-character-founder-message',
+    channel: 'commons',
+    text: 'Keep disagreement in the record.'
+  });
+  const founderReport = event('commons-character-founder-report', 'message-reported', witnessActor, t3, {
+    reportId: 'commons-character-founder-report-id',
+    messageId: founderPost.messageId,
+    reason: 'privacy',
+    details: 'Please review this retained post.'
+  });
+  const founderModeration = event('commons-character-founder-hide', 'message-moderated', founderActor, '2026-10-28T19:03:00.000Z', {
+    moderationId: 'commons-character-founder-moderation-id',
+    messageId: founderPost.messageId,
+    disposition: 'hide',
+    reason: 'privacy'
+  });
+  const founderWorld = {
+    id: 'commons-character-founder-world', revision: 1, xp: 9999, creations: [],
+    events: [founderPost, founderReport, founderModeration],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const founderRecord = projectCharacter(founderWorld, founder);
+  assert.deepEqual(
+    [founderRecord.xp, founderRecord.publicationXp, founderRecord.questXp, founderRecord.worldXp],
+    [0, 0, 0, 0],
+    'a Commons post completes its objective but never grants XP'
+  );
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'speaker').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'questkeeper').count, 1);
+  const founderItem = founderRecord.fieldSatchel.find(item => item.kind === 'commons-message');
+  assert.ok(founderItem);
+  assert.equal(founderItem.eventId, founderPost.id);
+  assert.equal(founderItem.locationId, 'commons');
+  assert.deepEqual(founderItem.action, { type: 'location', id: 'commons' });
+  assert.equal(founderItem.summary, founderPost.text);
+  assert.match(founderItem.status, /not evidence or authority/);
+  assert.deepEqual([founderRecord.fieldSatchelTotal, founderRecord.fieldSatchelOmittedCount], [1, 0]);
+
+  const hiddenText = '[Message hidden by human moderation.]';
+  const witnessPost = event('commons-character-witness-post', 'message-posted', witnessActor, t2, {
+    messageId: 'commons-character-witness-message',
+    channel: 'commons',
+    text: hiddenText
+  });
+  const witnessReport = event('commons-character-witness-report', 'message-reported', founderActor, t3, {
+    reportId: 'commons-character-witness-report-id',
+    messageId: witnessPost.messageId,
+    reason: 'privacy',
+    details: 'Please review this retained post.'
+  });
+  const witnessModeration = event('commons-character-witness-hide', 'message-moderated', founderActor, '2026-10-28T19:03:00.000Z', {
+    moderationId: 'commons-character-witness-moderation-id',
+    messageId: witnessPost.messageId,
+    disposition: 'hide',
+    reason: 'privacy'
+  });
+  const witnessWorld = {
+    id: 'commons-character-witness-world', revision: 1, creations: [],
+    events: [witnessPost, witnessReport, witnessModeration],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const witnessRecord = projectCharacter(witnessWorld, witness);
+  assert.deepEqual([witnessRecord.xp, witnessRecord.questXp], [0, 0]);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'speaker').count, 1);
+  const witnessItem = witnessRecord.fieldSatchel.find(item => item.kind === 'commons-message');
+  assert.ok(witnessItem);
+  assert.equal(witnessItem.summary, hiddenText,
+    'the Witness satchel keeps the retained object but respects the redacted public text');
 });

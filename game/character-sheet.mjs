@@ -2,6 +2,11 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
 import { getLocationAction, getQuestTrail, matchActivityRecords, isQuestTrailProjection } from './quests.mjs';
 import { projectCollaboratorResponseWorldObjects, isCollaboratorResponseProjection } from './collaborator-world-objects.mjs';
+import { projectCommonsMessages } from './social.mjs';
+
+const NON_XP_QUEST_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded', 'message-posted'
+]);
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -170,6 +175,7 @@ export function projectCharacter(world, viewer, options = null) {
   // study-review projections quadratic as the retained world grew.
   const positionByEvent = new Map(allEvents.map((event, index) => [event, index]));
   const events = mine(allEvents, viewer);
+  const commonsMessages = projectCommonsMessages(world, viewer);
   const proposalCounts = new Map();
   const reportCounts = new Map();
   for (const event of allEvents) {
@@ -365,7 +371,8 @@ export function projectCharacter(world, viewer, options = null) {
   ));
   const questActivityIds = new Set();
   for (const event of allEvents) {
-    if (event?.type === 'publish' || !questEvidenceIds.has(event?.id) ||
+    if (event?.type === 'publish' || NON_XP_QUEST_EVENT_TYPES.has(event?.type) ||
+        !questEvidenceIds.has(event?.id) ||
         event.actor?.id !== viewer?.id || event.actor?.role !== viewer?.role ||
         typeof event.id !== 'string' || !event.id) continue;
     questActivityIds.add(event.id);
@@ -444,6 +451,13 @@ export function projectCharacter(world, viewer, options = null) {
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
     },
     {
+      id: 'speaker',
+      label: 'Speaker',
+      count: commonsMessages.length,
+      record: 'retained Commons messages',
+      basis: 'Unique, actor-owned Commons posts. This counts participation in conversation, not evidence, truth, approval, authority or XP; hidden posts remain recorded activity.'
+    },
+    {
       id: 'questkeeper',
       label: 'Questkeeper',
       count: completedQuestObjectives,
@@ -460,7 +474,7 @@ export function projectCharacter(world, viewer, options = null) {
   ].map(skill => Object.freeze(skill));
 
   // The field satchel is a bounded, read-only index of this character's
-  // retained work. Every entry points back to a unique event (and, where
+  // retained activity. Every entry points back to a unique event (and, where
   // relevant, a matched activity record or strict Relay folio projection).
   // It never creates ownership, XP, approval, or canonical world state.
   const creationsById = new Map();
@@ -600,6 +614,15 @@ export function projectCharacter(world, viewer, options = null) {
       sourceCreationId: event.evidenceCreationId,
       sourceVersion: event.evidenceVersion,
       action: { type: 'moonshot-activity', moonshotId: event.moonshotId, activityId: event.challengeId }
+    });
+  }
+  for (const event of commonsMessages) {
+    addFieldItem('commons-message', event, null, {
+      title: 'Commons message',
+      status: 'retained conversation · not evidence or authority',
+      summary: event.text,
+      locationId: 'commons',
+      action: { type: 'location', id: 'commons' }
     });
   }
   for (const object of collaboratorResponseObjects) {
