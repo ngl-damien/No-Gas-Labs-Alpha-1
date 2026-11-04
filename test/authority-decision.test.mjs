@@ -163,7 +163,7 @@ function startCrashWorker(fixture, signed, crashPoint, markerPath) {
     "if (process.env.TEST_CRASH_POINT === 'before-rename') {",
     "  const originalRenameSync = fs.renameSync;",
     "  fs.renameSync = (from, to) => {",
-    "    if (to === ledgerPath) {",
+    "    if (String(to).endsWith('/founder-nonces.json')) {",
     "      fs.writeFileSync(markerPath, 'before-rename', { mode: 0o600 });",
     "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);",
     "      throw new Error('crash barrier expired');",
@@ -774,7 +774,7 @@ test("nonce writer cleanup retains a same-inode lock rewrite after a precommit l
 
   fs.lstatSync = (candidate, ...args) => {
     const observed = originalLstat(candidate, ...args);
-    if (!rewritten && candidate === fixture.nonceLedgerPath) {
+    if (!rewritten && path.basename(String(candidate)) === "founder-nonces.json") {
       rewritten = true;
       writeFileSync(lockPath, canonical({
         schema: "ngl.ledger-lock.v1",
@@ -887,7 +887,7 @@ test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking 
 
   fs.lstatSync = (candidate, ...args) => {
     const observed = originalLstat(candidate, ...args);
-    if (candidate === lockPath) {
+    if (path.basename(String(candidate)) === ".founder-nonce.lock") {
       lockPathLstatCalls += 1;
       if (!rewritten && lockPathLstatCalls === 3) {
         rewritten = true;
@@ -1312,7 +1312,7 @@ test("nonce authorization reports uncertainty when its owner lock disappears dur
     const originalRenameSync = fs.renameSync;
     let removed = false;
     fs.renameSync = (from, to) => {
-      if (!removed && to === fixture.nonceLedgerPath) {
+      if (!removed && path.basename(String(to)) === "founder-nonces.json") {
         removed = true;
         unlinkSync(lockPath);
       }
