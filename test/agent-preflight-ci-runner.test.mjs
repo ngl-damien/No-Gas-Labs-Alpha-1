@@ -80,3 +80,13 @@ test('Verify workflow preserves the unique preflight receipt even when verificat
   assert.match(workflow, /include-hidden-files: true/);
   assert.match(workflow, /retention-days: 14/);
 });
+
+
+test('CI preflight fingerprints the Founder enrollment regression test', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const args = packageJson.scripts['agent:preflight:ci'].split(/\\s+/);
+  const declaredTargets = args.flatMap((argument, index) =>
+    argument === '--path' ? [args[index + 1]] : []
+  );
+  assert.ok(declaredTargets.includes('test/founder-enroll-ceremony.test.mjs'));
+});
