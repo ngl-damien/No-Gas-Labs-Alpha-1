@@ -242,6 +242,45 @@ test('world imports revalidate collaborator source records and response bytes in
     error.code==='INVALID_WORLD'&&/validation status does not match retained response bytes/.test(error.message));
 });
 
+test('Witness collaborator imports use the same private Commons report filtering as packet creation',async()=>{
+  const start=createWorld({id:'witness-packet-snapshot-world',now});
+  const posted=await applyAction(start,{type:'post-message',text:'A private report should not leak into another player’s packet count.'},witness,{now:'2026-10-17T12:00:01.000Z'});
+  const reported=await applyAction(posted.world,{
+    type:'report-message',messageId:posted.result.messageId,reason:'other',details:'Review this in context.'
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const proposal=await applyAction(reported.world,{
+    type:'propose-moonshot',title:'Witness-visible packet',hypothesis:'A bounded source snapshot can be reconstructed.',
+    falsifier:'The source event count differs.',evidenceNeeded:'An exact retained packet.'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Run one bounded attempt.',observation:'The expected result did not occur.',
+    reportedOutcome:'failed'
+  },witness,{now:'2026-10-17T12:00:04.000Z'});
+  const packet=projectCollaboratorPackets(publicWorld(report.world,witness)).find(candidate=>
+    candidate.id==='adversary'&&candidate.available===true
+  );
+  assert.ok(packet);
+  const reportEvent=report.world.events.at(-1);
+  const responseText=JSON.stringify({
+    targetEventId:reportEvent.id,
+    challengeType:'missing-evidence',
+    challengeDraft:'The report has no independently observed evidence.',
+    distinctnessAssessment:'No earlier challenge is included in this packet.',
+    duplicateOfEventIds:[],
+    counterexample:'A controlled repeat could contradict the report.',
+    evidenceNeeded:['A retained independent measurement.'],
+    unknowns:['No independent observation is attached.']
+  });
+  const recorded=await applyAction(report.world,{
+    type:'record-collaborator-response',role:'adversary',moonshotId:proposal.result.moonshotId,
+    packetJson:packet.packetJson,sourceEventIds:packet.inputRefs,responseText
+  },witness,{now:'2026-10-17T12:00:05.000Z'});
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.revision,4);
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.suppliedEventCount,3);
+  await validateWorld(recorded.world);
+});
+
 test('Source Observation challenges preserve attributed dissent without changing the original note, XP, or authority',async()=>{
   const start=createWorld({id:'source-observation-challenge-world',now});
   const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
