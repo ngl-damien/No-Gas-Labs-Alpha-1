@@ -1456,7 +1456,7 @@ def shared(browser,url,data,out):
         early_disband=owner.request.post(url+'api/action',data={
             'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
         })
-        assert early_disband.status_code==409
+        assert early_disband.status==409
         assert early_disband.json()['error']['code']=='GUILD_NOT_EMPTY'
 
         member_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
