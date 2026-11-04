@@ -9,6 +9,7 @@ import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '.
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
+import { loadTrustAnchor } from '../src/authority/decision.js';
 import { projectProjection } from '../src/institution/project-projection.mjs';
 import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
@@ -38,6 +39,43 @@ const STATIC = new Map([
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
 const fail = (code, message, status = 400) => { throw Object.assign(new Error(message), { code, status }); };
+
+function dispositionAuthorizationStatus(founderTrustAnchorPath) {
+  try {
+    const trust = loadTrustAnchor(founderTrustAnchorPath);
+    if (!trust.enrolled) {
+      const code = trust.reason === 'MALFORMED_TRUST_ANCHOR'
+        ? 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        : trust.reason === 'TRUST_ANCHOR_ABSENT'
+          ? 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          : 'FOUNDER_NOT_ENROLLED';
+      const message = code === 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        ? 'The Founder trust anchor is malformed. APPROVE, REJECT and DEFER are disabled.'
+        : code === 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          ? 'The Founder trust anchor is absent. APPROVE, REJECT and DEFER are disabled.'
+          : 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+      return { available: false, code, message };
+    }
+    if (trust.mode === 'TEST_ONLY') {
+      return {
+        available: false,
+        code: 'FOUNDER_TRUST_ANCHOR_TEST_ONLY',
+        message: 'Only a TEST_ONLY Founder trust anchor is present. APPROVE, REJECT and DEFER are disabled.'
+      };
+    }
+    return {
+      available: false,
+      code: 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED',
+      message: 'The Founder trust anchor is enrolled, but the live Decision Chamber route does not yet verify signed decision payloads. APPROVE, REJECT and DEFER remain disabled.'
+    };
+  } catch {
+    return {
+      available: false,
+      code: 'FOUNDER_TRUST_ANCHOR_UNAVAILABLE',
+      message: 'The Founder trust anchor could not be read or validated. APPROVE, REJECT and DEFER are disabled.'
+    };
+  }
+}
 const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
@@ -738,8 +776,8 @@ async function assertPrivateDataDirectory(dataDir) {
   return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };
 }
 
-/** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, allowGeneratedFounderKey = false } = {}) {
+/** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false } = {}) {
   const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
   const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
   if (!validFounderKey && !mayGenerateLocalFounderKey) {
@@ -972,6 +1010,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         if (path === '/api/decisions') {
           const before = decisions.summary();
           const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
+          snapshot.dispositionAuthorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
           const after = decisions.summary();
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return json(response, 200, snapshot);
@@ -1035,6 +1074,10 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        if (path === '/api/decisions/choose') {
+          const authorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
+          fail(authorization.code, authorization.message, 503);
+        }
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
             const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
             const before = decisions.summary();
@@ -1137,8 +1180,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
 /** Programmatic server creation always requires an explicit Founder bearer key. */
 export async function createGameServer(options = {}) {
-  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory } = options;
-  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory });
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath });
 }
 
 
