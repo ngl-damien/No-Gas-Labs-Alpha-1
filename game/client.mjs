@@ -13,6 +13,14 @@ import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
 
+function registerOfflineShell(){
+  const serviceWorker=globalThis.navigator?.serviceWorker;
+  const pageLocation=globalThis.location;
+  if(!serviceWorker||!pageLocation)return;
+  if(pageLocation.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(pageLocation.hostname))return;
+  serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
+}
+registerOfflineShell();
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
 async function openInstitution(locationId = null) {
   const contexts = {
