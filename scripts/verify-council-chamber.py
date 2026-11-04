@@ -266,7 +266,7 @@ def seed_council_review_fixture(page):
           response = {
             eventChainFindings: ['The proposal precedes the failed report and retained challenge in this slice.'],
             claims: ['The reporter recorded a failed attempt.'],
-            linkageIssues: [],
+            linkageIssues: ['The report has no independently retrieved source link.'],
             unknowns: ['No independent measurement is attached.'],
             nextChecks: ['Inspect the original source and any retained measurement.']
           };
@@ -292,7 +292,10 @@ def seed_council_review_fixture(page):
               sourceEventIds: [reportEvent.id],
               statement: 'The retained report records a self-reported failed attempt.'
             }],
-            contradictions: [],
+            contradictions: [{
+              sourceEventIds: [reportEvent.id, includedChallenges[0].id],
+              statement: 'The failed outcome is retained, while the methodology challenge disputes whether the procedure supports the stated inference.'
+            }],
             dissentPreserved: includedChallenges.map(event => event.id),
             unknowns: ['The report is not independently verified.'],
             nextDiscriminatingExperiment: {
