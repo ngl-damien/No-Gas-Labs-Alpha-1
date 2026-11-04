@@ -1473,7 +1473,9 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(unrelatedState.body.world.events.some(event => event.type === 'message-reported'), false);
   assert.equal(unrelatedState.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
   const authorState = await author.request('/api/state');
-  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), true);
+  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false, 'the message author is not the private report author');
+  const reporterAfterReport = await reporter.request('/api/state');
+  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true, 'the reporting actor can inspect their own report');
   const founderState = await founder.request('/api/state');
   assert.equal(founderState.body.world.events.some(event => event.type === 'message-reported'), true);
 
