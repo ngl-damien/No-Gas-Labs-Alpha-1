@@ -432,3 +432,75 @@ test('directory symlink replacement during durability sync is rejected before wr
     cleanup(value);
   }
 });
+
+
+function runWithDirectorySyncFailure(value, failAt) {
+  const markerPath = join(value.directory, 'directory-fsync-' + failAt + '.marker');
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalFsyncSync = fs.fsyncSync;",
+    "let directorySyncs = 0;",
+    "fs.fsyncSync = descriptor => {",
+    "  if (fs.fstatSync(descriptor).isDirectory()) {",
+    "    directorySyncs += 1;",
+    "    if (directorySyncs === Number(process.env.TEST_FAIL_DIRECTORY_SYNC)) {",
+    "      fs.writeFileSync(process.env.TEST_MARKER_PATH, String(directorySyncs), { mode: 0o600 });",
+    "      const error = new Error('injected EIO'); error.code = 'EIO'; throw error;",
+    "    }",
+    "  }",
+    "  return originalFsyncSync(descriptor);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
+    "await import(process.env.TEST_INIT_MODULE);",
+    "console.log(JSON.stringify({ directorySyncs }));"
+  ].join('\\n');
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_MARKER_PATH: markerPath,
+      TEST_FAIL_DIRECTORY_SYNC: String(failAt),
+      TEST_INIT_SCRIPT: scriptPath,
+      TEST_INIT_MODULE: new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url).href
+    }
+  });
+  return { child, markerPath };
+}
+
+test('owner-lock directory fsync uncertainty retains the lock before ledger creation', () => {
+  const value = fixture();
+  const failed = runWithDirectorySyncFailure(value, 1);
+  try {
+    assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
+    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN_LOCK_DIRECTORY/);
+    assert.equal(existsSync(failed.markerPath), true);
+    assert.equal(JSON.parse(failed.child.stdout.trim()).directorySyncs, 1);
+    assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
+    assert.equal(existsSync(value.ledgerPath), false);
+    const lockPath = join(value.directory, '.founder-nonce.lock');
+    assert.equal(existsSync(lockPath), true);
+    assert.equal(lstatSync(lockPath).mode & 0o777, 0o600);
+    assert.equal(JSON.parse(readFileSync(lockPath, 'utf8')).schema, 'ngl.ledger-lock.v1');
+  } finally { cleanup(value); }
+});
+
+test('ledger-entry directory fsync uncertainty retains the ledger and owner lock', () => {
+  const value = fixture();
+  const failed = runWithDirectorySyncFailure(value, 2);
+  try {
+    assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
+    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN_LEDGER_DIRECTORY/);
+    assert.equal(existsSync(failed.markerPath), true);
+    assert.equal(JSON.parse(failed.child.stdout.trim()).directorySyncs, 2);
+    assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
+    assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
+    const lockPath = join(value.directory, '.founder-nonce.lock');
+    assert.equal(existsSync(lockPath), true);
+    assert.equal(lstatSync(lockPath).mode & 0o777, 0o600);
+    assert.equal(JSON.parse(readFileSync(lockPath, 'utf8')).schema, 'ngl.ledger-lock.v1');
+  } finally { cleanup(value); }
+});
