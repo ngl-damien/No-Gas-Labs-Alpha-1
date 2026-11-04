@@ -1089,6 +1089,9 @@ def shared(browser,url,data,out):
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
+        pre_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(pre_guild_challenge).to_contain_text('RECORDED')
+        expect(pre_guild_challenge).to_contain_text('Challenge another actor’s experiment report')
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
         # Close the preceding challenge sheet before using the hidden accessible NPC control:
         # the control is deliberately disabled while any modal is open.
@@ -1452,6 +1455,14 @@ def shared(browser,url,data,out):
         assert guild_events[1]['actor']['id']==witness_id
         assert joined_state['world']['revision']==before_guild_revision+2
         assert joined_state['world']['xp']==before_guild_xp
+        challenged_report=next(event for event in joined_state['world']['events']
+            if event['type']=='experiment-reported' and event['reportId']==retained_challenges[0]['reportId'])
+        assert challenged_report['actor']['id']==witness_id
+        assert retained_challenges[0]['actor']['id']==founder_id
+        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(founder_guild_challenge).to_contain_text('RECORDED')
+        expect(founder_guild_challenge).to_contain_text('Challenge a guild member’s experiment report')
+        expect(founder_guild_challenge).to_contain_text(retained_challenges[0]['id'])
 
         guild_message_event=next(event for event in joined_state['world']['events']
             if event['type']=='message-posted' and event['text']==witness_text)
@@ -1487,6 +1498,11 @@ def shared(browser,url,data,out):
             for event in left_state['world']['events'])
         assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
             'a departed member’s work leaves the active roster projection but remains in the Chronicle'
+        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(founder_guild_challenge).to_contain_text('OPEN')
+        expect(founder_guild_challenge).to_contain_text('Another current guild member must retain a valid experiment report')
+        assert any(event['id']==retained_challenges[0]['id'] for event in left_state['world']['events']), \
+            'a challenge against departed work remains in the append-only history'
 
         leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(0)
