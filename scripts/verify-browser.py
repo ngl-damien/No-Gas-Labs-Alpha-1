@@ -1052,6 +1052,7 @@ def shared(browser,url,data,out):
         auto_before=visitor.request.get(url+'api/state').json()
         auto_revision=auto_before['world']['revision']
         auto_xp=auto_before['world']['xp']
+        auto_actor_id=auto_before['viewer']['id']
         drop['text']=auto_report_text
         drop['remaining']=2
         drop['attempts']=0
@@ -1090,6 +1091,7 @@ def shared(browser,url,data,out):
         assert auto_events[0].get('actionResult',{}).get('id'), auto_events
         assert auto_recovered['world']['revision']==auto_revision+1
         assert auto_recovered['world']['xp']==auto_xp
+        assert auto_recovered['viewer']['id']==auto_actor_id and auto_recovered['viewer']['role']=='witness', 'shared re-entry must preserve the original Witness identity'
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
@@ -1807,6 +1809,10 @@ def shared(browser,url,data,out):
                     f'The player could not reach Guild Hall within 30 seconds; current sheet title={title!r}'
                 ) from error
 
+        # Both actors must arrive before measuring guild-only revision changes;
+        # moving the Witness from the Observatory can itself record exploration.
+        open_guild_hall(a)
+        open_guild_hall(b)
         before_guild=owner.request.get(url+'api/state').json()
         witness_guild_before=visitor.request.get(url+'api/state').json()
         assert before_guild['viewer']['role']=='founder'
@@ -1816,8 +1822,9 @@ def shared(browser,url,data,out):
         assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
         founder_id=before_guild['viewer']['id']
         witness_id=witness_guild_before['viewer']['id']
+        assert before_guild['world']['revision']==witness_guild_before['world']['revision']
+        assert witness_id==auto_actor_id, 'the re-entered Witness identity must remain stable through the shared journey'
 
-        open_guild_hall(a)
         expect(a.locator('#player-guild-board')).to_be_visible()
         a.locator('#player-guild-name').fill('Field Researchers')
         a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
@@ -1831,7 +1838,6 @@ def shared(browser,url,data,out):
         assert created_state['world']['revision']==before_guild_revision+1
         assert created_state['world']['xp']==before_guild_xp
 
-        open_guild_hall(b)
         expect(b.locator('#player-guild-board')).to_be_visible()
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('Field Researchers')
@@ -1846,7 +1852,11 @@ def shared(browser,url,data,out):
         guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
         assert guild_events[1]['actor']['id']==witness_id
-        assert joined_state['world']['revision']==before_guild_revision+2
+        assert joined_state['world']['revision']==before_guild_revision+2, {
+            'before':before_guild_revision,
+            'actual':joined_state['world']['revision'],
+            'recentEvents':[(event['type'],event.get('actor',{}).get('id')) for event in joined_state['world']['events'][-8:]]
+        }
         assert joined_state['world']['xp']==before_guild_xp
         challenged_report=next(event for event in joined_state['world']['events']
             if event['type']=='experiment-reported' and event['reportId']==retained_challenges[0]['reportId'])
