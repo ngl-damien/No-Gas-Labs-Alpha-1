@@ -1280,7 +1280,180 @@ def shared(browser,url,data,out):
         coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
-        a.screenshot(path=str(out/'guild-npc-collaborator-relay.png'))
+        def talk_to_council_npc(page, role):
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            expect(control).to_be_enabled()
+            if control.get_attribute('data-guild-npc-action')!='talk':
+                control.evaluate("(button)=>button.click()")
+                page.wait_for_function(
+                    f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}'&&button.dataset.guildNpcAction==='talk')",
+                    timeout=60000
+                )
+                control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            return packet
+
+        def make_council_response(role, payload):
+            records=payload['inputRecords']
+            if role=='archivist':
+                return {
+                    'eventChainFindings':['The proposal precedes the linked experiment records in this supplied snapshot.'],
+                    'claims':['The retained report records a self-reported failed attempt.'],
+                    'linkageIssues':['The packet contains retained references, not independently retrieved source bytes.'],
+                    'unknowns':['External source retrieval and independent verification have not been performed.'],
+                    'nextChecks':['Retrieve the cited source independently and compare the exact bytes.']
+                }
+            if role=='synthesizer':
+                report=next((record for record in records if record.get('type')=='experiment-reported'),None)
+                challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
+                assert report and challenge, 'Synthesis packet must disclose the retained report and dissent it summarizes'
+                dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
+                return {
+                    'scope':{
+                        'moonshotId':payload['targetMoonshotId'],
+                        'includedEventIds':payload['inputRefs'],
+                        'omittedEventIds':payload['omittedEventIds']
+                    },
+                    'recordedSupport':[{
+                        'sourceEventIds':[report['eventId']],
+                        'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
+                    }],
+                    'contradictions':[{
+                        'sourceEventIds':[report['eventId'],challenge['eventId']],
+                        'statement':'The report records a failed attempt while the challenge identifies a missing control; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
+                    }],
+                    'dissentPreserved':dissent_ids,
+                    'unknowns':['No independent measurement or source retrieval is present in this packet.'],
+                    'nextDiscriminatingExperiment':{
+                        'procedure':'Repeat the procedure with the missing measurement control specified and preserve the raw observations.',
+                        'outcome':'Compare the controlled result with the original self-reported outcome.'
+                    }
+                }
+            if role=='tutor':
+                return {
+                    'concepts':['falsifiability','measurement control','observation versus inference'],
+                    'prerequisites':['distinguish a reported outcome from an independently observed result'],
+                    'explanation':'A falsifier states what observation would count against a hypothesis. A control helps separate the effect under study from other explanations. A retained report is a record of what an actor said happened, not proof that the result was independently observed.',
+                    'questions':['What result would count against the hypothesis?','Which measurement control is missing from the report?'],
+                    'answerKey':['A repeatable observation matching the stated falsifier.','A control condition that isolates the variable being tested.'],
+                    'whatRemainsUnproven':['Whether the hypothesis survives a controlled replication.','Whether the reported result can be independently reproduced.']
+                }
+            raise AssertionError('Unexpected Council role: '+role)
+
+        def archive_and_review_council_role(page, role, expected_headings, completed_roles, progress, next_role=None):
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            packet.locator('details.collaborator-packet summary').click()
+            handoff=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+            packet_json=handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1]
+            payload=json.loads(packet_json)
+            assert payload['role']==role
+            assert payload['authority']=='advisory-only'
+            assert payload['mayWriteCanonicalState'] is False
+            assert payload['mayGrantAuthority'] is False
+            assert payload['mayAwardProgress'] is False
+            response_text=json.dumps(make_council_response(role,payload),ensure_ascii=False)
+            packet.locator('details.collaborator-response summary').click()
+            response_field=packet.locator('textarea[aria-label$="response JSON"]')
+            response_field.fill(response_text)
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            expect(packet.locator(f'[data-collaborator-response-status="{role}"]')).to_contain_text('STRUCTURE VALID')
+            before=visitor.request.get(url+'api/state').json()
+            assert before['viewer']['role']=='witness'
+            before_revision=before['world']['revision']
+            before_xp=before['world']['xp']
+            packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+            expect(page.locator('#toast')).to_contain_text('Untrusted collaborator response preserved')
+            after=visitor.request.get(url+'api/state').json()
+            role_events=[event for event in after['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
+            assert len(role_events)==1, f'{role} must have exactly one retained response'
+            event=role_events[0]
+            assert event['actor']['id']==founder_id and event['actor']['role']=='founder'
+            assert event['sourceEventIds']==payload['inputRefs']
+            assert event['packetJson']==packet_json
+            assert event['responseText']==response_text
+            assert event['validationStatus']=='valid-for-human-review'
+            assert after['world']['revision']==before_revision+1
+            assert after['world']['xp']==before_xp, 'Archiving a Council response must not award XP'
+            page.locator('[data-enter-council-chamber]').click()
+            expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
+            expect(page.locator(f'[data-council-coverage-progress="{progress}"]')).to_have_count(1)
+            for role_id in ['archivist','adversary','synthesizer','tutor']:
+                expected_status='human-review' if role_id in completed_roles else 'awaiting'
+                expect(page.locator(f'[data-council-role="{role_id}"]')).to_have_attribute('data-council-status',expected_status)
+            slot=page.locator(f'[data-council-role="{role}"]')
+            expect(slot).to_have_attribute('data-council-event-id',event['id'])
+            expect(slot).to_have_attribute('data-council-response-id',event['responseId'])
+            review=slot.locator(f'details[data-council-review-summary="{role}"]')
+            expect(review).to_have_count(1)
+            assert not review.evaluate('(details)=>details.open'), f'{role} review notes must be collapsed by default'
+            review.locator('summary').click()
+            expect(review).to_contain_text('structural/scope revalidation for human review only')
+            expect(review).to_contain_text('not independent evidence')
+            expect(review).to_contain_text('Packet scope:')
+            for heading in expected_headings:
+                expect(review).to_contain_text(heading)
+            if role=='synthesizer':
+                for dissent_id in make_council_response(role,payload)['dissentPreserved']:
+                    expect(review).to_contain_text(dissent_id)
+            before_read=visitor.request.get(url+'api/state').json()
+            after_read=owner.request.get(url+'api/state').json()
+            assert before_read['world']['revision']==after['world']['revision']
+            assert before_read['world']['events']==after['world']['events']
+            assert before_read['world']['xp']==after['world']['xp']
+            assert after_read['world']['revision']==after['world']['revision']
+            assert after_read['world']['events']==after['world']['events']
+            assert after_read['world']['xp']==after['world']['xp']
+            if next_role:
+                expect(page.locator(f'[data-council-next-role="guild-npc-{next_role}"]')).to_have_count(1)
+            else:
+                expect(page.locator('[data-council-next-role]')).to_have_count(0)
+                expect(page.locator('[data-council-coverage-progress="4/4"]')).to_contain_text('4/4 role attempts retained')
+                expect(page.locator('#sheet')).to_contain_text('not consensus')
+                expect(page.locator('#sheet')).to_contain_text('or authority')
+            return event
+
+        def route_to_next_council_npc(page, role):
+            next_button=page.locator('[data-council-next-role]')
+            expect(next_button).to_have_count(1)
+            assert next_button.get_attribute('data-council-next-role')==f'guild-npc-{role}'
+            next_button.click()
+            page.wait_for_function(
+                f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}')",
+                timeout=60000
+            )
+            return talk_to_council_npc(page,role)
+
+        # The Adversary path above is only one of four bounded role renderers.
+        # Exercise the remaining NPCs through their real map controls and retained
+        # packet/response flow; each response stays untrusted and earns no XP.
+        archivist_packet=talk_to_council_npc(a,'archivist')
+        archive_and_review_council_role(
+            a,'archivist',
+            ['Event-chain findings','Claims · unverified','Linkage issues','Unknowns','Next checks'],
+            ['adversary','archivist'],'2/4','synthesizer'
+        )
+        route_to_next_council_npc(a,'synthesizer')
+        archive_and_review_council_role(
+            a,'synthesizer',
+            ['Recorded support · collaborator claims','Contradictions · dissent retained',
+             'Dissent event IDs preserved','Suggested next experiment · not run or approved'],
+            ['adversary','archivist','synthesizer'],'3/4','tutor'
+        )
+        route_to_next_council_npc(a,'tutor')
+        archive_and_review_council_role(
+            a,'tutor',
+            ['Concepts','Prerequisites','Explanation · general instruction, not mastery',
+             'Retrieval questions','Answer key · study aid, not mastery','What remains unproven'],
+            ['adversary','archivist','synthesizer','tutor'],'4/4'
+        )
+        a.screenshot(path=str(out/'guild-council-four-role-dossier.png'))
 
         def open_commons(page):
             close_sheet(page)
