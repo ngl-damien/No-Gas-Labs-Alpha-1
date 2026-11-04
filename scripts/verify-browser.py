@@ -284,6 +284,28 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
+        for role,name,location in [
+            ('archivist','Hostile Archivist','Evidence Archive'),
+            ('adversary','Adversary','Evidence Archive'),
+            ('synthesizer','Synthesis Clerk','Guild Hall'),
+            ('tutor','Polymath Tutor','Polymath Academy')
+        ]:
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(role)=>document.querySelector('#world')?.dataset.nearbyNpcRole===role",arg=role)
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
+            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(role_card).to_be_visible()
+            expect(role_card).to_be_focused()
+            after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+            assert after==before, f'Opening {name} must not create a canonical event, revision, or XP'
+            assert page.locator('#creation-count').text_content()=='0', f'{name} must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', f'{name} must not award XP'
+            close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
