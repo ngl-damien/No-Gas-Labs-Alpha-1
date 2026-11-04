@@ -327,7 +327,36 @@ const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(i
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;const result=await act({type:'discover',locationId:id});if(result.discovered)toast(`${guides[id].name} discovered · a new field note, no XP.`)}),onPosition:guarded(async p=>{if(mode==='shared')await request('/api/presence',{x:p.x,y:p.y});else if(mode==='private')writePrivatePlayerPosition(p)})});
 view.setWorld(world);
-function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Field satchel · retained Commons activity'}));content.append(paragraph('A bounded, read-only index of this character’s own retained TownSquare messages. Each item points back to the Commons. Conversation is not evidence, truth, approval, authority or XP. Human-hidden posts remain in the record with the public redaction.','form-help'));if(!record.fieldSatchel.length)content.append(paragraph('No retained Commons messages are recorded for this character yet.'));if(record.fieldSatchelOmittedCount>0)content.append(paragraph('Showing the newest '+record.fieldSatchel.length+' of '+record.fieldSatchelTotal+' retained Commons messages. Older messages remain in the Chronicle.','form-help'));for(const item of record.fieldSatchel){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.status,date,'event '+item.eventId,'message '+item.messageId].join(' · ');const children=[node('h3',{text:item.title}),paragraph(details)];if(item.summary)children.push(paragraph(item.summary));if(item.action)children.push(button('Return to TownSquare →',()=>followQuestAction(item.action),{class:'list-button','data-field-satchel-return':item.eventId}));content.append(node('article',{class:'field-card','data-field-satchel-item':item.eventId},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
+function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){
+  const cards=Array.isArray(record.studyCards)?record.studyCards:[];
+  const total=Number.isSafeInteger(record.studyCardTotal)?record.studyCardTotal:cards.length;
+  const panel=node('section',{class:'field-card','data-study-card-collection':heading.toLowerCase().replaceAll(' ','-')},[
+    node('h3',{text:heading+' · '+total}),
+    paragraph('Read-only collectibles projected from unique study attempts linked to retained published versions. A reflection is recorded practice, not mastery, truth, evidence, or XP; these cards do not transfer item ownership.','form-help')
+  ]);
+  if(record.studyCardOmittedCount>0)panel.append(paragraph('Showing the newest '+cards.length+' of '+total+' cards. Older cards remain in the Chronicle.','form-help'));
+  if(record.studyCardUnavailableCount>0)panel.append(paragraph(record.studyCardUnavailableCount+' study attempt(s) remain in the Chronicle but are not shown as cards because their source linkage is missing or ambiguous.','form-help'));
+  if(!cards.length)panel.append(paragraph(record.studyCardUnavailableCount>0
+    ? 'No study cards can be projected from the retained attempts yet. Inspect the Chronicle for the preserved records.'
+    : 'No linked study attempts have been recorded for this character yet.','empty-note'));
+  for(const card of cards.slice(0,maxItems)){
+    const row=node('article',{class:'note-entry','data-study-card':card.id},[
+      node('div',{class:'eyebrow',text:card.reviewStatus==='reflection-recorded'?'REFLECTION RECORDED':'ATTEMPT RECORDED'}),
+      node('h4',{text:card.title}),
+      paragraph('Question: '+card.question),
+      paragraph('Attempt: '+card.attempt),
+      paragraph('Next check: '+card.nextCheck),
+      paragraph(card.status,'form-help')
+    ]);
+    row.append(button('Return to exact source →',()=>openCreation(card.creationId,card.version),{
+      class:'list-button','data-study-card-open':card.id
+    }));
+    panel.append(row);
+  }
+  target.append(panel);
+}
+
+function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}appendStudyCardCollection(content,record);content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Field satchel · retained Commons activity'}));content.append(paragraph('A bounded, read-only index of this character’s own retained TownSquare messages. Each item points back to the Commons. Conversation is not evidence, truth, approval, authority or XP. Human-hidden posts remain in the record with the public redaction.','form-help'));if(!record.fieldSatchel.length)content.append(paragraph('No retained Commons messages are recorded for this character yet.'));if(record.fieldSatchelOmittedCount>0)content.append(paragraph('Showing the newest '+record.fieldSatchel.length+' of '+record.fieldSatchelTotal+' retained Commons messages. Older messages remain in the Chronicle.','form-help'));for(const item of record.fieldSatchel){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.status,date,'event '+item.eventId,'message '+item.messageId].join(' · ');const children=[node('h3',{text:item.title}),paragraph(details)];if(item.summary)children.push(paragraph(item.summary));if(item.action)children.push(button('Return to TownSquare →',()=>followQuestAction(item.action),{class:'list-button','data-field-satchel-return':item.eventId}));content.append(node('article',{class:'field-card','data-field-satchel-item':item.eventId},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
 function followResearchTarget(object,fallback,targetType){
   if(!object){fallback();return}
   closeSheet();
@@ -873,6 +902,7 @@ function renderPlayerGuildBoard(board, sourceWorld){
         }
       }
       card.append(panel);
+      appendStudyCardCollection(card,projectCharacter(sourceWorld,viewer),{heading:'YOUR STUDY CARDS',maxItems:8});
     }
     board.append(card);
   }
@@ -889,7 +919,7 @@ function renderPlayerGuildBoard(board, sourceWorld){
       }),{id:'player-guild-create',class:'primary-button'})
     ]));
   }
-  board.append(paragraph('No player trading, item transfer, blocking, or leadership transfer is implemented. Closed guilds remain in the event history.','form-help'));
+  board.append(paragraph('Study Cards are read-only projections of retained practice, not transferable items. Player trading, item transfer, equipment, blocking, and leadership transfer remain unimplemented. Closed guilds remain in the event history.','form-help'));
   if(activeId==='player-guild-name'||activeId==='player-guild-charter'){
     const next=board.querySelector(activeId==='player-guild-name'?'#player-guild-name':'#player-guild-charter');
     if(next){
