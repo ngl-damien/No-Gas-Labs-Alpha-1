@@ -15,7 +15,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
-import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS } from './social.mjs';
+import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -54,7 +54,11 @@ const actionFields = {
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
   'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
-  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId']
+  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId'],
+  'create-guild': ['type', 'name', 'charter', 'requestId'],
+  'join-guild': ['type', 'guildId', 'requestId'],
+  'leave-guild': ['type', 'guildId', 'requestId'],
+  'disband-guild': ['type', 'guildId', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -190,6 +194,17 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'create-guild':
+      preflightText(input.name, PLAYER_GUILD_NAME_LIMIT, 'Guild name', { required: true });
+      preflightText(input.charter, PLAYER_GUILD_CHARTER_LIMIT, 'Guild charter', { required: true });
+      break;
+    case 'join-guild':
+    case 'leave-guild':
+    case 'disband-guild':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
