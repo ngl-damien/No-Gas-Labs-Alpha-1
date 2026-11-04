@@ -37,6 +37,20 @@ function failure(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+const SAFE_ENROLLMENT_ERROR_DETAILS = Object.freeze({
+  FOUNDER_PRIVATE_KEY_DIRECTORY_SYNC_UNCERTAIN:
+    'Private-key file contents were synced, but the parent directory entry could not be synced; inspect the destination before retrying.'
+});
+
+export function formatEnrollmentError(error) {
+  const code = typeof error?.code === 'string' && /^[A-Z0-9_]{1,96}$/.test(error.code)
+    ? error.code
+    : null;
+  if (!code) return 'FOUNDER_ENROLLMENT_FAILED';
+  const detail = SAFE_ENROLLMENT_ERROR_DETAILS[code];
+  return detail ? `${code}: ${detail}` : code;
+}
+
 function isWithin(root, candidate) {
   const rel = relative(root, candidate);
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel));
@@ -266,7 +280,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
   try {
     main();
   } catch (error) {
-    console.error(error?.code || error?.message || 'FOUNDER_ENROLLMENT_FAILED');
+    console.error(formatEnrollmentError(error));
     process.exitCode = 1;
   }
 }
