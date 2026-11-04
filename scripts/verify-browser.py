@@ -1454,7 +1454,7 @@ def shared(browser,url,data,out):
         assert joined_state['world']['xp']==before_guild_xp
 
         guild_message_event=next(event for event in joined_state['world']['events']
-            if event['type']=='message-posted' and event['messageId']==commons_message_id)
+            if event['type']=='message-posted' and event['text']==witness_text)
         assert guild_message_event['actor']['id']==witness_id
         expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
         expect(member_card).to_contain_text(commons_text)
@@ -1483,7 +1483,7 @@ def shared(browser,url,data,out):
         assert guild_events[-1]['actor']['id']==witness_id
         assert left_state['world']['revision']==before_guild_revision+3
         assert left_state['world']['xp']==before_guild_xp
-        assert any(event['type']=='message-posted' and event['messageId']==commons_message_id
+        assert any(event['type']=='message-posted' and event['messageId']==guild_message_event['messageId']
             for event in left_state['world']['events'])
         assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
             'a departed member’s work leaves the active roster projection but remains in the Chronicle'
