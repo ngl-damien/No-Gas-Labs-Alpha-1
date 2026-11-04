@@ -1234,7 +1234,7 @@ def shared(browser,url,data,out):
         for missing_role in ['archivist','synthesizer','tutor']:
             expect(a.locator(f'[data-council-role="{missing_role}"]')).to_have_attribute('data-council-status','awaiting')
         expect(a.locator('#sheet')).to_contain_text('not consensus')
-        expect(a.locator('#sheet')).to_contain_text('not authority')
+        expect(a.locator('#sheet')).to_contain_text('or authority')
         expect(a.locator('#sheet')).to_contain_text('Consequential decisions remain in the human-gated Decision Chamber')
         a.screenshot(path=str(out/'guild-council-chamber.png'))
         adversary_slot.get_by_role('button',name='Inspect exact retained response →',exact=True).click()
