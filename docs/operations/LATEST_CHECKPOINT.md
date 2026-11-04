@@ -730,3 +730,54 @@ All three hosted workflows completed successfully on code/test head `e93d278d8cd
 - PR #357 remains draft/open/unmerged. Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`; G6 remains IN PROGRESS. No merge, release, deployment, credential change, Founder decision, authority grant, key enrollment or XP award occurred.
 - Next: after the active browser-script ownership in #343/#354 is reconciled, add a direct 320/390 px mobile journey that walks to Council Chamber, opens the dossier, and confirms that inspection changes neither revision nor XP. Then continue the four-role browser coverage; do not infer consensus from four retained attempts.
 
+
+
+## Run 64 — 2026-11-04 — Worker B — Mobile Council Chamber acceptance
+
+### Rehydration, coordination and execution boundary
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`; current main observed at `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`.
+- Re-read root `AGENTS.md` (SHA `a4beeee1c0ec46faab28502957c0e53850b2855d`) first, then the complete shared scheduler protocol (SHA `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). Also read the universal operating contract (SHA `49d66b1945b829c20beabf0d185d8c6a023e59d7`), bootstrap checkpoint (SHA `6d6b5492851ed68a18cfacf7219189108ce12ce1`), MMORPG completion contract (SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`), current checkpoint and ledger, hourly registry/steering and `DO_NOT_DELETE.md`. The only nested `AGENTS.md` in the recursive tree is under the archived TaskAgile donor; no nested instruction file applies to the files changed in this run.
+- Latest Worker A result inspected: PR #353 exact head `a5dded30355858e5f7d233c0357fdbd6194bec9d`; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 passed. Its live Decision Chamber integration and trust-anchor enrollment remain outstanding.
+- Current game parent re-observed: PR #357 exact head `81951c295fecc999129f3239a94936760873e5a7`; Verify 41907267354, Genesis 41907267539 and Browser 41907267914 passed. Its Browser suite did not directly exercise the Council Chamber landmark, which was the explicit next gap in Run 63.
+- No local checkout was mounted; local Node is 22 rather than the required Node 24, and both registered Desktop Commander devices were offline. Local preflight could not run. The hosted scoped preflight below is post-change evidence, not a pre-edit local receipt.
+
+### Donor review
+
+- Re-read the donor audit and assimilation manifest, then inspected the imported Mesh/Relay RAE bridge, evidence-authority experiment and proof-package prototype. The useful pattern is a strict separation: independently re-read/hash the source bytes; retain imported extraction as external evidence; require a separate operation-specific authority grant; preserve rejected attempts. The Java experiment binds grants to case/evidence/action/nonce/expiry and tests replay/revocation, but its filesystem replay/revocation markers are not rollback-resistant and the harness requires external APK/source/report inputs. The proof-package prototype has an evidence-gated commercial state sequence, but its JSON save path is not transactional/atomic. TaskAgile mobile/offline patterns remain references; client-held score/state is not canonical. No donor code was copied in this run because the selected gap was browser verification of an existing Alpha One world route.
+
+### Change delivered
+
+- Branch: `game/council-chamber-mobile-acceptance-20261104`.
+- Draft child PR #358: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/358
+- Parent: PR #357 branch `game/council-chamber-world-location-20261104`, exact base head `81951c295fecc999129f3239a94936760873e5a7`.
+- Code/test commit: `d53cfedb5e42ef513dcbf4edb44508144f6128f9`.
+- Added `scripts/verify-council-chamber.py`, a dedicated path-filtered `.github/workflows/council-chamber-mobile.yml`, and the new paths to `package.json`'s hosted preflight manifest plus `test/agent-governance.test.mjs`.
+- The Playwright journey runs a shared Witness session at 320px and 390px with touch enabled. It routes through the world to Council Chamber, then closes and reopens the room using the in-world Interact control. It checks the exact room marker, four role cards, the 0/4 retained-attempt state, read-only wording, and the explicit distinction between bounded role attempts and votes/endorsements.
+- Before and after the journey it reads the server-authoritative world and requires identical revision, XP, event IDs and retained creation versions. Both viewports observed revision 0, XP 0, zero events, zero creations, four pending roles and no page errors. This is a verification addition, not a runtime feature; no game source, event schema, XP rule, inventory, authority or Founder state changed.
+- The test uses the Places route followed by the in-world Interact control; it does not yet test a direct canvas tap on the pixel landmark itself.
+
+### Exact-head verification
+
+All four hosted workflows completed successfully on code/test head `d53cfedb5e42ef513dcbf4edb44508144f6128f9`:
+
+- Verify [41910080898](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080898): **PASS**. Node 24.22.1 `node --test --test-reporter=tap` exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise `passed: true`. Hosted preflight: `status: ready`, 63 target records, 70 file records, `warnings: []`, `failures: []`. Receipt artifact [13361873126](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080898/artifacts/13361873126), 4,786 bytes, SHA-256 `f160ba639b85aeff8d8063bc08e2c2e97de0cc488a5c123b993be1620ceb0953`.
+- Genesis Evidence Invariant [41910080859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080859): **PASS**.
+- Existing Browser Acceptance [41910080833](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080833): **PASS, 13/13 journeys**. It observed offline PWA/private recovery with 24 cached entries, desktop and phone, five institutional actions, the two-session shared-world NPC/Relay/Commons/Guild/Council flows, 320/360/412px toolbar targets, one-button layouts, standalone bytes and restart recovery. The Decision Gate remained `FOUNDER_NOT_ENROLLED`, with no disposition controls or world revision/XP change. Artifact [13362935655](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080833/artifacts/13362935655), 7,124,813 bytes, SHA-256 `84402423d9eedf0b822dab396684e3544ad975a1eebe969ed72ad7086765dfe8`.
+- Targeted Council Chamber mobile acceptance [41910080910](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080910): **PASS** at both 320px and 390px. Each journey opened the exact Council Chamber, observed four awaiting roles and 0/4 retained attempts, and confirmed no canonical revision, XP, event or creation change; page errors were empty. Screenshot/result artifact [13362660784](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41910080910/artifacts/13362660784), 147,149 bytes, SHA-256 `3277a97af1ca8ca74bea84a79d6b611e4710972799e55ffea5c31ee31d939692`.
+- The parent PR #357 exact head `81951c295fecc999129f3239a94936760873e5a7` separately passed Verify 41907267354, Genesis 41907267539 and Browser 41907267914.
+- Existing workflow dependencies emitted non-blocking Node 20 action deprecation and `punycode`/`url.parse()` warnings. No workflow step failed.
+
+### Mainline CI finding and integration boundary
+
+- Current main `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0` is not green: Verify [41829838351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41829838351) failed 1 of 775 tests. The failing test is `test/decision-chamber.test.js:10`; it calls `authorizationEvent()` without an enrolled test trust path, while `docs/authority/founder.pub.json` correctly remains `NOT_ENROLLED`. Genesis 41829838437, Browser 41829838376 and hourly enforcer 41871669451 passed.
+- This is already an active ownership area, not an unowned fix: PR #316 (stacked on #312) owns `src/authority/decision.js` and `test/decision-chamber.test.js`. Its exact head `206e617510f63098018513c77621be673dc92f2c` passed Verify 41638605411, Genesis 41638605427 and Browser 41638605570. It hardens the API to reject caller-selected trust path, clock, replay-set and verification inputs, and its test changes the old positive caller-selected TEST_ONLY authorization into fail-closed assertions.
+- The #350 → #357 game branch still carries the older test that passes `trustPath` and expects a TEST_ONLY key to authorize. That is incompatible with PR #316's current API and must be reconciled before the stack is integrated. PRs #312, #313 and #321 also touch the same test path. No duplicate edit was made, and no production key was generated or enrolled.
+- PR #358's passing Verify is branch-local; it does not make current main green or resolve the #316/#357 authority-test conflict.
+
+### Outcome, limits and next action
+
+- Observed: the existing walkable Council Chamber route and its read-only dossier work in hosted touch-browser journeys at 320px and 390px; inspection is state-neutral; the full parent Browser suite remains 13/13; preflight is ready with zero warnings/failures.
+- Not observed: direct canvas-tap selection of the landmark, physical Android installation/device acceptance, full MMORPG completion, source retrieval/independent verification, or mainline integration.
+- PR #358 and parent #357 remain draft/open/unmerged. Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`. G6 remains IN PROGRESS; G0–G4/G9 remain NOT ASSESSED; G5/G7/G8 remain IN PROGRESS. No merge, release, deployment, credential change, Founder decision, trust-anchor enrollment, authority grant or XP award occurred.
+- Next: reconcile the #316 authority API/test changes into the #350 → #357 game stack before promotion; add direct canvas-tap coverage and browser coverage for all four Council summary branches; continue with source retrieval/independent verification and actual inventory/equipment progression only after the relevant event and authority contracts are reconciled.
