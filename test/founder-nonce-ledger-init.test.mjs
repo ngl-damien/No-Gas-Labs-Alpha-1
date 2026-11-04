@@ -203,3 +203,85 @@ test('concurrent initializers produce one ledger and never overwrite it', async 
     assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
   } finally { cleanup(value); }
 });
+
+
+function runWithDirectorySwap(value, swapKind) {
+  const movedDirectory = value.directory + '-original';
+  const replacementDirectory = value.directory + '-replacement';
+  mkdirSync(replacementDirectory, { mode: 0o700 });
+  chmodSync(replacementDirectory, 0o700);
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fs.openSync;",
+    "let swapped = false;",
+    "fs.openSync = (target, ...args) => {",
+    "  if (!swapped && String(target) === process.env.TEST_DIRECTORY) {",
+    "    fs.renameSync(process.env.TEST_DIRECTORY, process.env.TEST_MOVED_DIRECTORY);",
+    "    if (process.env.TEST_SWAP_KIND === 'symlink') {",
+    "      fs.symlinkSync(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY, 'dir');",
+    "    } else {",
+    "      fs.renameSync(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY);",
+    "    }",
+    "    swapped = true;",
+    "  }",
+    "  return originalOpen(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
+    "await import(process.env.TEST_INIT_MODULE);",
+    "console.log(JSON.stringify({ swapped }));"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_DIRECTORY: value.directory,
+      TEST_MOVED_DIRECTORY: movedDirectory,
+      TEST_REPLACEMENT_DIRECTORY: replacementDirectory,
+      TEST_SWAP_KIND: swapKind,
+      TEST_INIT_SCRIPT: scriptPath,
+      TEST_INIT_MODULE: new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url).href
+    }
+  });
+  return { child, movedDirectory, replacementDirectory };
+}
+
+test('directory replacement during durability sync is rejected before writing the ledger', () => {
+  const value = fixture();
+  const swapped = runWithDirectorySwap(value, 'replacement');
+  try {
+    assert.equal(swapped.child.status, 1, swapped.child.stdout);
+    assert.match(swapped.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED/);
+    assert.match(swapped.child.stdout, /"swapped":true/);
+    assert.equal(existsSync(value.ledgerPath), false, 'the replacement directory must not receive a ledger');
+    assert.equal(existsSync(join(swapped.movedDirectory, '.founder-nonce.lock')), true,
+      'the original owner lock must remain with the original directory');
+    assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+  } finally {
+    rmSync(swapped.movedDirectory, { recursive: true, force: true });
+    rmSync(swapped.replacementDirectory, { recursive: true, force: true });
+    cleanup(value);
+  }
+});
+
+test('directory symlink replacement during durability sync is rejected before writing the ledger', () => {
+  const value = fixture();
+  const swapped = runWithDirectorySwap(value, 'symlink');
+  try {
+    assert.equal(swapped.child.status, 1, swapped.child.stdout);
+    assert.match(swapped.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED/);
+    assert.match(swapped.child.stdout, /"swapped":true/);
+    assert.equal(lstatSync(value.directory).isSymbolicLink(), true);
+    assert.equal(existsSync(join(swapped.replacementDirectory, 'founder-nonces.json')), false,
+      'the symlink target must not receive a ledger');
+    assert.equal(existsSync(join(swapped.movedDirectory, '.founder-nonce.lock')), true,
+      'the original owner lock must remain with the original directory');
+  } finally {
+    rmSync(swapped.movedDirectory, { recursive: true, force: true });
+    rmSync(swapped.replacementDirectory, { recursive: true, force: true });
+    cleanup(value);
+  }
+});
