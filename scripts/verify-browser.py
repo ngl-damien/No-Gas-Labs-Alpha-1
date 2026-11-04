@@ -1770,12 +1770,61 @@ def shared(browser,url,data,out):
         expect(a.locator('#player-guild-board')).to_be_visible()
         a.locator('#player-guild-name').fill('Field Researchers')
         a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        lost_guild_create={'remaining':True}
+        def lose_guild_create_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_guild_create['remaining'] and payload.get('type')=='create-guild':
+                committed=route.fetch()
+                assert committed.status==200, 'The service must commit guild creation before the simulated response loss'
+                lost_guild_create['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Guild creation response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_guild_create_response)
         a.locator('#player-guild-create').click()
-        expect(a.locator('[data-player-guild-id]')).to_have_count(1)
+        expect(a.locator('#toast')).to_contain_text('Response lost after commit')
+        assert lost_guild_create['remaining'] is False
+        pending_guild_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_guild_raw, 'A committed guild creation with a lost response must leave a local Relay receipt'
+        pending_guild=json.loads(pending_guild_raw)
+        assert pending_guild['actorId']==founder_id
+        assert pending_guild['actorRole']=='founder'
+        assert pending_guild['action']['type']=='create-guild'
+        committed_guild_state=visitor.request.get(url+'api/state').json()
+        committed_guild_events=[event for event in committed_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        assert len(committed_guild_events)==1 and committed_guild_events[0]['type']=='guild-created'
+        guild_id=committed_guild_events[0]['guildId']
+        assert committed_guild_events[0]['actor']['id']==founder_id
+        assert committed_guild_events[0]['requestId']==pending_guild['requestId']
+        assert committed_guild_state['world']['revision']==before_guild_revision+1
+        assert committed_guild_state['world']['xp']==before_guild_xp
+
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · CREATE-GUILD')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the guild creation receipt'
+        recovered_guild_state=visitor.request.get(url+'api/state').json()
+        recovered_guild_events=[event for event in recovered_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        assert len(recovered_guild_events)==1 and recovered_guild_events[0]['type']=='guild-created'
+        assert recovered_guild_events[0]['guildId']==guild_id
+        assert recovered_guild_events[0]['requestId']==pending_guild['requestId']
+        assert recovered_guild_state['world']['revision']==committed_guild_state['world']['revision']
+        assert recovered_guild_state['world']['xp']==before_guild_xp
+        a.unroute('**/api/action',lose_guild_create_response)
+        open_guild_hall(a)
+        expect(a.locator('#player-guild-board')).to_be_visible()
+        expect(a.locator(f'[data-player-guild-id="{guild_id}"]')).to_have_count(1)
         created_state=visitor.request.get(url+'api/state').json()
         guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
         assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
-        guild_id=guild_events[0]['guildId']
         assert guild_events[0]['actor']['id']==founder_id
         assert created_state['world']['revision']==before_guild_revision+1
         assert created_state['world']['xp']==before_guild_xp
