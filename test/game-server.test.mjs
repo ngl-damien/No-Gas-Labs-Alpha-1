@@ -1396,7 +1396,12 @@ test('offline shell precaches and serves the complete current pixel-world import
   assert.equal(worker.response.status, 200);
   const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
   assert.ok(core, 'service worker must declare an explicit shell cache');
-  const cached = new Set([...core[1].matchAll(/'\/([^']+\.mjs)'/g)].map(match => match[1]));
+  const corePaths = [...core[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  const cached = new Set(corePaths.filter(path => path.endsWith('.mjs')).map(path => path.slice(1)));
+  for (const path of corePaths) {
+    const response = await client.request(path);
+    assert.equal(response.response.status, 200, path + ' must be served for atomic shell installation');
+  }
   const visited = new Set();
 
   async function visit(name) {
