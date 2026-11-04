@@ -817,6 +817,53 @@ test("concurrent processes serialize durable Founder nonce-ledger writes without
   }
 });
 
+test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking it during release", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-writer-lock-rewrite-" + randomUUID());
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+  const replacementOpenedAt = "2001-01-01T00:00:00.000Z";
+  const originalLstat = fs.lstatSync;
+  let rewritten = false;
+
+  fs.lstatSync = (candidate, ...args) => {
+    const observed = originalLstat(candidate, ...args);
+    if (!rewritten && candidate === lockPath) {
+      rewritten = true;
+      writeFileSync(lockPath, canonical({
+        schema: "ngl.ledger-lock.v1",
+        pid: process.pid,
+        openedAt: replacementOpenedAt,
+      }), { mode: 0o600 });
+    }
+    return observed;
+  };
+  syncBuiltinESMExports();
+
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_DURABILITY_UNCERTAIN/
+      );
+    });
+    assert.equal(rewritten, true, "the rewrite must occur after release has observed the owner-lock pathname");
+    const retained = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(retained.pid, process.pid);
+    assert.equal(retained.openedAt, replacementOpenedAt);
+    const ledger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.deepEqual(ledger.nonces, [signed.nonce], "the nonce remains committed even though lock release is uncertain");
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), [".founder-nonce.lock", "founder-nonces.json"]);
+  } finally {
+    fs.lstatSync = originalLstat;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("read-only writer-lock inspector recognizes a stale Founder nonce lock without authorizing deletion", async t => {
   const dir = path.join(tmpdir(), "ngl-auth-lock-inspector-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
