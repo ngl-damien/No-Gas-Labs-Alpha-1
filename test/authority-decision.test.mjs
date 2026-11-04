@@ -1383,23 +1383,33 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
     const fixture = createAuthorizationFixture(dir);
     const signed = fixture.sign();
     const movedDirectory = path.join(dir, "data-original");
+    const replacementStaging = path.join(dir, "data-replacement-staging");
     const replacementDirectory = path.join(dir, "data-replacement");
+    mkdirSync(replacementStaging, { mode: 0o700 });
+    fs.chmodSync(replacementStaging, 0o700);
+    const originalOpenSync = fs.openSync;
     const originalRenameSync = fs.renameSync;
+    const linkedNames = new Set();
     let swapped = false;
     let firstEvent = null;
     let firstError = null;
     let replayEvent = null;
 
+    fs.openSync = (target, ...args) => {
+      const descriptor = originalOpenSync(target, ...args);
+      const name = path.basename(String(target));
+      if ((name === ".founder-nonce.lock" || /^\\.founder-nonce-[0-9a-f-]{36}\\.tmp$/.test(name)) &&
+          !linkedNames.has(name)) {
+        fs.linkSync(target, path.join(replacementStaging, name));
+        linkedNames.add(name);
+      }
+      return descriptor;
+    };
     fs.renameSync = (from, to) => {
       if (!swapped && path.basename(to) === "founder-nonces.json") {
         swapped = true;
         originalRenameSync(fixture.dataDirectory, movedDirectory);
-        mkdirSync(fixture.dataDirectory, { mode: 0o700 });
-        fs.chmodSync(fixture.dataDirectory, 0o700);
-        fs.linkSync(path.join(movedDirectory, ".founder-nonce.lock"),
-          path.join(fixture.dataDirectory, ".founder-nonce.lock"));
-        fs.linkSync(path.join(movedDirectory, path.basename(from)),
-          path.join(fixture.dataDirectory, path.basename(from)));
+        originalRenameSync(replacementStaging, fixture.dataDirectory);
       }
       return originalRenameSync(from, to);
     };
@@ -1417,6 +1427,7 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
         }
       });
     } finally {
+      fs.openSync = originalOpenSync;
       fs.renameSync = originalRenameSync;
       syncBuiltinESMExports();
       if (swapped) {
@@ -1432,8 +1443,11 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
     assert.equal(swapped, true, "the directory replacement must occur at the ledger commit boundary");
     if (firstEvent) {
       assert.equal(firstEvent.type, "QUEST_AUTHORIZED");
-      assert.equal(existsSync(path.join(replacementDirectory, "founder-nonces.json")), true,
-        "the vulnerable writer commits replay history into the replacement directory");
+      assert.deepEqual(
+        JSON.parse(readFileSync(path.join(replacementDirectory, "founder-nonces.json"), "utf8")).nonces,
+        [signed.nonce],
+        "the vulnerable writer commits replay history into the replacement directory"
+      );
       assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
         "the original configured directory retains its pre-commit replay history");
       const originalLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
@@ -1446,10 +1460,11 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
       }, () => authorizationEvent({ signed, payload: fixture.payload }));
     }
 
+    assert.equal(replayEvent, null,
+      "the same signed nonce must not be authorized again after the configured directory is replaced");
     assert.equal(firstEvent, null, "directory replacement must not produce an authorization event");
     assert.ok(firstError, "directory replacement must fail closed");
     assert.match(firstError.message, /FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED/);
-    assert.equal(replayEvent, null, "the same signed nonce must never be authorized against the old ledger");
     assert.equal(existsSync(path.join(replacementDirectory, "founder-nonces.json")), false,
       "the replacement directory must never receive the canonical nonce ledger");
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), true,
