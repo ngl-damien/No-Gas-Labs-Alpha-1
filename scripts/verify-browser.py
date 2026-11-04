@@ -1269,6 +1269,13 @@ def shared(browser,url,data,out):
         assert replayed_commons['world']['events'][-1]['requestId']==pending_commons['requestId']
 
         open_commons(b)
+        witness_quest=b.locator('[data-objective-id="witness-commons-message"]')
+        expect(witness_quest).to_contain_text('OPEN')
+        witness_text='A Witness can add conversation without acquiring Founder authority.'
+        b.locator('#commons-message').fill(witness_text)
+        b.locator('[data-commons-post="true"]').click()
+        expect(b.locator('#toast')).to_contain_text('Message retained')
+        expect(witness_quest).to_contain_text('RECORDED')
         witness_card=b.locator(f'[data-commons-message-id="{commons_message_id}"]')
         expect(witness_card).to_contain_text(commons_text)
         witness_card.locator('details summary').click()
@@ -1276,7 +1283,6 @@ def shared(browser,url,data,out):
         b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
         b.locator(f'[data-commons-report="{commons_message_id}"]').click()
         expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
-        assert 'is-recorded' in b.locator('[data-objective-id="witness-commons-message"]').get_attribute('class')
         report_state=owner.request.get(url+'api/state').json()
         assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
 
@@ -1288,19 +1294,19 @@ def shared(browser,url,data,out):
         founder_card.locator(f'[data-commons-hide="{commons_message_id}"]').click()
         expect(a.locator('#toast')).to_contain_text('Message hidden')
         hidden_for_witness=visitor.request.get(url+'api/state').json()
-        hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted')
+        hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
         assert hidden_post['text']=='[Message hidden by human moderation.]'
         assert hidden_for_witness['world']['xp']==before_commons_xp
         founder_hidden=owner.request.get(url+'api/state').json()
-        assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted')['text']==commons_text
+        assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in founder_hidden['world']['events'] if event['type']=='message-moderated'])==1
         founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
         founder_card.locator(f'[data-commons-restore="{commons_message_id}"]').click()
         expect(a.locator('#toast')).to_contain_text('Message restored')
         restored_for_witness=visitor.request.get(url+'api/state').json()
-        assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted')['text']==commons_text
+        assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
-        assert restored_for_witness['world']['revision']==before_commons_revision+4
+        assert restored_for_witness['world']['revision']==before_commons_revision+5
         assert restored_for_witness['world']['xp']==before_commons_xp
         expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
         expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
