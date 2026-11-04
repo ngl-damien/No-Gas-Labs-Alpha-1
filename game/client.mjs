@@ -257,9 +257,9 @@ function openQuestBoard() {
   const milestones = getQuestTrail(world, viewer);
   const recorded = milestones.filter(item => item.complete).length;
   const blocked = milestones.filter(item => !item.complete && item.blockedReason).length;
-  const open = milestones.length - recorded;
+  const unresolved = milestones.length - recorded;
   content.append(
-    paragraph(`${viewer.role === 'founder' ? 'Founder' : 'Witness'} objectives are scoped to this character. ${recorded} recorded · ${open} open · ${blocked} blocked.`, 'status-line'),
+    paragraph(`${viewer.role === 'founder' ? 'Founder' : 'Witness'} objectives are scoped to this character. ${recorded} recorded · ${unresolved} unresolved (${blocked} blocked).`, 'status-line'),
     paragraph('RECORDED means the current objective rule found matching retained events. It does not certify truth, mastery, independent execution, approval, or authority. Opening this board is read-only; use each objective action to visit the institution where the work belongs.', 'form-help')
   );
   const list = node('ol', {
