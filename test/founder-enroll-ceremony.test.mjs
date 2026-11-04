@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildEnrollmentCandidate,
+  formatEnrollmentError,
   main,
   validatePrivateKeyDestination,
   writePrivateKeyFile
@@ -241,4 +242,21 @@ test('copied enrollment candidate is rejected and default authorization remains 
     () => authorizationEvent({ signed: {}, payload: {} }),
     /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
   );
+});
+
+
+test('directory-sync uncertainty prints a safe remediation detail without leaking filesystem errors', () => {
+  const code = 'FOUNDER_PRIVATE_KEY_DIRECTORY_SYNC_UNCERTAIN';
+  const error = Object.assign(new Error('/private/founder.jwk: EIO'), { code });
+  const formatted = formatEnrollmentError(error);
+
+  assert.equal(
+    formatted,
+    `${code}: Private-key file contents were synced, but the parent directory entry could not be synced; inspect the destination before retrying.`
+  );
+  assert.doesNotMatch(formatted, /private\\/founder\\.jwk|EIO/);
+
+  const systemError = Object.assign(new Error('open /private/founder.jwk failed'), { code: 'EIO' });
+  assert.equal(formatEnrollmentError(systemError), 'EIO');
+  assert.equal(formatEnrollmentError(new Error('open /private/founder.jwk failed')), 'FOUNDER_ENROLLMENT_FAILED');
 });
