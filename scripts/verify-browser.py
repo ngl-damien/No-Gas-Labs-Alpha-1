@@ -1003,13 +1003,14 @@ def shared(browser,url,data,out):
         assert a.locator('#creation-notes script').count()==0
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         report_text='Preserve this report against version one.'
-        drop={'remaining':True}
+        drop={'remaining':1,'text':report_text,'attempts':0}
         def lose_report_response(route):
             try: payload=route.request.post_data_json
             except Exception: payload={}
-            if drop['remaining'] and payload.get('type')=='report' and payload.get('text')==report_text:
+            if drop['remaining']>0 and payload.get('type')=='report' and payload.get('text')==drop['text']:
                 route.fetch()  # The service commits; simulate the response disappearing in transit.
-                drop['remaining']=False
+                drop['remaining']-=1
+                drop['attempts']+=1
                 route.abort()
                 return
             route.continue_()
@@ -1027,6 +1028,11 @@ def shared(browser,url,data,out):
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('does not match the original actor')
         expect(b.locator('#relay-retry-pending-shared-action')).to_have_count(0)
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(250)
+        still_tampered=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(still_tampered)['actorId']=='not-the-original-actor', 'reconnect must not replay a receipt under another actor'
+        assert drop['attempts']==1, 'a mismatched actor receipt must not reach the server on reconnect'
         close_sheet(b)
         b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
         b.locator('#places-button').click()
@@ -1039,6 +1045,51 @@ def shared(browser,url,data,out):
         recovered=visitor.request.get(url+'api/state').json()
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
+
+        # Drop two replies after the server commits. The browser's online event and
+        # re-entry must replay the same receipt, not append another report.
+        auto_report_text='Reconnect must replay this exact report once.'
+        auto_before=visitor.request.get(url+'api/state').json()
+        auto_revision=auto_before['world']['revision']
+        auto_xp=auto_before['world']['xp']
+        drop['text']=auto_report_text
+        drop['remaining']=2
+        drop['attempts']=0
+        visit(b,'The shared observatory')
+        b.get_by_text('Report a problem or unsupported claim',exact=True).click()
+        b.locator('#report-text').fill(auto_report_text)
+        b.locator('#report-button').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        auto_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert auto_receipt, 'A second lost response must leave its exact retry receipt'
+        auto_request_id=json.loads(auto_receipt)['requestId']
+        first_commit=visitor.request.get(url+'api/state').json()
+        assert sum(report['text']==auto_report_text for report in first_commit['world']['reports'])==1
+        assert first_commit['world']['revision']==auto_revision+1
+        assert first_commit['world']['xp']==auto_xp
+
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(500)
+        assert drop['attempts']==2 and drop['remaining']==0, 'the online event must retry the same pending request'
+        second_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(second_receipt)['requestId']==auto_request_id, 'reconnect must preserve the original request ID'
+        after_online=visitor.request.get(url+'api/state').json()
+        assert sum(report['text']==auto_report_text for report in after_online['world']['reports'])==1
+        assert after_online['world']['revision']==auto_revision+1, 'idempotent reconnect replay must not append a second event'
+        assert after_online['world']['xp']==auto_xp
+
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.wait_for_function("()=>!localStorage.getItem('ngl.common-ground.pending-shared-action.v1')",timeout=15000)
+        expect(b.locator('#toast')).to_contain_text('recovered the exact pending action')
+        auto_recovered=visitor.request.get(url+'api/state').json()
+        assert sum(report['text']==auto_report_text for report in auto_recovered['world']['reports'])==1
+        auto_events=[event for event in auto_recovered['world']['events'] if event.get('requestId')==auto_request_id]
+        assert len(auto_events)==1 and auto_events[0]['type']=='report', auto_events
+        assert auto_events[0].get('actionResult',{}).get('id'), auto_events
+        assert auto_recovered['world']['revision']==auto_revision+1
+        assert auto_recovered['world']['xp']==auto_xp
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
@@ -1877,7 +1928,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP'}
     finally:owner.close();visitor.close()
 
 
@@ -2015,11 +2066,12 @@ def main():
                     stop_server(process);process,url=launch_server(data)
                     fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
                     assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==2
+                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
                     assert all(report['version']==1 for report in restored['world']['reports'])
+                    assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
                     structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
                     assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2})
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))
