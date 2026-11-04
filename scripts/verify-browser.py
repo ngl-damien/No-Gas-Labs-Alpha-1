@@ -1260,9 +1260,9 @@ def offline_pwa(browser,url,out):
         page.goto(url,wait_until='networkidle')
         expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
         try:
-            page.wait_for_function("async()=>{const registration=await navigator.serviceWorker.getRegistration();return registration?.active?.state==='activated';}",timeout=15000)
+            page.wait_for_function("async()=>{const registration=await navigator.serviceWorker?.getRegistration?.();return registration?.active?.state==='activated';}",timeout=15000)
         except Exception as error:
-            state=page.evaluate("async()=>{const registration=await navigator.serviceWorker.getRegistration();return {supported:!!navigator.serviceWorker,scope:registration?.scope,installing:registration?.installing?.state,waiting:registration?.waiting?.state,active:registration?.active?.state};}")
+            state=page.evaluate("async()=>{const serviceWorker=navigator.serviceWorker;const registration=await serviceWorker?.getRegistration?.();return {supported:!!serviceWorker,scope:registration?.scope,installing:registration?.installing?.state,waiting:registration?.waiting?.state,active:registration?.active?.state};}")
             raise AssertionError(f'Offline shell service worker did not activate: {state}') from error
         page.reload(wait_until='networkidle')
         page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)",timeout=10000)
