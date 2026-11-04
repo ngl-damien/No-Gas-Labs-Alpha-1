@@ -22,7 +22,7 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;let commonsDraftText='';
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -66,12 +66,29 @@ async function openInstitution(locationId = null) {
 }
 
 function openCommons(){
+  commonsDraftText='';
   const content=showSheet('The Commons at TownSquare','PUBLIC CONVERSATION · HUMAN MODERATION');
   activeNoteRenderer=()=>renderCommonsContent(content);
-  renderCommonsContent(content);
+  renderCommonsContent(content,{preserveInputs:false});
 }
-function renderCommonsContent(content){
+function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=null}={}){
   if(content!==$('sheet-content')||$('sheet').hidden)return;
+  const preservedValues=new Map();
+  let focusedId=null,selectionStart=null,selectionEnd=null;
+  if(preserveInputs){
+    for(const field of content.querySelectorAll('input,textarea,select')){
+      if(field.id)preservedValues.set(field.id,field.value);
+    }
+    if(document.activeElement&&content.contains(document.activeElement)){
+      focusedId=document.activeElement.id||null;
+      if(typeof document.activeElement.selectionStart==='number'){
+        selectionStart=document.activeElement.selectionStart;
+        selectionEnd=document.activeElement.selectionEnd;
+      }
+    }
+    const priorComposer=content.querySelector('#commons-message');
+    if(priorComposer)commonsDraftText=priorComposer.value;
+  }
   const feed=projectTownSquare(world,viewer);
   content.replaceChildren();
   content.dataset.commonsPanel='true';
@@ -83,13 +100,15 @@ function renderCommonsContent(content){
     button('Institution records →',()=>openInstitution('town-square'),{class:'secondary-button','data-commons-institution-records':'true'})
   );
   const form=node('form',{id:'commons-compose','aria-label':'Post a Commons message'});
-  const textarea=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A question, useful invitation, absurdity, or field observation.'});
-  const count=node('small',{id:'commons-message-count','aria-live':'polite',text:'0 / '+COMMONS_MESSAGE_LIMIT});
-  textarea.addEventListener('input',()=>{count.textContent=Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
+  const textarea=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A question, useful invitation, absurdity, or field observation.',value:preserveInputs?(preservedValues.get('commons-message')??commonsDraftText):commonsDraftText});
+  const count=node('small',{id:'commons-message-count','aria-live':'polite',text:Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT});
+  textarea.addEventListener('input',()=>{commonsDraftText=textarea.value;count.textContent=Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
   const post=button('Post to The Commons',guarded(async()=>{
     const text=textarea.value.trim();
     if(!text)throw new Error('Write a message before posting.');
     await act({type:'post-message',text});
+    commonsDraftText='';
+    renderCommonsContent(content,{preserveInputs:false});
     toast('Message retained. Conversation only; no XP or authority.');
   }),{class:'primary-button','data-commons-post':'true'});
   form.addEventListener('submit',event=>{event.preventDefault();post.click();});
@@ -112,19 +131,25 @@ function renderCommonsContent(content){
     if(message.canReport){
       const report=node('details',{class:'commons-report'});
       report.append(node('summary',{text:'Report this message privately'}));
-      const reason=node('select',{id:'commons-report-reason-'+message.messageId,'aria-label':'Private report reason'});
+      const reasonId='commons-report-reason-'+message.messageId;
+      const detailsId='commons-report-details-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Private report reason'});
       for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
-      const details=node('textarea',{id:'commons-report-details-'+message.messageId,rows:'2',maxlength:'500',placeholder:'Why should a human review this message?'});
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
+      const details=node('textarea',{id:detailsId,rows:'2',maxlength:'500',placeholder:'Why should a human review this message?',value:preserveInputs&&clearReportMessageId!==message.messageId?(preservedValues.get(detailsId)||''):''});
       report.append(reason,details,button('Submit private report',guarded(async()=>{
         await act({type:'report-message',messageId:message.messageId,reason:reason.value,details:details.value.trim()});
+        renderCommonsContent(content,{preserveInputs:true,clearReportMessageId:message.messageId});
         toast('Private report retained for human review.');
       }),{class:'secondary-button','data-commons-report':message.messageId}));
       card.append(report);
     }
     if(viewer.role==='founder'&&message.pendingReportCount>0){
       const review=node('div',{class:'button-row'});
-      const reason=node('select',{id:'commons-moderation-reason-'+message.messageId,'aria-label':'Human moderation reason'});
+      const reasonId='commons-moderation-reason-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Human moderation reason'});
       for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
       review.append(reason,button('Hide after human review',guarded(async()=>{
         await act({type:'moderate-message',messageId:message.messageId,disposition:'hide',reason:reason.value});
         toast('Message hidden; original history retained.');
@@ -132,8 +157,10 @@ function renderCommonsContent(content){
       card.append(review);
     }
     if(viewer.role==='founder'&&message.hidden){
-      const reason=node('select',{id:'commons-restore-reason-'+message.messageId,'aria-label':'Human restoration reason'});
+      const reasonId='commons-restore-reason-'+message.messageId;
+      const reason=node('select',{id:reasonId,'aria-label':'Human restoration reason'});
       for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
       card.append(node('div',{class:'button-row'},[
         reason,
         button('Restore retained message',guarded(async()=>{
@@ -155,6 +182,16 @@ function renderCommonsContent(content){
     }
     if(feed.omittedPendingReportCount)panel.append(paragraph(feed.omittedPendingReportCount+' older pending reports are omitted from this view.','form-help'));
     content.append(panel);
+  }
+  if(focusedId){
+    const focused=Array.from(content.querySelectorAll('[id]')).find(field=>field.id===focusedId);
+    if(focused){
+      focused.focus({preventScroll:true});
+      if(selectionStart!==null&&typeof focused.setSelectionRange==='function'){
+        const end=selectionEnd??selectionStart;
+        focused.setSelectionRange(Math.min(selectionStart,focused.value.length),Math.min(end,focused.value.length));
+      }
+    }
   }
 }
 function openInstitutionLocation(id) {
