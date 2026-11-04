@@ -676,3 +676,37 @@ Both registered Desktop Commander devices remained offline, and the container co
 - Current main is 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0; its only new commit reverts the accidental founder-nonce-ledger initializer test-file addition. Main G0–G9 remain NOT ASSESSED. PR #350 is draft/unmerged, 270 ahead / 4 behind main; no mainline completion is claimed.
 - Authority handoff: the live Decision Chamber route remains session-based; founder.pub.json is NOT_ENROLLED and the signed verifier is not wired into game/server.mjs or src/institution/decisions.mjs. Handoff comment posted on PR #348. No key or decision was created.
 - Both registered desktop devices were offline; verification was hosted, not local. No merge, release, deployment, physical Android acceptance, Founder decision, authority grant, or XP award occurred.
+
+## Run 63 — 2026-11-04 — Worker B — Decision Chamber fail-closed authorization
+
+### Repository and instruction rehydration
+- PR #350 branch: `game/player-guilds-guildhall-20261104`, based on PR #349 branch `game/commons-town-square-social-20261104` at `4e9b599f7e9c6a7e8dda2210cee824cfaefa7281`.
+- Code/test head: `d8cbb827e2f43395464e751becf58a67ec16268d`. Documentation checkpoint/ledger commit follows this code/test head.
+- Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`; PR #350 is open/draft/mergeable, 289 commits ahead and 4 behind main. The branch remains proposed and unmerged.
+- Re-read root `AGENTS.md` and the complete canonical scheduler protocol separately on main and the target branch. Read the branch's latest durable checkpoint, completion contract and ledger, plus Worker A's latest authority PRs #348/#351/#352/#353 and the live-route handoff.
+- `game/AGENTS.md`, `test/AGENTS.md`, and `docs/operations/AGENTS.md` are absent (404) on the target branch. Both registered Desktop Commander devices were offline and the model container had no repository checkout, so local portable preflight could not run. The hosted Verify job ran the portable preflight successfully.
+
+### Change
+- `game/server.mjs` now reads the Founder trust-anchor state through the existing `loadTrustAnchor` helper and exposes a read-only `dispositionAuthorization` status in `GET /api/decisions`. It distinguishes absent, not-enrolled, malformed/unavailable, TEST_ONLY, and enrolled-but-not-integrated states without exposing key material.
+- The live `POST /api/decisions/choose` route now fails closed with HTTP 503 before calling the decision store. APPROVE, REJECT and DEFER cannot mutate the durable decision ledger until signed per-decision verification is wired into this route. An enrolled trust anchor alone does not open the route.
+- `createGameServer` accepts a host-only `founderTrustAnchorPath` option for deterministic tests; production defaults to the repository trust anchor.
+- `game/institution-view.mjs` hides disposition controls unless the server explicitly reports signed authorization available. The Founder Gate now states that an authenticated session is not signed institutional authority and displays the server's blocking reason.
+- Tests in `test/game-decisions.test.mjs`, `test/institution-view.test.mjs`, and `test/game-server.test.mjs` cover NOT_ENROLLED, TEST_ONLY, malformed trust anchors, missing UI readiness, hidden controls, unchanged decision revision/status, and rejection before persistence. The injected directory-sync fault remains untouched by a blocked disposition.
+
+### Verification and preserved failure
+- First Verify attempt on intermediate head `bc145c0a1effe2505bee9cbfb87cd6d5ea740296`: run #41866676801 failed two existing HTTP tests that still expected session-only decisions to be accepted. The failure was preserved. Those tests were updated to assert the new fail-closed behavior and unchanged pending state.
+- Exact code/test head `d8cbb827e2f43395464e751becf58a67ec16268d`: Verify run #41867148084 `world-projection` check completed **success**. Node 24 full test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0.
+- Hosted portable preflight: `ready`, zero warnings and zero failures. Receipt artifact #13342677224, 4,387 bytes, SHA-256 `6d541ec6f9986df9122fbb7115371c76f5602f1c0ad962e55641265d1a335b2e`.
+- At checkpoint time, Genesis run #41867148536 and Browser Acceptance run #41867148548 were still queued; no pass is claimed for either on this exact head. The prior all-role Council browser journey passed 13/13 on head `ccf6d9dcbe26f28a0c6e7b9c6b9a05bdc0a8e8ff` (Browser #41859994506); the exact-head rerun remains pending.
+- The local preflight limitation is not presented as a local pass; the observed preflight is the hosted CI run above.
+
+### Authority and gameplay boundaries
+- Current main remains session-based and `docs/authority/founder.pub.json` remains `NOT_ENROLLED`. The proposed PR #350 route is now fail-closed, but the signed verifier is not yet integrated and no consequential disposition can be made through the live game.
+- No Founder key was generated, enrolled, replaced or exported. No decision, authority grant, XP, world event, merge, release or deployment was created.
+- Proposals, private evaluation bytes for the Founder, public aggregate counts and retained history remain inspectable. A blocked choice does not create a decision event or alter revision/status.
+- G8 remains IN PROGRESS. G6 remains IN PROGRESS: Council role review is browser-covered on the prior exact head, but source retrieval and independent verification remain NOT_PERFORMED. G7 remains IN PROGRESS; no physical Android-device acceptance is established.
+
+### Next action
+- Keep the live Decision Chamber dispositions disabled until the server validates a signed per-decision payload and durable nonce receipt. Do not generate or enroll a Founder key. Once Damien explicitly completes the enrollment ceremony on a device he controls, integrate the verifier and test accepted-once, replay, malformed nonce, durability uncertainty and restart recovery end to end.
+- Continue the MMORPG stack without conflating role coverage with endorsement, or retained bytes with source truth, execution or independent observation.
+
