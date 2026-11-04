@@ -55,6 +55,43 @@ function run(ledgerPath, args = []) {
   });
 }
 
+
+function runWithLedgerSyncFailure(value) {
+  const markerPath = join(value.directory, 'ledger-fsync-failed.marker');
+  const childSource = [
+    "import fs from 'node:fs';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalFsyncSync = fs.fsyncSync;",
+    "let fileSyncs = 0;",
+    "fs.fsyncSync = descriptor => {",
+    "  if (fs.fstatSync(descriptor).isFile()) {",
+    "    fileSyncs += 1;",
+    "    if (fileSyncs === 2) {",
+    "      fs.writeFileSync(process.env.TEST_MARKER_PATH, 'ledger-file-fsync', { mode: 0o600 });",
+    "      const error = new Error('injected EIO'); error.code = 'EIO'; throw error;",
+    "    }",
+    "  }",
+    "  return originalFsyncSync(descriptor);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_INIT_SCRIPT, '--confirm-no-prior-history'];",
+    "await import(process.env.TEST_INIT_MODULE);",
+    "console.log(JSON.stringify({ fileSyncs }));"
+  ].join("\\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_MARKER_PATH: markerPath,
+      TEST_INIT_SCRIPT: scriptPath,
+      TEST_INIT_MODULE: new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url).href
+    }
+  });
+  return { child, markerPath };
+}
+
 function runAsync(ledgerPath) {
   return new Promise(resolve => {
     const child = spawn(process.execPath, [scriptPath, '--confirm-no-prior-history'], {
@@ -181,6 +218,27 @@ test('explicitly initialized ledger is accepted by the authority writer and reje
       assert.equal(readFileSync(value.ledgerPath, 'utf8'), committedBytes);
       assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
     });
+  } finally { cleanup(value); }
+});
+
+
+test('ledger fsync uncertainty retains the owner lock and never reports initialization success', () => {
+  const value = fixture();
+  const failed = runWithLedgerSyncFailure(value);
+  try {
+    assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
+    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN/);
+    assert.equal(existsSync(failed.markerPath), true);
+    assert.equal(JSON.parse(failed.child.stdout.trim()).fileSyncs, 2);
+    assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
+
+    assert.equal(existsSync(value.ledgerPath), true);
+    assert.equal(readFileSync(value.ledgerPath, 'utf8'), LEDGER);
+    const lockPath = join(value.directory, '.founder-nonce.lock');
+    assert.equal(existsSync(lockPath), true);
+    const lock = lstatSync(lockPath);
+    assert.equal(lock.mode & 0o777, 0o600);
+    assert.equal(JSON.parse(readFileSync(lockPath, 'utf8')).schema, 'ngl.ledger-lock.v1');
   } finally { cleanup(value); }
 });
 
