@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectCommonsMessages, projectPlayerGuilds } from './social.mjs';
+import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -693,6 +693,34 @@ export function getQuestTrail(world, viewer) {
       isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
   });
+  // A current guild narrows adversarial review to work retained by its current members.
+  // The satchel is the same read-only projection shown in Guild Hall; it grants no
+  // evidence status, XP, approval, ownership, or authority.
+  const guildFieldSatchel = guildMembership.available && guildMembership.event
+    ? projectGuildFieldSatchel(world, {
+      id: actorId,
+      role: actorRole,
+      name: typeof viewer?.name === 'string' && viewer.name.trim() &&
+        Array.from(viewer.name).length <= 80 ? viewer.name.trim() : 'Player'
+    })
+    : null;
+  const guildFieldSatchelMatches = Boolean(
+    guildMembership.event && guildFieldSatchel?.available &&
+    guildFieldSatchel.guild?.id === guildMembership.event.guildId
+  );
+  const guildChallengeScopeActive = Boolean(guildMembership.event && guildFieldSatchelMatches);
+  const guildChallengeScopeBlocked = !guildMembership.available ||
+    Boolean(guildMembership.event && !guildFieldSatchelMatches);
+  const guildFieldItems = guildFieldSatchelMatches ? guildFieldSatchel.items : [];
+  const guildReportEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-report').map(item => item.eventId));
+  const guildChallengeEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-challenge').map(item => item.eventId));
+  const guildExperimentReports = allExperimentReports.filter(event => guildReportEventIds.has(event.id));
+  const guildExperimentReportIds = new Set(guildExperimentReports.map(event => event.reportId));
+  const guildExperimentChallenges = experimentChallenges.filter(event =>
+    guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
+  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
@@ -721,8 +749,27 @@ export function getQuestTrail(world, viewer) {
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
   const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
-  const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
-  const hasExperimentChallenge = experimentChallenges.length >= 1;
+  const challengeCandidates = guildChallengeScopeBlocked ? []
+    : guildChallengeScopeActive ? guildExperimentReports : allExperimentReports;
+  const challengeEvidence = guildChallengeScopeBlocked ? []
+    : guildChallengeScopeActive ? guildExperimentChallenges : experimentChallenges;
+  const challengeTargetReport = challengeCandidates.slice().reverse()
+    .find(event => event.actor?.id !== actorId) || null;
+  const hasChallengeTarget = Boolean(challengeTargetReport);
+  const hasExperimentChallenge = challengeEvidence.length >= 1;
+  const challengeQuestTitle = guildChallengeScopeActive
+    ? 'Challenge a guild member’s experiment report'
+    : 'Challenge another actor’s experiment report';
+  const challengeBlockedReason = guildChallengeScopeBlocked
+    ? 'Guild membership or retained work history is ambiguous; inspect the Guild Hall history before counting a challenge.'
+    : !hasChallengeTarget
+      ? guildChallengeScopeActive
+        ? 'Another current guild member must retain a valid experiment report before you can challenge it.'
+        : 'Another actor must retain a valid experiment report before you can challenge it.'
+      : null;
+  const challengeInterpretation = guildChallengeScopeActive
+    ? 'Guild-scoped challenge: the target report and challenger are current members. A challenge preserves attributed dissent; it does not establish truth, independent reproduction, adjudication, approval, XP or authority.'
+    : 'A challenge preserves attributed dissent against another actor’s self-reported attempt. It does not establish truth, independent reproduction, adjudication, approval, XP or authority.';
   const hasStudy = studies.length >= 1;
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
@@ -731,8 +778,6 @@ export function getQuestTrail(world, viewer) {
   const nextAttemptProposal = events.slice().reverse().find(event =>
     isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
   ) || null;
-  // Prefer the newest appended eligible report from another actor, not the oldest matching record.
-  const challengeTargetReport = allExperimentReports.slice().reverse().find(event => event.actor?.id !== actorId) || null;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -834,12 +879,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
       trailMilestone(
-        'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
-        experimentChallenges.map(event => event.id), experimentChallenges,
+        'founder-challenge-experiment-report', challengeQuestTitle, 1,
+        challengeEvidence.map(event => event.id), challengeEvidence,
         hasChallengeTarget && !hasExperimentChallenge
           ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+        challengeBlockedReason,
+        challengeInterpretation
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
@@ -946,12 +992,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
-      'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
-      experimentChallenges.map(event => event.id), experimentChallenges,
+      'witness-challenge-experiment-report', challengeQuestTitle, 1,
+      challengeEvidence.map(event => event.id), challengeEvidence,
       hasChallengeTarget && !hasExperimentChallenge
           ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+      challengeBlockedReason,
+      challengeInterpretation
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
