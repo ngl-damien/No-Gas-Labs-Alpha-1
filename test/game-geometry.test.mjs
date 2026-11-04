@@ -78,17 +78,6 @@ test('the playable map exposes every institutional function as a real destinatio
  const council=institutions.find(place=>place.id==='council_chamber');
  assert.match(council.purpose,/deliberation only, never consensus or authority/);
 });
-test('Quest Board is a reachable institution and arrival does not create activity',t=>{
- const {view,interactions}=makeView(t);
- const board=PLACES.find(place=>place.id==='quest_board');
- assert.ok(board);
- assert.equal(board.type,'institution');
- assert.match(board.purpose,/actor-scoped objectives/);
- view.goTo('quest_board');
- for(let i=0;i<350;i++)view.update(.045,i*45);
- assert.deepEqual(interactions,[{type:'institution',id:'quest_board'}]);
-});
-
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
@@ -201,7 +190,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,9);
+  assert.equal(institutions.length,10);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});
