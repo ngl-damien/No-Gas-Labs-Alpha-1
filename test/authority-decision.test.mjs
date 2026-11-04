@@ -752,6 +752,55 @@ test("decision payload snapshots and deeply freezes nested scope arrays", () => 
 });
 
 
+test("nonce writer cleanup retains a same-inode lock rewrite after a precommit ledger failure", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-writer-lock-cleanup-rewrite-" + randomUUID());
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+  const invalidLedger = Buffer.from('{"schema":"wrong","nonces":[]}');
+  const replacementOpenedAt = "2002-02-02T00:00:00.000Z";
+  writeFileSync(fixture.nonceLedgerPath, invalidLedger, { mode: 0o600 });
+  const originalLstat = fs.lstatSync;
+  let rewritten = false;
+
+  fs.lstatSync = (candidate, ...args) => {
+    const observed = originalLstat(candidate, ...args);
+    if (!rewritten && candidate === fixture.nonceLedgerPath) {
+      rewritten = true;
+      writeFileSync(lockPath, canonical({
+        schema: "ngl.ledger-lock.v1",
+        pid: process.pid,
+        openedAt: replacementOpenedAt,
+      }), { mode: 0o600 });
+    }
+    return observed;
+  };
+  syncBuiltinESMExports();
+
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_TAMPERED/
+      );
+    });
+    assert.equal(rewritten, true, "the rewrite must occur while the writer handles the precommit ledger read");
+    assert.equal(existsSync(lockPath), true, "failure cleanup must retain a changed owner receipt");
+    const retained = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(retained.pid, process.pid);
+    assert.equal(retained.openedAt, replacementOpenedAt);
+    assert.deepEqual(readFileSync(fixture.nonceLedgerPath), invalidLedger);
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), [".founder-nonce.lock", "founder-nonces.json"]);
+  } finally {
+    fs.lstatSync = originalLstat;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent processes serialize durable Founder nonce-ledger writes without losing entries", { timeout: 30000 }, async t => {
   const dir = path.join(tmpdir(), "ngl-auth-concurrency-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
