@@ -1271,7 +1271,7 @@ test('recovery CLI reports the completed owner-lock removal when recovery-lease 
     "syncBuiltinESMExports();",
     "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
     "await import(process.env.TEST_RECOVERY_MODULE);"
-  ].join("\\n");
+  ].join("\n");
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
     encoding: 'utf8',
     timeout: 10000,
