@@ -1453,6 +1453,21 @@ def shared(browser,url,data,out):
         assert joined_state['world']['revision']==before_guild_revision+2
         assert joined_state['world']['xp']==before_guild_xp
 
+        guild_message_event=next(event for event in joined_state['world']['events']
+            if event['type']=='message-posted' and event['messageId']==commons_message_id)
+        assert guild_message_event['actor']['id']==witness_id
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(commons_text)
+        expect(leader_card).to_contain_text(commons_text)
+        guild_message_item=b.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]')
+        expect(guild_message_item).to_contain_text(commons_text)
+        guild_message_item.locator(f'[data-guild-field-open="{guild_message_event["id"]}"]').click()
+        expect(b.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(commons_text)
+
         early_disband=owner.request.post(url+'api/action',data={
             'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
         })
@@ -1468,6 +1483,10 @@ def shared(browser,url,data,out):
         assert guild_events[-1]['actor']['id']==witness_id
         assert left_state['world']['revision']==before_guild_revision+3
         assert left_state['world']['xp']==before_guild_xp
+        assert any(event['type']=='message-posted' and event['messageId']==commons_message_id
+            for event in left_state['world']['events'])
+        assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
+            'a departed member’s work leaves the active roster projection but remains in the Chronicle'
 
         leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(0)
