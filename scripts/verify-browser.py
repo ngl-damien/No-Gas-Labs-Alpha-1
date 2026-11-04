@@ -1221,6 +1221,16 @@ def shared(browser,url,data,out):
         coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
         expect(coverage_quest).to_contain_text('1/4')
         close_sheet(a)
+        character_before=visitor.request.get(url+'api/state').json()['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Collaborator')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('Rejected responses remain preserved attempts, not endorsements')
+        character_after=visitor.request.get(url+'api/state').json()['world']
+        assert character_after['revision']==character_before['revision'] and character_after['xp']==character_before['xp'], \
+            'Character skill inspection must be a read-only projection of the retained response'
+        close_sheet(a)
         coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
