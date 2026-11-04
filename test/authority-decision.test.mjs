@@ -1479,3 +1479,78 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("nonce writer falls back to /dev/fd when /proc/self/fd is unavailable", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-fd-fallback-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const originalStatSync = fs.statSync;
+    let procAttempts = 0;
+    let devAttempts = 0;
+    fs.statSync = (target, ...args) => {
+      const candidate = String(target);
+      if (candidate.startsWith("/proc/self/fd/")) {
+        procAttempts += 1;
+        throw new Error("injected proc descriptor namespace unavailable");
+      }
+      if (candidate.startsWith("/dev/fd/")) devAttempts += 1;
+      return originalStatSync(target, ...args);
+    };
+    syncBuiltinESMExports();
+    try {
+      const event = withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => authorizationEvent({ signed, payload: fixture.payload }));
+      assert.equal(event.type, "QUEST_AUTHORIZED");
+      assert.ok(procAttempts > 0, "the primary descriptor namespace must be attempted first");
+      assert.ok(devAttempts > 0, "the /dev/fd fallback must be exercised");
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
+      assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
+    } finally {
+      fs.statSync = originalStatSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nonce writer refuses before locking when neither descriptor namespace is available", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-fd-unavailable-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const originalStatSync = fs.statSync;
+    fs.statSync = (target, ...args) => {
+      const candidate = String(target);
+      if (candidate.startsWith("/proc/self/fd/") || candidate.startsWith("/dev/fd/")) {
+        throw new Error("injected descriptor namespaces unavailable");
+      }
+      return originalStatSync(target, ...args);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_DIRECTORY_HANDLE_UNAVAILABLE/
+      ));
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+        "no nonce is consumed when the writer cannot pin its directory");
+      assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+        "the writer must fail before acquiring an owner lock");
+      assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
+    } finally {
+      fs.statSync = originalStatSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
