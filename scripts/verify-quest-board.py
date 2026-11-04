@@ -242,12 +242,13 @@ def run_viewport(browser, url, out, width):
                 "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
             )
             witness_before = authoritative_snapshot(page)
+            assert witness_before['viewerRole'] == 'witness'
             open_quest_board(page)
             witness_rows = assert_board(page, 'witness')
-            assert witness_rows.locator('[data-objective-id^="founder-"]').count() == 0, (
-                'A Witness must not receive Founder objectives.'
-            )
-            assert witness_rows.locator('[data-objective-id^="witness-"]').count() > 0
+            founder_rows = page.locator('#sheet-content [data-objective-id^="founder-"]')
+            witness_objectives = page.locator('#sheet-content [data-objective-id^="witness-"]')
+            assert founder_rows.count() == 0, 'A Witness must not receive Founder objectives.'
+            assert witness_objectives.count() > 0, 'A Witness must receive the Witness objective trail.'
             witness_after = authoritative_snapshot(page)
             assert witness_after == witness_before, (
                 'The Witness board is also a read-only projection of the shared world.'
