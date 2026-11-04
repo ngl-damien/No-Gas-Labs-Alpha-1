@@ -1278,6 +1278,8 @@ def offline_pwa(browser,url,out):
         page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        assert 'offline' in (page.locator('#connection-dot').get_attribute('class') or '').split(), 'Private world must visibly report an offline network state'
+        assert 'Offline' in (page.locator('#connection-dot').get_attribute('title') or '')
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
@@ -1290,7 +1292,7 @@ def offline_pwa(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
         assert not errors,errors
-        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'shared_api':'network-only','private_publications':1}
+        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':1}
     finally:
         context.close()
 
