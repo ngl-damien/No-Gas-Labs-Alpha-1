@@ -497,6 +497,18 @@ def shared(browser,url,data,out):
     errors=[];presence_errors=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
     visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
+    state_read_retries={'count':0}
+    def read_state(context):
+        try:
+            return context.request.get(url+'api/state',timeout=10000).json()
+        except Exception as error:
+            message=str(error).lower()
+            # GET /api/state is read-only. Retry one connection reset only;
+            # mutations are never automatically retried by this test helper.
+            if 'socket hang up' not in message and 'econnreset' not in message:
+                raise
+            state_read_retries['count']+=1
+            return context.request.get(url+'api/state',timeout=10000).json()
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
@@ -541,7 +553,7 @@ def shared(browser,url,data,out):
         assert decision_before['dispositionAuthorization']['available'] is False
         assert decision_before['dispositionAuthorization']['code']=='FOUNDER_NOT_ENROLLED'
         assert decision_before['decisions'][0]['status']=='PENDING'
-        world_before_decision=owner.request.get(url+'api/state').json()['world']
+        world_before_decision=read_state(owner)['world']
         close_sheet(a);a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
@@ -553,7 +565,7 @@ def shared(browser,url,data,out):
         a.screenshot(path=str(out/'decision-chamber-authorization-blocked.png'))
         close_sheet(a)
         decision_after=owner.request.get(url+'api/decisions').json()
-        world_after_decision=owner.request.get(url+'api/state').json()['world']
+        world_after_decision=read_state(owner)['world']
         assert decision_after['revision']==decision_before['revision']
         assert decision_after['decisions'][0]['status']=='PENDING'
         assert world_after_decision['revision']==world_before_decision['revision']
@@ -561,7 +573,7 @@ def shared(browser,url,data,out):
 
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
         close_sheet(a)
-        snapshot=visitor.request.get(url+'api/state').json()
+        snapshot=read_state(visitor)
         assert snapshot['world']['drafts']==[] and 'PRIVATE_DRAFT_MARKER' not in json.dumps(snapshot)
         assert 'PRIVATE_DRAFT_MARKER' not in visitor.request.get(url+'api/export').text()
         assert visitor.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'Forbidden','intent':'Denied'}).status==403
@@ -574,7 +586,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet')).to_contain_text('0 character XP')
         expect(b.locator('#sheet')).to_contain_text('100 institution-wide XP across the world.')
         close_sheet(b)
-        snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
+        snapshot=read_state(visitor);creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
         close_sheet(b);b.locator('#places-button').click()
@@ -627,7 +639,7 @@ def shared(browser,url,data,out):
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
         expect(b.locator('#source-observation-open')).to_be_visible()
-        before_observation=visitor.request.get(url+'api/state').json()
+        before_observation=read_state(visitor)
         before_observation_revision=before_observation['world']['revision']
         witness_id=before_observation['viewer']['id']
         offline_claim='The shared model says the bridge is open; no source has been retrieved.'
@@ -660,7 +672,7 @@ def shared(browser,url,data,out):
         assert pending_offline['action']['type']=='record-source-observation'
         assert pending_offline['action']['claim']==offline_claim
         assert pending_offline['requestId']==pending_offline['action']['observationId']
-        not_committed=visitor.request.get(url+'api/state').json()
+        not_committed=read_state(visitor)
         assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
         assert not_committed['world']['revision']==before_observation_revision
         assert not_committed['world']['xp']==before_observation['world']['xp']==100
@@ -673,7 +685,7 @@ def shared(browser,url,data,out):
         b.locator('#relay-retry-pending-shared-action').click()
         expect(b.locator('#sheet')).to_be_hidden()
         assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
-        first_recovery=visitor.request.get(url+'api/state').json()
+        first_recovery=read_state(visitor)
         first_observations=[event for event in first_recovery['world']['events'] if event['type']=='source-observation-recorded']
         assert len(first_observations)==1 and first_observations[0]['claim']==offline_claim
         assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
@@ -712,7 +724,7 @@ def shared(browser,url,data,out):
         assert pending_observation['action']['type']=='record-source-observation'
         assert pending_observation['requestId']==pending_observation['action']['observationId']
         assert pending_observation['requestId'].startswith('source-observation-')
-        committed_before_retry=visitor.request.get(url+'api/state').json()
+        committed_before_retry=read_state(visitor)
         committed_events=[event for event in committed_before_retry['world']['events'] if event['type']=='source-observation-recorded']
         assert len(committed_events)==2 and committed_events[-1]['claim']==source_claim, 'The independent state read must observe the second committed note before Relay retry'
         assert committed_before_retry['world']['revision']==before_observation_revision+2
@@ -725,7 +737,7 @@ def shared(browser,url,data,out):
         b.locator('#relay-retry-pending-shared-action').click()
         expect(b.locator('#sheet')).to_be_hidden()
         assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
-        recovered_observation=visitor.request.get(url+'api/state').json()
+        recovered_observation=read_state(visitor)
         source_observations=[event for event in recovered_observation['world']['events'] if event['type']=='source-observation-recorded']
         assert len(source_observations)==2
         source_observation=next(event for event in source_observations if event['claim']==source_claim)
@@ -768,7 +780,7 @@ def shared(browser,url,data,out):
         visit(a,'The shared observatory')
         expect(a.locator('#source-observations')).to_contain_text(offline_claim)
         expect(a.locator('#source-observations')).to_contain_text(source_claim)
-        before_challenge=visitor.request.get(url+'api/state').json()
+        before_challenge=read_state(visitor)
         challenge_text='The note cites a model response but no retrievable primary source.'
         lost_challenge={'remaining':True}
         def lose_source_challenge_response(route):
@@ -804,7 +816,7 @@ def shared(browser,url,data,out):
         assert pending_challenge['actorId']=='damien'
         assert pending_challenge['action']['type']=='challenge-source-observation'
         assert pending_challenge['action']['observationId']==source_observation['observationId']
-        committed_challenge=visitor.request.get(url+'api/state').json()
+        committed_challenge=read_state(visitor)
         challenge_events=[event for event in committed_challenge['world']['events'] if event['type']=='source-observation-challenged']
         challenge_diagnostic={'expected':challenge_text,'events':challenge_events,'revision':committed_challenge['world']['revision'],'xp':committed_challenge['world']['xp'],'before_revision':before_challenge['world']['revision'],'pending':pending_challenge,'route':lost_challenge,'existing_request_ids':[event.get('requestId') for event in committed_challenge['world']['events'] if event.get('requestId')]}
         assert len(challenge_events)==1 and challenge_events[0].get('challengeText')==challenge_text, json.dumps(challenge_diagnostic,ensure_ascii=False)
@@ -820,13 +832,13 @@ def shared(browser,url,data,out):
         a.locator('#relay-retry-pending-shared-action').click()
         expect(a.locator('#sheet')).to_be_hidden()
         assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact challenge retry must clear the pending receipt'
-        after_challenge_retry=visitor.request.get(url+'api/state').json()
+        after_challenge_retry=read_state(visitor)
         assert len([event for event in after_challenge_retry['world']['events'] if event['type']=='source-observation-challenged'])==1
         assert after_challenge_retry['world']['revision']==committed_challenge['world']['revision'], 'Exact retry must not append a second challenge'
         assert after_challenge_retry['world']['xp']==before_challenge['world']['xp']==100
         # Exercise the Evidence Archive docket as a real world interaction.
         # The challenger can inspect the exact version but cannot see the author's response control.
-        before_docket=visitor.request.get(url+'api/state').json()
+        before_docket=read_state(visitor)
         close_sheet(a);a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
@@ -846,7 +858,7 @@ def shared(browser,url,data,out):
         register_button.click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
         expect(a.locator('#version-select')).to_have_value(str(source_observation['version']))
-        after_register=visitor.request.get(url+'api/state').json()
+        after_register=read_state(visitor)
         assert after_register['world']['revision']==before_docket['world']['revision'], 'Opening a read-only register entry must not append a world event'
         assert after_register['world']['xp']==before_docket['world']['xp'], 'Opening a read-only register entry must not award XP'
         close_sheet(a);a.locator('#places-button').click()
@@ -860,7 +872,7 @@ def shared(browser,url,data,out):
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
         expect(a.locator('#version-select')).to_have_value(str(source_observation['version']))
         expect(a.locator('[data-source-observation-response-details]')).to_have_count(0)
-        after_docket=visitor.request.get(url+'api/state').json()
+        after_docket=read_state(visitor)
         assert after_docket['world']['revision']==before_docket['world']['revision'], 'Opening the read-only docket and exact version must not append a world event'
         assert after_docket['world']['xp']==before_docket['world']['xp'], 'Opening the read-only docket and exact version must not award XP'
 
@@ -878,7 +890,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#version-select')).to_have_value(str(source_observation['version']))
         expect(b.locator('[data-source-observation-response-details]')).to_have_count(1)
         response_text='The note is a lead only; source retrieval remains outstanding.'
-        before_author_response=visitor.request.get(url+'api/state').json()
+        before_author_response=read_state(visitor)
         lost_author_response={'remaining':True}
         def lose_source_author_response(route):
             try: payload=route.request.post_data_json
@@ -909,7 +921,7 @@ def shared(browser,url,data,out):
         assert pending_author['actorId']==witness_id
         assert pending_author['action']['type']=='respond-source-observation-challenge'
         assert pending_author['action']['challengeId']==challenge_events[0]['challengeId']
-        committed_author_response=visitor.request.get(url+'api/state').json()
+        committed_author_response=read_state(visitor)
         author_response_events=[event for event in committed_author_response['world']['events'] if event['type']=='source-observation-challenge-responded']
         assert len(author_response_events)==1 and author_response_events[0]['responseText']==response_text
         assert author_response_events[0]['actor']['id']==witness_id and author_response_events[0]['actor']['role']=='witness'
@@ -925,7 +937,7 @@ def shared(browser,url,data,out):
         b.locator('#relay-retry-pending-shared-action').click()
         expect(b.locator('#sheet')).to_be_hidden()
         assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact author-response retry must clear the pending receipt'
-        after_author_response_retry=visitor.request.get(url+'api/state').json()
+        after_author_response_retry=read_state(visitor)
         assert len([event for event in after_author_response_retry['world']['events'] if event['type']=='source-observation-challenge-responded'])==1
         assert after_author_response_retry['world']['revision']==committed_author_response['world']['revision'], 'Exact author-response retry must not append a second response'
         assert after_author_response_retry['world']['xp']==before_author_response['world']['xp']==100
@@ -968,7 +980,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#source-observations')).to_contain_text(challenge_text)
 
         # The answered challenge leaves the action queue but remains in shared Chronicle history.
-        docket_before_answered_view=visitor.request.get(url+'api/state').json()
+        docket_before_answered_view=read_state(visitor)
         close_sheet(a);a.locator('#places-button').click()
         a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
@@ -981,7 +993,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('Author response to source challenge')
         expect(a.locator('#sheet')).to_contain_text('DISSENT & RESPONSE')
         a.screenshot(path=str(out/'source-observation-response-docket-answered.png'))
-        docket_after_answered_view=visitor.request.get(url+'api/state').json()
+        docket_after_answered_view=read_state(visitor)
         assert docket_after_answered_view['world']['revision']==docket_before_answered_view['world']['revision'], 'Viewing the answered docket must not append a world event'
         assert docket_after_answered_view['world']['xp']==docket_before_answered_view['world']['xp'], 'Viewing the answered docket must not award XP'
         close_sheet(a)
@@ -1003,13 +1015,14 @@ def shared(browser,url,data,out):
         assert a.locator('#creation-notes script').count()==0
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         report_text='Preserve this report against version one.'
-        drop={'remaining':True}
+        drop={'remaining':1,'text':report_text,'attempts':0}
         def lose_report_response(route):
             try: payload=route.request.post_data_json
             except Exception: payload={}
-            if drop['remaining'] and payload.get('type')=='report' and payload.get('text')==report_text:
+            if drop['remaining']>0 and payload.get('type')=='report' and payload.get('text')==drop['text']:
                 route.fetch()  # The service commits; simulate the response disappearing in transit.
-                drop['remaining']=False
+                drop['remaining']-=1
+                drop['attempts']+=1
                 route.abort()
                 return
             route.continue_()
@@ -1027,6 +1040,11 @@ def shared(browser,url,data,out):
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('does not match the original actor')
         expect(b.locator('#relay-retry-pending-shared-action')).to_have_count(0)
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(250)
+        still_tampered=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(still_tampered)['actorId']=='not-the-original-actor', 'reconnect must not replay a receipt under another actor'
+        assert drop['attempts']==1, 'a mismatched actor receipt must not reach the server on reconnect'
         close_sheet(b)
         b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
         b.locator('#places-button').click()
@@ -1036,9 +1054,56 @@ def shared(browser,url,data,out):
         b.locator('#relay-retry-pending-shared-action').click()
         expect(b.locator('#sheet')).to_be_hidden()
         expect(b.locator('#xp-count')).to_have_text('100')
-        recovered=visitor.request.get(url+'api/state').json()
+        recovered=read_state(visitor)
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
+
+        # Drop two replies after the server commits. The browser's online event and
+        # re-entry must replay the same receipt, not append another report.
+        auto_report_text='Reconnect must replay this exact report once.'
+        auto_before=read_state(visitor)
+        auto_revision=auto_before['world']['revision']
+        auto_xp=auto_before['world']['xp']
+        auto_actor_id=auto_before['viewer']['id']
+        drop['text']=auto_report_text
+        drop['remaining']=2
+        drop['attempts']=0
+        visit(b,'The shared observatory')
+        b.get_by_text('Report a problem or unsupported claim',exact=True).click()
+        b.locator('#report-text').fill(auto_report_text)
+        b.locator('#report-button').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        auto_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert auto_receipt, 'A second lost response must leave its exact retry receipt'
+        auto_request_id=json.loads(auto_receipt)['requestId']
+        first_commit=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in first_commit['world']['reports'])==1
+        assert first_commit['world']['revision']==auto_revision+1
+        assert first_commit['world']['xp']==auto_xp
+
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(500)
+        assert drop['attempts']==2 and drop['remaining']==0, 'the online event must retry the same pending request'
+        second_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(second_receipt)['requestId']==auto_request_id, 'reconnect must preserve the original request ID'
+        after_online=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in after_online['world']['reports'])==1
+        assert after_online['world']['revision']==auto_revision+1, 'idempotent reconnect replay must not append a second event'
+        assert after_online['world']['xp']==auto_xp
+
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.wait_for_function("()=>!localStorage.getItem('ngl.common-ground.pending-shared-action.v1')",timeout=15000)
+        expect(b.locator('#toast')).to_contain_text('recovered the exact pending action')
+        auto_recovered=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in auto_recovered['world']['reports'])==1
+        auto_events=[event for event in auto_recovered['world']['events'] if event.get('requestId')==auto_request_id]
+        assert len(auto_events)==1 and auto_events[0]['type']=='report', auto_events
+        assert auto_events[0].get('actionResult',{}).get('id'), auto_events
+        assert auto_recovered['world']['revision']==auto_revision+1
+        assert auto_recovered['world']['xp']==auto_xp
+        assert auto_recovered['viewer']['id']==auto_actor_id and auto_recovered['viewer']['role']=='witness', 'shared re-entry must preserve the original Witness identity'
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
@@ -1056,7 +1121,7 @@ def shared(browser,url,data,out):
         b.locator('#contradiction-unknown').fill('Whether the source supports the wording; compare the exact passage.')
         b.locator('#contradiction-submit').click()
         b.locator('#creation-notes').get_by_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE',exact=False).wait_for()
-        challenge_snapshot=visitor.request.get(url+'api/state').json()
+        challenge_snapshot=read_state(visitor)
         structured=[r for r in challenge_snapshot['world']['reports'] if r.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
         assert len(structured)==1 and structured[0]['version']==1, structured
         assert 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
@@ -1085,7 +1150,7 @@ def shared(browser,url,data,out):
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
         b.wait_for_function("()=>document.querySelector('#xp-count').textContent==='200'")
-        snapshot=visitor.request.get(url+'api/state').json()
+        snapshot=read_state(visitor)
         assert snapshot['world']['creations'][0]['version']==2 and len(snapshot['world']['methods'])==1
         assert len(snapshot['institution']['kernel']['accepted'])==2
         assert visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()==original
@@ -1134,7 +1199,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('DISSENT · NOT ADJUDICATED')
         expect(a.locator('#sheet')).to_contain_text('measurement settings needed to reproduce')
         expect(a.locator('#sheet')).to_contain_text('Inspect challenge evidence v2')
-        challenge_state=visitor.request.get(url+'api/state').json()
+        challenge_state=read_state(visitor)
         retained_challenges=[event for event in challenge_state['world']['events'] if event['type']=='experiment-challenged']
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
@@ -1150,9 +1215,9 @@ def shared(browser,url,data,out):
         # Compare each actor's own read model before/after. Founder and Witness
         # projections intentionally differ: non-Founders cannot see draft/repair
         # events or another actor's private message-reported event.
-        before_npc_state=owner.request.get(url+'api/state').json()
+        before_npc_state=read_state(owner)
         assert before_npc_state['viewer']['role']=='founder'
-        before_npc_witness_state=visitor.request.get(url+'api/state').json()
+        before_npc_witness_state=read_state(visitor)
         assert before_npc_witness_state['viewer']['role']=='witness'
         before_npc_revision=before_npc_state['world']['revision']
         before_npc_events=before_npc_state['world']['events']
@@ -1170,8 +1235,8 @@ def shared(browser,url,data,out):
         expect(adversary_control).to_have_attribute('data-guild-npc-action','talk')
         adversary_control.evaluate("(button)=>button.click()")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
-        after_npc_state=owner.request.get(url+'api/state').json()
-        after_npc_witness_state=visitor.request.get(url+'api/state').json()
+        after_npc_state=read_state(owner)
+        after_npc_witness_state=read_state(visitor)
         assert after_npc_state['world']['revision']==before_npc_revision, 'NPC navigation/talk must not create a canonical revision'
         assert after_npc_state['world']['events']==before_npc_events, 'NPC navigation/talk must not append a canonical event'
         assert after_npc_state['world']['xp']==before_npc_xp, 'NPC navigation/talk must not award XP'
@@ -1200,7 +1265,7 @@ def shared(browser,url,data,out):
         collaborator_response_field.fill(collaborator_response_text)
         adversary_packet.get_by_role('button',name='Validate response for review',exact=True).click()
         expect(adversary_packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
-        before_collaborator=owner.request.get(url+'api/state').json()
+        before_collaborator=read_state(owner)
         assert before_collaborator['viewer']['role']=='founder'
         founder_id=before_collaborator['viewer']['id']
         before_collaborator_revision=before_collaborator['world']['revision']
@@ -1231,7 +1296,7 @@ def shared(browser,url,data,out):
         assert pending_collaborator['action']['role']=='adversary'
         assert pending_collaborator['action']['responseText']==collaborator_response_text
         assert pending_collaborator['requestId']==lost_collaborator['payload']['requestId']
-        committed_collaborator=visitor.request.get(url+'api/state').json()
+        committed_collaborator=read_state(visitor)
         committed_responses=[event for event in committed_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
         assert len(committed_responses)==1, 'Independent state read must observe exactly one committed collaborator response'
         committed_response=committed_responses[0]
@@ -1251,7 +1316,7 @@ def shared(browser,url,data,out):
         a.locator('#relay-retry-pending-shared-action').click()
         expect(a.locator('#sheet')).to_be_hidden()
         assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact collaborator-response retry must clear the pending receipt'
-        recovered_collaborator=visitor.request.get(url+'api/state').json()
+        recovered_collaborator=read_state(visitor)
         recovered_responses=[event for event in recovered_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
         assert len(recovered_responses)==1, 'Exact retry must not append a duplicate collaborator response'
         assert recovered_collaborator['world']['revision']==committed_collaborator['world']['revision']
@@ -1270,8 +1335,8 @@ def shared(browser,url,data,out):
         expect(a.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
         coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
         expect(coverage_quest).to_contain_text('1/4')
-        council_before_owner=owner.request.get(url+'api/state').json()
-        council_before_witness=visitor.request.get(url+'api/state').json()
+        council_before_owner=read_state(owner)
+        council_before_witness=read_state(visitor)
         a.get_by_role('button',name='Enter Council Chamber →',exact=True).click()
         expect(a.locator('#sheet-title')).to_have_text('Council Chamber')
         expect(a.locator('[data-council-coverage-progress="1/4"]')).to_have_count(1)
@@ -1307,8 +1372,8 @@ def shared(browser,url,data,out):
         focused_response_field=focused_response_card.locator('textarea[aria-label="Archived collaborator response"]')
         expect(focused_response_field).to_have_count(1)
         assert focused_response_field.input_value()==collaborator_response_text
-        council_after_owner=owner.request.get(url+'api/state').json()
-        council_after_witness=visitor.request.get(url+'api/state').json()
+        council_after_owner=read_state(owner)
+        council_after_witness=read_state(visitor)
         assert council_after_owner['world']['revision']==council_before_owner['world']['revision']
         assert council_after_owner['world']['events']==council_before_owner['world']['events']
         assert council_after_owner['world']['xp']==council_before_owner['world']['xp']
@@ -1316,7 +1381,7 @@ def shared(browser,url,data,out):
         assert council_after_witness['world']['events']==council_before_witness['world']['events']
         assert council_after_witness['world']['xp']==council_before_witness['world']['xp']
         close_sheet(a)
-        character_before=visitor.request.get(url+'api/state').json()['world']
+        character_before=read_state(visitor)['world']
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('Collaborator')
@@ -1324,13 +1389,13 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('Council')
         expect(a.locator('#sheet')).to_contain_text('1 recorded distinct Guild Hall role attempts')
         expect(a.locator('#sheet')).to_contain_text('Rejected responses remain preserved attempts, not endorsements')
-        character_after=visitor.request.get(url+'api/state').json()['world']
+        character_after=read_state(visitor)['world']
         assert character_after['revision']==character_before['revision'] and character_after['xp']==character_before['xp'], \
             'Character skill inspection must be a read-only projection of the retained response'
         close_sheet(a)
         coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
-        assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
+        assert read_state(visitor)['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
         def talk_to_council_npc(page, role):
             expected_sheet={
                 'archivist':'Evidence Archive',
@@ -1433,7 +1498,7 @@ def shared(browser,url,data,out):
             response_field.fill(response_text)
             packet.get_by_role('button',name='Validate response for review',exact=True).click()
             expect(packet.locator(f'[data-collaborator-response-status="{role}"]')).to_contain_text('STRUCTURE VALID')
-            before=visitor.request.get(url+'api/state').json()
+            before=read_state(visitor)
             assert before['viewer']['role']=='witness'
             before_revision=before['world']['revision']
             before_xp=before['world']['xp']
@@ -1449,8 +1514,8 @@ def shared(browser,url,data,out):
                     f'{role} archive did not commit; status={status_text!r}; toast={toast_text!r}'
                 ) from error
             expect(page.locator('#toast')).to_contain_text('Untrusted collaborator response preserved')
-            owner_after_action=owner.request.get(url+'api/state').json()
-            after=visitor.request.get(url+'api/state').json()
+            owner_after_action=read_state(owner)
+            after=read_state(visitor)
             owner_role_events=[event for event in owner_after_action['world']['events']
                 if event['type']=='collaborator-response-recorded' and event['role']==role]
             role_events=[event for event in after['world']['events']
@@ -1500,9 +1565,9 @@ def shared(browser,url,data,out):
             if role=='synthesizer':
                 for dissent_id in make_council_response(role,payload)['dissentPreserved']:
                     expect(review).to_contain_text(dissent_id)
-            owner_after=owner.request.get(url+'api/state').json()
-            before_read=visitor.request.get(url+'api/state').json()
-            after_read=owner.request.get(url+'api/state').json()
+            owner_after=read_state(owner)
+            before_read=read_state(visitor)
+            after_read=read_state(owner)
             assert before_read['world']['revision']==after['world']['revision']
             assert before_read['world']['events']==after['world']['events']
             assert before_read['world']['xp']==after['world']['xp']
@@ -1558,12 +1623,12 @@ def shared(browser,url,data,out):
         )
         a.screenshot(path=str(out/'guild-council-four-role-dossier.png'))
         close_sheet(a)
-        council_character_before=owner.request.get(url+'api/state').json()['world']
+        council_character_before=read_state(owner)['world']
         a.locator('#character-button').click()
         expect(a.locator('#sheet-title')).to_have_text('Character & field record')
         expect(a.locator('#sheet')).to_contain_text('4 recorded bounded collaborator-response attempts')
         expect(a.locator('#sheet')).to_contain_text('4 recorded distinct Guild Hall role attempts')
-        council_character_after=owner.request.get(url+'api/state').json()['world']
+        council_character_after=read_state(owner)['world']
         assert council_character_after['revision']==council_character_before['revision']
         assert council_character_after['xp']==council_character_before['xp']
         close_sheet(a)
@@ -1589,7 +1654,7 @@ def shared(browser,url,data,out):
             raise AssertionError('The player could not reach and interact with The Commons at TownSquare')
 
         open_commons(a)
-        before_commons=owner.request.get(url+'api/state').json()
+        before_commons=read_state(owner)
         assert before_commons['viewer']['role']=='founder'
         before_commons_revision=before_commons['world']['revision']
         before_commons_xp=before_commons['world']['xp']
@@ -1619,7 +1684,7 @@ def shared(browser,url,data,out):
         assert pending_commons['actorId']==before_commons['viewer']['id'] and pending_commons['actorRole']=='founder'
         assert pending_commons['action']=={'type':'post-message','text':commons_text}
         assert pending_commons['requestId']==lost_commons['payload']['requestId']
-        committed_commons=visitor.request.get(url+'api/state').json()
+        committed_commons=read_state(visitor)
         commons_posts=[event for event in committed_commons['world']['events'] if event['type']=='message-posted']
         assert len(commons_posts)==1 and commons_posts[0]['text']==commons_text
         commons_message_id=lost_commons['response']['result']['messageId']
@@ -1634,7 +1699,7 @@ def shared(browser,url,data,out):
         a.locator('#relay-retry-pending-shared-action').click()
         expect(a.locator('#sheet')).to_be_hidden()
         assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact Commons retry must clear the pending Relay receipt'
-        replayed_commons=visitor.request.get(url+'api/state').json()
+        replayed_commons=read_state(visitor)
         assert len([event for event in replayed_commons['world']['events'] if event['type']=='message-posted'])==1
         assert replayed_commons['world']['revision']==committed_commons['world']['revision']
         assert replayed_commons['world']['xp']==before_commons_xp
@@ -1650,10 +1715,10 @@ def shared(browser,url,data,out):
         expect(satchel_item).to_contain_text(commons_text)
         expect(satchel_item).to_contain_text('retained conversation · not evidence or authority')
         expect(satchel_item).to_contain_text(commons_event_id)
-        before_satchel_return=visitor.request.get(url+'api/state').json()
+        before_satchel_return=read_state(visitor)
         a.locator(f'[data-field-satchel-return="{commons_event_id}"]').click()
         expect(a.locator('#sheet')).to_be_hidden()
-        after_satchel_return=visitor.request.get(url+'api/state').json()
+        after_satchel_return=read_state(visitor)
         assert after_satchel_return['world']['revision']==before_satchel_return['world']['revision']
         assert after_satchel_return['world']['events']==before_satchel_return['world']['events']
         assert after_satchel_return['world']['xp']==before_satchel_return['world']['xp']
@@ -1664,7 +1729,7 @@ def shared(browser,url,data,out):
         close_sheet(b)
 
         open_commons(b)
-        before_mute_state=visitor.request.get(url+'api/state').json()
+        before_mute_state=read_state(visitor)
         b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
         expect(b.locator('#commons-muted-authors')).to_have_count(1)
@@ -1678,16 +1743,16 @@ def shared(browser,url,data,out):
         expect(b.locator('#commons-muted-authors')).to_contain_text(founder_identity['name'])
         muted_authors=json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))
         assert muted_authors==[founder_identity], 'Device-local mute must preserve the exact displayed actor identity'
-        after_mute_state=visitor.request.get(url+'api/state').json()
+        after_mute_state=read_state(visitor)
         assert after_mute_state['world']['revision']==before_mute_state['world']['revision']
         assert after_mute_state['world']['events']==before_mute_state['world']['events']
         assert after_mute_state['world']['xp']==before_mute_state['world']['xp']
-        founder_mute_view=owner.request.get(url+'api/state').json()
+        founder_mute_view=read_state(owner)
         assert any(event['type']=='message-posted' and event['messageId']==commons_message_id and event['text']==commons_text for event in founder_mute_view['world']['events'])
         b.locator('[data-commons-unmute="damien"]').click()
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_contain_text(commons_text)
         assert json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))==[]
-        after_unmute_state=visitor.request.get(url+'api/state').json()
+        after_unmute_state=read_state(visitor)
         assert after_unmute_state['world']['revision']==before_mute_state['world']['revision']
         assert after_unmute_state['world']['events']==before_mute_state['world']['events']
         assert after_unmute_state['world']['xp']==before_mute_state['world']['xp']
@@ -1705,7 +1770,7 @@ def shared(browser,url,data,out):
         b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
         b.locator(f'[data-commons-report="{commons_message_id}"]').click()
         expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
-        report_state=owner.request.get(url+'api/state').json()
+        report_state=read_state(owner)
         assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
 
         open_commons(a)
@@ -1715,17 +1780,17 @@ def shared(browser,url,data,out):
         a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
         founder_card.locator(f'[data-commons-hide="{commons_message_id}"]').click()
         expect(a.locator('#toast')).to_contain_text('Message hidden')
-        hidden_for_witness=visitor.request.get(url+'api/state').json()
+        hidden_for_witness=read_state(visitor)
         hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
         assert hidden_post['text']=='[Message hidden by human moderation.]'
         assert hidden_for_witness['world']['xp']==before_commons_xp
-        founder_hidden=owner.request.get(url+'api/state').json()
+        founder_hidden=read_state(owner)
         assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in founder_hidden['world']['events'] if event['type']=='message-moderated'])==1
         founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
         founder_card.locator(f'[data-commons-restore="{commons_message_id}"]').click()
         expect(a.locator('#toast')).to_contain_text('Message restored')
-        restored_for_witness=visitor.request.get(url+'api/state').json()
+        restored_for_witness=read_state(visitor)
         assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
         assert restored_for_witness['world']['revision']==before_commons_revision+5
@@ -1756,8 +1821,12 @@ def shared(browser,url,data,out):
                     f'The player could not reach Guild Hall within 30 seconds; current sheet title={title!r}'
                 ) from error
 
-        before_guild=owner.request.get(url+'api/state').json()
-        witness_guild_before=visitor.request.get(url+'api/state').json()
+        # Both actors must arrive before measuring guild-only revision changes;
+        # moving the Witness from the Observatory can itself record exploration.
+        open_guild_hall(a)
+        open_guild_hall(b)
+        before_guild=read_state(owner)
+        witness_guild_before=read_state(visitor)
         assert before_guild['viewer']['role']=='founder'
         assert witness_guild_before['viewer']['role']=='witness'
         before_guild_revision=before_guild['world']['revision']
@@ -1765,14 +1834,15 @@ def shared(browser,url,data,out):
         assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
         founder_id=before_guild['viewer']['id']
         witness_id=witness_guild_before['viewer']['id']
+        assert before_guild['world']['revision']==witness_guild_before['world']['revision']
+        assert witness_id==auto_actor_id, 'the re-entered Witness identity must remain stable through the shared journey'
 
-        open_guild_hall(a)
         expect(a.locator('#player-guild-board')).to_be_visible()
         a.locator('#player-guild-name').fill('Field Researchers')
         a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
         a.locator('#player-guild-create').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(1)
-        created_state=visitor.request.get(url+'api/state').json()
+        created_state=read_state(visitor)
         guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
         assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
         guild_id=guild_events[0]['guildId']
@@ -1780,7 +1850,6 @@ def shared(browser,url,data,out):
         assert created_state['world']['revision']==before_guild_revision+1
         assert created_state['world']['xp']==before_guild_xp
 
-        open_guild_hall(b)
         expect(b.locator('#player-guild-board')).to_be_visible()
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('Field Researchers')
@@ -1791,11 +1860,15 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('GUILD LEADER')
         expect(leader_card).to_contain_text('MEMBERS 2/25')
         assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
-        joined_state=owner.request.get(url+'api/state').json()
+        joined_state=read_state(owner)
         guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
         assert guild_events[1]['actor']['id']==witness_id
-        assert joined_state['world']['revision']==before_guild_revision+2
+        assert joined_state['world']['revision']==before_guild_revision+2, {
+            'before':before_guild_revision,
+            'actual':joined_state['world']['revision'],
+            'recentEvents':[(event['type'],event.get('actor',{}).get('id')) for event in joined_state['world']['events'][-8:]]
+        }
         assert joined_state['world']['xp']==before_guild_xp
         challenged_report=next(event for event in joined_state['world']['events']
             if event['type']=='experiment-reported' and event['reportId']==retained_challenges[0]['reportId'])
@@ -1830,7 +1903,7 @@ def shared(browser,url,data,out):
         member_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
         expect(member_card).to_contain_text('MEMBERS 1/25')
         expect(leader_card).to_contain_text('MEMBERS 1/25')
-        left_state=owner.request.get(url+'api/state').json()
+        left_state=read_state(owner)
         guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined','guild-left']
         assert guild_events[-1]['actor']['id']==witness_id
@@ -1849,7 +1922,7 @@ def shared(browser,url,data,out):
         leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(0)
         expect(a.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
-        final_guild_state=visitor.request.get(url+'api/state').json()
+        final_guild_state=read_state(visitor)
         final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
         assert [event['type'] for event in final_guild_events]==[
             'guild-created','guild-joined','guild-left','guild-disbanded'
@@ -1861,7 +1934,7 @@ def shared(browser,url,data,out):
         assert final_guild_state['world']['xp']==before_guild_xp
         close_sheet(a);close_sheet(b)
 
-        before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
+        before={p['id']:p['x'] for p in read_state(owner)['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
             close_sheet(page);page.locator('#world').focus();page.keyboard.down('ArrowRight');page.wait_for_timeout(2000);page.keyboard.up('ArrowRight')
@@ -1874,10 +1947,10 @@ def shared(browser,url,data,out):
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
-        assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
+        assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','stateReadRetries':state_read_retries['count']}
     finally:owner.close();visitor.close()
 
 
@@ -2015,11 +2088,12 @@ def main():
                     stop_server(process);process,url=launch_server(data)
                     fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
                     assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==2
+                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
                     assert all(report['version']==1 for report in restored['world']['reports'])
+                    assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
                     structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
                     assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2})
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))
