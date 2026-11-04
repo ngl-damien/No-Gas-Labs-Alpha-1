@@ -21,6 +21,24 @@ function isArraySafely(value) {
   try { return Array.isArray(value); } catch { return false; }
 }
 
+function readSafeRectangles(value) {
+  if (!isArraySafely(value)) return null;
+  const count = ownDataValue(value, 'length');
+  if (!Number.isSafeInteger(count) || count < 0 || count > 128) return null;
+  const rectangles = [];
+  for (let index = 0; index < count; index += 1) {
+    const item = ownDataValue(value, String(index));
+    if (!item || typeof item !== 'object' || isArraySafely(item)) return null;
+    const left = ownDataValue(item, 'left');
+    const top = ownDataValue(item, 'top');
+    const right = ownDataValue(item, 'right');
+    const bottom = ownDataValue(item, 'bottom');
+    if (![left, top, right, bottom].every(Number.isFinite) || right < left || bottom < top) return null;
+    if (right > left && bottom > top) rectangles.push({ left, top, right, bottom });
+  }
+  return rectangles;
+}
+
 /**
  * Project only uniquely linked Source Observation activity onto the map.
  * Unlinked, malformed, duplicated, or otherwise unprojectable retained events
@@ -288,19 +306,8 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
       panelHeight > viewportHeight - margin * 2 ||
       !isArraySafely(avoidRects)) return null;
 
-  const obstacleCount = ownDataValue(avoidRects, 'length');
-  if (!Number.isSafeInteger(obstacleCount) || obstacleCount < 0 || obstacleCount > 128) return null;
-  const obstacles = [];
-  for (let index = 0; index < obstacleCount; index += 1) {
-    const obstacle = ownDataValue(avoidRects, String(index));
-    if (!obstacle || typeof obstacle !== 'object' || isArraySafely(obstacle)) return null;
-    const left = ownDataValue(obstacle, 'left');
-    const top = ownDataValue(obstacle, 'top');
-    const right = ownDataValue(obstacle, 'right');
-    const bottom = ownDataValue(obstacle, 'bottom');
-    if (![left, top, right, bottom].every(Number.isFinite) || right < left || bottom < top) return null;
-    if (right > left && bottom > top) obstacles.push({ left, top, right, bottom });
-  }
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return null;
 
   const screenX = viewportWidth / 2 + (anchorX - cameraX) * zoom;
   const screenY = viewportHeight / 2 + (anchorY - cameraY) * zoom;
@@ -425,15 +432,15 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
  * Project an off-screen quest destination to the nearest safe viewport edge.
  * A null result means the target is already visible or the projection is unsafe.
  */
-export function projectQuestCompassIndicator(target, camera, width, height, zoom, margin = 26) {
+export function projectQuestCompassIndicator(target, camera, width, height, zoom, margin = 26, avoidRects = []) {
   const targetX = ownDataValue(target, 'x');
   const targetY = ownDataValue(target, 'y');
   const cameraX = ownDataValue(camera, 'x');
   const cameraY = ownDataValue(camera, 'y');
   const label = ownDataValue(target, 'label');
   if (![targetX, targetY, cameraX, cameraY, width, height, zoom, margin].every(Number.isFinite) ||
-      zoom <= 0 || width < 64 || height < 64 || margin < 8 ||
-      margin * 2 >= Math.min(width, height)) return null;
+      zoom <= 0 || width < 64 || height < 64 || width > 8192 || height > 8192 ||
+      margin < 8 || margin * 2 >= Math.min(width, height)) return null;
 
   const screenX = width / 2 + (targetX - cameraX) * zoom;
   const screenY = height / 2 + (targetY - cameraY) * zoom;
@@ -449,12 +456,97 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
     dy === 0 ? Infinity : (height / 2 - margin) / Math.abs(dy)
   );
   if (!Number.isFinite(scale) || scale <= 0) return null;
-  return Object.freeze({
+
+  const base = {
     x: width / 2 + dx * scale,
     y: height / 2 + dy * scale,
     angle: Math.atan2(dy, dx),
     label: questTargetLabel(label, 'Next objective')
+  };
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return Object.freeze({ ...base, occluded: true });
+  const blocked = (x, y) => {
+    const arrow = { left: x - 16, top: y - 16, right: x + 16, bottom: y + 16 };
+    return obstacles.some(obstacle =>
+      arrow.left < obstacle.right + 4 && arrow.right > obstacle.left - 4 &&
+      arrow.top < obstacle.bottom + 4 && arrow.bottom > obstacle.top - 4
+    );
+  };
+  if (!blocked(base.x, base.y)) return Object.freeze(base);
+
+  const step = Math.max(16, Math.ceil(Math.max(width, height) / 256));
+  const candidates = [];
+  const seen = new Set();
+  const add = (x, y) => {
+    const key = x + ':' + y;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ x, y, order: candidates.length });
+  };
+  add(margin, base.y);
+  add(width - margin, base.y);
+  add(base.x, margin);
+  add(base.x, height - margin);
+  for (let y = margin; y <= height - margin; y += step) {
+    add(margin, y);
+    add(width - margin, y);
+  }
+  for (let x = margin; x <= width - margin; x += step) {
+    add(x, margin);
+    add(x, height - margin);
+  }
+  add(margin, height - margin);
+  add(width - margin, margin);
+  const ranked = candidates.map(candidate => ({
+    ...candidate,
+    distance: (candidate.x - base.x) ** 2 + (candidate.y - base.y) ** 2
+  })).sort((left, right) => left.distance - right.distance || left.order - right.order);
+  const visible = ranked.find(candidate => !blocked(candidate.x, candidate.y));
+  return visible
+    ? Object.freeze({ ...base, x: visible.x, y: visible.y })
+    : Object.freeze({ ...base, occluded: true });
+}
+
+export function projectQuestCompassCaptionPosition(anchorX, anchorY, viewportWidth, viewportHeight,
+  panelWidth, panelHeight, avoidRects = [], margin = 8) {
+  if (![anchorX, anchorY, viewportWidth, viewportHeight, panelWidth, panelHeight, margin].every(Number.isFinite) ||
+      viewportWidth < 64 || viewportHeight < 64 || viewportWidth > 8192 || viewportHeight > 8192 ||
+      panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
+      margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
+      panelWidth > viewportWidth - margin * 2 || panelHeight > viewportHeight - margin * 2) return null;
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return null;
+  obstacles.push({
+    left: anchorX - 16, top: anchorY - 16, right: anchorX + 16, bottom: anchorY + 16
   });
+  const preferredTop = anchorY < viewportHeight / 2
+    ? anchorY + 18
+    : anchorY - panelHeight - 10;
+  const alternateTop = preferredTop < anchorY
+    ? anchorY + 18
+    : anchorY - panelHeight - 10;
+  const candidates = [
+    { left: anchorX - panelWidth / 2, top: preferredTop },
+    { left: anchorX - panelWidth / 2, top: alternateTop },
+    { left: anchorX + 18, top: anchorY - panelHeight / 2 },
+    { left: anchorX - panelWidth - 18, top: anchorY - panelHeight / 2 },
+    { left: anchorX - panelWidth / 2, top: margin },
+    { left: anchorX - panelWidth / 2, top: viewportHeight - margin - panelHeight },
+    { left: margin, top: anchorY - panelHeight / 2 },
+    { left: viewportWidth - margin - panelWidth, top: anchorY - panelHeight / 2 }
+  ];
+  for (const candidate of candidates) {
+    const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, candidate.left));
+    const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, candidate.top));
+    const right = left + panelWidth;
+    const bottom = top + panelHeight;
+    const blocked = obstacles.some(obstacle =>
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
+    );
+    if (!blocked) return Object.freeze({ left, top, width: panelWidth, height: panelHeight });
+  }
+  return null;
 }
 
 export const WORLD_TILE_SIZE = 32;
@@ -818,7 +910,7 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
-const MAP_OVERLAY_SELECTOR = '#quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
+const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
@@ -1493,10 +1585,11 @@ export class PixelWorldView extends WorldView {
 
   drawQuestCompass() {
     const indicator = projectQuestCompassIndicator(
-      this.questTarget, this.camera, this.width, this.height, this.zoom
+      this.questTarget, this.camera, this.width, this.height, this.zoom, 26, this.mapAvoidRects
     );
-    this.canvas.dataset.questCompass = indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
-    if (!indicator) return;
+    this.canvas.dataset.questCompass = indicator?.occluded ? 'occluded' :
+      indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
+    if (!indicator || indicator.occluded) return;
     const context = this.ctx;
     context.save();
     context.translate(indicator.x, indicator.y);
@@ -1515,20 +1608,22 @@ export class PixelWorldView extends WorldView {
     context.restore();
 
     const caption = 'NEXT · ' + Array.from(indicator.label).slice(0, 14).join('');
-    context.save();
     context.font = '11px ui-monospace, monospace';
     const width = Math.min(this.width - 16, Math.max(92, Math.ceil(context.measureText(caption).width) + 18));
-    const left = Math.max(8, Math.min(this.width - width - 8, indicator.x - width / 2));
-    const top = Math.max(8, Math.min(this.height - 30,
-      indicator.y < this.height / 2 ? indicator.y + 18 : indicator.y - 34));
+    const placement = projectQuestCompassCaptionPosition(
+      indicator.x, indicator.y, this.width, this.height, width, 24, this.mapAvoidRects, 8
+    );
+    if (!placement) return;
+    context.save();
     context.fillStyle = '#0c0d0b';
-    context.fillRect(left, top, width, 24);
+    context.fillRect(placement.left, placement.top, placement.width, placement.height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = 1.5;
-    context.strokeRect(left + 0.75, top + 0.75, width - 1.5, 22.5);
+    context.strokeRect(placement.left + 0.75, placement.top + 0.75,
+      placement.width - 1.5, placement.height - 1.5);
     context.fillStyle = '#f5f1e6';
     context.textAlign = 'center';
-    context.fillText(caption, left + width / 2, top + 16);
+    context.fillText(caption, placement.left + placement.width / 2, placement.top + 16);
     context.restore();
   }
 
