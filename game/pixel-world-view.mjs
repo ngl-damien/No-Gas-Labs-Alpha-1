@@ -920,13 +920,15 @@ export class PixelWorldView extends WorldView {
   updateNpcControls(modalOpen = false) {
     const group = this.npcControlGroup;
     if (!group || !(this.npcControlButtons instanceof Map)) return;
-    const playUiVisible = typeof document !== 'undefined' && this.playUiVisible();
+    const playUiVisible = typeof this.mapOverlayVisibility === 'boolean'
+      ? this.mapOverlayVisibility
+      : typeof document !== 'undefined' && this.playUiVisible();
     const unavailable = modalOpen === true || !playUiVisible;
-    group.hidden = unavailable;
+    if (group.hidden !== unavailable) group.hidden = unavailable;
     for (const npc of GUILD_NPCS) {
       const button = this.npcControlButtons.get(npc.roleId);
       if (!button) continue;
-      button.disabled = unavailable;
+      if (button.disabled !== unavailable) button.disabled = unavailable;
       if (unavailable) continue;
       const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
         ? Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
@@ -934,16 +936,21 @@ export class PixelWorldView extends WorldView {
       const canTalk = distance < 160;
       const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
       const packetState = readiness?.status || 'unavailable';
-      const action = canTalk ? 'Talk to ' : 'Approach ';
-      button.textContent = (canTalk ? 'Talk' : 'Approach') + ' · ' + npc.shortName + ' · ' + npc.locationLabel;
-      button.dataset.guildNpcAction = canTalk ? 'talk' : 'approach';
-      button.setAttribute('aria-label',
-        action + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
+      const actionState = canTalk ? 'talk' : 'approach';
+      const actionLabel = canTalk ? 'Talk to ' : 'Approach ';
+      const buttonText = (canTalk ? 'Talk' : 'Approach') + ' · ' + npc.shortName + ' · ' + npc.locationLabel;
+      const accessibleLabel = actionLabel + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
         ' Packet state: ' + packetState + '. ' +
         (canTalk
           ? 'Activating opens the owning institution; it does not submit a collaborator response.'
           : 'Activating routes to this exact character. Arrival requires a separate explicit interaction.') +
-        ' This advisory entry point invokes no model and creates no canonical event, evidence, progress, approval, or authority.');
+        ' This advisory entry point invokes no model and creates no canonical event, evidence, progress, approval, or authority.';
+      if (button.dataset.guildNpcAction !== actionState) button.dataset.guildNpcAction = actionState;
+      if (button.textContent !== buttonText) button.textContent = buttonText;
+      if (button.dataset.guildNpcAriaLabel !== accessibleLabel) {
+        button.setAttribute('aria-label', accessibleLabel);
+        button.dataset.guildNpcAriaLabel = accessibleLabel;
+      }
     }
   }
 
