@@ -1,4 +1,4 @@
-import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, COLLABORATOR_ROLES } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -161,11 +161,12 @@ function freezeJson(value) {
 }
 
 function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
+  const roleSpec = COLLABORATOR_ROLES.find(candidate => candidate.id === role);
   if (typeof packetJson !== 'string' ||
       new TextEncoder().encode(packetJson).byteLength > MAX_RESPONSE_BYTES ||
-      !COLLABORATOR_ROLES.some(candidate => candidate.id === role) ||
+      !roleSpec ||
       !isBoundedIdentifier(moonshotId) ||
-      !Array.isArray(expectedInputRefs) || expectedInputRefs.length === 0 || expectedInputRefs.length > 64 ||
+      !Array.isArray(expectedInputRefs) || expectedInputRefs.length === 0 || expectedInputRefs.length > 8 ||
       expectedInputRefs.some(id => !isBoundedIdentifier(id)) ||
       new Set(expectedInputRefs).size !== expectedInputRefs.length) return null;
   let payload;
@@ -175,13 +176,36 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
   } catch {
     return null;
   }
-  if (!ownPlainObject(payload) || payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
-      payload.role !== role || payload.targetMoonshotId !== moonshotId ||
+  const payloadKeys = [
+    'protocol', 'sourceSnapshot', 'role', 'objective', 'targetMoonshotId', 'authority',
+    'mayWriteCanonicalState', 'mayGrantAuthority', 'mayAwardProgress', 'mayCertifyTruthOrExecution',
+    'inputRefs', 'omittedEventIds', 'omittedCount', 'omittedEventIdListTruncated',
+    'truncatedContentFieldCount', 'inputRecords'
+  ];
+  const snapshot = payload?.sourceSnapshot;
+  const truncatedFieldCount = Array.isArray(payload?.inputRecords)
+    ? payload.inputRecords.reduce((count, record) => {
+        const fields = record?.truncatedFields;
+        return Array.isArray(fields) && fields.every(field => typeof field === 'string')
+          ? count + fields.length : Number.NaN;
+      }, 0)
+    : Number.NaN;
+  if (!exactKeys(payload, payloadKeys) ||
+      payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
+      payload.role !== role || payload.objective !== roleSpec.objective ||
+      payload.targetMoonshotId !== moonshotId || payload.authority !== 'advisory-only' ||
+      !exactKeys(snapshot, ['status', 'worldId', 'revision', 'suppliedEventCount']) ||
+      snapshot.status !== 'identified' || !isBoundedIdentifier(snapshot.worldId) ||
+      !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+      !Number.isSafeInteger(snapshot.suppliedEventCount) || snapshot.suppliedEventCount < 0 ||
+      snapshot.suppliedEventCount > 100_000 ||
       !Array.isArray(payload.inputRefs) || !Array.isArray(payload.inputRecords) ||
-      payload.inputRefs.length === 0 || payload.inputRefs.length > 64 ||
+      payload.inputRefs.length === 0 || payload.inputRefs.length > 8 ||
       payload.inputRefs.length !== payload.inputRecords.length ||
       payload.inputRefs.some((id, index) => typeof id !== 'string' || id !== payload.inputRecords[index]?.eventId) ||
       new Set(payload.inputRefs).size !== payload.inputRefs.length ||
+      !Number.isSafeInteger(payload.truncatedContentFieldCount) ||
+      payload.truncatedContentFieldCount !== truncatedFieldCount ||
       !validOmissionDisclosure(payload) ||
       payload.mayWriteCanonicalState !== false || payload.mayGrantAuthority !== false ||
       payload.mayAwardProgress !== false || payload.mayCertifyTruthOrExecution !== false ||
@@ -295,6 +319,16 @@ export function validateCollaboratorResponse(packet, responseText) {
 }
 
 /**
+ * Revalidate archived packet/response bytes without granting a module-issued
+ * packet capability. World imports still need independent source-history checks.
+ */
+export function validateCollaboratorResponseSnapshot({ packetJson, role, moonshotId, sourceEventIds, responseText }) {
+  const payload = parsePacketPayload(packetJson, role, moonshotId, sourceEventIds);
+  if (!payload) return unavailable('PACKET_INVALID_OR_UNAVAILABLE');
+  return validateResponseText(payload, responseText);
+}
+
+/**
  * Revalidate a retained collaborator event for read-only Council Chamber display.
  * This binds the summary to one unique actor-scoped event, response ID, packet scope,
  * stored validator result, and exact response bytes. It does not verify provider
@@ -305,9 +339,12 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
     if (!isBoundedIdentifier(eventId)) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
     const events = ownArrayValues(ownDataValue(world, 'events'), 100000);
     if (!events) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
-    const matches = events.filter(event => ownDataValue(event, 'id') === eventId);
+    const matches = [];
+    for (let index = 0; index < events.length; index += 1) {
+      if (ownDataValue(events[index], 'id') === eventId) matches.push({ event: events[index], index });
+    }
     if (matches.length !== 1) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
-    const event = matches[0];
+    const { event, index: eventIndex } = matches[0];
     if (!ownPlainObject(event) || ownDataValue(event, 'type') !== 'collaborator-response-recorded') {
       return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
     }
@@ -332,7 +369,7 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
       return unavailable('RETAINED_RESPONSE_IDENTITY_AMBIGUOUS');
     }
 
-    const sourceEventIds = ownArrayValues(ownDataValue(event, 'sourceEventIds'), 64);
+    const sourceEventIds = ownArrayValues(ownDataValue(event, 'sourceEventIds'), 8);
     if (!sourceEventIds || sourceEventIds.length === 0 ||
         sourceEventIds.some(id => !isBoundedIdentifier(id)) ||
         new Set(sourceEventIds).size !== sourceEventIds.length) {
@@ -352,6 +389,30 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
 
     const payload = parsePacketPayload(packetJson, role, moonshotId, sourceEventIds);
     if (!payload) return unavailable('RETAINED_RESPONSE_PACKET_INVALID');
+
+    const worldId = ownDataValue(world, 'id');
+    const rawCreations = ownDataValue(world, 'creations');
+    const creations = rawCreations === undefined ? [] : ownArrayValues(rawCreations, 12);
+    if (!isBoundedIdentifier(worldId) || !creations) return unavailable('RETAINED_RESPONSE_SNAPSHOT_INVALID');
+    const prefixEvents = events.slice(0, eventIndex);
+    const visibleEvents = actorRole === 'founder'
+      ? prefixEvents
+      : prefixEvents.filter(source => {
+          const sourceType = ownDataValue(source, 'type');
+          const sourceActor = ownDataValue(source, 'actor');
+          return !['draft', 'repair'].includes(sourceType) &&
+            (sourceType !== 'message-reported' || ownDataValue(sourceActor, 'id') === actorId);
+        });
+    const expectedPacket = projectCollaboratorPackets({
+      id: worldId,
+      revision: eventIndex,
+      creations,
+      events: visibleEvents
+    }).find(candidate => candidate.id === role && candidate.available === true && candidate.moonshotId === moonshotId);
+    if (!expectedPacket || expectedPacket.packetJson !== packetJson) {
+      return unavailable('RETAINED_RESPONSE_PACKET_MISMATCH');
+    }
+
     const checked = validateResponseText(payload, responseText);
     if (storedStatus !== checked.status || storedReason !== checked.reason) {
       return unavailable('RETAINED_RESPONSE_MISMATCH');
