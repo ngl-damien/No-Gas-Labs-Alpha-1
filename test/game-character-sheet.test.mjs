@@ -233,6 +233,50 @@ test('Study Cards are actor-scoped collectibles derived only from uniquely linke
   assert.deepEqual(world, before, 'Study Cards are read-only projections, not new world events');
 });
 
+test('duplicate event identities cannot mint Study Cards or mark reflection recorded', () => {
+  const duplicateStudy = (studyId, attempt) => event('duplicate-study-event', 'study', founder, t2, {
+    studyId, creationId: 'study-source', version: 1,
+    question: 'What is known?', attempt, nextCheck: 'Check another source.'
+  });
+  const duplicateStudyWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      duplicateStudy('study-a', 'First attempt.'),
+      duplicateStudy('study-b', 'Second attempt.')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const unavailable = projectCharacter(duplicateStudyWorld, founder);
+  assert.deepEqual(unavailable.studyCards, []);
+  assert.equal(unavailable.studyCardTotal, 0);
+  assert.equal(unavailable.studyCardUnavailableCount, 2);
+
+  const study = event('study-event', 'study', founder, t2, {
+    studyId: 'study-1', creationId: 'study-source', version: 1,
+    question: 'What does the source establish?', attempt: 'I inspected the source.',
+    nextCheck: 'Compare a separate source.'
+  });
+  const duplicateReview = (reviewId, studyId) => event('duplicate-review-event', 'study-reviewed', founder, t3, {
+    reviewId, studyId, creationId: 'study-source', version: 1,
+    response: 'I compared the source.', reflection: 'The result remains provisional.'
+  });
+  const reviewWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      study,
+      duplicateReview('review-1', 'study-1'),
+      duplicateReview('review-2', 'study-2')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const reviewed = projectCharacter(reviewWorld, founder).studyCards;
+  assert.equal(reviewed.length, 1);
+  assert.equal(reviewed[0].reviewStatus, 'attempt-recorded');
+  assert.equal(reviewed[0].reviewEventId, null);
+});
+
 test('ambiguous study identities stay in history but cannot manufacture Study Cards', () => {
   const study = (id, attempt) => event(id, 'study', founder, t2, {
     studyId: 'duplicate-study', creationId: 'study-source', version: 1,
