@@ -939,7 +939,7 @@ function openCouncilChamber(){
   content.dataset.councilChamber='true';
   content.append(paragraph(
     (mode==='shared'?'Currently loaded shared-world snapshot':'Private world snapshot')+
-    ' · actor '+viewer.name+' ('+viewer.role+'). This room is read-only; while disconnected, a shared snapshot may be stale.',
+    ' · actor '+(viewer.name||viewer.id||'Unknown actor')+' ('+viewer.role+'). This room is read-only; while disconnected, a shared snapshot may be stale.',
     'form-help'
   ));
   if(!coverage){
@@ -971,11 +971,11 @@ function openCouncilChamber(){
     const matches=item?events.filter(event=>event?.id===item.id&&event?.type==='collaborator-response-recorded'&&
       event?.role===npc.roleId&&event?.actor?.id===viewer.id&&event?.actor?.role===viewer.role):[];
     const response=matches.length===1?matches[0]:null;
-    const status=!item?'awaiting':!response?'ambiguous':
+    const status=!item?'awaiting':!response?'link-unavailable':
       response.validationStatus==='rejected'?'rejected':'human-review';
     const labels={
       awaiting:'AWAITING RESPONSE',
-      ambiguous:'AMBIGUOUS · NOT COUNTED',
+      'link-unavailable':'PROJECTION PRESENT · EXACT LINK UNAVAILABLE',
       rejected:'REJECTED · PRESERVED ATTEMPT',
       'human-review':'STRUCTURE VALID · HUMAN REVIEW ONLY'
     };
@@ -989,7 +989,7 @@ function openCouncilChamber(){
       response
         ? paragraph('Retained by '+(response.actor?.name||response.actor?.id||'Unknown actor')+' · '+response.at+' · event '+response.id,'attribution')
         : paragraph(item
-          ? 'The quest projection has an entry, but its exact actor-bound event could not be resolved uniquely. Inspect the archive; this slot is not linked.'
+          ? 'The quest projection includes this role, but the exact actor-bound event could not be uniquely reopened from this snapshot. Inspect the archive before relying on this card.'
           : 'No response is retained for this role in your actor-scoped trail.','empty-note')
     ]);
     if(response){
