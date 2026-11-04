@@ -1235,3 +1235,50 @@ test("a recovery lease appearing after writer lock creation fences nonce mutatio
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("nonce writer refuses to publish after its owner lock disappears before ledger rename", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-writer-lock-precommit-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+    const originalFsyncSync = fs.fsyncSync;
+    let fileSyncs = 0;
+    let removed = false;
+    fs.fsyncSync = descriptor => {
+      if (fs.fstatSync(descriptor).isFile()) {
+        fileSyncs += 1;
+        if (fileSyncs === 2) {
+          removed = true;
+          unlinkSync(lockPath);
+        }
+      }
+      return originalFsyncSync(descriptor);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
+        );
+      });
+      assert.equal(fileSyncs, 2, "the lock is removed after its receipt and temporary ledger file are fsynced");
+      assert.equal(removed, true, "the test must remove the owner lock at the pre-rename boundary");
+      assert.equal(existsSync(fixture.nonceLedgerPath), false,
+        "a nonce must not be committed after ownership of the writer lock is lost");
+      assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\\.founder-nonce-.*\\.tmp$/.test(name)), false,
+        "the uncommitted temporary ledger file must be cleaned up");
+    } finally {
+      fs.fsyncSync = originalFsyncSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
