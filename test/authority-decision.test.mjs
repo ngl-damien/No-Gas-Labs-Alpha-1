@@ -1398,7 +1398,7 @@ test("nonce writer cannot authorize through a replacement ledger directory at co
     fs.openSync = (target, ...args) => {
       const descriptor = originalOpenSync(target, ...args);
       const name = path.basename(String(target));
-      if ((name === ".founder-nonce.lock" || /^\\.founder-nonce-[0-9a-f-]{36}\\.tmp$/.test(name)) &&
+      if ((name === ".founder-nonce.lock" || (name.startsWith(".founder-nonce-") && name.endsWith(".tmp"))) &&
           !linkedNames.has(name)) {
         fs.linkSync(target, path.join(replacementStaging, name));
         linkedNames.add(name);
