@@ -580,6 +580,7 @@ def adversary_challenge_handoff(browser,url,out):
         page.get_by_role('button',name='Walk to Adversary',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         packet=page.locator('[data-collaborator-role="adversary"]')
+        expect(packet).to_be_focused()
         packet.locator('details.collaborator-packet summary').click()
         prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
         packet_payload=json.loads(prompt.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
@@ -679,8 +680,26 @@ def adversary_challenge_handoff(browser,url,out):
         close_sheet(page)
         character_xp=character_xp_components(page)
         assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
+        close_sheet(page)
+        npc_world_before=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        focused_roles=[]
+        for npc_name,sheet_title,role_id in (
+            ('Hostile Archivist','Evidence Archive','archivist'),
+            ('Synthesis Clerk','Guild Hall','synthesizer'),
+            ('Polymath Tutor','Polymath Academy','tutor')
+        ):
+            page.locator('#places-button').click()
+            page.get_by_role('button',name=f'Walk to {npc_name}',exact=True).click()
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=sheet_title)
+            role_card=page.locator(f'[data-collaborator-role="{role_id}"]')
+            expect(role_card).to_be_focused()
+            npc_world_after=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+            assert npc_world_after==npc_world_before, f'{npc_name} navigation must not create progress or canonical events'
+            focused_roles.append(role_id)
+            close_sheet(page)
+        assert focused_roles==['archivist','synthesizer','tutor']
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'worldXp':0,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'npcRolesFocused':focused_roles,'npcNavigationXpNeutral':True,'worldXp':0,'errors':errors}
     finally:
         context.close()
 

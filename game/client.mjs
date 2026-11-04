@@ -97,6 +97,19 @@ function openInstitutionLocation(id) {
   return openGuide(id);
 }
 
+function openGuildNpcInteraction(interaction) {
+  const npc = GUILD_NPCS.find(candidate => candidate.roleId === interaction.npcRoleId);
+  if (!npc || npc.routeLocation !== interaction.id) {
+    throw new Error('The NPC role and owning institution do not match a registered Guild Hall guide.');
+  }
+  if (npc.roleId === 'archivist' || npc.roleId === 'adversary') {
+    return openEvidenceArchive(null, npc.roleId);
+  }
+  if (npc.roleId === 'tutor') return openAcademy(npc.roleId);
+  if (npc.roleId === 'synthesizer') return openGuildHall(npc.roleId);
+  throw new Error('This NPC role has no bounded institutional workbench.');
+}
+
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
   const pageLocation=globalThis.location;
@@ -160,7 +173,9 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;view.setPlayer({id:viewer.presenceId||viewer.id});presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
 async function act(action){if(mode==='shared'){const normalized=JSON.parse(JSON.stringify(action));let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');}else{pending={requestId:crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,action,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
+const view=new WorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
+  ? openGuildNpcInteraction(interaction)
+  : openInstitutionLocation(interaction.id))();else if(interaction.type==='collaborator-response')guarded(()=>openEvidenceArchive(interaction.responseId))();else if(interaction.type==='collaborator')guarded(()=>{
   const roleId=interaction.roleId;
   if(roleId==='archivist'||roleId==='adversary')openEvidenceArchive(null,roleId);
   else if(roleId==='tutor')openAcademy(roleId);

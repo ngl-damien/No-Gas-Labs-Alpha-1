@@ -219,6 +219,7 @@ test('institutional collaborator NPCs retain exact roles and stand beside their 
  };
  for(const npc of GUILD_NPCS){
   const destination=destinations[npc.roleId];
+  assert.equal(npc.routeLocation,destination.id);
   assert.equal(npc.locationLabel,destination.name.toUpperCase());
   assert.ok(Math.hypot(npc.x-destination.x,npc.y-destination.y)<200,
     npc.name+' must stand beside the institution whose work its contract supports');
@@ -233,7 +234,7 @@ test('each institutional collaborator NPC is a reachable map destination and dis
   view.goTo(npc.id);
   assert.equal(view.target,npc.id,npc.name+' route should be accepted');
   for(let step=0;step<500&&!interactions.length;step++)view.update(.045,step*45);
-  assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}],npc.name+' must open its own bounded role');
+  assert.deepEqual(interactions,[{type:'institution',id:npc.routeLocation,npcRoleId:npc.roleId,npcName:npc.name}],npc.name+' must open its exact role at its owning institution');
   interactions.length=0;
  }
 });
@@ -243,7 +244,7 @@ test('a nearby collaborator NPC can be spoken to without recording discovery or 
  const npc=GUILD_NPCS[0];
  view.setPlayer({x:npc.x,y:npc.y+10});
  view.interact(npc.id,'collaborator');
- assert.deepEqual(interactions,[{type:'collaborator',id:npc.id,roleId:npc.roleId}]);
+ assert.deepEqual(interactions,[{type:'institution',id:npc.routeLocation,npcRoleId:npc.roleId,npcName:npc.name}]);
  assert.deepEqual(view.world,{creations:[],discoveries:[]});
 });
 

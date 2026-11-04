@@ -21,22 +21,26 @@ export const PLACES=[
 ];
 
 const GUILD_NPC_POSITIONS = Object.freeze([
-  { roleId: 'archivist', x: 890, y: 95, accent: '#6b805d', sigil: 'A', locationLabel: 'EVIDENCE ARCHIVE' },
-  { roleId: 'adversary', x: 1120, y: 95, accent: '#af5138', sigil: '!', locationLabel: 'EVIDENCE ARCHIVE' },
-  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S', locationLabel: 'GUILD HALL' },
-  { roleId: 'tutor', x: 275, y: 360, accent: '#9a8b5b', sigil: 'T', locationLabel: 'POLYMATH ACADEMY' }
+  { roleId: 'archivist', x: 890, y: 95, accent: '#6b805d', sigil: 'A', routeLocation: 'evidence_archive' },
+  { roleId: 'adversary', x: 1120, y: 95, accent: '#af5138', sigil: '!', routeLocation: 'evidence_archive' },
+  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S', routeLocation: 'guild_hall' },
+  { roleId: 'tutor', x: 275, y: 360, accent: '#9a8b5b', sigil: 'T', routeLocation: 'academy' }
 ]);
 
 // These authored, role-bound entry points live beside the institutional work they support.
 // They are not autonomous agents and make no provider calls or world writes.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
   const role = COLLABORATOR_ROLES.find(candidate => candidate.id === position.roleId);
-  return role ? [Object.freeze({
+  const place = PLACES.find(candidate =>
+    candidate.id === position.routeLocation && candidate.type === 'institution'
+  );
+  return role && place ? [Object.freeze({
     id: 'guild-npc-' + role.id,
     roleId: role.id,
     name: role.name,
     objective: role.objective,
-    ...position
+    ...position,
+    locationLabel: place.name.toUpperCase()
   })] : [];
 }));
 
@@ -667,7 +671,7 @@ export class WorldView {
     this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;
   }
   nearest(targetId,targetType){
-    const options=[...PLACES,...GUILD_NPCS.map(npc=>({id:npc.id,roleId:npc.roleId,x:npc.x,y:npc.y+10,type:'collaborator',name:npc.name})),...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({id:object.id,responseId:object.responseId,roleId:object.roleId,moonshotId:object.moonshotId,validationStatus:object.validationStatus,x:object.x,y:object.y+10,type:'collaborator-response',name:object.name}))];
+    const options=[...PLACES,...GUILD_NPCS.map(npc=>({id:npc.id,roleId:npc.roleId,routeLocation:npc.routeLocation,x:npc.x,y:npc.y+10,type:'collaborator',name:npc.name})),...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title})),...(this.collaboratorResponseObjects||[]).filter(object=>object.mapVisible).map(object=>({id:object.id,responseId:object.responseId,roleId:object.roleId,moonshotId:object.moonshotId,validationStatus:object.validationStatus,x:object.x,y:object.y+10,type:'collaborator-response',name:object.name}))];
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
@@ -676,7 +680,7 @@ export class WorldView {
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
       if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
-      const interaction=nearest.type==='collaborator'?{type:'collaborator',id:nearest.id,roleId:nearest.roleId}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:nearest.type==='collaborator-response'?{type:'collaborator-response',responseId:nearest.responseId,roleId:nearest.roleId,moonshotId:nearest.moonshotId,validationStatus:nearest.validationStatus}:{type:nearest.type,id:nearest.id};
+      const interaction=nearest.type==='collaborator'?{type:'institution',id:nearest.routeLocation,npcRoleId:nearest.roleId,npcName:nearest.name}:nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:nearest.type==='collaborator-response'?{type:'collaborator-response',responseId:nearest.responseId,roleId:nearest.roleId,moonshotId:nearest.moonshotId,validationStatus:nearest.validationStatus}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
