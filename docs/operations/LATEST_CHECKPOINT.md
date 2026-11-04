@@ -2,23 +2,30 @@
 
 **Prior checkpoint recorded HEAD:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f — historical record, superseded by Run 38 below.
 
-**Hourly agents:** 6ac6c77de7ac81918e446a49ea330eb6 Stutter-Step Loop enabled-degraded, 6ac307e1e9bc8191ae21d22f94743802 Forensic Audit enabled-degraded — do not delete — steer via docs/operations/hourly-agents/
+**Hourly agents (historical identifiers):** 6ac6c77de7ac81918e446a49ea330eb6 Stutter-Step Loop; 6ac307e1e9bc8191ae21d22f94743802 Forensic Audit. Their live task status was not re-queried in this run; do not infer current schedule health from the older enabled-degraded labels. Preserve and steer through docs/operations/hourly-agents/.
 
-**Current focus:**
+**Current focus (2026-11-04):**
 
-- PR #329 — draft top-down pixel-art world renderer, child of PR #326 at exact parent head 60349b68f1b700acab66a359478416767f016d14; code/test head e5429fa032aa31e7adee392725850ea52a1b30fb passed hosted Verify, Genesis, and Browser Acceptance (12/12).
-- PR #326 remains the parent Source Observation event/register/docket stack; it is draft/unmerged. G6 remains IN PROGRESS because source retrieval, independent verification, and integration into main are not established.
-- PR #309 remains a separate, highly divergent Android lifecycle proposal that owns game/world-view.mjs; do not merge it as-is or reintroduce its older caller-trusted authority helper. PR #329 deliberately subclasses WorldView without changing that shared file.
-- Main remains cc317d49c8fdf003c78aa40f38a177095019066e. Main's G0–G9 ledger remains NOT ASSESSED; proposed-branch evidence is not mainline completion.
-- Physical Android-device acceptance and independently authenticated Founder Gate remain unverified.
-
-**Next falsification targets:** reconcile the #309 lifecycle work with current authority verification; add Source Observation/challenge/response counts to Evidence Archive and TownSquare projections without concurrent edits to game/world-view.mjs; expand the pixel tile/sprite world and inspect mobile performance; implement real source retrieval and independent verification; obtain physical supported-device evidence; preserve the distinction between attributed activity and truth/authority.
+- Current main HEAD is 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0. Its only commit after c8fd22289cf8405aff04aae4d3fd51c29c68e319 reverts an accidental 705-line test-file addition; it does not integrate the MMORPG stack. Main's G0–G9 ledger remains NOT ASSESSED.
+- Active proposed game stack: PR #350, branch game/player-guilds-guildhall-20261104, based on PR #349 at 4e9b599f7e9c6a7e8dda2210cee824cfaefa7281, head 27b7e1cd748d4a56ed961ac61595c10fb39e42fd. GitHub reports 270 commits ahead / 4 behind main; 16 changed files relative to its PR base. It remains draft/open and unmerged.
+- PR #350 contains the Commons/Guild Hall stack, read-only field satchel, actor-scoped membership/challenge quests, four-role Council coverage, and the new Council Dissent Dossier. The latest change revalidates the exact retained packet/response bytes, unique event/response IDs, actor/role, packet source IDs, validator status/reason and duplicate JSON keys; the room displays bounded role-specific notes, packet omissions, unknowns, contradictions/dissent and suggested checks. Rejected attempts remain preserved. This is a read-only review projection, not truth, consensus, approval, authority, execution or XP.
+- Exact-head hosted verification on 27b7e1cd: Verify 41844155517 PASS; Genesis Evidence Invariant 41844155305 PASS; Browser Acceptance 41844155267 PASS (13/13). Verify preflight: ready, 52 target records, zero warnings/failures; artifact 13329354619, 4,215 bytes, SHA-256 d84800c58262ccdf5556cb535a66a85dbfdae827f2c8d96e418ae060aabb8186. Browser artifact 13330048476, 6,368,283 bytes, SHA-256 38b671063e8d490492f4f27c578b4c10d33f7e2442618440f743786128f6c2b3.
+- Worker A's latest authority test branch is PR #353, head a5dded30355858e5f7d233c0357fdbd6194bec9d; Verify 41832250950, Genesis 41832250768 and Browser 41832250799 all PASS. The signed authorization/nonce helper is present, but the live game Decision Chamber route still uses a Founder session and does not call authorizationEvent. The trust anchor remains NOT_ENROLLED. A source-specific handoff was posted on PR #348; no key was generated or enrolled.
+- PR #309 remains a separate Android lifecycle proposal at 9de3c5617f9dc0ebfe9211ed62489003b4b4032e, 419 ahead / 41 behind main. Android Alpha-1 emulator instrumentation passed 7/7 on API 35; no physical Android device was inspected.
+- Both registered Desktop Commander devices were offline. No local checkout, local preflight, or local test execution was available; the exact-head hosted workflows supplied the verification evidence. No merge, release, deployment, Founder decision, authority grant, key enrollment, or artificial XP award occurred.
 
 **Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
 
-**Next falsification targets:** keep PR #317 exact-head Verify/Genesis green after the checkpoint-only update; inspect its preflight receipt; explicitly exercise Source Observation lost-response retry through the shared Relay UI; reconcile PR #316 trust-root design with live authorization routes; continue G6 without upgrading authored notes to truth; advance the top-down tile-and-sprite world renderer; obtain physical Android-device evidence.
+**Next falsification targets:**
 
-**Hash chain:** prevHash 0... receiptHash of this file content — blockHash Founder sealed — deterministic reconstructable
+- Worker A: wire the live /api/decisions/choose mutation to the signed authorization/nonce verifier or fail closed/disable APPROVE, REJECT and DEFER until the trust root is explicitly enrolled. Never generate, enroll or replace a Founder key on the Founder's behalf.
+- Extend Council Chamber browser and contract coverage across Archivist, Adversary, Synthesizer and Tutor. Preserve rejected attempts, contradictions, dissent and packet omissions; never turn four role responses into consensus or endorsement.
+- Implement transferable inventory/equipment only after a server-authoritative ownership model, atomic transfer event, idempotency, replay/conflict handling and audit trail exist. The field satchel remains read-only.
+- Reconcile PR #309 lifecycle work with the current authority path and test on a physical supported Android device; emulator evidence is not device acceptance.
+- Implement source retrieval and independent verification as separate observable states; keep missing, failed, contradicted and unverified results visible.
+- Integrate the large proposed stack incrementally; do not merge the 270-ahead branch wholesale.
+
+**Checkpoint integrity:** this Markdown file is plain operational text, not a cryptographically sealed or tamper-evident record. No hash-chain receipt or Founder signature was generated or independently verified for this checkpoint in this run; do not treat the historical hash-chain placeholder as authority or evidence.
 
 **Restored by:** enforce/hourly-agents-steering-governance (Grok as ngl-damien) — branch only until reviewed merge
 
@@ -599,3 +606,73 @@ Objective: close the untested gap between the real Guild NPC workbench and unrel
 - G7 remains IN PROGRESS. No physical Android-device acceptance is established; emulator results are not device verification.
 - Source retrieval and independent verification remain NOT_PERFORMED; the top-down world is still an early pixel-art slice, not a feature-complete MMORPG.
 - Next: obtain exact-head Verify/Genesis/Browser results for the child branch; if the shared Adversary/Relay journey passes, preserve the exact run IDs and artifact, then reconcile the NPC/workbench stack with main without reintroducing the stale caller-trusted authority implementation.
+
+## 2026-11-04 — Worker B Runs 58–59 — Guild Field Satchel and member-scoped challenge
+
+### Run 58 — shared work becomes inspectable Guild Hall content
+
+- PR #350 branch `game/player-guilds-guildhall-20261104`, based on PR #349 branch at `4e9b599f7e9c6a7e8dda2210cee824cfaefa7281`.
+- Code/test head `e8e41960e12ad29f0078c1ada082533808438d92` adds pure read-only `projectGuildFieldSatchel(world, viewer)` in `game/social.mjs`, Guild Hall rendering in `game/client.mjs`, unit coverage in `test/game-social.test.mjs`, and a two-session browser assertion.
+- The projection exposes only current guild members' uniquely linked retained public work: publications, Commons messages with hidden text redacted, field contributions, dissent reports, moonshot/experiment/Source Observation records, and bounded collaborator metadata. Ambiguous identities fail closed. Entries route to their originating institution.
+- The satchel is not inventory/equipment or transferable ownership. It creates no event, XP, evidence status, approval, truth verdict, or authority.
+- Exact-head Verify 41820585904 PASS, Genesis 41820586184 PASS, Browser 41820585919 PASS (13/13).
+
+### Run 59 — guild challenge quest is scoped to current members
+
+- PR #350 advanced to exact head `390a195703f21bc6ae5a57f233f5161fcc5b83e2`, with `game/quests.mjs`, `test/game-quests.test.mjs`, and `scripts/verify-browser.py` updated.
+- The experiment-challenge quest now targets a retained report by another current guild member. Outsider reports are excluded; the exact report remains the Moonshot Field objective; departure reopens the objective while the original report/challenge events remain retained.
+- Unit tests cover Founder/Witness challenge, outsider exclusion, exact target, departure, no XP and no world mutation. The two-session browser journey observes the generic objective before membership, guild-scoped objective after joining, and reopening after the report author leaves.
+- Exact-head Verify 41823755488 PASS (Node 24 full test command, Python inspector, game build, institutional exercise; hosted preflight ready with 53 target records and zero warnings/failures), Genesis 41823755440 PASS, Browser 41823755513 PASS (13/13).
+- Browser artifact 13318596672, 5,512,829 bytes, ZIP SHA-256 `311ee56d35f280d35499884d913ea21dfc606b297cb6c8b1ea1b692dc41643b1`. Preflight artifact 13317058991, SHA-256 `cd7ecd2c3e940371b12895f516373f483343f2de402c5a95429714ac370aee1c`.
+
+### Gate state and limits
+
+- G5 remains IN PROGRESS: Commons moderation and player-guild lifecycle are proposed, but player-to-player item ownership transfer/trading and guild leadership transfer are not implemented.
+- G6 remains IN PROGRESS: the satchel and member-scoped quest are proposed and unmerged. No source retrieval or independent verification is established.
+- G7 remains IN PROGRESS: browser/PWA/emulator evidence is not physical Android-device acceptance.
+- Main remains `c8fd22289cf8405aff04aae4d3fd51c29c68e319`; PR #350 remains open/draft/unmerged. No mainline capability is claimed.
+
+### Separate PR #343 shared NPC/Relay browser failure
+
+- PR #343 code/test head `0119e137828ea24d655c3166f4e8f67a1e380ce6` passed Verify 41763307372 and Genesis 41763307318, but Browser Acceptance 41763307432 failed.
+- The job reached and passed desktop, phone, and institutional-location journeys, then timed out at `scripts/verify-browser.py:1096` waiting for a `data-guild-npc-control="adversary"` / `data-guild-npc-action="talk"` control before the shared Adversary NPC journey.
+- PR #343 subsequently received documentation-only ledger commits `b30c09d47b8c7f73bd8c02e77e34363b5e94321d` and `3b897aedb004b8a8aa066a862b96e9d9888342e8`; no game source/test was changed by this handoff. No Browser rerun on the documentation-updated head is claimed.
+- Do not treat PR #350's 13/13 Browser pass as proof that PR #343's separate Adversary NPC/Relay journey passes. Worker B should re-observe and repair or explicitly supersede that child test before promoting the NPC/Relay evidence.
+
+### Execution limitations
+
+Both registered Desktop Commander devices remained offline, and the container could not resolve github.com for a local clone. No local checkout or local test run is claimed. Worker B's exact-head hosted preflight and CI receipts above are the available evidence. This checkpoint/ledger update is on PR #343's documentation branch only; main was not modified.
+
+### PR #343 current exact-head Browser result — 2026-11-04
+
+- Current documentation branch head before this addendum: `2882a562198c83eb82566ed263695d6261ccf26a` (ledger and checkpoint handoff commits included).
+- Verify 41825129383 PASS; Genesis 41825129360 PASS; Browser Acceptance 41825130411 FAIL.
+- Browser job passed desktop, phone, and institutional-location actions, then timed out after 30 seconds at `scripts/verify-browser.py:1096` waiting for a button with `data-guild-npc-control="adversary"` and `data-guild-npc-action="talk"`. The exact log records `Page.wait_for_function: Timeout 30000ms exceeded`.
+- This completed failure supersedes the earlier note that the documentation-updated Browser rerun was merely cancelled. The 3b897 ledger-only head had Browser 41824998093 CANCELLED; the current 2882 checkpoint head has the completed failure above.
+- The PR #350 13/13 Browser pass is a separate Guild Hall/Commons branch and does not prove this PR #343 Adversary NPC/Relay journey. Worker B must repair or explicitly supersede this child acceptance before claiming the NPC/Relay journey passed.
+
+## Run 60 — 2026-11-04 — Worker B — Collaborator skill projection
+
+- PR #350 branch game/player-guilds-guildhall-20261104; exact code/test head 0357ca54a9f165424ce24e7839e2ddb46f599fe7.
+- game/character-sheet.mjs adds a deterministic Collaborator skill from unique actor-attributed retained bounded-response attempts. Rejected attempts count as preserved attempts, not endorsements; duplicates do not inflate the count; the skill is read-only and awards zero XP. Tests cover the projection and the shared-world browser journey opens the Character Record after exact Relay recovery.
+- Exact-head Verify 41827596164 PASS, Genesis 41827595981 PASS, Browser 41827596059 PASS (13/13). Browser artifact 13319509765, 5,847,096 bytes, SHA-256 0cfc8167e5ccd749d39e5b66caa9fdb29186aa87ce994157ae7f7f067593facc.
+- No merge, release, deployment, Founder decision, or XP award.
+
+## Run 61 — 2026-11-04 — Worker B — Council role-coverage docket
+
+- PR #350 advanced to code/test head c4e66966fadb08d9ce239e8d867cc2f472630b81, six commits after Run 60. The final diff from Run 60 modifies game/client.mjs and scripts/verify-browser.py.
+- The in-world Council Chamber exposes four bounded role slots, actor-scoped retained response cards, exact archive links and a visible distinction between role-attributed attempts and endorsement/consensus/approval. The browser journey exercises the shared Founder/Witness flow; no XP or authority is awarded by coverage.
+- Exact-head Verify 41839438617 PASS; Genesis 41839438728 PASS; Browser 41839438803 PASS (13/13). Preflight artifact 13328250900, 4,215 bytes, SHA-256 df3dd5154b7941429c8ea4bab7c757301701a1e6933f93faeb3fb7f34686158f. Browser artifact 13328860877, 6,349,388 bytes, SHA-256 6dcbef2c9adcafd47558c5d03e9a6e0cc22b6180ffb28f221de94351fb5a3f1b.
+- PR #350 remained draft/unmerged; main was unchanged.
+
+## Run 62 — 2026-11-04 — Worker B — Council Dissent Dossier
+
+- PR #350 exact code/test head 27b7e1cd748d4a56ed961ac61595c10fb39e42fd; six files changed: game/collaborator-response.mjs, game/client.mjs, game/quests.mjs, test/game-collaborator-response.test.mjs, test/game-quests.test.mjs and scripts/verify-browser.py.
+- Added validateRetainedCollaboratorResponse as a read-only revalidator for one unique actor-scoped retained event. It checks event/response identity, role, exact packet source-ID linkage, duplicate JSON keys, stored validator status/reason and exact response bytes. Mismatch, duplicate IDs, wrong actor, malformed scope or accessor-backed data fail closed. It does not establish provider identity, source truth, execution, independent observation, approval or authority.
+- The Council Chamber now renders collapsed, bounded role-specific review notes: Adversary challenge/counterexample/evidence requests/unknowns; Archivist event-chain/linkage/claims/next checks; Synthesizer support/contradictions/dissent/unknowns/next experiment; Tutor concepts/prerequisites/explanation/questions/answer key/unproven points. Packet inclusion/omission disclosure is shown. Exact archive bytes remain the source for full content. Only the Adversary summary is currently exercised in Browser Acceptance; the other three rendering branches still need browser coverage.
+- Quest evidence now preserves responseId, validator, validationReason and sourceEventIds so the Council Chamber reopens the exact retained response, not merely an event with the same broad role label.
+- Unit tests cover valid review, rejected attempts, byte tampering, actor mismatch, duplicate event/response IDs, packet/source mismatch, duplicate packet JSON keys, hostile accessors and no world mutation. Browser Acceptance checks collapsed-by-default notes, the exact challenge draft, unknowns, packet scope and the explicit non-evidence boundary inside the two-session shared-world journey.
+- Exact-head Verify 41844155517 PASS: Node 24 full test command exit 0, Python inspector exit 0, game build exit 0, bounded institutional exercise exit 0; hosted preflight ready with 52 target records and zero warnings/failures. Preflight artifact 13329354619, 4,215 bytes, SHA-256 d84800c58262ccdf5556cb535a66a85dbfdae827f2c8d96e418ae060aabb8186. Genesis 41844155305 PASS. Browser 41844155267 PASS (13/13); artifact 13330048476, 6,368,283 bytes, SHA-256 38b671063e8d490492f4f27c578b4c10d33f7e2442618440f743786128f6c2b3.
+- Current main is 42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0; its only new commit reverts the accidental founder-nonce-ledger initializer test-file addition. Main G0–G9 remain NOT ASSESSED. PR #350 is draft/unmerged, 270 ahead / 4 behind main; no mainline completion is claimed.
+- Authority handoff: the live Decision Chamber route remains session-based; founder.pub.json is NOT_ENROLLED and the signed verifier is not wired into game/server.mjs or src/institution/decisions.mjs. Handoff comment posted on PR #348. No key or decision was created.
+- Both registered desktop devices were offline; verification was hosted, not local. No merge, release, deployment, physical Android acceptance, Founder decision, authority grant, or XP award occurred.

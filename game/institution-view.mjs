@@ -292,8 +292,21 @@ export function renderInstitution(container,projects,gate,{founder=false,onChoic
  renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
  if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
- container.append(el('h3','FOUNDER GATE'),el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
+ const dispositionAuthorization = gate?.dispositionAuthorization;
+ const dispositionsAvailable = founder && dispositionAuthorization?.available === true;
+ const authorizationMessage = typeof dispositionAuthorization?.message === 'string'
+  ? dispositionAuthorization.message
+  : 'Signed Founder decision authorization is not available. APPROVE, REJECT and DEFER are disabled.';
+ container.append(el('h3','FOUNDER GATE'),el('p',founder
+  ?'Founder session authenticated. Session authentication alone is not signed institutional authorization for consequential dispositions.'
+  :'Witness view: private evaluation bytes and controls are withheld.'));
+ if(founder&&!dispositionsAvailable){
+  const warning=el('p',authorizationMessage);
+  warning.className='evidence-warning';
+  warning.dataset.decisionAuthorizationBlocked='true';
+  container.append(warning);
+ }
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
- for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
+ for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING'&&dispositionsAvailable)for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
  container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
 }

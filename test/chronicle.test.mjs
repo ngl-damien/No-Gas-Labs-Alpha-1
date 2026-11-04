@@ -792,3 +792,40 @@ test("Commons conversation, private reports, and human moderation are first-clas
   assert.match(moderation.summary, /original post and moderation history remain/i);
   assert.match(moderation.warning, /not historical authorship/i);
 });
+
+
+test("player-guild lifecycle remains visible in Chronicle without being elevated to authority or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events = [
+    {
+      id: "guild-created-1", type: "guild-created", guildId: "guild-1",
+      name: "Field Researchers", charter: "Compare observations and preserve dissent.",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:00:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+    },
+    {
+      id: "guild-joined-1", type: "guild-joined", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:01:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+    },
+    {
+      id: "guild-left-1", type: "guild-left", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:02:00.000Z", semantics: "Membership is reversible."
+    },
+    {
+      id: "guild-disbanded-1", type: "guild-disbanded", guildId: "guild-1",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:03:00.000Z", semantics: "Closed guild history remains retained."
+    },
+  ];
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.eventType.startsWith("guild-"));
+  assert.deepEqual(entries.map(entry => entry.eventType), [
+    "guild-disbanded", "guild-left", "guild-joined", "guild-created"
+  ]);
+  assert.ok(entries.every(entry => entry.category === "GUILD HALL · PLAYER GUILDS"));
+  assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
+  assert.match(entries.at(-1).title, /Field Researchers/);
+  assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
+});

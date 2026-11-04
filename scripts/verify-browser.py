@@ -5,6 +5,7 @@ Requires Python Playwright plus Chromium for development only. No provider keys 
 import argparse
 import os
 import json
+import hashlib
 import re
 import select
 import subprocess
@@ -510,6 +511,54 @@ def shared(browser,url,data,out):
         close_sheet(b)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        # A real pending decision proposal must remain reviewable but not actionable
+        # until the live server verifies a signed Founder disposition.
+        decision_bytes='Browser fixture only: a pending proposal for the read-only Decision Chamber acceptance path.'
+        decision_policy=owner.request.post(url+'api/decisions/policy',data={
+            'id':'browser-decision-policy',
+            'reviewWindowMs':86400000,
+            'basis':'Disposable browser acceptance fixture; no operational policy activation.'
+        })
+        assert decision_policy.status==200, decision_policy.text()
+        decision_proposal=owner.request.post(url+'api/decisions/proposals',data={
+            'id':'decision:browser-authorization-gate',
+            'title':'Browser authorization gate fixture',
+            'evaluation':{
+                'bytes':decision_bytes,
+                'receipt':{
+                    'algorithm':'sha256',
+                    'digest':hashlib.sha256(decision_bytes.encode('utf-8')).hexdigest(),
+                    'size':len(decision_bytes.encode('utf-8'))
+                }
+            },
+            'risks':['Disposable browser fixture only; no external effect.'],
+            'rollback':'No source or external state changed.',
+            'proposedEffect':'Exercise the read-only Decision Chamber; no disposition is permitted.'
+        })
+        assert decision_proposal.status==200, decision_proposal.text()
+        decision_before=owner.request.get(url+'api/decisions').json()
+        assert decision_before['dispositionAuthorization']['available'] is False
+        assert decision_before['dispositionAuthorization']['code']=='FOUNDER_NOT_ENROLLED'
+        assert decision_before['decisions'][0]['status']=='PENDING'
+        world_before_decision=owner.request.get(url+'api/state').json()['world']
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
+        expect(a.locator('#sheet')).to_contain_text('Browser authorization gate fixture')
+        expect(a.locator('#sheet')).to_contain_text('Founder trust anchor is not enrolled')
+        expect(a.locator('#sheet [data-decision-authorization-blocked="true"]')).to_have_count(1)
+        expect(a.locator('#sheet [data-gate-action]')).to_have_count(0)
+        a.screenshot(path=str(out/'decision-chamber-authorization-blocked.png'))
+        close_sheet(a)
+        decision_after=owner.request.get(url+'api/decisions').json()
+        world_after_decision=owner.request.get(url+'api/state').json()['world']
+        assert decision_after['revision']==decision_before['revision']
+        assert decision_after['decisions'][0]['status']=='PENDING'
+        assert world_after_decision['revision']==world_before_decision['revision']
+        assert world_after_decision['xp']==world_before_decision['xp']
+
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
         close_sheet(a)
         snapshot=visitor.request.get(url+'api/state').json()
@@ -997,6 +1046,7 @@ def shared(browser,url,data,out):
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+        expect(b.get_by_role('button',name='Enter Council Chamber →',exact=True)).to_have_count(1)
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
         expect(b.locator('#contradiction-form')).to_be_visible()
@@ -1089,6 +1139,9 @@ def shared(browser,url,data,out):
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
+        pre_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(pre_guild_challenge).to_contain_text('RECORDED')
+        expect(pre_guild_challenge).to_contain_text('Challenge another actor’s experiment report')
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
         # Close the preceding challenge sheet before using the hidden accessible NPC control:
         # the control is deliberately disabled while any modal is open.
@@ -1217,11 +1270,303 @@ def shared(browser,url,data,out):
         expect(a.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
         coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
         expect(coverage_quest).to_contain_text('1/4')
+        council_before_owner=owner.request.get(url+'api/state').json()
+        council_before_witness=visitor.request.get(url+'api/state').json()
+        a.get_by_role('button',name='Enter Council Chamber →',exact=True).click()
+        expect(a.locator('#sheet-title')).to_have_text('Council Chamber')
+        expect(a.locator('[data-council-coverage-progress="1/4"]')).to_have_count(1)
+        expect(a.locator('[data-council-next-role="guild-npc-archivist"]')).to_have_count(1)
+        adversary_slot=a.locator('[data-council-role="adversary"]')
+        expect(adversary_slot).to_have_attribute('data-council-status','human-review')
+        expect(adversary_slot).to_have_attribute('data-council-event-id',committed_response['id'])
+        expect(adversary_slot).to_have_attribute('data-council-response-id',committed_response['responseId'])
+        for missing_role in ['archivist','synthesizer','tutor']:
+            expect(a.locator(f'[data-council-role="{missing_role}"]')).to_have_attribute('data-council-status','awaiting')
+        expect(a.locator('#sheet')).to_contain_text('not consensus')
+        expect(a.locator('#sheet')).to_contain_text('or authority')
+        expect(a.locator('#sheet')).to_contain_text('Consequential decisions remain in the human-gated Decision Chamber')
+        council_review=adversary_slot.locator('details[data-council-review-summary="adversary"]')
+        expect(council_review).to_have_count(1)
+        assert not council_review.evaluate('(details)=>details.open'), 'Council review notes must be collapsed by default'
+        council_review.locator('summary').click()
+        expect(council_review).to_contain_text('structural/scope revalidation for human review only')
+        expect(council_review).to_contain_text('The report does not specify the measurement control needed to reproduce the attempt.')
+        expect(council_review).to_contain_text('No independent measurement or replication is supplied.')
+        expect(council_review).to_contain_text('Packet scope:')
+        expect(council_review).to_contain_text('Included source IDs:')
+        expect(council_review).to_contain_text('not independent evidence')
+        a.screenshot(path=str(out/'guild-council-chamber-review.png'))
+        adversary_slot.get_by_role('button',name='Inspect exact retained response →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        focused_response_card=a.locator('[data-council-response-focus="true"]')
+        expect(focused_response_card).to_have_count(1)
+        expect(focused_response_card).to_be_visible()
+        expect(focused_response_card).to_be_focused()
+        assert focused_response_card.get_attribute('data-collaborator-response-id')==committed_response['responseId']
+        focused_response_card.locator('details.collaborator-response summary').click()
+        focused_response_field=focused_response_card.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(focused_response_field).to_have_count(1)
+        assert focused_response_field.input_value()==collaborator_response_text
+        council_after_owner=owner.request.get(url+'api/state').json()
+        council_after_witness=visitor.request.get(url+'api/state').json()
+        assert council_after_owner['world']['revision']==council_before_owner['world']['revision']
+        assert council_after_owner['world']['events']==council_before_owner['world']['events']
+        assert council_after_owner['world']['xp']==council_before_owner['world']['xp']
+        assert council_after_witness['world']['revision']==council_before_witness['world']['revision']
+        assert council_after_witness['world']['events']==council_before_witness['world']['events']
+        assert council_after_witness['world']['xp']==council_before_witness['world']['xp']
+        close_sheet(a)
+        character_before=visitor.request.get(url+'api/state').json()['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Collaborator')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('Council')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded distinct Guild Hall role attempts')
+        expect(a.locator('#sheet')).to_contain_text('Rejected responses remain preserved attempts, not endorsements')
+        character_after=visitor.request.get(url+'api/state').json()['world']
+        assert character_after['revision']==character_before['revision'] and character_after['xp']==character_before['xp'], \
+            'Character skill inspection must be a read-only projection of the retained response'
         close_sheet(a)
         coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
-        a.screenshot(path=str(out/'guild-npc-collaborator-relay.png'))
+        def talk_to_council_npc(page, role):
+            expected_sheet={
+                'archivist':'Evidence Archive',
+                'synthesizer':'Guild Hall',
+                'tutor':'Polymath Academy'
+            }[role]
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            expect(control).to_be_enabled()
+            if control.get_attribute('data-guild-npc-action')!='talk':
+                control.evaluate("(button)=>button.click()")
+                page.wait_for_function(
+                    f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}'&&button.dataset.guildNpcAction==='talk')",
+                    timeout=60000
+                )
+                control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            control.evaluate("(button)=>button.click()")
+            try:
+                page.wait_for_function(
+                    "(expected)=>document.querySelector('#sheet-title')?.textContent===expected&&!document.querySelector('#sheet').hidden",
+                    arg=expected_sheet,timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/f'failed-council-{role}-workbench.png'))
+                actual=page.locator('#sheet-title').text_content()
+                raise AssertionError(
+                    f'{role} NPC did not open {expected_sheet}; current sheet title={actual!r}'
+                ) from error
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            return packet
+
+        def make_council_response(role, payload):
+            records=payload['inputRecords']
+            if role=='archivist':
+                return {
+                    'eventChainFindings':['The proposal precedes the linked experiment records in this supplied snapshot.'],
+                    'claims':['The retained report records a self-reported failed attempt.'],
+                    'linkageIssues':['The packet contains retained references, not independently retrieved source bytes.'],
+                    'unknowns':['External source retrieval and independent verification have not been performed.'],
+                    'nextChecks':['Retrieve the cited source independently and compare the exact bytes.']
+                }
+            if role=='synthesizer':
+                report=next((record for record in records if record.get('type')=='experiment-reported'),None)
+                challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
+                assert report and challenge, 'Synthesis packet must disclose the retained report and dissent it summarizes'
+                dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
+                return {
+                    'scope':{
+                        'moonshotId':payload['targetMoonshotId'],
+                        'includedEventIds':payload['inputRefs'],
+                        'omittedEventIds':payload['omittedEventIds']
+                    },
+                    'recordedSupport':[{
+                        'sourceEventIds':[report['eventId']],
+                        'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
+                    }],
+                    'contradictions':[{
+                        'sourceEventIds':[report['eventId'],challenge['eventId']],
+                        'statement':'The report records a failed attempt while the challenge identifies a missing control; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
+                    }],
+                    'dissentPreserved':dissent_ids,
+                    'unknowns':['No independent measurement or source retrieval is present in this packet.'],
+                    'nextDiscriminatingExperiment':{
+                        'procedure':'Repeat the procedure with the missing measurement control specified and preserve the raw observations.',
+                        'outcome':'Compare the controlled result with the original self-reported outcome.'
+                    }
+                }
+            if role=='tutor':
+                return {
+                    'concepts':['falsifiability','measurement control','observation versus inference'],
+                    'prerequisites':['distinguish a reported outcome from an independently observed result'],
+                    'explanation':'A falsifier states what observation would count against a hypothesis. A control helps separate the effect under study from other explanations. A retained report is a record of what an actor said happened, not proof that the result was independently observed.',
+                    'questions':['What result would count against the hypothesis?','Which measurement control is missing from the report?'],
+                    'answerKey':['A repeatable observation matching the stated falsifier.','A control condition that isolates the variable being tested.'],
+                    'whatRemainsUnproven':['Whether the hypothesis survives a controlled replication.','Whether the reported result can be independently reproduced.']
+                }
+            raise AssertionError('Unexpected Council role: '+role)
+
+        def archive_and_review_council_role(page, role, expected_headings, completed_roles, progress, next_role=None):
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            packet.locator('details.collaborator-packet summary').click()
+            handoff=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+            packet_json=handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1]
+            payload=json.loads(packet_json)
+            assert payload['role']==role
+            assert payload['authority']=='advisory-only'
+            assert payload['mayWriteCanonicalState'] is False
+            assert payload['mayGrantAuthority'] is False
+            assert payload['mayAwardProgress'] is False
+            response_text=json.dumps(make_council_response(role,payload),ensure_ascii=False)
+            packet.locator('details.collaborator-response summary').click()
+            response_field=packet.locator('textarea[aria-label$="response JSON"]')
+            response_field.fill(response_text)
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            expect(packet.locator(f'[data-collaborator-response-status="{role}"]')).to_contain_text('STRUCTURE VALID')
+            before=visitor.request.get(url+'api/state').json()
+            assert before['viewer']['role']=='witness'
+            before_revision=before['world']['revision']
+            before_xp=before['world']['xp']
+            packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+            response_status=packet.locator(f'[data-collaborator-response-status="{role}"]')
+            try:
+                expect(response_status).to_contain_text('ARCHIVED',timeout=10000)
+            except Exception as error:
+                status_text=response_status.text_content()
+                toast_text=page.locator('#toast').text_content()
+                page.screenshot(path=str(out/f'failed-council-{role}-archive.png'))
+                raise AssertionError(
+                    f'{role} archive did not commit; status={status_text!r}; toast={toast_text!r}'
+                ) from error
+            expect(page.locator('#toast')).to_contain_text('Untrusted collaborator response preserved')
+            owner_after_action=owner.request.get(url+'api/state').json()
+            after=visitor.request.get(url+'api/state').json()
+            owner_role_events=[event for event in owner_after_action['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
+            role_events=[event for event in after['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
+            assert len(owner_role_events)==1, (
+                f'{role} Founder projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in owner_after_action["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
+            assert len(role_events)==1, (
+                f'{role} Witness projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in after["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
+            event=role_events[0]
+            assert event['actor']['id']==founder_id and event['actor']['role']=='founder'
+            assert event['sourceEventIds']==payload['inputRefs']
+            assert event['packetJson']==packet_json
+            assert event['responseText']==response_text
+            assert event['validationStatus']=='valid-for-human-review'
+            assert after['world']['revision']==before_revision+1
+            assert after['world']['xp']==before_xp, 'Archiving a Council response must not award XP'
+            if role=='tutor':
+                close_sheet(page)
+                page.locator('#places-button').click()
+                page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            page.locator('[data-enter-council-chamber]').click()
+            expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
+            expect(page.locator(f'[data-council-coverage-progress="{progress}"]')).to_have_count(1)
+            for role_id in ['archivist','adversary','synthesizer','tutor']:
+                expected_status='human-review' if role_id in completed_roles else 'awaiting'
+                expect(page.locator(f'[data-council-role="{role_id}"]')).to_have_attribute('data-council-status',expected_status)
+            slot=page.locator(f'[data-council-role="{role}"]')
+            expect(slot).to_have_attribute('data-council-event-id',event['id'])
+            expect(slot).to_have_attribute('data-council-response-id',event['responseId'])
+            review=slot.locator(f'details[data-council-review-summary="{role}"]')
+            expect(review).to_have_count(1)
+            assert not review.evaluate('(details)=>details.open'), f'{role} review notes must be collapsed by default'
+            review.locator('summary').click()
+            expect(review).to_contain_text('structural/scope revalidation for human review only')
+            expect(review).to_contain_text('not independent evidence')
+            expect(review).to_contain_text('Packet scope:')
+            for heading in expected_headings:
+                expect(review).to_contain_text(heading)
+            if role=='synthesizer':
+                for dissent_id in make_council_response(role,payload)['dissentPreserved']:
+                    expect(review).to_contain_text(dissent_id)
+            owner_after=owner.request.get(url+'api/state').json()
+            before_read=visitor.request.get(url+'api/state').json()
+            after_read=owner.request.get(url+'api/state').json()
+            assert before_read['world']['revision']==after['world']['revision']
+            assert before_read['world']['events']==after['world']['events']
+            assert before_read['world']['xp']==after['world']['xp']
+            assert after_read['world']['revision']==owner_after['world']['revision']
+            assert after_read['world']['events']==owner_after['world']['events']
+            assert after_read['world']['xp']==owner_after['world']['xp']
+            if next_role:
+                expect(page.locator(f'[data-council-next-role="guild-npc-{next_role}"]')).to_have_count(1)
+            else:
+                expect(page.locator('[data-council-next-role]')).to_have_count(0)
+                expect(page.locator('[data-council-coverage-progress="4/4"]')).to_contain_text('4/4 role attempts retained')
+                expect(page.locator('#sheet')).to_contain_text('not consensus')
+                expect(page.locator('#sheet')).to_contain_text('or authority')
+            return event
+
+        def route_to_next_council_npc(page, role):
+            next_button=page.locator('[data-council-next-role]')
+            expect(next_button).to_have_count(1)
+            assert next_button.get_attribute('data-council-next-role')==f'guild-npc-{role}'
+            next_button.click()
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
+            page.wait_for_function(
+                f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}')",
+                timeout=60000
+            )
+            return talk_to_council_npc(page,role)
+
+        # The Adversary path above is only one of four bounded role renderers.
+        # Exercise the remaining NPCs through their real map controls and retained
+        # packet/response flow; each response stays untrusted and earns no XP.
+        archivist_packet=talk_to_council_npc(a,'archivist')
+        archive_and_review_council_role(
+            a,'archivist',
+            ['Event-chain findings','Claims · unverified','Linkage issues','Unknowns','Next checks'],
+            ['adversary','archivist'],'2/4','synthesizer'
+        )
+        route_to_next_council_npc(a,'synthesizer')
+        archive_and_review_council_role(
+            a,'synthesizer',
+            ['Recorded support · collaborator claims','Contradictions · dissent retained',
+             'Dissent event IDs preserved','Suggested next experiment · not run or approved'],
+            ['adversary','archivist','synthesizer'],'3/4','tutor'
+        )
+        route_to_next_council_npc(a,'tutor')
+        archive_and_review_council_role(
+            a,'tutor',
+            ['Concepts','Prerequisites','Explanation · general instruction, not mastery',
+             'Retrieval questions','Answer key · study aid, not mastery','What remains unproven'],
+            ['adversary','archivist','synthesizer','tutor'],'4/4'
+        )
+        a.screenshot(path=str(out/'guild-council-four-role-dossier.png'))
+        close_sheet(a)
+        council_character_before=owner.request.get(url+'api/state').json()['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded distinct Guild Hall role attempts')
+        council_character_after=owner.request.get(url+'api/state').json()['world']
+        assert council_character_after['revision']==council_character_before['revision']
+        assert council_character_after['xp']==council_character_before['xp']
+        close_sheet(a)
 
         def open_commons(page):
             close_sheet(page)
@@ -1391,7 +1736,131 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('Speaker')
         expect(a.locator('#sheet')).to_contain_text('1 recorded')
         close_sheet(a);close_sheet(b)
-        close_sheet(a)
+
+        def open_guild_hall(page):
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+            # WorldView opens an institution automatically when its route reaches
+            # the destination. Repeatedly pressing Interact while still walking
+            # can cancel or redirect that route, so wait for the actual arrival.
+            try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
+                title=page.locator('#sheet-title').text_content()
+                raise AssertionError(
+                    f'The player could not reach Guild Hall within 30 seconds; current sheet title={title!r}'
+                ) from error
+
+        before_guild=owner.request.get(url+'api/state').json()
+        witness_guild_before=visitor.request.get(url+'api/state').json()
+        assert before_guild['viewer']['role']=='founder'
+        assert witness_guild_before['viewer']['role']=='witness'
+        before_guild_revision=before_guild['world']['revision']
+        before_guild_xp=before_guild['world']['xp']
+        assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
+        founder_id=before_guild['viewer']['id']
+        witness_id=witness_guild_before['viewer']['id']
+
+        open_guild_hall(a)
+        expect(a.locator('#player-guild-board')).to_be_visible()
+        a.locator('#player-guild-name').fill('Field Researchers')
+        a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        a.locator('#player-guild-create').click()
+        expect(a.locator('[data-player-guild-id]')).to_have_count(1)
+        created_state=visitor.request.get(url+'api/state').json()
+        guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
+        assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
+        guild_id=guild_events[0]['guildId']
+        assert guild_events[0]['actor']['id']==founder_id
+        assert created_state['world']['revision']==before_guild_revision+1
+        assert created_state['world']['xp']==before_guild_xp
+
+        open_guild_hall(b)
+        expect(b.locator('#player-guild-board')).to_be_visible()
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('Field Researchers')
+        member_card.locator(f'[data-player-guild-join="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD MEMBER')
+        expect(member_card).to_contain_text('MEMBERS 2/25')
+        leader_card=a.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(leader_card).to_contain_text('GUILD LEADER')
+        expect(leader_card).to_contain_text('MEMBERS 2/25')
+        assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
+        joined_state=owner.request.get(url+'api/state').json()
+        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
+        assert guild_events[1]['actor']['id']==witness_id
+        assert joined_state['world']['revision']==before_guild_revision+2
+        assert joined_state['world']['xp']==before_guild_xp
+        challenged_report=next(event for event in joined_state['world']['events']
+            if event['type']=='experiment-reported' and event['reportId']==retained_challenges[0]['reportId'])
+        assert challenged_report['actor']['id']==witness_id
+        assert retained_challenges[0]['actor']['id']==founder_id
+        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(founder_guild_challenge).to_contain_text('RECORDED')
+        expect(founder_guild_challenge).to_contain_text('Challenge a guild member’s experiment report')
+        expect(founder_guild_challenge).to_contain_text(retained_challenges[0]['id'])
+
+        guild_message_event=next(event for event in joined_state['world']['events']
+            if event['type']=='message-posted' and event['text']==witness_text)
+        assert guild_message_event['actor']['id']==witness_id
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(witness_text)
+        expect(leader_card).to_contain_text(witness_text)
+        guild_message_item=b.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]')
+        expect(guild_message_item).to_contain_text(witness_text)
+        guild_message_item.locator(f'[data-guild-field-open="{guild_message_event["id"]}"]').click()
+        expect(b.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(witness_text)
+
+        early_disband=owner.request.post(url+'api/action',data={
+            'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
+        })
+        assert early_disband.status==409
+        assert early_disband.json()['error']['code']=='GUILD_NOT_EMPTY'
+
+        member_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
+        expect(member_card).to_contain_text('MEMBERS 1/25')
+        expect(leader_card).to_contain_text('MEMBERS 1/25')
+        left_state=owner.request.get(url+'api/state').json()
+        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==['guild-created','guild-joined','guild-left']
+        assert guild_events[-1]['actor']['id']==witness_id
+        assert left_state['world']['revision']==before_guild_revision+3
+        assert left_state['world']['xp']==before_guild_xp
+        assert any(event['type']=='message-posted' and event['messageId']==guild_message_event['messageId']
+            for event in left_state['world']['events'])
+        assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
+            'a departed member’s work leaves the active roster projection but remains in the Chronicle'
+        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(founder_guild_challenge).to_contain_text('OPEN')
+        expect(founder_guild_challenge).to_contain_text('Another current guild member must retain a valid experiment report')
+        assert any(event['id']==retained_challenges[0]['id'] for event in left_state['world']['events']), \
+            'a challenge against departed work remains in the append-only history'
+
+        leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
+        expect(a.locator('[data-player-guild-id]')).to_have_count(0)
+        expect(a.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
+        final_guild_state=visitor.request.get(url+'api/state').json()
+        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in final_guild_events]==[
+            'guild-created','guild-joined','guild-left','guild-disbanded'
+        ]
+        assert [event['actor']['id'] for event in final_guild_events]==[
+            founder_id,witness_id,witness_id,founder_id
+        ]
+        assert final_guild_state['world']['revision']==before_guild_revision+4
+        assert final_guild_state['world']['xp']==before_guild_xp
+        close_sheet(a);close_sheet(b)
+
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
@@ -1408,7 +1877,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change'}
     finally:owner.close();visitor.close()
 
 

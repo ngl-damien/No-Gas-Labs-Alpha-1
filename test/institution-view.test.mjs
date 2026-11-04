@@ -335,3 +335,60 @@ test('Evidence Archive does not mistake unavailable canonical history for an emp
   assert.match(output, /not being treated as empty/);
   assert.match(output, /Private draft created/);
 }));
+
+test('Founder Gate hides disposition controls when the server supplies no signed-authorization readiness', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'Record a disposition only; no promotion',
+    rollback: 'No source changed',
+    risks: ['Fixture only'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision]
+  }, {
+    founder: true,
+    onChoice: () => assert.fail('A blocked Founder disposition control must not be callable'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+  const nodes = walk(root);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 1);
+  assert.match(textOf(root), /session authentication alone is not signed institutional authorization/i);
+  assert.match(textOf(root), /Signed Founder decision authorization is not available/);
+}));
+
+test('Founder Gate displays the server trust-anchor block without rendering APPROVE, REJECT or DEFER', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'Record a disposition only; no promotion',
+    rollback: 'No source changed',
+    risks: ['Fixture only'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  const message = 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision],
+    dispositionAuthorization: { available: false, code: 'FOUNDER_NOT_ENROLLED', message }
+  }, {
+    founder: true,
+    onChoice: () => assert.fail('The Founder session must not bypass the server authorization state'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+  const nodes = walk(root);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 1);
+  assert.match(textOf(root), /Founder trust anchor is not enrolled/);
+  assert.match(textOf(root), /proposals and retained history remain inspectable/);
+}));
+

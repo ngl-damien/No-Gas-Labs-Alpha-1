@@ -9,13 +9,14 @@ import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '.
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
+import { loadTrustAnchor } from '../src/authority/decision.js';
 import { projectProjection } from '../src/institution/project-projection.mjs';
 import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
-import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS } from './social.mjs';
+import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -38,6 +39,43 @@ const STATIC = new Map([
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
 const fail = (code, message, status = 400) => { throw Object.assign(new Error(message), { code, status }); };
+
+function dispositionAuthorizationStatus(founderTrustAnchorPath) {
+  try {
+    const trust = loadTrustAnchor(founderTrustAnchorPath);
+    if (!trust.enrolled) {
+      const code = trust.reason === 'MALFORMED_TRUST_ANCHOR'
+        ? 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        : trust.reason === 'TRUST_ANCHOR_ABSENT'
+          ? 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          : 'FOUNDER_NOT_ENROLLED';
+      const message = code === 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        ? 'The Founder trust anchor is malformed. APPROVE, REJECT and DEFER are disabled.'
+        : code === 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          ? 'The Founder trust anchor is absent. APPROVE, REJECT and DEFER are disabled.'
+          : 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+      return { available: false, code, message };
+    }
+    if (trust.mode === 'TEST_ONLY') {
+      return {
+        available: false,
+        code: 'FOUNDER_TRUST_ANCHOR_TEST_ONLY',
+        message: 'Only a TEST_ONLY Founder trust anchor is present. APPROVE, REJECT and DEFER are disabled.'
+      };
+    }
+    return {
+      available: false,
+      code: 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED',
+      message: 'The Founder trust anchor is enrolled, but the live Decision Chamber route does not yet verify signed decision payloads. APPROVE, REJECT and DEFER remain disabled.'
+    };
+  } catch {
+    return {
+      available: false,
+      code: 'FOUNDER_TRUST_ANCHOR_UNAVAILABLE',
+      message: 'The Founder trust anchor could not be read or validated. APPROVE, REJECT and DEFER are disabled.'
+    };
+  }
+}
 const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
@@ -54,7 +92,11 @@ const actionFields = {
   'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'post-message': ['type', 'text', 'requestId'],
   'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
-  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId']
+  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId'],
+  'create-guild': ['type', 'name', 'charter', 'requestId'],
+  'join-guild': ['type', 'guildId', 'requestId'],
+  'leave-guild': ['type', 'guildId', 'requestId'],
+  'disband-guild': ['type', 'guildId', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -190,6 +232,17 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'create-guild':
+      preflightText(input.name, PLAYER_GUILD_NAME_LIMIT, 'Guild name', { required: true });
+      preflightText(input.charter, PLAYER_GUILD_CHARTER_LIMIT, 'Guild charter', { required: true });
+      break;
+    case 'join-guild':
+    case 'leave-guild':
+    case 'disband-guild':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
@@ -224,7 +277,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -474,7 +527,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -489,6 +542,7 @@ function validateHistory(world) {
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
+      if (event.type.startsWith('guild-') && result.guildId !== event.guildId) throw new Error('Stored idempotency player-guild result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
@@ -722,19 +776,31 @@ async function assertPrivateDataDirectory(dataDir) {
   return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };
 }
 
-/** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined } = {}) {
+/** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false } = {}) {
+  const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
+  const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
+  if (!validFounderKey && !mayGenerateLocalFounderKey) {
+    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
+  }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
-  await assertNoSymlinkPathComponents(dataDir);
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const dataDirectory = await assertPrivateDataDirectory(dataDir);
-  const key = await getFounderKey(dataDir, founderKey);
-  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
-  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
-      dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
-      dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
-      dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
-    throw new Error('Founder data directory changed during startup');
+  let dataDirectory, key, dataDirectoryAfterKeyRead;
+  try {
+    await assertNoSymlinkPathComponents(dataDir);
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    dataDirectory = await assertPrivateDataDirectory(dataDir);
+    key = await getFounderKey(dataDir, founderKey);
+    dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+    if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
+        dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
+        dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
+        dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
+      throw new Error('Founder data directory changed during startup');
+    }
+  } catch (error) {
+    if (!String(error.code || '').startsWith('FOUNDER_')) error.storageCode = error.code;
+    error.code = 'FOUNDER_STORAGE_INVALID';
+    throw error;
   }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
@@ -944,6 +1010,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         if (path === '/api/decisions') {
           const before = decisions.summary();
           const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
+          snapshot.dispositionAuthorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
           const after = decisions.summary();
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return json(response, 200, snapshot);
@@ -1007,6 +1074,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        if (path === '/api/decisions/choose') {
+          const authorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
+          fail(authorization.code, authorization.message, 503);
+        }
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
             const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
             const before = decisions.summary();
@@ -1107,22 +1178,35 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
 }
 
 
+/** Programmatic server creation always requires an explicit Founder bearer key. */
+export async function createGameServer(options = {}) {
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath });
+}
+
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let server;
   try {
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport = process.env.NGL_INSTITUTION_REPORT ? await readInstitutionReport(resolve(process.env.NGL_INSTITUTION_REPORT)) : null;
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
-    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
-    const address = server.address();
-    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
+    // Only literal IP loopback addresses qualify for the generated-key development exception.
+    // Hostnames such as localhost depend on resolver/hosts-file state and must supply an explicit key.
+    const loopbackDevelopment = process.env.NODE_ENV !== 'production' && ['127.0.0.1', '::1'].includes(host);
+    server = await createGameServerInternal({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, allowGeneratedFounderKey: loopbackDevelopment });
+    // Install shutdown handlers before announcing readiness so an immediate
+    // supervisor/test SIGTERM cannot race the handler registration.
     let stopping = false;
     const shutdown = async () => { if (stopping) return; stopping = true; await server.closeGame(); };
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
+    const address = server.address();
+    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
-    console.error(error.code === 'SERVICE_LOCKED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
+    const safeStartupError = error.code === 'SERVICE_LOCKED' || (typeof error.code === 'string' && error.code.startsWith('FOUNDER_'));
+    console.error(safeStartupError ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
     process.exitCode = 1;
   }
 }

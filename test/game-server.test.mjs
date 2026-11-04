@@ -12,6 +12,7 @@ import { createWorld, applyAction } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { projectPlayerGuilds } from '../game/social.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -249,7 +250,7 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
   );
 });
 
-test('published world and accepted kernel history survive restart; generated key stays private', async t => {
+test('published world and accepted kernel history survive restart; explicit Founder key stays private', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login(); const result = await publish(founder);
   await f.closeGame();
   const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY }); t.after(() => restarted.closeGame());
@@ -257,14 +258,12 @@ test('published world and accepted kernel history survive restart; generated key
   const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
-  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
-  t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
-  await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
-  assert.equal((await exported.text()).includes(secret), false);
+  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const configured = await createGameServer({ dataDir: secretDir, founderKey: KEY });
+  t.after(async () => { await configured.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
+  await new Promise(resolve => configured.listen(0, '127.0.0.1', resolve));
+  const exported = await fetch(`http://127.0.0.1:${configured.address().port}/api/export`);
+  assert.equal((await exported.text()).includes(KEY), false);
 });
-
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'comic', title: 'Atomic', intent: 'Only adopt on disk success' });
@@ -1065,7 +1064,7 @@ test('Polymath Academy study notes bind to retained versions and replay idempote
 });
 
 
-test('Decision Chamber map summary updates from the durable gate without exposing proposal content', async t => {
+test('Decision Chamber map summary keeps proposals pending while signed dispositions are unavailable', async t => {
   const f = await fixture(t);
   const founder = f.client();
   const witness = f.client();
@@ -1101,30 +1100,38 @@ test('Decision Chamber map summary updates from the durable gate without exposin
   assert.equal(pendingWorld.institution.decisionSummary.decisionCount, 1);
   assert.equal(pendingWorld.institution.decisionSummary.counts.PENDING, 1);
 
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_NOT_ENROLLED');
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:world-map',
     expectedRevision: 1,
     requestId: 'request:world-map',
     action: 'REJECT'
   });
-  assert.equal(chosen.response.status, 200, JSON.stringify(chosen.body));
-  const rejectedWorld = await stream.next('world');
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.PENDING, 0);
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.REJECTED, 1);
-  assert.equal(rejectedWorld.world.xp, 0, 'decision dispositions do not award game XP');
-  assert.equal(rejectedWorld.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  const pendingState = await witness.request('/api/state');
+  assert.equal(pendingState.body.institution.decisionSummary.revision, 2);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(pendingState.body.world.xp, 0, 'blocked dispositions do not award game XP');
+  assert.equal(pendingState.body.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
 
-  const publicState = await witness.request('/api/state');
-  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 1);
+  const publicState = pendingState;
+  assert.equal(publicState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 0);
   const publicInstitution = JSON.stringify(publicState.body.institution);
   for (const privateValue of ['Private decision title', 'Private decision risk', 'Private rollback detail', 'Private proposed effect', bytes]) {
     assert.equal(publicInstitution.includes(privateValue), false, 'world map summary must remain aggregate-only');
   }
 });
 
-test('decision HTTP route returns 503 for post-rename durability uncertainty and fences retries', async t => {
+test('decision HTTP route fails closed before persistence while signed Founder authorization is unavailable', async t => {
   let failNextSync = false;
+  let syncCalls = 0;
   const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
     if (failNextSync) {
       failNextSync = false;
       throw Object.assign(new Error('injected decision directory sync failure'), { code: 'EIO' });
@@ -1154,6 +1161,7 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(created.response.status, 200, JSON.stringify(created.body));
 
+  const syncCallsBeforeChoice = syncCalls;
   failNextSync = true;
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1162,7 +1170,9 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'APPROVE'
   });
   assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'the authority gate must reject before the decision store attempts persistence');
+  assert.equal(failNextSync, true, 'the injected durability fault must remain untouched by a blocked disposition');
 
   const retry = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1171,10 +1181,17 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'REJECT'
   });
   assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
-  assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
-  const unavailable = await founder.request('/api/state');
-  assert.equal(unavailable.response.status, 200);
-  assert.equal(unavailable.body.institution.decisionSummary.available, false, 'uncertain ledger must not masquerade as a zero-count gate');
+  assert.equal(retry.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice);
+  assert.equal(failNextSync, true);
+  failNextSync = false;
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.available, true);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.world.xp, 0);
 });
 
 
@@ -1500,4 +1517,237 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   const founderAfter = await founder.request('/api/state');
   assert.equal(founderAfter.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
   assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+});
+
+
+test('shared player guilds reconcile across independent sessions with idempotent append-only history', async t => {
+  const f = await fixture(t);
+  const leader = f.client();
+  const member = f.client();
+  const observer = f.client();
+  const [leaderInitial, memberInitial, observerInitial] = await Promise.all([
+    leader.request('/api/state'),
+    member.request('/api/state'),
+    observer.request('/api/state')
+  ]);
+  assert.equal(leaderInitial.body.viewer.role, 'witness');
+  assert.equal(memberInitial.body.viewer.role, 'witness');
+  assert.notEqual(leaderInitial.body.viewer.id, memberInitial.body.viewer.id);
+  const baselineXp = observerInitial.body.world.xp;
+
+  const createAction = {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.',
+    requestId: 'shared-guild-create-001'
+  };
+  const created = await leader.request('/api/action', createAction);
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.idempotentReplay, false);
+  const replayedCreate = await leader.request('/api/action', createAction);
+  assert.equal(replayedCreate.response.status, 200, JSON.stringify(replayedCreate.body));
+  assert.equal(replayedCreate.body.idempotentReplay, true);
+  assert.equal(replayedCreate.body.result.guildId, created.body.result.guildId);
+  const guildId = created.body.result.guildId;
+
+  const joinAction = { type: 'join-guild', guildId, requestId: 'shared-guild-join-001' };
+  const joined = await member.request('/api/action', joinAction);
+  assert.equal(joined.response.status, 200, JSON.stringify(joined.body));
+  const replayedJoin = await member.request('/api/action', joinAction);
+  assert.equal(replayedJoin.response.status, 200, JSON.stringify(replayedJoin.body));
+  assert.equal(replayedJoin.body.idempotentReplay, true);
+  assert.equal(replayedJoin.body.result.guildId, guildId);
+
+  const observerState = await observer.request('/api/state');
+  const projection = projectPlayerGuilds(observerState.body.world, observerState.body.viewer);
+  assert.equal(projection.guilds.length, 1);
+  assert.equal(projection.guilds[0].memberCount, 2);
+  assert.equal(projection.guilds[0].leader.id, leaderInitial.body.viewer.id);
+  assert.equal(projection.guilds[0].members.some(actor => actor.id === memberInitial.body.viewer.id), true);
+  assert.equal(observerState.body.world.xp, baselineXp);
+
+  const duplicateJoin = await member.request('/api/action', {
+    type: 'join-guild', guildId, requestId: 'shared-guild-duplicate-join-001'
+  });
+  assert.equal(duplicateJoin.response.status, 409);
+  assert.equal(duplicateJoin.body.error.code, 'GUILD_MEMBERSHIP_EXISTS');
+
+  const leaderLeave = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leader-leave-001'
+  });
+  assert.equal(leaderLeave.response.status, 409);
+  assert.equal(leaderLeave.body.error.code, 'GUILD_LEADER_CANNOT_LEAVE');
+
+  const earlyDisband = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-early-disband-001'
+  });
+  assert.equal(earlyDisband.response.status, 409);
+  assert.equal(earlyDisband.body.error.code, 'GUILD_NOT_EMPTY');
+
+  const left = await member.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leave-001'
+  });
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  const disbanded = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-disband-001'
+  });
+  assert.equal(disbanded.response.status, 200, JSON.stringify(disbanded.body));
+
+  const finalState = await observer.request('/api/state');
+  const finalProjection = projectPlayerGuilds(finalState.body.world, finalState.body.viewer);
+  assert.equal(finalProjection.guilds.length, 0);
+  assert.equal(finalProjection.history[0].status, 'disbanded');
+  assert.deepEqual(finalState.body.world.events.map(event => event.type), [
+    'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+  ]);
+  assert.equal(finalState.body.world.xp, baselineXp);
+
+  // The same event history must remain valid after a full service restart.
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+    const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
+    assert.deepEqual(restoredState.world.events.map(event => event.type), [
+      'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+    ]);
+    assert.equal(projectPlayerGuilds(restoredState.world).history[0].status, 'disbanded');
+    assert.equal(restoredState.world.xp, baselineXp);
+  } finally {
+    await restarted.closeGame();
+  }
+});
+
+
+test('direct server factory requires an explicit Founder key before creating runtime data', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-direct-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('programmatic factory cannot opt into generated Founder keys through caller-supplied flags', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-programmatic-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('production mode cannot bypass explicit Founder key configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('network-bound CLI refuses to mint a Founder credential without explicit configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-network-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = { ...process.env, NODE_ENV: 'development', PORT: '0', NGL_DATA_DIR: dataDir };
+  delete env.HOST;
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+});
+
+
+test('development CLI refuses localhost aliases before creating runtime data without an explicit Founder key', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-localhost-alias-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = {
+    ...process.env,
+    NODE_ENV: 'development',
+    HOST: 'localhost',
+    PORT: '0',
+    NGL_DATA_DIR: dataDir
+  };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+  t.after(async () => {
+    clearTimeout(timeout);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+
+  const [code, signal] = await exited;
+  clearTimeout(timeout);
+  assert.equal(signal, null, 'localhost must be rejected before hostname resolution or listen');
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' },
+    'the hostname alias must not create runtime state or a generated key');
 });

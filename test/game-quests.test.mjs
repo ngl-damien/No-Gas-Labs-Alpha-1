@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { projectGuildFieldSatchel } from '../game/social.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -134,6 +135,44 @@ function experimentQuestWorld({ reportActor = founder, evidence = true, publicat
     contributions: [],
     reports: []
   };
+}
+
+function guildExperimentQuestWorld() {
+  const outsider = { id: 'outsider-1', role: 'witness', name: 'Outsider' };
+  const guildFounder = { ...founder, name: 'Damien' };
+  const guildWitness = { ...witness, name: 'Witness' };
+  const world = experimentQuestWorld({ reportActor: outsider });
+  world.xp = 0;
+  world.creations[0].receipt.algorithm = 'sha256';
+  world.events.unshift(
+    {
+      id: 'guild-created-1', type: 'guild-created', guildId: 'guild-1',
+      name: 'Field Researchers', charter: 'Compare observations and preserve dissent.',
+      actor: guildFounder, at: '2026-10-28T16:58:00.000Z',
+      semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
+    },
+    {
+      id: 'guild-joined-1', type: 'guild-joined', guildId: 'guild-1',
+      actor: guildWitness, at: '2026-10-28T16:59:00.000Z',
+      semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
+    }
+  );
+  world.events.push(
+    {
+      id: 'member-report-event', type: 'experiment-reported', reportId: 'member-report',
+      moonshotId: 'moon-1', actor: guildWitness, at: '2026-10-28T17:04:00.000Z',
+      procedure: 'Repeat the bounded procedure.',
+      observation: 'The member records a conflicting measurement.',
+      reportedOutcome: 'contradicts', evidenceCreationId: 'evidence-1', evidenceVersion: 1
+    },
+    {
+      id: 'outsider-challenge-event', type: 'experiment-challenged', challengeId: 'outsider-challenge',
+      reportId: 'report-1', moonshotId: 'moon-1', actor: guildFounder,
+      at: '2026-10-28T17:05:00.000Z', challengeType: 'methodology',
+      challengeText: 'The outsider report needs reproducible method details.'
+    }
+  );
+  return { world, guildFounder, guildWitness };
 }
 
 test('moonshot quest requires a report linked to one earlier retained publication, without certifying its claim', () => {
@@ -291,6 +330,86 @@ test('moonshot quest refuses loose or rolled-over timestamps for retained public
     .find(item => item.id === 'founder-experiment-evidence');
   assert.equal(reportMilestone.complete, false);
   assert.equal(reportMilestone.progress, 0);
+});
+
+test('Guild Hall challenge quest targets current-member reports, excludes outsiders, and reopens after departure', () => {
+  const { world, guildFounder, guildWitness } = guildExperimentQuestWorld();
+  const before = structuredClone(world);
+  const satchel = projectGuildFieldSatchel(world, guildFounder);
+  assert.equal(satchel.available, true);
+  assert.ok(satchel.items.some(item => item.eventId === 'member-report-event'));
+  assert.equal(satchel.items.some(item => item.eventId === 'report-event-1'), false,
+    'an outsider report is not a current guild work item');
+  assert.ok(satchel.items.some(item => item.eventId === 'outsider-challenge-event'),
+    'the satchel may retain a member-authored challenge even when its target is not guild work');
+
+  const founderOpen = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(founderOpen.complete, false,
+    'a challenge against an outsider report must not complete a guild-scoped objective');
+  assert.equal(founderOpen.title, 'Challenge a guild member’s experiment report');
+  assert.deepEqual(founderOpen.action, {
+    type: 'research-activity', id: 'research-activity:member-report-event',
+    moonshotId: 'moon-1', activityId: 'member-report'
+  });
+  assert.match(founderOpen.interpretation, /target report and challenger are current members/i);
+
+  const witnessOpen = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(witnessOpen.complete, false);
+  assert.equal(witnessOpen.action, null);
+  assert.match(witnessOpen.blockedReason, /another current guild member/i,
+    'the only other report belongs to an outsider, not a current member');
+  assert.deepEqual(world, before, 'opening the satchel and projecting quest state do not mutate the world');
+
+  world.events.push({
+    id: 'member-challenge-event', type: 'experiment-challenged', challengeId: 'member-challenge',
+    reportId: 'member-report', moonshotId: 'moon-1', actor: guildFounder,
+    at: '2026-10-28T17:06:00.000Z', challengeType: 'contradiction',
+    challengeText: 'The member report conflicts with the retained procedure.'
+  });
+  const founderComplete = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(founderComplete.complete, true);
+  assert.deepEqual(founderComplete.evidenceIds, ['member-challenge-event']);
+
+  world.events.push(
+    {
+      id: 'founder-report-event', type: 'experiment-reported', reportId: 'founder-report',
+      moonshotId: 'moon-1', actor: guildFounder, at: '2026-10-28T17:07:00.000Z',
+      procedure: 'Repeat the bounded procedure.', observation: 'The Founder records an inconclusive result.',
+      reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+    },
+    {
+      id: 'founder-challenge-event', type: 'experiment-challenged', challengeId: 'founder-challenge',
+      reportId: 'founder-report', moonshotId: 'moon-1', actor: guildWitness,
+      at: '2026-10-28T17:08:00.000Z', challengeType: 'reproducibility',
+      challengeText: 'The Founder report needs a repeatable measurement.'
+    }
+  );
+  const witnessComplete = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(witnessComplete.complete, true);
+  assert.deepEqual(witnessComplete.evidenceIds, ['founder-challenge-event']);
+
+  world.events.push({
+    id: 'guild-left-1', type: 'guild-left', guildId: 'guild-1', actor: guildWitness,
+    at: '2026-10-28T17:09:00.000Z',
+    semantics: 'Game projection only; departure does not erase retained work or history.'
+  });
+  const afterDeparture = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(afterDeparture.complete, false,
+    'a departed member’s report no longer satisfies the active guild objective');
+  assert.equal(afterDeparture.progress, 0);
+  assert.equal(afterDeparture.action, null);
+  assert.match(afterDeparture.blockedReason, /another current guild member/i);
+  assert.ok(world.events.some(event => event.id === 'member-challenge-event'),
+    'the challenge remains in world history after its target leaves the guild');
+  assert.equal(world.xp, 0, 'guild review and challenge objectives grant no XP');
+  const finalSnapshot = structuredClone(world);
+  getQuestTrail(world, founder);
+  assert.deepEqual(world, finalSnapshot, 'quest projection does not mutate canonical world state');
 });
 
 test('challenge quest requires canonical chronology even when report attribution is valid', () => {
@@ -785,6 +904,8 @@ test('Guild response and council coverage quests route to the next available rol
     actor,
     at: '2026-10-28T17:' + String(10 + index).padStart(2, '0') + ':00.000Z',
     validationStatus,
+    validationReason: validationStatus === 'rejected' ? 'RESPONSE_SCHEMA_OR_SCOPE_INVALID' : null,
+    sourceEventIds: [],
     validator: 'ngl.collaborator-response.v1'
   });
 
@@ -794,6 +915,11 @@ test('Guild response and council coverage quests route to the next available rol
   assert.equal(trail.find(item => item.id === 'founder-guild-response').complete, true);
   assert.equal(oneRole.progress, 1);
   assert.deepEqual(oneRole.evidenceIds, ['collaborator-response-event-archivist-1']);
+  assert.equal(oneRole.evidence[0].responseId, 'collaborator-response-archivist-1');
+  assert.equal(oneRole.evidence[0].validator, 'ngl.collaborator-response.v1');
+  assert.equal(oneRole.evidence[0].validationStatus, 'rejected');
+  assert.equal(oneRole.evidence[0].validationReason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
+  assert.deepEqual(oneRole.evidence[0].sourceEventIds, []);
   assert.deepEqual(oneRole.action, { type: 'location', id: 'guild-npc-adversary' });
   assert.match(oneRole.interpretation, /Rejected responses count as preserved attempts, not endorsements/i);
 
@@ -888,3 +1014,78 @@ test('Guild Adversary stays unavailable until a retained experiment report suppl
   assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-adversary' });
   assert.equal(quest.complete, false);
 });
+
+
+test('player-guild objective follows current actor membership and fails closed on ambiguous history', () => {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const created = {
+    id: 'guild-created-quest', type: 'guild-created', actor: founderActor,
+    at: '2026-10-28T18:00:00.000Z', guildId: 'guild-quest-1',
+    name: 'Field Researchers', charter: 'Compare observations and preserve dissent.',
+    semantics: 'Membership is not evidence, authority, XP or approval.'
+  };
+  const joined = {
+    id: 'guild-joined-quest', type: 'guild-joined', actor: witnessActor,
+    at: '2026-10-28T18:01:00.000Z', guildId: 'guild-quest-1',
+    semantics: 'Membership is not evidence, authority, XP or approval.'
+  };
+  const left = {
+    id: 'guild-left-quest', type: 'guild-left', actor: witnessActor,
+    at: '2026-10-28T18:02:00.000Z', guildId: 'guild-quest-1',
+    semantics: 'Membership is reversible.'
+  };
+  const disbanded = {
+    id: 'guild-disbanded-quest', type: 'guild-disbanded', actor: founderActor,
+    at: '2026-10-28T18:03:00.000Z', guildId: 'guild-quest-1',
+    semantics: 'Closed guild history remains retained.'
+  };
+  const world = {
+    id: 'player-guild-quest-world', revision: 0, creations: [], events: [],
+    discoveries: [], contributions: [], reports: []
+  };
+  const objective = (actor) => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-player-guild-membership');
+
+  const founderOpen = objective(founder);
+  assert.equal(founderOpen.complete, false);
+  assert.deepEqual(founderOpen.action, { type: 'location', id: 'guild_hall' });
+  assert.equal(founderOpen.progress, 0);
+
+  world.events.push(created);
+  world.revision += 1;
+  const founderJoined = objective(founder);
+  assert.equal(founderJoined.complete, true);
+  assert.equal(founderJoined.progress, 1);
+  assert.deepEqual(founderJoined.evidenceIds, [created.id]);
+  assert.match(founderJoined.interpretation, /not proof of distinct humans/i);
+
+  world.events.push(joined);
+  world.revision += 1;
+  const witnessJoined = objective(witness);
+  assert.equal(witnessJoined.complete, true);
+  assert.deepEqual(witnessJoined.evidenceIds, [joined.id]);
+
+  world.events.push(left);
+  world.revision += 1;
+  const witnessLeft = objective(witness);
+  assert.equal(witnessLeft.complete, false);
+  assert.deepEqual(witnessLeft.action, { type: 'location', id: 'guild_hall' });
+
+  world.events.push(disbanded);
+  world.revision += 1;
+  const founderDisbanded = objective(founder);
+  assert.equal(founderDisbanded.complete, false);
+  assert.deepEqual(founderDisbanded.action, { type: 'location', id: 'guild_hall' });
+
+  const ambiguous = {
+    ...world,
+    events: [created, { ...created, name: 'Duplicate history' }]
+  };
+  const blocked = getQuestTrail(ambiguous, founder)
+    .find(item => item.id === 'founder-player-guild-membership');
+  assert.equal(blocked.complete, false);
+  assert.equal(blocked.action, null);
+  assert.match(blocked.blockedReason, /ambiguous or invalid/i);
+});
+

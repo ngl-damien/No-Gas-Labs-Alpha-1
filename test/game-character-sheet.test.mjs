@@ -132,11 +132,56 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
-    ['challenger', 1], ['source-responder', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['source-responder', 0], ['collaborator', 0], ['council', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
     ['questkeeper', 3], ['restorer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
+});
+
+test('Collaborator skill counts unique actor-scoped Guild response attempts, including rejected attempts', () => {
+  const response = (id, responseId, actor, role, validationStatus = 'valid-for-human-review', validator = 'ngl.collaborator-response.v1') =>
+    event(id, 'collaborator-response-recorded', actor, t1, {
+      responseId, role, moonshotId: 'moon-1', validationStatus, validator
+    });
+  const world = {
+    xp: 999,
+    creations: [],
+    events: [
+      response('founder-valid', 'founder-valid-response', founder, 'adversary'),
+      response('founder-rejected', 'founder-rejected-response', founder, 'archivist', 'rejected'),
+      response('duplicate-response-a', 'duplicate-response', founder, 'synthesizer'),
+      response('duplicate-response-b', 'duplicate-response', founder, 'tutor'),
+      response('unknown-role', 'unknown-role-response', founder, 'oracle'),
+      response('invalid-status', 'invalid-status-response', founder, 'tutor', 'approved'),
+      response('wrong-validator', 'wrong-validator-response', founder, 'synthesizer', 'valid-for-human-review', 'untrusted-validator'),
+      response('duplicate-event', 'duplicate-event-response-a', founder, 'adversary'),
+      response('duplicate-event', 'duplicate-event-response-b', founder, 'archivist'),
+      response('witness-valid', 'witness-valid-response', witness, 'adversary')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+  const founderRecord = projectCharacter(world, founder);
+  const founderSkill = founderRecord.skills.find(skill => skill.id === 'collaborator');
+  assert.equal(founderSkill.count, 2, 'valid and rejected retained attempts count; duplicate or malformed records do not');
+  assert.equal(founderSkill.record, 'bounded collaborator-response attempts');
+  const founderCouncil = founderRecord.skills.find(skill => skill.id === 'council');
+  assert.equal(founderCouncil.count, 2, 'Council counts distinct role slots, not total response attempts');
+  assert.equal(founderCouncil.record, 'distinct Guild Hall role attempts');
+  assert.match(founderCouncil.basis, /Rejected attempts remain preserved attempts, not endorsements/);
+  assert.match(founderCouncil.basis, /not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP/);
+  assert.match(founderSkill.basis, /Rejected responses remain preserved attempts, not endorsements/);
+  assert.match(founderSkill.basis, /not provider identity, truth, independent observation, execution, mastery, approval, XP or authority/);
+  assert.equal(founderRecord.xp, 0, 'collaborator responses do not award XP');
+
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'collaborator').count, 1,
+    'another actor’s response is not projected into the Founder character');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'council').count, 1,
+    'Council coverage remains actor-scoped and counts the Witness’s one distinct role');
+  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual(world, before, 'the skill is a read-only projection of retained response events');
 });
 
 test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => {
