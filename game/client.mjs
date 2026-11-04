@@ -334,7 +334,8 @@ function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION Â
     node('h3',{text:heading+' Â· '+total}),
     paragraph('Read-only collectibles projected from unique study attempts linked to retained published versions. A reflection is recorded practice, not mastery, truth, evidence, or XP; these cards do not transfer item ownership.','form-help')
   ]);
-  if(record.studyCardOmittedCount>0)panel.append(paragraph('Showing the newest '+cards.length+' of '+total+' cards. Older cards remain in the Chronicle.','form-help'));
+  const visibleCount=Math.min(cards.length,Math.max(0,Number.isSafeInteger(maxItems)?maxItems:20));
+  if(total>visibleCount)panel.append(paragraph('Showing the newest '+visibleCount+' of '+total+' cards. Older cards remain in the Chronicle.','form-help'));
   if(record.studyCardUnavailableCount>0)panel.append(paragraph(record.studyCardUnavailableCount+' study attempt(s) remain in the Chronicle but are not shown as cards because their source linkage is missing or ambiguous.','form-help'));
   if(!cards.length)panel.append(paragraph(record.studyCardUnavailableCount>0
     ? 'No study cards can be projected from the retained attempts yet. Inspect the Chronicle for the preserved records.'
