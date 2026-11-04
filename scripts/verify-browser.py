@@ -1396,21 +1396,20 @@ def shared(browser,url,data,out):
             close_sheet(page)
             page.locator('#places-button').click()
             page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-            page.wait_for_timeout(8000)
-            for _ in range(24):
-                if page.locator('#sheet').is_visible():
-                    if page.locator('#sheet-title').text_content()=='Guild Hall':
-                        return
-                    close_sheet(page)
-                page.locator('#interact-button').click()
-                try:
-                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",timeout=500)
-                    return
-                except Exception:
-                    if page.locator('#sheet').is_visible():
-                        close_sheet(page)
-                    page.wait_for_timeout(350)
-            raise AssertionError('The player could not reach and interact with Guild Hall')
+            # WorldView opens an institution automatically when its route reaches
+            # the destination. Repeatedly pressing Interact while still walking
+            # can cancel or redirect that route, so wait for the actual arrival.
+            try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
+                title=page.locator('#sheet-title').text_content()
+                raise AssertionError(
+                    f'The player could not reach Guild Hall within 30 seconds; current sheet title={title!r}'
+                ) from error
 
         before_guild=owner.request.get(url+'api/state').json()
         witness_guild_before=visitor.request.get(url+'api/state').json()
