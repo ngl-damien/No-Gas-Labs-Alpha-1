@@ -2,7 +2,6 @@ import { isStrictTimestamp } from './timestamps.mjs';
 
 const MAX_REPORT_CHARACTERS = 1000;
 const MAX_RETAINED_VERSIONS = 100_000;
-const MAX_RETAINED_ARTIFACT_BYTES = 131_072;
 const MAX_REPORT_TITLE_CHARACTERS = 60;
 
 const FIELDS = Object.freeze([
@@ -170,9 +169,6 @@ function retainedVersion(creation, version) {
       typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest) ||
       !Number.isSafeInteger(size) || size < 1) {
     throw new Error("the requested version has no valid SHA-256 byte receipt");
-  }
-  if (size > MAX_RETAINED_ARTIFACT_BYTES) {
-    throw new Error("the requested version exceeds the retained artifact byte limit");
   }
   let byteLength;
   try {
