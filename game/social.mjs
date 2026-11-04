@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
 
 export const COMMONS_CHANNEL = 'commons';
 export const COMMONS_MESSAGE_LIMIT = 280;
@@ -390,3 +391,250 @@ export function projectPlayerGuilds(world, viewer = null) {
     guildLimit: PLAYER_GUILD_LIMIT
   });
 }
+
+const MAX_GUILD_FIELD_ITEMS = 100;
+const GUILD_FIELD_COLLABORATOR_ROLES = new Set(['archivist', 'adversary', 'synthesizer', 'tutor']);
+const GUILD_FIELD_MEMBERSHIP_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
+function boundedGuildFieldText(value, max = 1000) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  return Array.from(value.trim()).slice(0, max).join('');
+}
+
+/**
+ * Read-only index of public retained work by a guild's current members.
+ * It grants no item ownership, XP, evidence status, approval, or authority.
+ */
+export function projectGuildFieldSatchel(world, viewer) {
+  const empty = (available, guild = null) => Object.freeze({
+    available, guild, total: 0, omittedCount: 0, items: Object.freeze([])
+  });
+  const source = eventsOf(world);
+  const eventIdCounts = new Map();
+  for (const event of source) {
+    if (typeof event?.id === 'string' && event.id) {
+      eventIdCounts.set(event.id, (eventIdCounts.get(event.id) || 0) + 1);
+    }
+  }
+  const events = source.filter(event =>
+    typeof event?.id === 'string' && event.id && eventIdCounts.get(event.id) === 1
+  );
+  const positionById = new Map(events.map((event, index) => [event.id, index]));
+  for (const event of source) {
+    if (GUILD_FIELD_MEMBERSHIP_TYPES.has(event?.type) &&
+        (typeof event.id !== 'string' || eventIdCounts.get(event.id) !== 1 ||
+         !isStrictTimestamp(event.at))) return empty(false);
+  }
+
+  let projection;
+  try { projection = projectPlayerGuilds(world, viewer); }
+  catch { return empty(false); }
+  const guild = projection.guilds.find(item => item.id === projection.viewerGuildId);
+  if (!guild) return empty(true);
+
+  const members = new Map(guild.members.map(member => [
+    JSON.stringify([member.id, member.role]), member
+  ]));
+  const hidden = hiddenCommonsMessageIds(world);
+  const items = [];
+  const seen = new Set();
+  const add = (event, kind, title, summary, locationId, action) => {
+    if (!event || typeof event.id !== 'string' || eventIdCounts.get(event.id) !== 1 ||
+        seen.has(event.id) || !isStrictTimestamp(event.at)) return;
+    const member = members.get(JSON.stringify([event.actor?.id, event.actor?.role]));
+    const position = positionById.get(event.id);
+    const safeTitle = boundedGuildFieldText(title, 120);
+    const safeSummary = boundedGuildFieldText(summary, 1000);
+    if (!member || !Number.isInteger(position) || !safeTitle || !safeSummary ||
+        !action || typeof action !== 'object') return;
+    seen.add(event.id);
+    items.push({
+      position,
+      item: Object.freeze({
+        id: 'guild-field:' + event.id,
+        eventId: event.id,
+        kind,
+        title: safeTitle,
+        summary: safeSummary,
+        at: event.at,
+        actor: Object.freeze({
+          id: member.id,
+          name: typeof event.actor?.name === 'string' && event.actor.name.trim()
+            ? event.actor.name : member.name,
+          role: member.role
+        }),
+        locationId,
+        status: 'retained · not evidence, approval, ownership, authority, or XP',
+        action: Object.freeze({ ...action })
+      })
+    });
+  };
+
+  // Publication entries require one unique retained version and matching time.
+  const versionRows = new Map();
+  for (const creation of Array.isArray(world?.creations) ? world.creations : []) {
+    if (!creation || typeof creation.id !== 'string' || !creation.id) continue;
+    for (const version of [...(Array.isArray(creation.versions) ? creation.versions : []), creation]) {
+      if (!version || version.id !== creation.id || !Number.isSafeInteger(version.version) ||
+          version.version < 1 || !isStrictTimestamp(version.publishedAt) ||
+          version.receipt?.algorithm !== 'sha256' ||
+          typeof version.receipt.digest !== 'string' || !/^[a-f0-9]{64}$/.test(version.receipt.digest) ||
+          !Number.isSafeInteger(version.receipt.size) || version.receipt.size < 0) continue;
+      const key = JSON.stringify([creation.id, version.version]);
+      const rowsForVersion = versionRows.get(key) || [];
+      rowsForVersion.push(version);
+      versionRows.set(key, rowsForVersion);
+    }
+  }
+  const publicationRows = new Map();
+  for (const event of events) {
+    if (event.type !== 'publish' || typeof event.creationId !== 'string' ||
+        !Number.isSafeInteger(event.version) || event.version < 1 ||
+        event.actor?.role !== 'founder') continue;
+    const key = JSON.stringify([event.creationId, event.version]);
+    const rowsForVersion = publicationRows.get(key) || [];
+    rowsForVersion.push(event);
+    publicationRows.set(key, rowsForVersion);
+  }
+  const publicationByVersion = new Map();
+  for (const [key, rowsForVersion] of publicationRows) {
+    const versions = versionRows.get(key) || [];
+    if (rowsForVersion.length !== 1 || versions.length !== 1 ||
+        rowsForVersion[0].at !== versions[0].publishedAt) continue;
+    const event = rowsForVersion[0], version = versions[0];
+    publicationByVersion.set(key, event);
+    add(event, 'published-artifact',
+      (version.title || event.creationId) + ' · v' + event.version,
+      'Published artifact. Its byte receipt does not establish the truth of its contents.',
+      'publication-house',
+      { type: 'creation', creationId: event.creationId, version: event.version });
+  }
+
+  // Commons messages are public conversation. Human-hidden text stays redacted.
+  for (const member of guild.members) {
+    for (const event of projectCommonsMessages(world, member)) {
+      add(event, 'commons-message', 'Commons message',
+        hidden.has(event.messageId) ? '[Message hidden by human moderation.]' : event.text,
+        'town-square', { type: 'commons' });
+    }
+  }
+
+  // Contributions and dissent reports must join one exact event to one earlier
+  // publication by the same actor. Ambiguous or orphaned text is not displayed.
+  const projectTextRecords = (type, records) => {
+    const recordGroups = new Map(), eventGroups = new Map();
+    const keyOf = entry => JSON.stringify([
+      entry?.actor?.id, entry?.actor?.role, entry?.at, entry?.creationId, entry?.version
+    ]);
+    for (const record of Array.isArray(records) ? records : []) {
+      const key = keyOf(record);
+      const group = recordGroups.get(key) || [];
+      group.push(record);
+      recordGroups.set(key, group);
+    }
+    for (const event of events) {
+      if (event.type !== type) continue;
+      const key = keyOf(event);
+      const group = eventGroups.get(key) || [];
+      group.push(event);
+      eventGroups.set(key, group);
+    }
+    for (const [key, recordGroup] of recordGroups) {
+      const eventGroup = eventGroups.get(key) || [];
+      if (recordGroup.length !== 1 || eventGroup.length !== 1) continue;
+      const record = recordGroup[0], event = eventGroup[0];
+      const publication = publicationByVersion.get(JSON.stringify([record.creationId, record.version]));
+      if (!publication || (positionById.get(event.id) ?? -1) <= (positionById.get(publication.id) ?? -1) ||
+          !isStrictTimestamp(record.at) || Date.parse(publication.at) > Date.parse(record.at) ||
+          typeof record.text !== 'string' || !record.text.trim()) continue;
+      add(event, type === 'report' ? 'dissent-report' : 'field-contribution',
+        type === 'report' ? 'Dissent or failure report' : 'Field contribution',
+        record.text, 'evidence-archive',
+        { type: 'creation', creationId: record.creationId, version: record.version });
+    }
+  };
+  projectTextRecords('contribute', world?.contributions);
+  projectTextRecords('report', world?.reports);
+
+  // Research links are structural only; attempts and challenges are never promoted
+  // to execution, independent observation, adjudication, or successful results.
+  for (const record of projectResearchRecords(source, world?.creations)) {
+    const status = record._projection || {};
+    if (record.type === 'moonshot-proposed' && status.recordSafe === true &&
+        status.eventIdUnique === true && status.proposalStatus === 'unique') {
+      add(record, 'moonshot-proposal', 'Moonshot · ' + record.title,
+        'Hypothesis: ' + record.hypothesis + ' · Falsifier: ' + record.falsifier + ' · proposal only.',
+        'moonshot-field', { type: 'moonshot', moonshotId: record.moonshotId });
+    } else if (record.type === 'experiment-reported' && status.recordSafe === true &&
+        status.eventIdUnique === true && status.proposalStatus === 'linked') {
+      add(record, 'experiment-report', 'Experiment report · ' + record.reportedOutcome,
+        'Procedure: ' + record.procedure + ' · Observation: ' + record.observation +
+          ' · self-reported · artifact link: ' + status.evidenceStatus + '.',
+        'moonshot-field', { type: 'moonshot', moonshotId: record.moonshotId });
+    } else if (record.type === 'experiment-challenged' && status.recordSafe === true &&
+        status.eventIdUnique === true && status.targetReportStatus === 'linked') {
+      add(record, 'experiment-challenge', 'Research challenge · ' + record.challengeType,
+        record.challengeText + ' · preserved dissent, not adjudication.',
+        'moonshot-field', { type: 'moonshot', moonshotId: record.moonshotId });
+    }
+  }
+
+  // Linked source notes, challenges, and author replies remain distinct history items.
+  for (const record of projectSourceObservationRecords(source, world?.creations)) {
+    if (record.projectionStatus !== 'linked') continue;
+    const action = { type: 'creation', creationId: record.creationId, version: record.version };
+    add(record, 'source-observation', 'Source observation · ' + record.claim,
+      'Source class: ' + record.sourceKind + ' · retrieval: ' + record.sourceRetrieval +
+        ' · independent verification: ' + record.independentVerification +
+        ' · model assertions: ' + record.modelAssertions + ' · ' + record.warning,
+      'evidence-archive', action);
+    for (const challenge of record.challenges || []) {
+      add(challenge, 'source-observation-challenge', 'Source challenge · ' + challenge.challengeType,
+        challenge.challengeText + ' · preserved dissent, not adjudication.',
+        'evidence-archive', action);
+      for (const response of challenge.responses || []) {
+        add(response, 'source-observation-response', 'Author response to retained challenge',
+          response.responseText + ' · attributed reply, not a verdict.',
+          'evidence-archive', action);
+      }
+    }
+  }
+
+  // External collaborator output is indexed only as untrusted archived material.
+  const responseCounts = new Map();
+  for (const event of source) {
+    if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string') {
+      responseCounts.set(event.responseId, (responseCounts.get(event.responseId) || 0) + 1);
+    }
+  }
+  const validReceipt = receipt => receipt?.algorithm === 'sha256' &&
+    typeof receipt.digest === 'string' && /^[a-f0-9]{64}$/.test(receipt.digest) &&
+    Number.isSafeInteger(receipt.size) && receipt.size >= 0;
+  for (const event of events) {
+    if (event.type !== 'collaborator-response-recorded' ||
+        responseCounts.get(event.responseId) !== 1 ||
+        !GUILD_FIELD_COLLABORATOR_ROLES.has(event.role) ||
+        !['valid-for-human-review', 'rejected'].includes(event.validationStatus) ||
+        event.validator !== 'ngl.collaborator-response.v1' ||
+        !validReceipt(event.packetReceipt) || !validReceipt(event.responseReceipt)) continue;
+    add(event, 'collaborator-response', event.role + ' response · ' + event.validationStatus,
+      event.validationStatus === 'valid-for-human-review'
+        ? 'External output was structurally validated for human review only. No claim, evidence, execution, approval, or authority was verified.'
+        : 'Rejected external output remains preserved as untrusted history. Inspect the exact packet and response in the Evidence Archive.',
+      'evidence-archive', { type: 'archive' });
+  }
+
+  items.sort((left, right) => right.position - left.position ||
+    left.item.eventId.localeCompare(right.item.eventId));
+  const total = items.length;
+  return Object.freeze({
+    available: true,
+    guild: Object.freeze({ id: guild.id, name: guild.name, memberCount: guild.memberCount }),
+    total,
+    omittedCount: Math.max(0, total - MAX_GUILD_FIELD_ITEMS),
+    items: Object.freeze(items.slice(0, MAX_GUILD_FIELD_ITEMS).map(entry => entry.item))
+  });
+}
+
