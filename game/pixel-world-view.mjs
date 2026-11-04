@@ -474,37 +474,60 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
   };
   if (!blocked(base.x, base.y)) return Object.freeze(base);
 
-  const step = Math.max(16, Math.ceil(Math.max(width, height) / 256));
-  const candidates = [];
-  const seen = new Set();
-  const add = (x, y) => {
-    const key = x + ':' + y;
-    if (seen.has(key)) return;
-    seen.add(key);
-    candidates.push({ x, y, order: candidates.length });
-  };
-  add(margin, base.y);
-  add(width - margin, base.y);
-  add(base.x, margin);
-  add(base.x, height - margin);
-  for (let y = margin; y <= height - margin; y += step) {
-    add(margin, y);
-    add(width - margin, y);
+  const step = Math.max(8, Math.ceil(Math.max(width, height) / 512));
+  const edgeDistances = [
+    { edge: 'left', distance: Math.abs(base.x - margin) },
+    { edge: 'right', distance: Math.abs(base.x - (width - margin)) },
+    { edge: 'top', distance: Math.abs(base.y - margin) },
+    { edge: 'bottom', distance: Math.abs(base.y - (height - margin)) }
+  ];
+  edgeDistances.sort((left, right) => left.distance - right.distance);
+  const edge = edgeDistances[0].edge;
+  const vertical = edge === 'left' || edge === 'right';
+  const edgeX = edge === 'left' ? margin : edge === 'right' ? width - margin : base.x;
+  const edgeY = edge === 'top' ? margin : edge === 'bottom' ? height - margin : base.y;
+  const point = (x, y) => blocked(x, y) ? null : Object.freeze({ ...base, x, y });
+
+  // Search outward on the same edge first; the common mobile-card case exits quickly.
+  const primaryLimit = vertical ? height - margin * 2 : width - margin * 2;
+  for (let offset = step; offset <= primaryLimit + step; offset += step) {
+    const before = vertical
+      ? point(edgeX, base.y - offset)
+      : point(base.x - offset, edgeY);
+    if (before) {
+      if (vertical ? before.y >= margin : before.x >= margin) return before;
+    }
+    const after = vertical
+      ? point(edgeX, base.y + offset)
+      : point(base.x + offset, edgeY);
+    if (after) {
+      if (vertical ? after.y <= height - margin : after.x <= width - margin) return after;
+    }
   }
-  for (let x = margin; x <= width - margin; x += step) {
-    add(x, margin);
-    add(x, height - margin);
+
+  // If that edge is fully covered, move to an adjacent edge from the nearest corner.
+  if (vertical) {
+    const startX = edgeX;
+    const direction = edge === 'left' ? 1 : -1;
+    for (let offset = 0; offset <= width - margin * 2; offset += step) {
+      const x = startX + direction * offset;
+      for (const y of [margin, height - margin]) {
+        const candidate = point(x, y);
+        if (candidate) return candidate;
+      }
+    }
+  } else {
+    const startY = edgeY;
+    const direction = edge === 'top' ? 1 : -1;
+    for (let offset = 0; offset <= height - margin * 2; offset += step) {
+      const y = startY + direction * offset;
+      for (const x of [margin, width - margin]) {
+        const candidate = point(x, y);
+        if (candidate) return candidate;
+      }
+    }
   }
-  add(margin, height - margin);
-  add(width - margin, margin);
-  const ranked = candidates.map(candidate => ({
-    ...candidate,
-    distance: (candidate.x - base.x) ** 2 + (candidate.y - base.y) ** 2
-  })).sort((left, right) => left.distance - right.distance || left.order - right.order);
-  const visible = ranked.find(candidate => !blocked(candidate.x, candidate.y));
-  return visible
-    ? Object.freeze({ ...base, x: visible.x, y: visible.y })
-    : Object.freeze({ ...base, occluded: true });
+  return Object.freeze({ ...base, occluded: true });
 }
 
 export function projectQuestCompassCaptionPosition(anchorX, anchorY, viewportWidth, viewportHeight,
@@ -1583,7 +1606,7 @@ export class PixelWorldView extends WorldView {
 
   drawQuestCompass() {
     const indicator = projectQuestCompassIndicator(
-      this.questTarget, this.camera, this.width, this.height, this.zoom, 26, this.mapAvoidRects
+      this.questTarget, this.camera, this.width, this.height, this.zoom, 26, this.mapOverlayRects
     );
     this.canvas.dataset.questCompass = indicator?.occluded ? 'occluded' :
       indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
@@ -1609,7 +1632,7 @@ export class PixelWorldView extends WorldView {
     context.font = '11px ui-monospace, monospace';
     const width = Math.min(this.width - 16, Math.max(92, Math.ceil(context.measureText(caption).width) + 18));
     const placement = projectQuestCompassCaptionPosition(
-      indicator.x, indicator.y, this.width, this.height, width, 24, this.mapAvoidRects, 8
+      indicator.x, indicator.y, this.width, this.height, width, 24, this.mapOverlayRects, 8
     );
     if (!placement) return;
     context.save();
