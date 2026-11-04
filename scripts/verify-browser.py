@@ -1457,16 +1457,16 @@ def shared(browser,url,data,out):
             if event['type']=='message-posted' and event['text']==witness_text)
         assert guild_message_event['actor']['id']==witness_id
         expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
-        expect(member_card).to_contain_text(commons_text)
-        expect(leader_card).to_contain_text(commons_text)
+        expect(member_card).to_contain_text(witness_text)
+        expect(leader_card).to_contain_text(witness_text)
         guild_message_item=b.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]')
-        expect(guild_message_item).to_contain_text(commons_text)
+        expect(guild_message_item).to_contain_text(witness_text)
         guild_message_item.locator(f'[data-guild-field-open="{guild_message_event["id"]}"]').click()
         expect(b.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
         open_guild_hall(b)
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
-        expect(member_card).to_contain_text(commons_text)
+        expect(member_card).to_contain_text(witness_text)
 
         early_disband=owner.request.post(url+'api/action',data={
             'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
