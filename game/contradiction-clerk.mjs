@@ -1,5 +1,9 @@
+import { isStrictTimestamp } from './timestamps.mjs';
+
 const MAX_REPORT_CHARACTERS = 1000;
 const MAX_RETAINED_VERSIONS = 100_000;
+const MAX_RETAINED_ARTIFACT_BYTES = 131_072;
+const MAX_REPORT_TITLE_CHARACTERS = 60;
 
 const FIELDS = Object.freeze([
   Object.freeze({
@@ -141,6 +145,14 @@ function retainedVersion(creation, version) {
   if (!source) throw new Error("the requested version is not uniquely retained");
   requirePlainObject(source, "the selected retained version");
   const title = boundedText(ownDataValue(source, "title"), "retained version title", 80);
+  const publishedAt = ownDataValue(source, "publishedAt");
+  if (!isStrictTimestamp(publishedAt)) {
+    throw new Error("the requested version is not a strictly timestamped publication");
+  }
+  const html = ownDataValue(source, "html");
+  if (typeof html !== "string") {
+    throw new Error("the requested version has no retained HTML bytes");
+  }
 
   // The world loader independently recomputes this receipt against the exact
   // retained HTML bytes. The Clerk carries that validated receipt forward; it
@@ -159,10 +171,23 @@ function retainedVersion(creation, version) {
       !Number.isSafeInteger(size) || size < 1) {
     throw new Error("the requested version has no valid SHA-256 byte receipt");
   }
+  if (size > MAX_RETAINED_ARTIFACT_BYTES) {
+    throw new Error("the requested version exceeds the retained artifact byte limit");
+  }
+  let byteLength;
+  try {
+    byteLength = new TextEncoder().encode(html).byteLength;
+  } catch {
+    throw new Error("the requested version byte length cannot be checked");
+  }
+  if (byteLength !== size) {
+    throw new Error("the requested version receipt size does not match retained HTML bytes");
+  }
   return {
     id,
     title,
     version,
+    publishedAt,
     receipt: Object.freeze({ algorithm, digest, size }),
   };
 }
@@ -185,6 +210,7 @@ export function prepareContradictionReview(creation, version) {
       creationId: target.id,
       title: target.title,
       version: target.version,
+      publishedAt: target.publishedAt,
       receipt: target.receipt,
     }),
     prompts: FIELDS,
@@ -219,16 +245,20 @@ export function formatContradictionReport(creation, version, answers) {
     throw new Error("structured challenge answers are required");
   }
   const values = challengeAnswers(answers);
+  const titleCharacters = Array.from(review.target.title);
+  const titleExcerpt = titleCharacters.length > MAX_REPORT_TITLE_CHARACTERS
+    ? titleCharacters.slice(0, MAX_REPORT_TITLE_CHARACTERS - 1).join("") + "…"
+    : review.target.title;
   const text = [
     "CONTRADICTION CLERK · STRUCTURED CHALLENGE",
-    "Target: " + review.target.title + " [" + review.target.creationId + "] v" + review.target.version,
-    "Target bytes: sha256:" + review.target.receipt.digest + " · " + review.target.receipt.size + " bytes.",
-    "Claim under test: " + values.claim,
-    "Source / direct observation: " + values.source,
-    "Possible falsifier / counterexample: " + values.falsifier,
-    "Unknown / next test: " + values.unknown,
-    "Disposition: REPORT ONLY — NOT A VERDICT.",
-    "Boundary: Receipt identifies bytes, not truth; no AI/provider call or independent observation occurred.",
+    "Target: " + titleExcerpt + " [" + review.target.creationId + "] v" + review.target.version,
+    "SHA-256 " + review.target.receipt.digest + " · " + review.target.receipt.size + "B",
+    "Claim: " + values.claim,
+    "Source: " + values.source,
+    "Falsifier: " + values.falsifier,
+    "Unknown: " + values.unknown,
+    "REPORT ONLY — NOT A VERDICT.",
+    "Receipt = bytes, not truth; no AI/provider call or independent observation occurred.",
   ].join("\n");
   if (Array.from(text).length > MAX_REPORT_CHARACTERS) {
     throw new Error("structured challenge exceeds the retained report limit");
