@@ -72,6 +72,11 @@ function createAuthorizationFixture(dir) {
   mkdirSync(path.dirname(modulePath), { recursive: true, mode: 0o700 });
   mkdirSync(path.dirname(trustPath), { recursive: true, mode: 0o700 });
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+  const nonceLedgerPath = path.join(dataDirectory, "founder-nonces.json");
+  writeFileSync(nonceLedgerPath, canonical({
+    schema: "ngl.founder-nonce-ledger.v1",
+    nonces: [],
+  }), { mode: 0o600 });
   const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
   writeFileSync(modulePath, source, { mode: 0o600 });
   const kp = keyPair();
@@ -95,7 +100,7 @@ function createAuthorizationFixture(dir) {
     moduleUrl: pathToFileURL(modulePath).href,
     trustPath,
     dataDirectory,
-    nonceLedgerPath: path.join(dataDirectory, "founder-nonces.json"),
+    nonceLedgerPath,
     payload,
     sign: () => signPayload(kp.privateKey, payload, kp.fingerprint),
   };
@@ -595,6 +600,10 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
     });
 
     writeFileSync(trustPath, JSON.stringify(anchor("PRODUCTION")), { mode: 0o600 });
+    writeFileSync(nonceLedgerPath, canonical({
+      schema: "ngl.founder-nonce-ledger.v1",
+      nonces: [],
+    }), { mode: 0o600 });
     withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath, NGL_FOUNDER_NONCE_LEDGER_PATH: null }, () => {
       assert.throws(
         () => isolated.authorizationEvent({ signed, payload }),
@@ -953,7 +962,8 @@ test("process death before nonce-ledger rename leaves an inspectable stale lock 
     const stopped = await worker.exit;
     assert.equal(stopped.signal, "SIGKILL", worker.stderr);
     assert.equal(readFileSync(markerPath, "utf8"), "before-rename");
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "pre-rename process death leaves the initialized empty ledger unchanged");
 
     const names = readdirSync(fixture.dataDirectory);
     const temporary = names.find(name => name.startsWith(".founder-nonce-") && name.endsWith(".tmp"));
@@ -1135,6 +1145,7 @@ test("nonce ledger path rejects both reserved lock filenames before creating sta
   try {
     const fixture = createAuthorizationFixture(dir);
     const signed = fixture.sign();
+    unlinkSync(fixture.nonceLedgerPath);
     const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
     const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
     const temporaryLedgerPath = path.join(fixture.dataDirectory, ".founder-nonce-" + randomUUID() + ".tmp");
@@ -1180,7 +1191,8 @@ test("a pre-existing recovery lease blocks nonce writes before lock acquisition"
     ));
 
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "a recovery lease must not mutate the initialized ledger");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1233,7 +1245,8 @@ test("a recovery lease appearing after writer lock creation fences nonce mutatio
     });
     assert.equal(child.status, 0, child.stderr);
     assert.match(child.stdout, /ERROR:FOUNDER_NONCE_RECOVERY_IN_PROGRESS/);
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "a racing recovery lease must leave the initialized ledger unchanged");
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
     assert.equal(existsSync(recoveryLeasePath), true);
   } finally {
@@ -1275,7 +1288,7 @@ test("nonce writer refuses to publish after its owner lock disappears before led
       });
       assert.equal(fileSyncs, 2, "the lock is removed after its receipt and temporary ledger file are fsynced");
       assert.equal(removed, true, "the test must remove the owner lock at the pre-rename boundary");
-      assert.equal(existsSync(fixture.nonceLedgerPath), false,
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
         "a nonce must not be committed after ownership of the writer lock is lost");
       assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\.founder-nonce-.*\.tmp$/.test(name)), false,
         "the uncommitted temporary ledger file must be cleaned up");
