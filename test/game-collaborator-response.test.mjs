@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
-import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
+import { validateCollaboratorResponse, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
 
@@ -426,3 +426,77 @@ test('omission ID length uses Unicode code points consistently with producer lim
     assert.equal(payload.omittedEventIds.includes(overLimit), false, packet.id);
   }
 });
+
+function retainedResponseEvent(packet, role, responseText, actor = founder) {
+  const validation = validateCollaboratorResponse(packet, responseText);
+  return {
+    id: 'retained-response-event-1',
+    type: 'collaborator-response-recorded',
+    responseId: 'retained-response-id-1',
+    role,
+    moonshotId: packet.moonshotId,
+    actor,
+    at: at3,
+    sourceEventIds: [...packet.inputRefs],
+    packetJson: packet.packetJson,
+    responseText,
+    validationStatus: validation.status,
+    validationReason: validation.reason,
+    validator: 'ngl.collaborator-response.v1'
+  };
+}
+
+test('revalidates an exact actor-scoped retained response for read-only Council Chamber review', () => {
+  const packet = packetsForTest().adversary;
+  const responseText = JSON.stringify(validResponses.adversary);
+  const event = retainedResponseEvent(packet, 'adversary', responseText);
+  const world = { events: [event] };
+  const before = structuredClone(world);
+
+  const result = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(result.valid, true);
+  assert.equal(result.status, 'valid-for-human-review');
+  assert.equal(result.response.challengeDraft, validResponses.adversary.challengeDraft);
+  assert.deepEqual(result.packetScope.includedEventIds, packet.inputRefs);
+  assert.equal(result.packetScope.omittedCount, JSON.parse(packet.packetJson).omittedCount);
+  assert.equal(Object.isFrozen(result.response), true);
+  assert.deepEqual(world, before, 'review projection must not mutate retained history');
+});
+
+test('retained Council review preserves rejected attempts and withholds mismatched or ambiguous bytes', () => {
+  const packet = packetsForTest().adversary;
+  const validText = JSON.stringify(validResponses.adversary);
+  const validEvent = retainedResponseEvent(packet, 'adversary', validText);
+  const rejectedEvent = retainedResponseEvent(packet, 'adversary', '{}');
+  const rejectedWorld = { events: [rejectedEvent] };
+  const rejected = validateRetainedCollaboratorResponse(rejectedWorld, rejectedEvent.id, founder);
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(rejected.reason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
+  assert.equal(Object.hasOwn(rejected, 'response'), false);
+
+  const tampered = { ...validEvent, responseText: '{}' };
+  assert.equal(validateRetainedCollaboratorResponse({ events: [tampered] }, tampered.id, founder).reason,
+    'RETAINED_RESPONSE_MISMATCH');
+  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, actor: witness }] }, validEvent.id, founder).reason,
+    'RETAINED_RESPONSE_ACTOR_MISMATCH');
+  assert.equal(validateRetainedCollaboratorResponse({ events: [validEvent, { ...validEvent, id: 'second-event' }] },
+    validEvent.id, founder).status, 'unavailable');
+  assert.equal(validateRetainedCollaboratorResponse({ events: [validEvent, { ...validEvent, responseId: 'second-response' }] },
+    validEvent.id, founder).status, 'unavailable');
+  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, sourceEventIds: [...validEvent.sourceEventIds, 'outside-packet'] }] },
+    validEvent.id, founder).reason, 'RETAINED_RESPONSE_PACKET_INVALID');
+  const duplicatePacketKey = validEvent.packetJson.replace('{', '{"role":"adversary",');
+  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, packetJson: duplicatePacketKey }] },
+    validEvent.id, founder).reason, 'RETAINED_RESPONSE_PACKET_INVALID');
+
+  let getterCalls = 0;
+  const hostileEvent = { ...validEvent };
+  Object.defineProperty(hostileEvent, 'responseText', {
+    enumerable: true,
+    get() { getterCalls += 1; return validEvent.responseText; }
+  });
+  assert.equal(validateRetainedCollaboratorResponse({ events: [hostileEvent] }, hostileEvent.id, founder).status,
+    'unavailable');
+  assert.equal(getterCalls, 0, 'retained review must not invoke hostile accessors');
+});
+

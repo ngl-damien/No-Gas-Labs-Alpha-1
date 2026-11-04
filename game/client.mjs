@@ -11,7 +11,7 @@ import {prepareContradictionReview,formatContradictionReport} from './contradict
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
-import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
 function registerOfflineShell(){
@@ -932,6 +932,106 @@ async function openGuildHall(focusRoleId = null){
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
+function councilReviewExcerpt(value,maximum=420){
+  if(typeof value!=='string')return '';
+  const characters=Array.from(value);
+  return characters.length>maximum?characters.slice(0,maximum).join('')+' …[excerpt]':value;
+}
+function appendCouncilReviewText(details,label,value){
+  if(typeof value!=='string'||!value.trim())return;
+  details.append(node('section',{class:'council-review-field'},[
+    node('h4',{text:label}),
+    paragraph(councilReviewExcerpt(value),'form-help')
+  ]));
+}
+function appendCouncilReviewList(details,label,values){
+  if(!Array.isArray(values)||!values.length)return;
+  const list=node('ul',{class:'council-review-list'});
+  for(const value of values.slice(0,4))
+    if(typeof value==='string')list.append(node('li',{text:councilReviewExcerpt(value)}));
+  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional entries; inspect the exact retained response.'}));
+  details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
+}
+function appendCouncilReviewStatements(details,label,values){
+  if(!Array.isArray(values)||!values.length)return;
+  const list=node('ul',{class:'council-review-list'});
+  for(const item of values.slice(0,4)){
+    if(!item||typeof item.statement!=='string'||!Array.isArray(item.sourceEventIds))continue;
+    const entry=node('li');
+    entry.append(paragraph(councilReviewExcerpt(item.statement)));
+    entry.append(node('small',{text:'Source events: '+item.sourceEventIds.join(' · ')}));
+    list.append(entry);
+  }
+  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
+  details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
+}
+function appendCouncilReviewSummary(card,response){
+  const review=validateRetainedCollaboratorResponse(world,response.id,viewer);
+  if(review.status==='unavailable'){
+    card.append(paragraph('Review notes withheld: the retained packet/response could not be revalidated from this snapshot ('+review.reason+'). Inspect the exact archive entry; no summary is inferred.','empty-note'));
+    return;
+  }
+  if(review.status==='rejected'){
+    card.append(paragraph('Rejected collaborator attempt preserved. No structured summary is shown. Validator reason: '+review.reason+'.','form-help'));
+    return;
+  }
+  const details=node('details',{
+    class:'council-review-details',
+    'data-council-review-summary':response.role,
+    'data-council-review-status':review.status
+  },[
+    node('summary',{text:'Open bounded review notes · untrusted collaborator output'}),
+    paragraph('The exact retained packet and response passed structural/scope revalidation for human review only. These are collaborator assertions—not independent evidence, truth, execution, endorsement, consensus, approval or authority. Excerpts are bounded; inspect the archive for exact bytes.','form-help')
+  ]);
+  const scope=review.packetScope;
+  details.append(paragraph(
+    'Packet scope: '+scope.includedEventIds.length+' included source record(s); '+scope.omittedCount+
+    ' eligible record(s) omitted. Omitted-ID list '+(scope.omittedEventIdListTruncated?'truncated':'not truncated')+'.',
+    'form-help'
+  ));
+  details.append(paragraph(
+    'Included source IDs: '+scope.includedEventIds.slice(0,8).join(' · ')+
+    (scope.includedEventIds.length>8?' · '+(scope.includedEventIds.length-8)+' more in packet':''),
+    'attribution'
+  ));
+  if(scope.omittedEventIds.length)details.append(paragraph(
+    'Disclosed omitted IDs: '+scope.omittedEventIds.slice(0,8).join(' · ')+
+    (scope.omittedEventIds.length>8?' · '+(scope.omittedEventIds.length-8)+' more disclosed':''),
+    'form-help'
+  ));
+  const data=review.response;
+  if(response.role==='adversary'){
+    appendCouncilReviewText(details,'Challenge draft · not adjudicated',data.challengeDraft);
+    appendCouncilReviewText(details,'Counterexample to consider',data.counterexample);
+    appendCouncilReviewList(details,'Evidence requested',data.evidenceNeeded);
+    appendCouncilReviewList(details,'Unknowns',data.unknowns);
+  }else if(response.role==='archivist'){
+    appendCouncilReviewList(details,'Event-chain findings',data.eventChainFindings);
+    appendCouncilReviewList(details,'Claims · unverified',data.claims);
+    appendCouncilReviewList(details,'Linkage issues',data.linkageIssues);
+    appendCouncilReviewList(details,'Unknowns',data.unknowns);
+    appendCouncilReviewList(details,'Next checks',data.nextChecks);
+  }else if(response.role==='synthesizer'){
+    appendCouncilReviewStatements(details,'Recorded support · collaborator claims',data.recordedSupport);
+    appendCouncilReviewStatements(details,'Contradictions · dissent retained',data.contradictions);
+    appendCouncilReviewList(details,'Dissent event IDs preserved',data.dissentPreserved);
+    appendCouncilReviewList(details,'Unknowns',data.unknowns);
+    if(data.nextDiscriminatingExperiment)details.append(node('section',{class:'council-review-field'},[
+      node('h4',{text:'Suggested next experiment · not run or approved'}),
+      paragraph('Procedure: '+councilReviewExcerpt(data.nextDiscriminatingExperiment.procedure)),
+      paragraph('Outcome to compare: '+councilReviewExcerpt(data.nextDiscriminatingExperiment.outcome))
+    ]));
+  }else if(response.role==='tutor'){
+    appendCouncilReviewList(details,'Concepts',data.concepts);
+    appendCouncilReviewList(details,'Prerequisites',data.prerequisites);
+    appendCouncilReviewText(details,'Explanation · general instruction, not mastery',data.explanation);
+    appendCouncilReviewList(details,'Retrieval questions',data.questions);
+    appendCouncilReviewList(details,'Answer key · study aid, not mastery',data.answerKey);
+    appendCouncilReviewList(details,'What remains unproven',data.whatRemainsUnproven);
+  }
+  card.append(details);
+}
+
 function openCouncilChamber(){
   const coverageId=viewer.role==='founder'?'founder-guild-council-coverage':'witness-guild-council-coverage';
   const coverage=getQuestTrail(world,viewer).find(item=>item.id===coverageId);
@@ -968,8 +1068,13 @@ function openCouncilChamber(){
     content.append(paragraph(coverage.blockedReason,'empty-note'));
   for(const npc of GUILD_NPCS){
     const item=evidenceByRole.get(npc.roleId)||null;
+    const sameSourceIds=(left,right)=>Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&
+      left.every((id,index)=>id===right[index]);
     const matches=item?events.filter(event=>event?.id===item.id&&event?.type==='collaborator-response-recorded'&&
-      event?.role===npc.roleId&&event?.actor?.id===viewer.id&&event?.actor?.role===viewer.role):[];
+      event?.role===npc.roleId&&event?.actor?.id===viewer.id&&event?.actor?.role===viewer.role&&
+      event?.responseId===item.responseId&&event?.validator===item.validator&&
+      event?.validationStatus===item.validationStatus&&event?.validationReason===item.validationReason&&
+      sameSourceIds(event?.sourceEventIds,item.sourceEventIds)) : [];
     const response=matches.length===1?matches[0]:null;
     const status=!item?'awaiting':!response?'link-unavailable':
       response.validationStatus==='rejected'?'rejected':'human-review';
@@ -994,6 +1099,7 @@ function openCouncilChamber(){
     ]);
     if(response){
       card.append(paragraph('Source events: '+(Array.isArray(response.sourceEventIds)?response.sourceEventIds.join(' · '):'unavailable'),'form-help'));
+      appendCouncilReviewSummary(card,response);
       if(response.validationReason)card.append(paragraph('Structural validator note: '+response.validationReason,'form-help'));
       card.append(button('Inspect exact retained response →',()=>openEvidenceArchive(npc.roleId,response.responseId),{
         class:'list-button','data-council-inspect-response':npc.roleId

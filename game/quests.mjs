@@ -383,7 +383,10 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        responseId: typeof event.responseId === 'string' ? event.responseId : null,
+        validator: typeof event.validator === 'string' ? event.validator : null,
         validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
         sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
       } : {})
     }));

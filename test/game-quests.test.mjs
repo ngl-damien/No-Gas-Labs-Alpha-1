@@ -904,6 +904,8 @@ test('Guild response and council coverage quests route to the next available rol
     actor,
     at: '2026-10-28T17:' + String(10 + index).padStart(2, '0') + ':00.000Z',
     validationStatus,
+    validationReason: validationStatus === 'rejected' ? 'RESPONSE_SCHEMA_OR_SCOPE_INVALID' : null,
+    sourceEventIds: [],
     validator: 'ngl.collaborator-response.v1'
   });
 
@@ -913,6 +915,11 @@ test('Guild response and council coverage quests route to the next available rol
   assert.equal(trail.find(item => item.id === 'founder-guild-response').complete, true);
   assert.equal(oneRole.progress, 1);
   assert.deepEqual(oneRole.evidenceIds, ['collaborator-response-event-archivist-1']);
+  assert.equal(oneRole.evidence[0].responseId, 'collaborator-response-archivist-1');
+  assert.equal(oneRole.evidence[0].validator, 'ngl.collaborator-response.v1');
+  assert.equal(oneRole.evidence[0].validationStatus, 'rejected');
+  assert.equal(oneRole.evidence[0].validationReason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
+  assert.deepEqual(oneRole.evidence[0].sourceEventIds, []);
   assert.deepEqual(oneRole.action, { type: 'location', id: 'guild-npc-adversary' });
   assert.match(oneRole.interpretation, /Rejected responses count as preserved attempts, not endorsements/i);
 
