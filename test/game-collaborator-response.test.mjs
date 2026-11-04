@@ -10,8 +10,9 @@ const witness = { id: 'witness-1', role: 'witness' };
 const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
+const at4 = '2026-10-29T04:03:00.000Z';
 
-function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
+function worldForTest(challengeCount = 1, firstChallengeEventId = null) {
   const events = [
     {
       id: 'proposal-event-1', type: 'moonshot-proposed', moonshotId: 'moonshot-1',
@@ -36,14 +37,14 @@ function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
       evidenceCreationId: null, evidenceVersion: null
     });
   }
-  const world = {
-    id: 'world-test-1',
-    revision: events.length,
-    creations: [],
-    events
-  };
+  return { id: 'world-test-1', revision: events.length, creations: [], events };
+}
+
+function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
+  const world = worldForTest(challengeCount, firstChallengeEventId);
   return Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
 }
+
 const validResponses = {
   archivist: {
     eventChainFindings: ['The proposal precedes the report in the supplied chain.'],
@@ -436,7 +437,7 @@ function retainedResponseEvent(packet, role, responseText, actor = founder) {
     role,
     moonshotId: packet.moonshotId,
     actor,
-    at: at3,
+    at: at4,
     sourceEventIds: [...packet.inputRefs],
     packetJson: packet.packetJson,
     responseText,
@@ -446,11 +447,12 @@ function retainedResponseEvent(packet, role, responseText, actor = founder) {
   };
 }
 
-test('revalidates an exact actor-scoped retained response for read-only Council Chamber review', () => {
+test('revalidates an exact actor-scoped retained response against its source snapshot for Council Chamber review', () => {
+  const sourceWorld = worldForTest();
   const packet = packetsForTest().adversary;
   const responseText = JSON.stringify(validResponses.adversary);
   const event = retainedResponseEvent(packet, 'adversary', responseText);
-  const world = { events: [event] };
+  const world = { ...sourceWorld, revision: sourceWorld.revision + 1, events: [...sourceWorld.events, event] };
   const before = structuredClone(world);
 
   const result = validateRetainedCollaboratorResponse(world, event.id, founder);
@@ -463,31 +465,69 @@ test('revalidates an exact actor-scoped retained response for read-only Council 
   assert.deepEqual(world, before, 'review projection must not mutate retained history');
 });
 
-test('retained Council review preserves rejected attempts and withholds mismatched or ambiguous bytes', () => {
-  const packet = packetsForTest().adversary;
+test('Witness Council review reconstructs the public prefix without another actor’s hidden Commons report', () => {
+  const base = worldForTest();
+  const hiddenReport = {
+    id: 'private-message-report', type: 'message-reported', actor: founder,
+    at: '2026-10-29T04:01:30.000Z', reportId: 'private-report-1',
+    messageId: 'private-message-1', reason: 'other', details: 'Private to the reporting actor.'
+  };
+  const events = [base.events[0], base.events[1], hiddenReport, base.events[2]];
+  const visibleEvents = events.filter(source =>
+    !['draft', 'repair'].includes(source.type) &&
+    (source.type !== 'message-reported' || source.actor?.id === witness.id)
+  );
+  const packet = projectCollaboratorPackets({
+    id: base.id, revision: events.length, creations: [], events: visibleEvents
+  }).find(candidate => candidate.id === 'adversary');
+  const event = retainedResponseEvent(packet, 'adversary', JSON.stringify(validResponses.adversary), witness);
+  const world = { id: base.id, revision: events.length + 1, creations: [], events: [...events, event] };
+  const review = validateRetainedCollaboratorResponse(world, event.id, witness);
+  assert.equal(review.status, 'valid-for-human-review');
+});
+
+test('retained Council review preserves rejected attempts and withholds forged or ambiguous packets', () => {
+  const sourceWorld = worldForTest();
+  const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'adversary');
   const validText = JSON.stringify(validResponses.adversary);
   const validEvent = retainedResponseEvent(packet, 'adversary', validText);
+  const worldWith = (...extraEvents) => {
+    const events = [...sourceWorld.events, ...extraEvents];
+    return { ...sourceWorld, revision: events.length, events };
+  };
+
   const rejectedEvent = retainedResponseEvent(packet, 'adversary', '{}');
-  const rejectedWorld = { events: [rejectedEvent] };
-  const rejected = validateRetainedCollaboratorResponse(rejectedWorld, rejectedEvent.id, founder);
+  const rejected = validateRetainedCollaboratorResponse(worldWith(rejectedEvent), rejectedEvent.id, founder);
   assert.equal(rejected.status, 'rejected');
   assert.equal(rejected.reason, 'RESPONSE_SCHEMA_OR_SCOPE_INVALID');
   assert.equal(Object.hasOwn(rejected, 'response'), false);
 
   const tampered = { ...validEvent, responseText: '{}' };
-  assert.equal(validateRetainedCollaboratorResponse({ events: [tampered] }, tampered.id, founder).reason,
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(tampered), tampered.id, founder).reason,
     'RETAINED_RESPONSE_MISMATCH');
-  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, actor: witness }] }, validEvent.id, founder).reason,
+  assert.equal(validateRetainedCollaboratorResponse(worldWith({ ...validEvent, actor: witness }), validEvent.id, founder).reason,
     'RETAINED_RESPONSE_ACTOR_MISMATCH');
-  assert.equal(validateRetainedCollaboratorResponse({ events: [validEvent, { ...validEvent, id: 'second-event' }] },
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(validEvent, { ...validEvent, id: 'second-event' }),
     validEvent.id, founder).status, 'unavailable');
-  assert.equal(validateRetainedCollaboratorResponse({ events: [validEvent, { ...validEvent, responseId: 'second-response' }] },
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(validEvent, { ...validEvent, responseId: 'second-response' }),
     validEvent.id, founder).status, 'unavailable');
-  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, sourceEventIds: [...validEvent.sourceEventIds, 'outside-packet'] }] },
+  assert.equal(validateRetainedCollaboratorResponse(worldWith({ ...validEvent, sourceEventIds: [...validEvent.sourceEventIds, 'outside-packet'] }),
     validEvent.id, founder).reason, 'RETAINED_RESPONSE_PACKET_INVALID');
   const duplicatePacketKey = validEvent.packetJson.replace('{', '{"role":"adversary",');
-  assert.equal(validateRetainedCollaboratorResponse({ events: [{ ...validEvent, packetJson: duplicatePacketKey }] },
+  assert.equal(validateRetainedCollaboratorResponse(worldWith({ ...validEvent, packetJson: duplicatePacketKey }),
     validEvent.id, founder).reason, 'RETAINED_RESPONSE_PACKET_INVALID');
+
+  const forgedPayload = JSON.parse(validEvent.packetJson);
+  forgedPayload.inputRecords[1].observation = 'A fabricated observation not present in retained history.';
+  const forgedPacket = { ...validEvent, packetJson: JSON.stringify(forgedPayload, null, 2) };
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(forgedPacket), forgedPacket.id, founder).reason,
+    'RETAINED_RESPONSE_PACKET_MISMATCH');
+
+  const changedSnapshot = JSON.parse(validEvent.packetJson);
+  changedSnapshot.sourceSnapshot.revision += 1;
+  const snapshotMismatch = { ...validEvent, packetJson: JSON.stringify(changedSnapshot, null, 2) };
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(snapshotMismatch), snapshotMismatch.id, founder).reason,
+    'RETAINED_RESPONSE_PACKET_MISMATCH');
 
   let getterCalls = 0;
   const hostileEvent = { ...validEvent };
@@ -495,7 +535,7 @@ test('retained Council review preserves rejected attempts and withholds mismatch
     enumerable: true,
     get() { getterCalls += 1; return validEvent.responseText; }
   });
-  assert.equal(validateRetainedCollaboratorResponse({ events: [hostileEvent] }, hostileEvent.id, founder).status,
+  assert.equal(validateRetainedCollaboratorResponse(worldWith(hostileEvent), hostileEvent.id, founder).status,
     'unavailable');
   assert.equal(getterCalls, 0, 'retained review must not invoke hostile accessors');
 });
