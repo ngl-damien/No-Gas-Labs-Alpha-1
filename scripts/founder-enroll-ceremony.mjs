@@ -46,7 +46,7 @@ function validateArguments(argv) {
   if (!Array.isArray(argv) || argv.some(argument => typeof argument !== 'string')) {
     throw failure('FOUNDER_ENROLLMENT_ARGUMENT_INVALID', 'Enrollment arguments must be strings.');
   }
-  if (argv.includes('--write-private-path')) {
+  if (argv.some(argument => argument === '--write-private-path' || argument.startsWith('--write-private-path='))) {
     throw failure(
       'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED',
       'Raw private-key file export is disabled until a platform-backed, non-extractable keystore adapter is available.'
