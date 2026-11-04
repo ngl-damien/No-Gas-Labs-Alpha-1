@@ -166,6 +166,15 @@ def run_viewport(browser, url, out, width):
         page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
         )
+        # Shared entry is a Witness session. Authenticate through the local
+        # service's real Founder login path before testing Founder objectives.
+        page.locator('#login-button').tap()
+        page.locator('#founder-name').fill('Damien')
+        page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        page.locator('#verify-founder').tap()
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
 
         if width == 390:
             fixture = publish_fixture(page)
