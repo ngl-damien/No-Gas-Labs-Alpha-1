@@ -1565,11 +1565,11 @@ test("missing and malformed Founder nonces fail closed before acquiring or chang
     const missing = { ...valid };
     delete missing.nonce;
     const cases = [
-      ["missing", missing],
-      ["empty", { ...valid, nonce: "" }],
-      ["short", { ...valid, nonce: "f".repeat(31) }],
-      ["uppercase", { ...valid, nonce: "A".repeat(32) }],
-      ["non-hex", { ...valid, nonce: "g".repeat(32) }],
+      ["missing", missing, "SIGNED_SHAPE_INVALID"],
+      ["empty", { ...valid, nonce: "" }, "NONCE_INVALID"],
+      ["short", { ...valid, nonce: "f".repeat(31) }, "NONCE_INVALID"],
+      ["uppercase", { ...valid, nonce: "A".repeat(32) }, "NONCE_INVALID"],
+      ["non-hex", { ...valid, nonce: "g".repeat(32) }, "NONCE_INVALID"],
     ];
     const trust = loadTrustAnchor(fixture.trustPath);
     const environment = {
@@ -1579,7 +1579,7 @@ test("missing and malformed Founder nonces fail closed before acquiring or chang
     const originalLedger = readFileSync(fixture.nonceLedgerPath);
     const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
 
-    for (const [label, signed] of cases) {
+    for (const [label, signed, expectedReason] of cases) {
       const verification = verifyFounderDecision({
         signed,
         payload: fixture.payload,
@@ -1587,11 +1587,11 @@ test("missing and malformed Founder nonces fail closed before acquiring or chang
         expected_fingerprint: trust.fingerprint,
       });
       assert.equal(verification.valid, false, label);
-      assert.equal(verification.reason, "NONCE_INVALID", label);
+      assert.equal(verification.reason, expectedReason, label);
       withEnvironment(environment, () => {
         assert.throws(
           () => authorizationEvent({ signed, payload: fixture.payload }),
-          /FOUNDER_DECISION_INVALID:NONCE_INVALID/,
+          new RegExp(`FOUNDER_DECISION_INVALID:${expectedReason}`),
           label
         );
       });
