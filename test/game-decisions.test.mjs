@@ -113,7 +113,7 @@ test('HTTP Founder Gate keeps dispositions fail-closed until signed verification
     assert.equal(afterBlockedChoices.decisions[0].status, 'PENDING');
 
     await hostState.server.closeGame();
-    hostState = await host(directory);
+    hostState = await host(directory, trustPath);
     const fresh = hostState.client();
     assert.equal((await fresh.request('/api/state')).body.viewer.role, 'witness');
     await fresh.request('/api/login', { key });
