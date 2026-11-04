@@ -19,7 +19,6 @@ const CORE_SHELL = [
   '/guild-npc-workbench.mjs',
   '/collaborator-contracts.mjs',
   '/collaborator-response.mjs',
-  '/collaborator-world-objects.mjs',
   '/strict-json.mjs',
   '/model.mjs',
   '/artifacts.mjs',
