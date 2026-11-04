@@ -23,6 +23,39 @@ function registerOfflineShell(){
 }
 registerOfflineShell();
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;let commonsDraftText='';
+const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
+function readMutedCommonsAuthors(){
+  try{
+    const storage=globalThis.localStorage;
+    if(!storage)return {authors:[],available:false};
+    const raw=storage.getItem(COMMONS_MUTED_AUTHORS_KEY);
+    if(raw===null)return {authors:[],available:true};
+    const parsed=JSON.parse(raw);
+    if(!Array.isArray(parsed))return {authors:[],available:false};
+    const authors=[],seen=new Set();
+    for(const candidate of parsed.slice(0,100)){
+      if(!candidate||typeof candidate.id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(candidate.id)||
+         ['constructor','prototype','__proto__'].includes(candidate.id)||
+         !['founder','witness'].includes(candidate.role)||
+         typeof candidate.name!=='string'||!candidate.name.trim()||Array.from(candidate.name).length>80)continue;
+      const key=JSON.stringify([candidate.id,candidate.role]);
+      if(seen.has(key))continue;
+      seen.add(key);
+      authors.push({id:candidate.id,role:candidate.role,name:candidate.name.trim()});
+    }
+    return {authors,available:true};
+  }catch{return {authors:[],available:false};}
+}
+function writeMutedCommonsAuthors(authors){
+  try{
+    if(!Array.isArray(authors)||authors.length>100)throw new Error('Invalid mute list.');
+    globalThis.localStorage.setItem(COMMONS_MUTED_AUTHORS_KEY,JSON.stringify(authors));
+    return true;
+  }catch{
+    toast('Device storage could not save this local mute. No shared message or world state was changed.',true);
+    return false;
+  }
+}
 async function openInstitution(locationId = null) {
   const contexts = {
     'town-square': ['The institution at work.', 'PROJECTS · EVIDENCE · FOUNDER GATE'],
@@ -89,14 +122,15 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
     const priorComposer=content.querySelector('#commons-message');
     if(priorComposer)commonsDraftText=priorComposer.value;
   }
-  const feed=projectTownSquare(world,viewer);
+  const muteState=readMutedCommonsAuthors();
+  const feed=projectTownSquare(world,viewer,{mutedAuthors:muteState.authors});
   content.replaceChildren();
   content.dataset.commonsPanel='true';
   content.append(
     paragraph(mode==='shared'
       ? 'Messages are shared with the current game community. Reports are private to their author and the authenticated Founder.'
       : 'Private-world messages stay on this device. Shared conversation requires the shared service.'),
-    paragraph('Conversation is not evidence, truth, approval, authority, verification, or XP. Human moderation can hide public text while preserving the original event in world history.','form-help'),
+    paragraph('Conversation is not evidence, truth, approval, authority, verification, or XP. Human moderation can hide public text while preserving the original event in world history. Device-local mutes affect only this browser and never hide content for other players.','form-help'),
     button('Institution records →',()=>openInstitution('town-square'),{class:'secondary-button','data-commons-institution-records':'true'})
   );
   const form=node('form',{id:'commons-compose','aria-label':'Post a Commons message'});
@@ -119,7 +153,24 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
   ]));
   content.append(node('h3',{class:'section-title',text:'RECENT MESSAGES · '+feed.totalMessages}));
   if(feed.omittedMessageCount)content.append(paragraph(feed.omittedMessageCount+' earlier messages remain in the Chronicle and are not included in this bounded view.','form-help'));
-  if(!feed.messages.length)content.append(paragraph('The Commons is quiet. A first message creates a retained conversation event, not progress or proof.','form-help'));
+  if(!muteState.available)content.append(paragraph('Device-local mute preferences could not be read. Messages are shown without local filtering; no shared moderation state was changed.','evidence-warning'));
+  if(feed.mutedMessageCount)content.append(paragraph(feed.mutedMessageCount+' recent message'+(feed.mutedMessageCount===1?' is':'s are')+' hidden by device-local mutes. Other players still see their own unfiltered feed.','form-help'));
+  if(!feed.messages.length&&feed.mutedMessageCount===0)content.append(paragraph('The Commons is quiet. A first message creates a retained conversation event, not progress or proof.','form-help'));
+  else if(!feed.messages.length)content.append(paragraph('No recent messages are visible. Unmute an author below to restore this device’s view.','form-help'));
+  if(feed.mutedAuthors.length){
+    const mutedPanel=node('details',{id:'commons-muted-authors',class:'field-card'});
+    mutedPanel.append(node('summary',{text:'MUTED AUTHORS · THIS DEVICE · '+feed.mutedAuthors.length}));
+    for(const author of feed.mutedAuthors){
+      mutedPanel.append(node('div',{class:'button-row'},[
+        paragraph(author.name+' · '+String(author.role).toUpperCase()),
+        button('Unmute →',()=>{
+          const next=feed.mutedAuthors.filter(candidate=>candidate.id!==author.id||candidate.role!==author.role);
+          if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
+        }),{class:'secondary-button','data-commons-unmute':author.id,'data-commons-unmute-role':author.role}
+      ]));
+    }
+    content.append(mutedPanel);
+  }
   for(const message of feed.messages){
     const card=node('article',{class:'field-card','data-commons-message-id':message.messageId});
     card.append(
@@ -127,6 +178,11 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       paragraph(new Date(message.at).toLocaleString()),
       paragraph(message.text)
     );
+    if(message.canMute&&muteState.available)card.append(button('Mute author on this device',()=>{
+      if(feed.mutedAuthors.length>=100){toast('The device-local mute list is full (100 authors).',true);return;}
+      const next=[...feed.mutedAuthors,{id:message.author.id,role:message.author.role,name:message.author.name}];
+      if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
+    }),{class:'secondary-button','data-commons-mute':message.messageId}));
     if(message.hidden)card.append(paragraph('Hidden by human moderation. The original message remains retained in history.','form-help'));
     if(message.canReport){
       const report=node('details',{class:'commons-report'});
