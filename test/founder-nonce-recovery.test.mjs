@@ -397,11 +397,11 @@ test('unreadable post-unlink owner-lock inspection retains the recovery fence', 
     "let ownerLockUnlinked = false;",
     "fsPromises.unlink = async (target, ...args) => {",
     "  const result = await originalUnlink(target, ...args);",
-    "  if (String(target) === process.env.TEST_OWNER_LOCK) ownerLockUnlinked = true;",
+    "  if (String(target).endsWith('/.founder-nonce.lock')) ownerLockUnlinked = true;",
     "  return result;",
     "};",
     "fsPromises.lstat = async (target, ...args) => {",
-    "  if (ownerLockUnlinked && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "  if (ownerLockUnlinked && String(target).endsWith('/.founder-nonce.lock')) {",
     "    const error = new Error('injected post-unlink inspection failure');",
     "    error.code = 'EACCES';",
     "    throw error;",
@@ -649,7 +649,7 @@ test('offline recovery refuses owner-lock removal when a temporary nonce file ap
     "let injected = false;",
     "fsPromises.readdir = async (target, ...args) => {",
     "  const entries = await originalReaddir(target, ...args);",
-    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "  if (String(target) === process.env.TEST_DIRECTORY || String(target).includes('/proc/self/fd/') || String(target).includes('/dev/fd/')) {",
     "    directoryReads += 1;",
     "    if (!injected && directoryReads === 4) {",
     "      injected = true;",
@@ -692,6 +692,141 @@ test('offline recovery refuses owner-lock removal when a temporary nonce file ap
 });
 
 
+
+test('offline recovery never unlinks a replacement-directory owner lock after path swap', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const movedDirectory = value.directory + '-original';
+  const replacementDirectory = await mkdtemp(join(tmpdir(), 'ngl-founder-nonce-replacement-'));
+  await chmod(replacementDirectory, 0o700);
+  await writeFile(join(replacementDirectory, '.founder-nonce.lock'), 'replacement-owner-lock', { mode: 0o600 });
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalUnlink = fsPromises.unlink;",
+    "let swapped = false;",
+    "fsPromises.unlink = async (target, ...args) => {",
+    "  if (!swapped && String(target).endsWith('/.founder-nonce.lock')) {",
+    "    await fsPromises.rename(process.env.TEST_DIRECTORY, process.env.TEST_MOVED_DIRECTORY);",
+    "    await fsPromises.rename(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY);",
+    "    swapped = true;",
+    "  }",
+    "  return originalUnlink(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  const result = await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: result.status, swapped }));",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), swapped }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_MOVED_DIRECTORY: movedDirectory,
+      TEST_REPLACEMENT_DIRECTORY: replacementDirectory,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  try {
+    assert.equal(child.status, 0, child.stderr);
+    const observed = JSON.parse(child.stdout);
+    assert.equal(observed.status, 'blocked');
+    assert.equal(observed.swapped, true);
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce.lock')), false,
+      'the inspected original owner lock may be removed, but no replacement lock may be touched');
+    assert.equal(await readFile(join(value.directory, '.founder-nonce.lock'), 'utf8'), 'replacement-owner-lock',
+      'the replacement directory owner lock must remain byte-for-byte untouched');
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce-recovery.lock')), true,
+      'the recovery fence must remain in the inspected original directory after path replacement');
+    assert.deepEqual(await readFile(join(movedDirectory, 'founder-nonces.json')), ledgerBefore);
+  } finally {
+    await rm(movedDirectory, { recursive: true, force: true });
+  }
+});
+
+
+
+test('recovery lease creation stays in the inspected directory when its configured path is replaced at open', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const movedDirectory = value.directory + '-original';
+  const replacementDirectory = await mkdtemp(join(tmpdir(), 'ngl-founder-nonce-replacement-'));
+  await chmod(replacementDirectory, 0o700);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalOpen = fsPromises.open;",
+    "let swapped = false;",
+    "let descriptorTarget = false;",
+    "let replacementHadLease = false;",
+    "fsPromises.open = async (target, ...args) => {",
+    "  const isLease = String(target).endsWith('/.founder-nonce-recovery.lock');",
+    "  if (isLease && !swapped) {",
+    "    await fsPromises.rename(process.env.TEST_DIRECTORY, process.env.TEST_MOVED_DIRECTORY);",
+    "    await fsPromises.rename(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY);",
+    "    swapped = true;",
+    "  }",
+    "  const handle = await originalOpen(target, ...args);",
+    "  if (isLease) {",
+    "    descriptorTarget = String(target).includes('/proc/self/fd/') || String(target).includes('/dev/fd/');",
+    "    try { const probe = await originalOpen(process.env.TEST_REPLACEMENT_LEASE, 'r'); replacementHadLease = true; await probe.close(); }",
+    "    catch (error) { if (error?.code !== 'ENOENT') throw error; }",
+    "  }",
+    "  return handle;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  const result = await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: result.status, swapped, descriptorTarget, replacementHadLease }));",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), swapped, descriptorTarget, replacementHadLease }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_MOVED_DIRECTORY: movedDirectory,
+      TEST_REPLACEMENT_DIRECTORY: replacementDirectory,
+      TEST_REPLACEMENT_LEASE: join(value.directory, '.founder-nonce-recovery.lock'),
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  try {
+    assert.equal(child.status, 0, child.stderr);
+    const observed = JSON.parse(child.stdout);
+    assert.equal(observed.status, 'blocked');
+    assert.equal(observed.swapped, true);
+    assert.equal(observed.descriptorTarget, true,
+      'the recovery lease must be opened through the held directory descriptor');
+    assert.equal(observed.replacementHadLease, false,
+      'the replacement directory must never receive the recovery lease');
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce-recovery.lock')), true,
+      'the original directory retains the recovery fence for manual inspection');
+    assert.equal(await exists(join(value.directory, '.founder-nonce-recovery.lock')), false);
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce.lock')), true);
+    assert.deepEqual(await readFile(join(movedDirectory, 'founder-nonces.json')), ledgerBefore);
+  } finally {
+    await rm(movedDirectory, { recursive: true, force: true });
+  }
+});
+
+
 test('offline recovery refuses owner-lock removal when its recovery lease is replaced during recovery', async t => {
   const value = await fixture(t);
   const ledgerBefore = await readFile(value.ledgerPath);
@@ -707,7 +842,7 @@ test('offline recovery refuses owner-lock removal when its recovery lease is rep
     "let replaced = false;",
     "fsPromises.readdir = async (target, ...args) => {",
     "  const entries = await originalReaddir(target, ...args);",
-    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "  if (String(target) === process.env.TEST_DIRECTORY || String(target).includes('/proc/self/fd/') || String(target).includes('/dev/fd/')) {",
     "    directoryReads += 1;",
     "    if (!replaced && directoryReads === 4) {",
     "      replaced = true;",
@@ -775,7 +910,7 @@ test('recovery release preserves a replacement lease after an unsafe owner-lock 
     "let replaced = false;",
     "fsPromises.readdir = async (target, ...args) => {",
     "  const entries = await originalReaddir(target, ...args);",
-    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "  if (String(target) === process.env.TEST_DIRECTORY || String(target).includes('/proc/self/fd/') || String(target).includes('/dev/fd/')) {",
     "    directoryReads += 1;",
     "    if (!replaced && directoryReads === 2) {",
     "      replaced = true;",
@@ -842,7 +977,7 @@ test('offline recovery revalidates owner-lock contents after the final temporary
     "let replaced = false;",
     "fsPromises.readdir = async (target, ...args) => {",
     "  const entries = await originalReaddir(target, ...args);",
-    "  if (String(target) === process.env.TEST_DIRECTORY) {",
+    "  if (String(target) === process.env.TEST_DIRECTORY || String(target).includes('/proc/self/fd/') || String(target).includes('/dev/fd/')) {",
     "    directoryReads += 1;",
     "    if (!replaced && directoryReads === 5) {",
     "      replaced = true;",
@@ -914,11 +1049,11 @@ test('recovery CLI labels post-unlink owner-lock uncertainty distinctly', async 
     "let ownerLockUnlinked = false;",
     "fsPromises.unlink = async (target, ...args) => {",
     "  const result = await originalUnlink(target, ...args);",
-    "  if (String(target) === process.env.TEST_OWNER_LOCK) ownerLockUnlinked = true;",
+    "  if (String(target).endsWith('/.founder-nonce.lock')) ownerLockUnlinked = true;",
     "  return result;",
     "};",
     "fsPromises.lstat = async (target, ...args) => {",
-    "  if (ownerLockUnlinked && String(target) === process.env.TEST_OWNER_LOCK) {",
+    "  if (ownerLockUnlinked && String(target).endsWith('/.founder-nonce.lock')) {",
     "    const error = new Error('injected post-unlink inspection failure');",
     "    error.code = 'EACCES';",
     "    throw error;",
@@ -950,4 +1085,159 @@ test('recovery CLI labels post-unlink owner-lock uncertainty distinctly', async 
   assert.equal(await exists(value.lockPath), false, 'the original lock was already unlinked before inspection failed');
   assert.equal(await exists(value.recoveryLeasePath), true, 'the recovery fence must remain for manual inspection');
   assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore);
+});
+
+
+test('offline recovery falls back to /dev/fd when /proc/self/fd is unavailable', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalStat = fsPromises.stat;",
+    "let procAttempts = 0;",
+    "let devAttempts = 0;",
+    "fsPromises.stat = async (target, ...args) => {",
+    "  const path = String(target);",
+    "  if (path.includes('/proc/self/fd/')) {",
+    "    procAttempts += 1;",
+    "    const error = new Error('injected unavailable proc descriptor namespace');",
+    "    error.code = 'ENOENT';",
+    "    throw error;",
+    "  }",
+    "  if (path.includes('/dev/fd/')) devAttempts += 1;",
+    "  return originalStat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  const result = await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: result.status, procAttempts, devAttempts }));",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), procAttempts, devAttempts }));",
+    "  process.exitCode = 1;",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'recovered');
+  assert.ok(observed.procAttempts >= 1, 'the primary /proc descriptor path must be attempted');
+  assert.ok(observed.devAttempts >= 1, 'the /dev descriptor fallback must be attempted');
+  assert.equal(await exists(value.lockPath), false);
+  assert.equal(await exists(value.recoveryLeasePath), false);
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
+    'fallback recovery must preserve the exact nonce-ledger bytes');
+});
+
+
+test('offline recovery fails closed before acquiring a lease when both descriptor namespaces are unavailable', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalStat = fsPromises.stat;",
+    "let procAttempts = 0;",
+    "let devAttempts = 0;",
+    "fsPromises.stat = async (target, ...args) => {",
+    "  const path = String(target);",
+    "  if (path.includes('/proc/self/fd/')) procAttempts += 1;",
+    "  else if (path.includes('/dev/fd/')) devAttempts += 1;",
+    "  else return originalStat(target, ...args);",
+    "  const error = new Error('injected unavailable descriptor namespace');",
+    "  error.code = 'ENOENT';",
+    "  throw error;",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: 'unexpected-recovered', procAttempts, devAttempts }));",
+    "  process.exitCode = 1;",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), procAttempts, devAttempts }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const observed = JSON.parse(child.stdout);
+  assert.equal(observed.status, 'blocked');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_DIRECTORY_HANDLE_UNAVAILABLE');
+  assert.ok(observed.procAttempts >= 1, 'the primary /proc descriptor path must be attempted');
+  assert.ok(observed.devAttempts >= 1, 'the /dev descriptor fallback must be attempted');
+  assert.equal(await exists(value.lockPath), true,
+    'failure to pin the directory must not remove the existing owner lock');
+  assert.equal(await exists(value.recoveryLeasePath), false,
+    'failure to pin the directory must occur before a recovery lease is created');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
+    'failure to pin the directory must preserve exact nonce-ledger bytes');
+});
+
+
+test('recovery CLI reports descriptor-handle refusal without touching recovery state', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const recoveryScript = fileURLToPath(new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url));
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalStat = fsPromises.stat;",
+    "fsPromises.stat = async (target, ...args) => {",
+    "  const path = String(target);",
+    "  if (path.includes('/proc/self/fd/') || path.includes('/dev/fd/')) {",
+    "    const error = new Error('injected unavailable descriptor namespace');",
+    "    error.code = 'ENOENT';",
+    "    throw error;",
+    "  }",
+    "  return originalStat(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "process.argv = [process.execPath, process.env.TEST_RECOVERY_SCRIPT, '--recover', '--confirm-owner-stopped', '--confirm-same-host'];",
+    "await import(process.env.TEST_RECOVERY_MODULE);"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath,
+      TEST_RECOVERY_SCRIPT: recoveryScript,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  assert.equal(child.status, 1, child.stderr);
+  const observed = JSON.parse(child.stderr);
+  assert.equal(observed.status, 'error');
+  assert.equal(observed.code, 'FOUNDER_NONCE_RECOVERY_DIRECTORY_HANDLE_UNAVAILABLE');
+  assert.equal(observed.safeToRemove, false);
+  assert.equal(observed.authorityGranted, false);
+  assert.equal(await exists(value.lockPath), true,
+    'the CLI must preserve the existing owner lock when directory pinning is unavailable');
+  assert.equal(await exists(value.recoveryLeasePath), false,
+    'the CLI must fail before creating a recovery lease');
+  assert.deepEqual(await readFile(value.ledgerPath), ledgerBefore,
+    'the CLI must preserve exact nonce-ledger bytes');
 });

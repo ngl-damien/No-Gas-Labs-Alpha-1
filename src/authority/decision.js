@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as verifySignature, randomBytes, randomUUID } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -153,6 +153,44 @@ function assertPrivateDirectoryIdentity(directory, identity, code) {
   if (current.dev !== identity.dev || current.ino !== identity.ino) throw new Error(code);
 }
 
+function directoryDescriptorPath(descriptor, expectedIdentity) {
+  for (const root of ["/proc/self/fd", "/dev/fd"]) {
+    const candidate = path.join(root, String(descriptor));
+    let opened;
+    try { opened = statSync(candidate); }
+    catch { continue; }
+    if (opened.isDirectory() && opened.dev === expectedIdentity.dev &&
+        opened.ino === expectedIdentity.ino && (opened.mode & 0o777) === 0o700 &&
+        (typeof process.getuid !== "function" || opened.uid === process.getuid())) {
+      return candidate;
+    }
+  }
+  throw new Error("FOUNDER_NONCE_LEDGER_DIRECTORY_HANDLE_UNAVAILABLE");
+}
+
+function openNonceDirectory(directory, expectedIdentity) {
+  let descriptor;
+  try {
+    descriptor = openSync(directory, fsConstants.O_RDONLY |
+      (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0));
+    const opened = fstatSync(descriptor);
+    if (!opened.isDirectory() || opened.dev !== expectedIdentity.dev ||
+        opened.ino !== expectedIdentity.ino || (opened.mode & 0o777) !== 0o700 ||
+        (typeof process.getuid === "function" && opened.uid !== process.getuid())) {
+      throw new Error("FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
+    }
+    const entryPath = directoryDescriptorPath(descriptor, expectedIdentity);
+    assertPrivateDirectoryIdentity(directory, expectedIdentity, "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
+    return { descriptor, entryPath };
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor); } catch {}
+    }
+    if (String(error?.message || "").startsWith("FOUNDER_NONCE_LEDGER_")) throw error;
+    throw new Error("FOUNDER_NONCE_LEDGER_DIRECTORY_UNAVAILABLE");
+  }
+}
+
 function sameFileSnapshot(left, right) {
   return left.dev === right.dev && left.ino === right.ino &&
     left.uid === right.uid && left.mode === right.mode &&
@@ -160,10 +198,8 @@ function sameFileSnapshot(left, right) {
     left.ctimeMs === right.ctimeMs;
 }
 
-function syncDirectory(directory) {
-  const descriptor = openSync(directory, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
-  try { fsyncSync(descriptor); }
-  finally { closeSync(descriptor); }
+function syncDirectory(directoryDescriptor) {
+  fsyncSync(directoryDescriptor);
 }
 
 function loadHostTrustAnchor() {
@@ -194,7 +230,9 @@ function readNonceLedger(filePath) {
   let before;
   try { before = lstatSync(filePath); }
   catch (error) {
-    if (error.code === "ENOENT") return [];
+    // An absent ledger cannot distinguish first use from deleted replay history.
+    // Provision the empty ledger explicitly; authorization must never recreate it.
+    if (error?.code === "ENOENT") throw new Error("FOUNDER_NONCE_LEDGER_ABSENT");
     throw new Error("FOUNDER_NONCE_LEDGER_UNAVAILABLE");
   }
   if (before.isSymbolicLink() || !before.isFile() ||
@@ -287,16 +325,15 @@ function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedRece
   }
 }
 
-function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
+function releaseNonceLock(lockPath, identity, directoryDescriptor, expectedSnapshot = null, expectedReceipt = null) {
   assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt);
 
   // Node's portable fs API has no compare-and-unlink primitive. The descriptor,
   // full metadata, and receipt checks narrow the same-inode rewrite window; a
   // hostile same-UID writer racing after the final check remains out of scope.
   unlinkSync(lockPath);
-  syncDirectory(directory);
+  syncDirectory(directoryDescriptor);
 }
-
 function assertNoFounderNonceRecoveryLease(directory) {
   const leasePath = path.join(directory, ".founder-nonce-recovery.lock");
   try { lstatSync(leasePath); }
@@ -319,13 +356,18 @@ function consumeFounderNonce(nonce) {
   const directory = path.dirname(ledgerPath);
   assertTrustedDirectoryChain(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
   const directoryIdentity = assertPrivateDirectory(directory, "FOUNDER_NONCE_LEDGER_UNSAFE");
-  const lockPath = path.join(directory, ".founder-nonce.lock");
-  const recoveryLeasePath = path.join(directory, ".founder-nonce-recovery.lock");
-  if (ledgerPath === lockPath || ledgerPath === recoveryLeasePath ||
+  const configuredLockPath = path.join(directory, ".founder-nonce.lock");
+  const configuredRecoveryLeasePath = path.join(directory, ".founder-nonce-recovery.lock");
+  if (ledgerPath === configuredLockPath || ledgerPath === configuredRecoveryLeasePath ||
       TEMPORARY_NONCE_FILE.test(path.basename(ledgerPath))) {
     throw new Error("FOUNDER_NONCE_LEDGER_PATH_INVALID");
   }
-  assertNoFounderNonceRecoveryLease(directory);
+
+  const directoryHandle = openNonceDirectory(directory, directoryIdentity);
+  const directoryDescriptor = directoryHandle.descriptor;
+  const entryDirectory = directoryHandle.entryPath;
+  const entryLedgerPath = path.join(entryDirectory, path.basename(ledgerPath));
+  const lockPath = path.join(entryDirectory, ".founder-nonce.lock");
 
   let lockDescriptor;
   let lockIdentity;
@@ -334,6 +376,7 @@ function consumeFounderNonce(nonce) {
   let temporaryPath = null;
   let keepLock = false;
   try {
+    assertNoFounderNonceRecoveryLease(entryDirectory);
     try { lockDescriptor = openSync(lockPath, "wx", 0o600); }
     catch (error) {
       if (error.code === "EEXIST") throw new Error("FOUNDER_NONCE_LEDGER_LOCKED");
@@ -347,7 +390,7 @@ function consumeFounderNonce(nonce) {
     lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
     lockSnapshot = lockStat;
     lockReceipt = "";
-    assertNoFounderNonceRecoveryLease(directory);
+    assertNoFounderNonceRecoveryLease(entryDirectory);
     lockReceipt = canonical({
       schema: "ngl.ledger-lock.v1",
       pid: process.pid,
@@ -356,12 +399,12 @@ function consumeFounderNonce(nonce) {
     writeFileSync(lockDescriptor, lockReceipt);
     fsyncSync(lockDescriptor);
     lockSnapshot = fstatSync(lockDescriptor);
-    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
-    try { syncDirectory(directory); }
+    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
+    try { syncDirectory(directoryDescriptor); }
     catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
-    assertNoFounderNonceRecoveryLease(directory);
+    assertNoFounderNonceRecoveryLease(entryDirectory);
 
-    const nonces = readNonceLedger(ledgerPath);
+    const nonces = readNonceLedger(entryLedgerPath);
     if (nonces.includes(nonce)) throw new Error("FOUNDER_NONCE_REPLAY");
     if (nonces.length >= MAX_NONCE_COUNT) throw new Error("FOUNDER_NONCE_LEDGER_FULL");
     const next = canonical({ schema: NONCE_LEDGER_SCHEMA, nonces: [...nonces, nonce] });
@@ -369,7 +412,7 @@ function consumeFounderNonce(nonce) {
       throw new Error("FOUNDER_NONCE_LEDGER_FULL");
     }
 
-    temporaryPath = path.join(directory, ".founder-nonce-" + randomUUID() + ".tmp");
+    temporaryPath = path.join(entryDirectory, ".founder-nonce-" + randomUUID() + ".tmp");
     let temporaryDescriptor;
     try {
       temporaryDescriptor = openSync(temporaryPath, "wx", 0o600);
@@ -378,26 +421,35 @@ function consumeFounderNonce(nonce) {
     } finally {
       if (temporaryDescriptor !== undefined) closeSync(temporaryDescriptor);
     }
-    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
+    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
     assertNonceLockOwned(lockPath, lockIdentity, lockSnapshot, lockReceipt);
-    renameSync(temporaryPath, ledgerPath);
+    renameSync(temporaryPath, entryLedgerPath);
     temporaryPath = null;
-    try { syncDirectory(directory); }
+    try { syncDirectory(directoryDescriptor); }
     catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
+
     try {
-      releaseNonceLock(lockPath, lockIdentity, directory, lockSnapshot, lockReceipt);
+      assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
+    } catch (error) {
+      keepLock = true;
+      throw error;
+    }
+    try {
+      releaseNonceLock(lockPath, lockIdentity, directoryDescriptor, lockSnapshot, lockReceipt);
       lockIdentity = null;
     } catch (error) {
       keepLock = true;
       if (error?.message === "FOUNDER_NONCE_LEDGER_LOCK_CHANGED") throw error;
       throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN");
     }
+    assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED");
   } catch (error) {
+    if (error?.message === "FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED") keepLock = true;
     if (temporaryPath) {
       try { unlinkSync(temporaryPath); } catch {}
     }
     if (lockIdentity && !keepLock) {
-      try { releaseNonceLock(lockPath, lockIdentity, directory, lockSnapshot, lockReceipt); } catch {}
+      try { releaseNonceLock(lockPath, lockIdentity, directoryDescriptor, lockSnapshot, lockReceipt); } catch {}
     }
     if (error?.message === "FOUNDER_NONCE_REPLAY") {
       throw new Error("FOUNDER_DECISION_INVALID:NONCE_REPLAY");
@@ -405,6 +457,7 @@ function consumeFounderNonce(nonce) {
     throw error;
   } finally {
     if (lockDescriptor !== undefined) closeSync(lockDescriptor);
+    closeSync(directoryDescriptor);
   }
 }
 

@@ -72,6 +72,11 @@ function createAuthorizationFixture(dir) {
   mkdirSync(path.dirname(modulePath), { recursive: true, mode: 0o700 });
   mkdirSync(path.dirname(trustPath), { recursive: true, mode: 0o700 });
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+  const nonceLedgerPath = path.join(dataDirectory, "founder-nonces.json");
+  writeFileSync(nonceLedgerPath, canonical({
+    schema: "ngl.founder-nonce-ledger.v1",
+    nonces: [],
+  }), { mode: 0o600 });
   const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
   writeFileSync(modulePath, source, { mode: 0o600 });
   const kp = keyPair();
@@ -95,7 +100,7 @@ function createAuthorizationFixture(dir) {
     moduleUrl: pathToFileURL(modulePath).href,
     trustPath,
     dataDirectory,
-    nonceLedgerPath: path.join(dataDirectory, "founder-nonces.json"),
+    nonceLedgerPath,
     payload,
     sign: () => signPayload(kp.privateKey, payload, kp.fingerprint),
   };
@@ -158,7 +163,7 @@ function startCrashWorker(fixture, signed, crashPoint, markerPath) {
     "if (process.env.TEST_CRASH_POINT === 'before-rename') {",
     "  const originalRenameSync = fs.renameSync;",
     "  fs.renameSync = (from, to) => {",
-    "    if (to === ledgerPath) {",
+    "    if (String(to).endsWith('/founder-nonces.json')) {",
     "      fs.writeFileSync(markerPath, 'before-rename', { mode: 0o600 });",
     "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);",
     "      throw new Error('crash barrier expired');",
@@ -595,6 +600,10 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
     });
 
     writeFileSync(trustPath, JSON.stringify(anchor("PRODUCTION")), { mode: 0o600 });
+    writeFileSync(nonceLedgerPath, canonical({
+      schema: "ngl.founder-nonce-ledger.v1",
+      nonces: [],
+    }), { mode: 0o600 });
     withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath, NGL_FOUNDER_NONCE_LEDGER_PATH: null }, () => {
       assert.throws(
         () => isolated.authorizationEvent({ signed, payload }),
@@ -765,7 +774,7 @@ test("nonce writer cleanup retains a same-inode lock rewrite after a precommit l
 
   fs.lstatSync = (candidate, ...args) => {
     const observed = originalLstat(candidate, ...args);
-    if (!rewritten && candidate === fixture.nonceLedgerPath) {
+    if (!rewritten && path.basename(String(candidate)) === "founder-nonces.json") {
       rewritten = true;
       writeFileSync(lockPath, canonical({
         schema: "ngl.ledger-lock.v1",
@@ -878,7 +887,7 @@ test("nonce writer retains a same-inode owner-lock rewrite instead of unlinking 
 
   fs.lstatSync = (candidate, ...args) => {
     const observed = originalLstat(candidate, ...args);
-    if (candidate === lockPath) {
+    if (path.basename(String(candidate)) === ".founder-nonce.lock") {
       lockPathLstatCalls += 1;
       if (!rewritten && lockPathLstatCalls === 3) {
         rewritten = true;
@@ -953,7 +962,8 @@ test("process death before nonce-ledger rename leaves an inspectable stale lock 
     const stopped = await worker.exit;
     assert.equal(stopped.signal, "SIGKILL", worker.stderr);
     assert.equal(readFileSync(markerPath, "utf8"), "before-rename");
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "pre-rename process death leaves the initialized empty ledger unchanged");
 
     const names = readdirSync(fixture.dataDirectory);
     const temporary = names.find(name => name.startsWith(".founder-nonce-") && name.endsWith(".tmp"));
@@ -1135,6 +1145,7 @@ test("nonce ledger path rejects both reserved lock filenames before creating sta
   try {
     const fixture = createAuthorizationFixture(dir);
     const signed = fixture.sign();
+    unlinkSync(fixture.nonceLedgerPath);
     const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
     const recoveryLeasePath = path.join(fixture.dataDirectory, ".founder-nonce-recovery.lock");
     const temporaryLedgerPath = path.join(fixture.dataDirectory, ".founder-nonce-" + randomUUID() + ".tmp");
@@ -1180,7 +1191,8 @@ test("a pre-existing recovery lease blocks nonce writes before lock acquisition"
     ));
 
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "a recovery lease must not mutate the initialized ledger");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1233,7 +1245,8 @@ test("a recovery lease appearing after writer lock creation fences nonce mutatio
     });
     assert.equal(child.status, 0, child.stderr);
     assert.match(child.stdout, /ERROR:FOUNDER_NONCE_RECOVERY_IN_PROGRESS/);
-    assert.equal(existsSync(fixture.nonceLedgerPath), false);
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+      "a racing recovery lease must leave the initialized ledger unchanged");
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
     assert.equal(existsSync(recoveryLeasePath), true);
   } finally {
@@ -1275,7 +1288,7 @@ test("nonce writer refuses to publish after its owner lock disappears before led
       });
       assert.equal(fileSyncs, 2, "the lock is removed after its receipt and temporary ledger file are fsynced");
       assert.equal(removed, true, "the test must remove the owner lock at the pre-rename boundary");
-      assert.equal(existsSync(fixture.nonceLedgerPath), false,
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
         "a nonce must not be committed after ownership of the writer lock is lost");
       assert.equal(readdirSync(fixture.dataDirectory).some(name => /^\.founder-nonce-.*\.tmp$/.test(name)), false,
         "the uncommitted temporary ledger file must be cleaned up");
@@ -1299,7 +1312,7 @@ test("nonce authorization reports uncertainty when its owner lock disappears dur
     const originalRenameSync = fs.renameSync;
     let removed = false;
     fs.renameSync = (from, to) => {
-      if (!removed && to === fixture.nonceLedgerPath) {
+      if (!removed && path.basename(String(to)) === "founder-nonces.json") {
         removed = true;
         unlinkSync(lockPath);
       }
@@ -1323,6 +1336,218 @@ test("nonce authorization reports uncertainty when its owner lock disappears dur
       assert.equal(existsSync(lockPath), false, "the externally removed lock must not be recreated or mistaken for owned");
     } finally {
       fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a missing nonce ledger fails closed instead of resetting consumed replay history", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-ledger-replay-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const environment = {
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    };
+
+    const first = withEnvironment(environment, () =>
+      authorizationEvent({ signed, payload: fixture.payload }));
+    assert.equal(first.type, "QUEST_AUTHORIZED");
+    const committed = readFileSync(fixture.nonceLedgerPath);
+    assert.deepEqual(JSON.parse(committed.toString("utf8")).nonces, [signed.nonce]);
+
+    unlinkSync(fixture.nonceLedgerPath);
+    withEnvironment(environment, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_ABSENT/
+      );
+    });
+    assert.equal(existsSync(fixture.nonceLedgerPath), false,
+      "authorization must not recreate an absent replay ledger");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the failed writer must release only its own lock");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nonce writer cannot authorize through a replacement ledger directory at commit", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-swap-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const movedDirectory = path.join(dir, "data-original");
+    const replacementStaging = path.join(dir, "data-replacement-staging");
+    const replacementDirectory = path.join(dir, "data-replacement");
+    mkdirSync(replacementStaging, { mode: 0o700 });
+    fs.chmodSync(replacementStaging, 0o700);
+    const originalOpenSync = fs.openSync;
+    const originalRenameSync = fs.renameSync;
+    const linkedNames = new Set();
+    let swapped = false;
+    let firstEvent = null;
+    let firstError = null;
+    let replayEvent = null;
+
+    fs.openSync = (target, ...args) => {
+      const descriptor = originalOpenSync(target, ...args);
+      const name = path.basename(String(target));
+      if ((name === ".founder-nonce.lock" || (name.startsWith(".founder-nonce-") && name.endsWith(".tmp"))) &&
+          !linkedNames.has(name)) {
+        fs.linkSync(target, path.join(replacementStaging, name));
+        linkedNames.add(name);
+      }
+      return descriptor;
+    };
+    fs.renameSync = (from, to) => {
+      if (!swapped && path.basename(to) === "founder-nonces.json") {
+        swapped = true;
+        originalRenameSync(fixture.dataDirectory, movedDirectory);
+        originalRenameSync(replacementStaging, fixture.dataDirectory);
+      }
+      return originalRenameSync(from, to);
+    };
+    syncBuiltinESMExports();
+
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        try {
+          firstEvent = authorizationEvent({ signed, payload: fixture.payload });
+        } catch (error) {
+          firstError = error;
+        }
+      });
+    } finally {
+      fs.openSync = originalOpenSync;
+      fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+      if (swapped) {
+        if (existsSync(fixture.dataDirectory)) {
+          originalRenameSync(fixture.dataDirectory, replacementDirectory);
+        }
+        if (existsSync(movedDirectory)) {
+          originalRenameSync(movedDirectory, fixture.dataDirectory);
+        }
+      }
+    }
+
+    assert.equal(swapped, true, "the directory replacement must occur at the ledger commit boundary");
+    if (firstEvent) {
+      assert.equal(firstEvent.type, "QUEST_AUTHORIZED");
+      assert.deepEqual(
+        JSON.parse(readFileSync(path.join(replacementDirectory, "founder-nonces.json"), "utf8")).nonces,
+        [signed.nonce],
+        "the vulnerable writer commits replay history into the replacement directory"
+      );
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+        "the original configured directory retains its pre-commit replay history");
+      const originalLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+      assert.equal(existsSync(originalLockPath), true,
+        "the original owner lock remains after the replacement hard link is released");
+      unlinkSync(originalLockPath);
+      replayEvent = withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => authorizationEvent({ signed, payload: fixture.payload }));
+    }
+
+    assert.equal(replayEvent, null,
+      "the same signed nonce must not be authorized again after the configured directory is replaced");
+    assert.equal(firstEvent, null, "directory replacement must not produce an authorization event");
+    assert.ok(firstError, "directory replacement must fail closed");
+    assert.match(firstError.message, /FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED/);
+    assert.equal(existsSync(path.join(replacementDirectory, "founder-nonces.json")), false,
+      "the replacement directory must never receive the canonical nonce ledger");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), true,
+      "the pinned original directory retains its owner lock for inspection");
+    const originalLedger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.ok(
+      originalLedger.nonces.length === 0 ||
+      (originalLedger.nonces.length === 1 && originalLedger.nonces[0] === signed.nonce),
+      "nonce history may remain unchanged or be committed to the pinned original directory, never redirected"
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nonce writer falls back to /dev/fd when /proc/self/fd is unavailable", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-fd-fallback-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const originalStatSync = fs.statSync;
+    let procAttempts = 0;
+    let devAttempts = 0;
+    fs.statSync = (target, ...args) => {
+      const candidate = String(target);
+      if (candidate.startsWith("/proc/self/fd/")) {
+        procAttempts += 1;
+        throw new Error("injected proc descriptor namespace unavailable");
+      }
+      if (candidate.startsWith("/dev/fd/")) devAttempts += 1;
+      return originalStatSync(target, ...args);
+    };
+    syncBuiltinESMExports();
+    try {
+      const event = withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => authorizationEvent({ signed, payload: fixture.payload }));
+      assert.equal(event.type, "QUEST_AUTHORIZED");
+      assert.ok(procAttempts > 0, "the primary descriptor namespace must be attempted first");
+      assert.ok(devAttempts > 0, "the /dev/fd fallback must be exercised");
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce]);
+      assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false);
+    } finally {
+      fs.statSync = originalStatSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("nonce writer refuses before locking when neither descriptor namespace is available", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-fd-unavailable-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const originalStatSync = fs.statSync;
+    fs.statSync = (target, ...args) => {
+      const candidate = String(target);
+      if (candidate.startsWith("/proc/self/fd/") || candidate.startsWith("/dev/fd/")) {
+        throw new Error("injected descriptor namespaces unavailable");
+      }
+      return originalStatSync(target, ...args);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_DIRECTORY_HANDLE_UNAVAILABLE/
+      ));
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+        "no nonce is consumed when the writer cannot pin its directory");
+      assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+        "the writer must fail before acquiring an owner lock");
+      assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
+    } finally {
+      fs.statSync = originalStatSync;
       syncBuiltinESMExports();
     }
   } finally {
