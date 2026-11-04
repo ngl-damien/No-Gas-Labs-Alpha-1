@@ -1232,8 +1232,11 @@ export class PixelWorldView extends WorldView {
       const nearest = this.nearest(npcTarget.id, 'npc');
       if (nearest?.type === 'npc') {
         event.preventDefault?.();
-        if (nearest.distance < 160) this.interact(npcTarget.id, 'npc');
-        else this.goTo(npcTarget.id, 'npc');
+        if (nearest.distance < 160) {
+          this.interact(npcTarget.id, 'npc');
+          return;
+        }
+        this.goTo(npcTarget.id, 'npc');
         this.canvas.focus({ preventScroll: true });
         return;
       }
@@ -1247,9 +1250,9 @@ export class PixelWorldView extends WorldView {
       const nearest = this.nearest(institutionId, 'institution');
       if (nearest?.type === 'institution' && nearest.distance < 160) {
         this.interact(institutionId);
-      } else {
-        this.goTo(institutionId);
+        return;
       }
+      this.goTo(institutionId);
       this.canvas.focus({ preventScroll: true });
       return;
     }

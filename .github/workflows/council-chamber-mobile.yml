@@ -6,6 +6,7 @@ on:
       - '.github/workflows/council-chamber-mobile.yml'
       - 'game/client.mjs'
       - 'game/pixel-world-view.mjs'
+      - 'game/styles.css'
       - 'game/world-view.mjs'
       - 'scripts/verify-council-chamber.py'
   workflow_dispatch:

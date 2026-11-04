@@ -1008,9 +1008,10 @@ test('touching an institution landmark routes when distant and opens when near',
   };
   const run = distance => {
     const calls = [];
+    let focusCalls = 0;
     const rect = { left: 10, top: 20 };
     const view = Object.create(PixelWorldView.prototype);
-    view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
+    view.canvas = { getBoundingClientRect: () => rect, focus: () => { focusCalls += 1; } };
     view.camera = camera;
     view.zoom = zoom;
     view.width = width;
@@ -1024,10 +1025,10 @@ test('touching an institution landmark routes when distant and opens when near',
       clientY: rect.top + point.y,
       preventDefault: () => {}
     }, () => calls.push(['fallback']));
-    return calls;
+    return { calls, focusCalls };
   };
-  assert.deepEqual(run(200), [['goTo', 'council_chamber']]);
-  assert.deepEqual(run(100), [['interact', 'council_chamber']]);
+  assert.deepEqual(run(200), { calls: [['goTo', 'council_chamber']], focusCalls: 1 });
+  assert.deepEqual(run(100), { calls: [['interact', 'council_chamber']], focusCalls: 0 });
 });
 
 test('touching a distant NPC routes toward it, then a second tap opens its owning institution', () => {

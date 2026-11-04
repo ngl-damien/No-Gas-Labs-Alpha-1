@@ -1,8 +1,8 @@
 """Touch-first acceptance for the walkable Council Chamber on narrow phones.
 
-This is a focused real-browser journey, separate from the shared browser suite:
-a mobile player routes through the world to the Council Chamber, then explicitly
-interacts with the landmark. Opening the room must remain a read-only projection.
+This focused browser journey routes to the institution, taps its actual map
+landmark, and exercises all four bounded review-summary branches. Inspection
+must remain a read-only projection and never award progress.
 """
 import argparse
 import json
@@ -133,7 +133,71 @@ def assert_populated_council_room(page):
 
 
 def seed_council_review_fixture(page):
-    return page.evaluate("""async () => {
+    setup = page.evaluate("""async () => {
+      const post = async action => {
+        const response = await fetch('/api/action', {
+          method: 'POST',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(action)
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(
+          'Fixture action ' + action.type + ' failed (' + response.status + '): ' + JSON.stringify(payload)
+        );
+        return payload;
+      };
+      const stateResponse = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!stateResponse.ok) throw new Error('Initial fixture state read failed: ' + stateResponse.status);
+      const initial = await stateResponse.json();
+      const proposal = await post({
+        type: 'propose-moonshot',
+        title: 'Council Chamber acceptance fixture',
+        hypothesis: 'A defined procedure produces a repeatable observation.',
+        falsifier: 'A repeatable controlled result contradicts the hypothesis.',
+        evidenceNeeded: 'An independently observed measurement.',
+        requestId: 'council-mobile-fixture-proposal'
+      });
+      const moonshotId = proposal.result?.moonshotId;
+      if (typeof moonshotId !== 'string') throw new Error('Fixture proposal did not return a Moonshot ID.');
+      const report = await post({
+        type: 'report-experiment',
+        moonshotId,
+        procedure: 'Run the bounded fixture procedure once.',
+        observation: 'The expected result was not observed.',
+        reportedOutcome: 'failed',
+        requestId: 'council-mobile-fixture-report'
+      });
+      const reportId = report.result?.reportId;
+      if (typeof reportId !== 'string') throw new Error('Fixture report did not return a report ID.');
+      return { moonshotId, reportId, reporterActorId: initial.viewer.id };
+    }""")
+
+    rotated = page.evaluate("""async () => {
+      const response = await fetch('/api/logout', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) throw new Error('Witness session rotation failed: ' + response.status);
+      const dto = await response.json();
+      return dto.viewer;
+    }""")
+    if rotated['id'] == setup['reporterActorId']:
+        raise AssertionError('The challenge fixture must use a different Witness actor from the report author.')
+
+    # Logout rotates to a new random Witness identity. The second actor can
+    # retain dissent against the first actor's report without inventing a vote.
+    page.reload(wait_until='networkidle')
+    page.locator('#start-shared').tap()
+    page.locator('#world').wait_for(state='visible')
+    page.wait_for_function(
+        "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+    )
+    return page.evaluate("""async fixture => {
       const post = async action => {
         const response = await fetch('/api/action', {
           method: 'POST',
@@ -149,61 +213,49 @@ def seed_council_review_fixture(page):
         return payload;
       };
       const read = async () => {
-        const response = await fetch('/api/state', {
-          cache: 'no-store',
-          credentials: 'same-origin'
-        });
+        const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
         if (!response.ok) throw new Error('Fixture state read failed: ' + response.status);
         return response.json();
       };
-
-      const proposal = await post({
-        type: 'propose-moonshot',
-        title: 'Council Chamber acceptance fixture',
-        hypothesis: 'A defined procedure produces a repeatable observation.',
-        falsifier: 'A repeatable controlled result contradicts the hypothesis.',
-        evidenceNeeded: 'An independently observed measurement.',
-        requestId: 'council-mobile-fixture-proposal'
-      });
-      const moonshotId = proposal.result?.moonshotId;
-      if (typeof moonshotId !== 'string') throw new Error('Fixture proposal did not return a Moonshot ID.');
-
-      const report = await post({
-        type: 'report-experiment',
-        moonshotId,
-        procedure: 'Run the bounded fixture procedure once.',
-        observation: 'The expected result was not observed.',
-        reportedOutcome: 'failed',
-        requestId: 'council-mobile-fixture-report'
-      });
-      const reportId = report.result?.reportId;
-      if (typeof reportId !== 'string') throw new Error('Fixture report did not return a report ID.');
-
-      await post({
+      const initial = await read();
+      if (initial.viewer.id !== fixture.challengerActorId ||
+          initial.viewer.id === fixture.reporterActorId) {
+        throw new Error('The retained report and challenge must be authored by distinct Witness actors.');
+      }
+      const challenge = await post({
         type: 'challenge-experiment-report',
-        reportId,
+        reportId: fixture.reportId,
         challengeType: 'methodology',
         challengeText: 'The report does not describe a control condition.',
         requestId: 'council-mobile-fixture-challenge'
       });
+      if (typeof challenge.result?.challengeId !== 'string') {
+        throw new Error('The independent challenge action did not retain its challenge ID.');
+      }
 
       const { projectCollaboratorPackets } = await import('/collaborator-contracts.mjs');
       const roles = ['archivist', 'adversary', 'synthesizer', 'tutor'];
       for (const role of roles) {
         const dto = await read();
         const packet = projectCollaboratorPackets(dto.world).find(candidate => candidate.id === role);
-        if (!packet || packet.available !== true || packet.moonshotId !== moonshotId) {
+        if (!packet || packet.available !== true || packet.moonshotId !== fixture.moonshotId) {
           throw new Error('The ' + role + ' packet is unavailable for the retained fixture chain.');
         }
         const packetPayload = JSON.parse(packet.packetJson);
         const reportEvent = dto.world.events.find(event =>
-          event.type === 'experiment-reported' && event.reportId === reportId
+          event.type === 'experiment-reported' && event.reportId === fixture.reportId
         );
-        if (!reportEvent) throw new Error('The retained experiment report is not visible to the fixture actor.');
+        if (!reportEvent || reportEvent.actor.id !== fixture.reporterActorId) {
+          throw new Error('The source report is not retained under the original Witness actor.');
+        }
         const includedChallenges = dto.world.events.filter(event =>
-          event.type === 'experiment-challenged' && event.reportId === reportId &&
+          event.type === 'experiment-challenged' && event.reportId === fixture.reportId &&
           packet.inputRefs.includes(event.id)
         );
+        if (!includedChallenges.length ||
+            includedChallenges.some(event => event.actor.id !== fixture.challengerActorId)) {
+          throw new Error('The challenge must remain visible as dissent from the second Witness actor.');
+        }
         let response;
         if (role === 'archivist') {
           response = {
@@ -227,7 +279,7 @@ def seed_council_review_fixture(page):
         } else if (role === 'synthesizer') {
           response = {
             scope: {
-              moonshotId,
+              moonshotId: fixture.moonshotId,
               includedEventIds: packet.inputRefs,
               omittedEventIds: packetPayload.omittedEventIds
             },
@@ -256,7 +308,7 @@ def seed_council_review_fixture(page):
         const recorded = await post({
           type: 'record-collaborator-response',
           role,
-          moonshotId,
+          moonshotId: fixture.moonshotId,
           packetJson: packet.packetJson,
           sourceEventIds: packet.inputRefs,
           responseText: JSON.stringify(response),
@@ -279,9 +331,15 @@ def seed_council_review_fixture(page):
         eventCount: final.world.events.length,
         responseCount: responses.length,
         roles: responses.map(event => event.role).sort(),
-        validationStatuses: responses.map(event => event.validationStatus)
+        validationStatuses: responses.map(event => event.validationStatus),
+        reporterActorId: fixture.reporterActorId,
+        challengerActorId: fixture.challengerActorId,
+        distinctActors: fixture.reporterActorId !== fixture.challengerActorId
       };
-    }""")
+    }""", {
+      ...setup,
+      challengerActorId: rotated.id
+    })
 
 
 def council_canvas_tap_position(page):
@@ -370,17 +428,12 @@ def run_viewport(browser, url, out, width):
             # execution or independent evidence. Every response still crosses
             # the real server validator and is projected as review-only history.
             fixture = seed_council_review_fixture(page)
-            page.reload(wait_until='networkidle')
-            page.locator('#start-shared').tap()
-            page.locator('#world').wait_for(state='visible')
-            page.wait_for_function(
-                "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
-            )
             populated_before = authoritative_snapshot(page)
             assert populated_before['xp'] == 0
             assert len(populated_before['eventIds']) == 7
             assert len(populated_before['creationVersions']) == 0
             assert fixture['responseCount'] == 4
+            assert fixture['distinctActors'] is True
 
             # The route list brings the player beside the room; the canvas tap
             # then opens the actual map landmark and all four bounded summaries.
