@@ -1375,3 +1375,92 @@ test("a missing nonce ledger fails closed instead of resetting consumed replay h
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("nonce writer cannot authorize through a replacement ledger directory at commit", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-directory-swap-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const movedDirectory = path.join(dir, "data-original");
+    const replacementDirectory = path.join(dir, "data-replacement");
+    const originalRenameSync = fs.renameSync;
+    let swapped = false;
+    let firstEvent = null;
+    let firstError = null;
+    let replayEvent = null;
+
+    fs.renameSync = (from, to) => {
+      if (!swapped && path.basename(to) === "founder-nonces.json") {
+        swapped = true;
+        originalRenameSync(fixture.dataDirectory, movedDirectory);
+        mkdirSync(fixture.dataDirectory, { mode: 0o700 });
+        fs.chmodSync(fixture.dataDirectory, 0o700);
+        fs.linkSync(path.join(movedDirectory, ".founder-nonce.lock"),
+          path.join(fixture.dataDirectory, ".founder-nonce.lock"));
+        fs.linkSync(path.join(movedDirectory, path.basename(from)),
+          path.join(fixture.dataDirectory, path.basename(from)));
+      }
+      return originalRenameSync(from, to);
+    };
+    syncBuiltinESMExports();
+
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        try {
+          firstEvent = authorizationEvent({ signed, payload: fixture.payload });
+        } catch (error) {
+          firstError = error;
+        }
+      });
+    } finally {
+      fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+      if (swapped) {
+        if (existsSync(fixture.dataDirectory)) {
+          originalRenameSync(fixture.dataDirectory, replacementDirectory);
+        }
+        if (existsSync(movedDirectory)) {
+          originalRenameSync(movedDirectory, fixture.dataDirectory);
+        }
+      }
+    }
+
+    assert.equal(swapped, true, "the directory replacement must occur at the ledger commit boundary");
+    if (firstEvent) {
+      assert.equal(firstEvent.type, "QUEST_AUTHORIZED");
+      assert.equal(existsSync(path.join(replacementDirectory, "founder-nonces.json")), true,
+        "the vulnerable writer commits replay history into the replacement directory");
+      assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [],
+        "the original configured directory retains its pre-commit replay history");
+      const originalLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+      assert.equal(existsSync(originalLockPath), true,
+        "the original owner lock remains after the replacement hard link is released");
+      unlinkSync(originalLockPath);
+      replayEvent = withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => authorizationEvent({ signed, payload: fixture.payload }));
+    }
+
+    assert.equal(firstEvent, null, "directory replacement must not produce an authorization event");
+    assert.ok(firstError, "directory replacement must fail closed");
+    assert.match(firstError.message, /FOUNDER_NONCE_LEDGER_DIRECTORY_CHANGED/);
+    assert.equal(replayEvent, null, "the same signed nonce must never be authorized against the old ledger");
+    assert.equal(existsSync(path.join(replacementDirectory, "founder-nonces.json")), false,
+      "the replacement directory must never receive the canonical nonce ledger");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), true,
+      "the pinned original directory retains its owner lock for inspection");
+    const originalLedger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+    assert.ok(
+      originalLedger.nonces.length === 0 ||
+      (originalLedger.nonces.length === 1 && originalLedger.nonces[0] === signed.nonce),
+      "nonce history may remain unchanged or be committed to the pinned original directory, never redirected"
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
