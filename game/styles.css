@@ -10,3 +10,13 @@
 .portal.portal-loading::after{content:'Opening your creation…';position:absolute;inset:0;display:grid;place-items:center;background:#faf3df;color:#7a8468;font:12px system-ui;z-index:1;pointer-events:auto}
 .portal.portal-loading>.portal-header,.portal.portal-loading>footer{position:relative;z-index:2;background:var(--paper)}
 .field-card{overflow-wrap:anywhere}.field-card pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:10px/1.6 monospace}.field-card small{overflow-wrap:anywhere}
+
+
+/* The in-world Quest Board uses the same evidence-backed trail at readable sheet scale. */
+.sheet .quest-trail{max-height:none;overflow:visible;gap:12px;margin-top:14px;padding:12px 0 0}
+.sheet .quest-step{font-size:12px;line-height:1.5;gap:5px 10px}
+.sheet .quest-step strong{font-size:14px}
+.sheet .quest-step-state{font-size:8px}
+.sheet .quest-step small{font-size:10px;line-height:1.5}
+.sheet .quest-step .quest-action{font-size:11px;padding:6px 0}
+.sheet .quest-evidence{font-size:10px}
