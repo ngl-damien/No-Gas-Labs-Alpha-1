@@ -1281,6 +1281,15 @@ def shared(browser,url,data,out):
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
         def talk_to_council_npc(page, role):
+            expected_sheet={
+                'archivist':'Evidence Archive',
+                'synthesizer':'Guild Hall',
+                'tutor':'Polymath Academy'
+            }[role]
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
             expect(control).to_be_enabled()
@@ -1293,7 +1302,17 @@ def shared(browser,url,data,out):
                 control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_attribute('data-guild-npc-action','talk')
             control.evaluate("(button)=>button.click()")
-            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+            try:
+                page.wait_for_function(
+                    "(expected)=>document.querySelector('#sheet-title')?.textContent===expected&&!document.querySelector('#sheet').hidden",
+                    arg=expected_sheet,timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/f'failed-council-{role}-workbench.png'))
+                actual=page.locator('#sheet-title').text_content()
+                raise AssertionError(
+                    f'{role} NPC did not open {expected_sheet}; current sheet title={actual!r}'
+                ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
             return packet
@@ -1381,6 +1400,14 @@ def shared(browser,url,data,out):
             assert event['validationStatus']=='valid-for-human-review'
             assert after['world']['revision']==before_revision+1
             assert after['world']['xp']==before_xp, 'Archiving a Council response must not award XP'
+            if role=='tutor':
+                close_sheet(page)
+                page.locator('#places-button').click()
+                page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
             page.locator('[data-enter-council-chamber]').click()
             expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
             expect(page.locator(f'[data-council-coverage-progress="{progress}"]')).to_have_count(1)
@@ -1425,6 +1452,10 @@ def shared(browser,url,data,out):
             expect(next_button).to_have_count(1)
             assert next_button.get_attribute('data-council-next-role')==f'guild-npc-{role}'
             next_button.click()
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
             page.wait_for_function(
                 f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}')",
                 timeout=60000
