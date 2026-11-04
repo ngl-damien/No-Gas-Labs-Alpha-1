@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { projectCommonsMessages } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -493,6 +494,8 @@ export function getQuestTrail(world, viewer) {
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
+  const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
+  const firstCommonsMessage = commonsMessages[0] || null;
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
@@ -704,6 +707,14 @@ export function getQuestTrail(world, viewer) {
         !hasFirstPlace ? { type: 'workbench', recipe: 'comic' } : null
       ),
       trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+      ),
+      trailMilestone(
         'founder-walk-institution', 'Discover a guide', 1,
         locationEvents.map(event => event.id), locationEvents,
         hasFirstPlace && !hasWalked && nextGuide ? { type: 'location', id: nextGuide } : null,
@@ -855,6 +866,14 @@ export function getQuestTrail(world, viewer) {
       !mapComplete ? 'Discover all four guide locations first.' :
         !workAvailable ? 'Wait for a Founder to publish a real place.' :
         !latestCreation ? 'No retained published place is available to open.' : null
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
     trailMilestone(
       'witness-version-report', 'Submit a version-bound report', 1,
