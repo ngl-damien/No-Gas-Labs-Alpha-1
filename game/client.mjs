@@ -119,7 +119,18 @@ async function submitPendingSharedAction(pending){
     refreshRelayRecovery();
   }
 }
-function setConnection(connected){$('connection-dot').classList.toggle('online',connected);$('connection-dot').classList.toggle('offline',!connected&&mode==='shared');if(mode==='shared'&&!connected)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;}
+function setConnection(connected){
+  const networkAvailable=globalThis.navigator?.onLine!==false;
+  const online=mode==='shared'?connected&&networkAvailable:networkAvailable;
+  const dot=$('connection-dot');
+  dot.classList.toggle('online',online);
+  dot.classList.toggle('offline',!online);
+  dot.title=online?'Network available':mode==='shared'?'Shared service disconnected; reconnecting':mode==='private'?'Offline; private work remains on this device':'Offline';
+  dot.setAttribute('aria-label',dot.title);
+  if(mode==='shared'&&!online)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;
+}
+globalThis.addEventListener?.('offline',()=>setConnection(false));
+globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true)});
 function persist(next){try{const existing=localStorage.getItem(STORAGE);if(existing)localStorage.setItem(BACKUP,existing);localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const candidate=await validateWorld(JSON.parse(raw));if(key===BACKUP){try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid backup. Export a copy from the Journal.');}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
