@@ -5,10 +5,11 @@ import {
   chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
   rmSync, symlinkSync, writeFileSync
 } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, generateKeyPairSync, createHash, sign } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { authorizationEvent, decisionDigest, makeDecisionPayload, newNonce } from '../src/authority/decision.js';
 
 const scriptPath = fileURLToPath(new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url));
 const LEDGER = '{"nonces":[],"schema":"ngl.founder-nonce-ledger.v1"}';
@@ -17,6 +18,30 @@ function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'ngl-nonce-ledger-init-'));
   chmodSync(directory, 0o700);
   return { directory, ledgerPath: join(directory, 'founder-nonces.json') };
+}
+
+
+function canonical(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+function withEnvironment(values, callback) {
+  const previous = new Map(Object.keys(values).map(key => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try { return callback(); }
+  finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 function cleanup(value) {
@@ -92,6 +117,70 @@ test('explicit provisioning creates the canonical private empty ledger and relea
     assert.equal(stat.mode & 0o777, 0o600);
     if (typeof process.getuid === 'function') assert.equal(stat.uid, process.getuid());
     assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+  } finally { cleanup(value); }
+});
+
+
+test('explicitly initialized ledger is accepted by the authority writer and rejects replay', () => {
+  const value = fixture();
+  try {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const publicKeyJwk = publicKey.export({ format: 'jwk' });
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({
+        kty: publicKeyJwk.kty,
+        crv: publicKeyJwk.crv,
+        x: publicKeyJwk.x,
+        y: publicKeyJwk.y
+      }))
+      .digest('hex');
+    const trustPath = join(value.directory, 'founder.pub.json');
+    writeFileSync(trustPath, JSON.stringify({
+      schema: 'ngl.founder-trust-anchor.v1',
+      status: 'ENROLLED',
+      enrolled: true,
+      mode: 'PRODUCTION',
+      public_key_jwk: publicKeyJwk,
+      fingerprint
+    }), { mode: 0o600 });
+
+    const initialized = run(value.ledgerPath, ['--confirm-no-prior-history']);
+    assert.equal(initialized.status, 0, initialized.stderr);
+    assert.match(initialized.stdout, /FOUNDER_NONCE_LEDGER_INITIALIZED/);
+
+    const payload = makeDecisionPayload({
+      proposal: { event_id: 'initializer-writer-compatibility', type: 'PROPOSAL', quest_id: 'nonce-compatibility' },
+      quest: { quest_id: 'nonce-compatibility' },
+      capabilities: ['read'],
+      outputs: ['compatibility-test'],
+      acceptance: ['nonce-committed'],
+      expires_at: new Date(Date.now() + 60_000).toISOString()
+    });
+    const nonce = newNonce();
+    const signed = {
+      payload_sha256: decisionDigest(payload),
+      key_fingerprint: fingerprint,
+      signature: sign('sha256', Buffer.from(canonical(payload)), privateKey).toString('base64url'),
+      nonce
+    };
+
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: value.ledgerPath
+    }, () => {
+      const event = authorizationEvent({ signed, payload });
+      assert.equal(event.type, 'QUEST_AUTHORIZED');
+      assert.equal(event.proposal_id, 'initializer-writer-compatibility');
+
+      const committedBytes = readFileSync(value.ledgerPath, 'utf8');
+      assert.deepEqual(JSON.parse(committedBytes).nonces, [nonce]);
+      assert.throws(
+        () => authorizationEvent({ signed, payload }),
+        /FOUNDER_DECISION_INVALID:NONCE_REPLAY/
+      );
+      assert.equal(readFileSync(value.ledgerPath, 'utf8'), committedBytes);
+      assert.equal(existsSync(join(value.directory, '.founder-nonce.lock')), false);
+    });
   } finally { cleanup(value); }
 });
 
