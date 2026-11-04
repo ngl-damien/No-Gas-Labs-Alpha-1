@@ -84,7 +84,7 @@ test('Verify workflow preserves the unique preflight receipt even when verificat
 
 test('CI preflight fingerprints the Founder enrollment regression test', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  const args = packageJson.scripts['agent:preflight:ci'].split(/\\s+/);
+  const args = packageJson.scripts['agent:preflight:ci'].split(' ').filter(Boolean);
   const declaredTargets = args.flatMap((argument, index) =>
     argument === '--path' ? [args[index + 1]] : []
   );
