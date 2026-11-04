@@ -111,6 +111,35 @@ test('Commons enforces per-actor rate limits, one report per actor, and report-b
   await validateWorld(firstReport.world);
 });
 
+test('device-local Commons mutes filter one viewer without changing retained history or another feed', async () => {
+  let world = createWorld({ id: 'commons-local-mute', now: at(0) });
+  world = (await post(world, founder, 1000, 'A public argument remains visible to the institution.')).world;
+  world = (await post(world, witnessA, 2000, 'A separate contribution remains in the same Chronicle.')).world;
+  const beforeEvents = structuredClone(world.events);
+  const beforeRevision = world.revision;
+  const beforeXp = world.xp;
+
+  const muted = projectTownSquare(world, witnessA, {
+    mutedAuthors: [{ id: founder.id, role: founder.role, name: founder.name }]
+  });
+  assert.equal(muted.totalMessages, 2);
+  assert.equal(muted.mutedMessageCount, 1);
+  assert.deepEqual(muted.mutedAuthors, [{ id: founder.id, role: founder.role, name: founder.name }]);
+  assert.equal(muted.messages.some(message => message.author.id === founder.id), false);
+  assert.equal(muted.messages.find(message => message.author.id === witnessA.id)?.canMute, false);
+
+  const otherViewer = projectTownSquare(world, witnessB);
+  assert.equal(otherViewer.messages.some(message => message.author.id === founder.id), true);
+  assert.equal(otherViewer.messages.some(message => message.author.id === witnessA.id), true);
+  assert.deepEqual(projectCommonsMessages(world, witnessA).map(message => message.text), [
+    'A separate contribution remains in the same Chronicle.'
+  ]);
+  assert.deepEqual(world.events, beforeEvents);
+  assert.equal(world.revision, beforeRevision);
+  assert.equal(world.xp, beforeXp);
+  await validateWorld(world);
+});
+
 test('Commons idempotency receipts bind exact post, report and moderation results', async () => {
   const original = createWorld({ id: 'commons-receipts', now: at(0) });
   const posted = await applyAction(original, { type: 'post-message', text: 'Exact retry must not duplicate this post.' }, witnessA, {
