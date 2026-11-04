@@ -90,7 +90,7 @@ function assertDirectoryIdentity(directory, expected) {
   }
 }
 
-function syncDirectory(directory, expectedIdentity) {
+function syncDirectory(directory, expectedIdentity, durabilityCode = 'FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN') {
   let descriptor;
   try {
     descriptor = openSync(directory, fsConstants.O_RDONLY |
@@ -107,7 +107,7 @@ function syncDirectory(directory, expectedIdentity) {
         error?.code === 'ELOOP' || error?.code === 'ENOTDIR') {
       fail('FOUNDER_NONCE_LEDGER_INIT_DIRECTORY_CHANGED');
     }
-    fail('FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN');
+    fail(durabilityCode);
   } finally {
     if (descriptor !== undefined) {
       try { closeSync(descriptor); } catch {}
@@ -294,7 +294,7 @@ function provisionFounderNonceLedger() {
     lockSnapshot = fstatSync(lockDescriptor);
     assertDirectoryIdentity(directory, directoryIdentity);
     try {
-      syncDirectory(directory, directoryIdentity);
+      syncDirectory(directory, directoryIdentity, 'FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN_LOCK_DIRECTORY');
       assertDirectoryIdentity(directory, directoryIdentity);
     } catch (error) {
       keepLock = true;
@@ -336,7 +336,7 @@ function provisionFounderNonceLedger() {
 
     assertDirectoryIdentity(directory, directoryIdentity);
     verifyCreatedLedger(ledgerPath, ledgerBytes);
-    syncDirectory(directory, directoryIdentity);
+    syncDirectory(directory, directoryIdentity, 'FOUNDER_NONCE_LEDGER_INIT_DURABILITY_UNCERTAIN_LEDGER_DIRECTORY');
     assertDirectoryIdentity(directory, directoryIdentity);
 
     try {
