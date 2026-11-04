@@ -418,7 +418,7 @@ def institutional_locations(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
-        page.locator('details.collaborator-response summary').click()
+        page.locator('details.collaborator-response summary').filter(has_text='Inspect exact pasted response').click()
         archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
