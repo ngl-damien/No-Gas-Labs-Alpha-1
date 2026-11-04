@@ -341,6 +341,8 @@ function consumeFounderNonce(nonce) {
       throw new Error("FOUNDER_NONCE_LEDGER_UNSAFE");
     }
     lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+    lockSnapshot = lockStat;
+    lockReceipt = "";
     assertNoFounderNonceRecoveryLease(directory);
     lockReceipt = canonical({
       schema: "ngl.ledger-lock.v1",
@@ -390,7 +392,7 @@ function consumeFounderNonce(nonce) {
       try { unlinkSync(temporaryPath); } catch {}
     }
     if (lockIdentity && !keepLock) {
-      try { releaseNonceLock(lockPath, lockIdentity, directory); } catch {}
+      try { releaseNonceLock(lockPath, lockIdentity, directory, lockSnapshot, lockReceipt); } catch {}
     }
     if (error?.message === "FOUNDER_NONCE_REPLAY") {
       throw new Error("FOUNDER_DECISION_INVALID:NONCE_REPLAY");
