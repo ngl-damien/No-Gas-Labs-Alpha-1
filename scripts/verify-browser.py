@@ -1259,10 +1259,13 @@ def offline_pwa(browser,url,out):
     try:
         page.goto(url,wait_until='networkidle')
         expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
-        active=page.evaluate("async()=>{const registration=await navigator.serviceWorker.ready;return registration.active?.state==='activated';}")
-        assert active, 'Offline shell service worker did not activate'
+        try:
+            page.wait_for_function("async()=>{const registration=await navigator.serviceWorker.getRegistration();return registration?.active?.state==='activated';}",timeout=15000)
+        except Exception as error:
+            state=page.evaluate("async()=>{const registration=await navigator.serviceWorker.getRegistration();return {supported:!!navigator.serviceWorker,scope:registration?.scope,installing:registration?.installing?.state,waiting:registration?.waiting?.state,active:registration?.active?.state};}")
+            raise AssertionError(f'Offline shell service worker did not activate: {state}') from error
         page.reload(wait_until='networkidle')
-        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)")
+        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)",timeout=10000)
         cache_state=page.evaluate("""async()=>{const names=await caches.keys();const paths=[];for(const name of names){for(const request of await (await caches.open(name)).keys())paths.push(new URL(request.url).pathname);}return {names,paths};}""")
         assert '/pixel-world-view.mjs' in cache_state['paths'], 'PixelWorldView is not in the installed offline shell'
         assert '/guild-npc-workbench.mjs' in cache_state['paths'], 'Guild NPC workbench is not in the installed offline shell'
