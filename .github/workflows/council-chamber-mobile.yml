@@ -31,7 +31,7 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Build the standalone game
         run: npm run build:game
-      - name: Walk to and inspect the Council Chamber at 320px and 390px
+      - name: Walk to, tap, and inspect the Council Chamber at 320px and 390px
         run: python3 scripts/verify-council-chamber.py --out artifacts/council-chamber-mobile
       - name: Preserve mobile route screenshots and state receipts
         if: always()

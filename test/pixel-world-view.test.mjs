@@ -20,6 +20,7 @@ import {
   projectQuestCompassCaptionPosition,
   projectGuildNpcReadiness,
   projectGuildNpcPointerTarget,
+  projectInstitutionPointerTarget,
   PixelWorldView,
   GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
@@ -972,6 +973,61 @@ test('touch pointer projection resolves each exact NPC sprite and rejects malfor
   });
   assert.equal(projectGuildNpcPointerTarget(hostilePoint, { x: 0, y: 0 }, 1, width, height), null);
   assert.equal(getterCalls, 0, 'pointer projections must not invoke accessor-backed coordinates');
+});
+
+test('touch pointer projection resolves institutional landmarks and rejects off-target taps', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  const camera = { x: 600, y: 190 };
+  const point = {
+    x: width / 2 + (500 - camera.x) * zoom,
+    y: height / 2 + (190 - camera.y) * zoom
+  };
+  assert.equal(projectInstitutionPointerTarget(point, camera, zoom, width, height), 'council_chamber');
+  assert.equal(projectInstitutionPointerTarget(
+    { x: point.x + 61 * zoom, y: point.y }, camera, zoom, width, height
+  ), null);
+  assert.equal(projectInstitutionPointerTarget(
+    { x: -1, y: point.y }, camera, zoom, width, height
+  ), null);
+  assert.equal(projectInstitutionPointerTarget(point, camera, 0, width, height), null);
+
+  let getterCalls = 0;
+  const hostilePoint = Object.defineProperty({}, 'x', {
+    get() { getterCalls += 1; return point.x; }
+  });
+  assert.equal(projectInstitutionPointerTarget(hostilePoint, camera, zoom, width, height), null);
+  assert.equal(getterCalls, 0, 'institution hit testing must not invoke accessor-backed coordinates');
+});
+
+test('touching an institution landmark routes when distant and opens when near', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  const camera = { x: 600, y: 190 };
+  const point = {
+    x: width / 2 + (500 - camera.x) * zoom,
+    y: height / 2
+  };
+  const run = distance => {
+    const calls = [];
+    const rect = { left: 10, top: 20 };
+    const view = Object.create(PixelWorldView.prototype);
+    view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
+    view.camera = camera;
+    view.zoom = zoom;
+    view.width = width;
+    view.height = height;
+    view.nearest = (id, type) => id === 'council_chamber' && type === 'institution'
+      ? { type: 'institution', distance } : null;
+    view.goTo = (...args) => calls.push(['goTo', ...args]);
+    view.interact = (...args) => calls.push(['interact', ...args]);
+    view.handlePointer({
+      clientX: rect.left + point.x,
+      clientY: rect.top + point.y,
+      preventDefault: () => {}
+    }, () => calls.push(['fallback']));
+    return calls;
+  };
+  assert.deepEqual(run(200), [['goTo', 'council_chamber']]);
+  assert.deepEqual(run(100), [['interact', 'council_chamber']]);
 });
 
 test('touching a distant NPC routes toward it, then a second tap opens its owning institution', () => {
