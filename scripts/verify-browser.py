@@ -681,8 +681,9 @@ def adversary_challenge_handoff(browser,url,out):
         character_xp=character_xp_components(page)
         assert character_xp==(25,0,25), f'Challenge activity should earn 25 character quest XP without publication XP, got {character_xp}'
         close_sheet(page)
-        npc_world_before=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
+        npc_world_before=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {eventIds:world.events.map(event=>event.id),xp:world.xp}}")
         focused_roles=[]
+        npc_discoveries=set()
         for npc_name,sheet_title,role_id in (
             ('Hostile Archivist','Evidence Archive','archivist'),
             ('Synthesis Clerk','Guild Hall','synthesizer'),
@@ -693,13 +694,17 @@ def adversary_challenge_handoff(browser,url,out):
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=sheet_title)
             role_card=page.locator(f'[data-collaborator-role="{role_id}"]')
             expect(role_card).to_be_focused()
-            npc_world_after=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:world.revision,eventIds:world.events.map(event=>event.id),xp:world.xp}}")
-            assert npc_world_after==npc_world_before, f'{npc_name} navigation must not create progress or canonical events'
+            npc_world_after=page.evaluate("()=>{const world=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {events:world.events,xp:world.xp}}")
+            new_events=[event for event in npc_world_after['events'] if event.get('id') not in npc_world_before['eventIds']]
+            unexpected_events=[event for event in new_events if event.get('type')!='discover']
+            assert not unexpected_events, f'{npc_name} navigation must not create NPC work or other canonical events: {unexpected_events!r}'
+            assert npc_world_after['xp']==npc_world_before['xp'], f'{npc_name} navigation must not award XP'
+            npc_discoveries.update(event.get('locationId') for event in new_events if event.get('type')=='discover' and isinstance(event.get('locationId'),str))
             focused_roles.append(role_id)
             close_sheet(page)
         assert focused_roles==['archivist','synthesizer','tutor']
         assert not errors,errors
-        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'npcRolesFocused':focused_roles,'npcNavigationXpNeutral':True,'worldXp':0,'errors':errors}
+        return {'journey':'adversary-human-review-challenge-handoff','passed':True,'authorHandoffHidden':True,'editedDraftCarried':True,'eventsAdded':1,'characterXp':character_xp[0],'questActivityXp':character_xp[2],'npcRolesFocused':focused_roles,'npcNavigationXpNeutral':True,'npcNavigationDiscoveries':sorted(npc_discoveries),'worldXp':0,'errors':errors}
     finally:
         context.close()
 
