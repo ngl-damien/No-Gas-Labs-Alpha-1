@@ -254,7 +254,8 @@ test('directory-sync uncertainty prints a safe remediation detail without leakin
     formatted,
     `${code}: Private-key file contents were synced, but the parent directory entry could not be synced; inspect the destination before retrying.`
   );
-  assert.doesNotMatch(formatted, /private\\/founder\\.jwk|EIO/);
+  assert.equal(formatted.includes('/private/founder.jwk'), false);
+  assert.equal(formatted.includes('EIO'), false);
 
   const systemError = Object.assign(new Error('open /private/founder.jwk failed'), { code: 'EIO' });
   assert.equal(formatEnrollmentError(systemError), 'EIO');
