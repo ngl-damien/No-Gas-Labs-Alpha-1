@@ -965,8 +965,7 @@ function appendCouncilReviewStatements(details,label,values){
   if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
-function appendCouncilReviewSummary(card,response){
-  const review=validateRetainedCollaboratorResponse(world,response.id,viewer);
+function appendCouncilReviewSummary(card,response,review=validateRetainedCollaboratorResponse(world,response.id,viewer)){
   if(review.status==='unavailable'){
     card.append(paragraph('Review notes withheld: the retained packet/response could not be revalidated from this snapshot ('+review.reason+'). Inspect the exact archive entry; no summary is inferred.','empty-note'));
     return;
@@ -1076,8 +1075,9 @@ function openCouncilChamber(){
       event?.validationStatus===item.validationStatus&&event?.validationReason===item.validationReason&&
       sameSourceIds(event?.sourceEventIds,item.sourceEventIds)) : [];
     const response=matches.length===1?matches[0]:null;
-    const status=!item?'awaiting':!response?'link-unavailable':
-      response.validationStatus==='rejected'?'rejected':'human-review';
+    const review=response?validateRetainedCollaboratorResponse(world,response.id,viewer):null;
+    const status=!item?'awaiting':!response||review?.status==='unavailable'?'link-unavailable':
+      review?.status==='rejected'?'rejected':'human-review';
     const labels={
       awaiting:'AWAITING RESPONSE',
       'link-unavailable':'PROJECTION PRESENT · EXACT LINK UNAVAILABLE',
@@ -1099,7 +1099,7 @@ function openCouncilChamber(){
     ]);
     if(response){
       card.append(paragraph('Source events: '+(Array.isArray(response.sourceEventIds)?response.sourceEventIds.join(' · '):'unavailable'),'form-help'));
-      appendCouncilReviewSummary(card,response);
+      appendCouncilReviewSummary(card,response,review);
       if(response.validationReason)card.append(paragraph('Structural validator note: '+response.validationReason,'form-help'));
       card.append(button('Inspect exact retained response →',()=>openEvidenceArchive(npc.roleId,response.responseId),{
         class:'list-button','data-council-inspect-response':npc.roleId
