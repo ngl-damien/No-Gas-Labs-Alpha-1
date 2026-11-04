@@ -466,10 +466,13 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
   const obstacles = readSafeRectangles(avoidRects);
   if (!obstacles) return Object.freeze({ ...base, occluded: true });
   const blocked = (x, y) => {
-    const arrow = { left: x - 16, top: y - 16, right: x + 16, bottom: y + 16 };
+    const left = x - 16;
+    const top = y - 16;
+    const right = x + 16;
+    const bottom = y + 16;
     return obstacles.some(obstacle =>
-      arrow.left < obstacle.right + 4 && arrow.right > obstacle.left - 4 &&
-      arrow.top < obstacle.bottom + 4 && arrow.bottom > obstacle.top - 4
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
     );
   };
   if (!blocked(base.x, base.y)) return Object.freeze(base);
@@ -486,7 +489,10 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
   const vertical = edge === 'left' || edge === 'right';
   const edgeX = edge === 'left' ? margin : edge === 'right' ? width - margin : base.x;
   const edgeY = edge === 'top' ? margin : edge === 'bottom' ? height - margin : base.y;
-  const point = (x, y) => blocked(x, y) ? null : Object.freeze({ ...base, x, y });
+  const point = (x, y) => {
+    if (x < margin || x > width - margin || y < margin || y > height - margin || blocked(x, y)) return null;
+    return Object.freeze({ ...base, x, y });
+  };
 
   // Search outward on the same edge first; the common mobile-card case exits quickly.
   const primaryLimit = vertical ? height - margin * 2 : width - margin * 2;
@@ -494,15 +500,11 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
     const before = vertical
       ? point(edgeX, base.y - offset)
       : point(base.x - offset, edgeY);
-    if (before) {
-      if (vertical ? before.y >= margin : before.x >= margin) return before;
-    }
+    if (before) return before;
     const after = vertical
       ? point(edgeX, base.y + offset)
       : point(base.x + offset, edgeY);
-    if (after) {
-      if (vertical ? after.y <= height - margin : after.x <= width - margin) return after;
-    }
+    if (after) return after;
   }
 
   // If that edge is fully covered, move to an adjacent edge from the nearest corner.
