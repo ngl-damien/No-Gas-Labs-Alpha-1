@@ -222,6 +222,11 @@ test('quest map targets resolve the exact workbench and institution objectives',
     projectQuestMapTarget({ type: 'workbench', recipe: 'comic' }, { creations: [] }),
     { kind: 'location', id: 'workbench', x: 325, y: 645, label: 'The Making Bench' }
   );
+  const townSquare = PLACES.find(place => place.id === 'town-square');
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'location', id: 'town-square' }, { creations: [] }),
+    { kind: 'location', id: 'town-square', x: townSquare.x, y: townSquare.y, label: 'The Commons at TownSquare' }
+  );
   const academy = PLACES.find(place => place.id === 'academy');
   assert.deepEqual(
     projectQuestMapTarget({ type: 'location', id: 'academy' }, { creations: [] }),
