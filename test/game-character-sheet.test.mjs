@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 
 const founder={id:'f-1',role:'founder'};
@@ -833,3 +834,104 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(founderRecord.xp, 100);
   assert.equal(witnessRecord.xp, 0);
 });
+
+test('Commons posts become actor-owned field satchel objects with a TownSquare return route, without XP or world mutation', async () => {
+  const actor = { id: 'satchel-witness', name: 'Satchel Witness', role: 'witness' };
+  const original = createWorld({ id: 'commons-satchel-world', now: t1 });
+  const posted = await applyAction(original, {
+    type: 'post-message',
+    text: 'Carry this conversation back to the Commons.'
+  }, actor, { now: t2 });
+  const before = structuredClone(posted.world);
+
+  const record = projectCharacter(posted.world, actor);
+  assert.equal(record.fieldSatchelTotal, 1);
+  assert.equal(record.fieldSatchelOmittedCount, 0);
+  assert.equal(record.fieldSatchel.length, 1);
+  const [item] = record.fieldSatchel;
+  assert.equal(item.kind, 'commons-message');
+  assert.equal(item.eventId, posted.world.events[0].id);
+  assert.equal(item.messageId, posted.result.messageId);
+  assert.equal(item.status, 'retained conversation · not evidence or authority');
+  assert.equal(item.summary, posted.world.events[0].text);
+  assert.deepEqual(item.action, { type: 'location', id: 'town-square' });
+  assert.equal(record.skills.find(skill => skill.id === 'speaker').count, 1);
+  assert.equal(record.xp, 0);
+  assert.equal(record.worldXp, 0);
+  assert.ok(Object.isFrozen(record.fieldSatchel));
+  assert.ok(Object.isFrozen(item));
+  assert.ok(Object.isFrozen(item.action));
+  assert.deepEqual(posted.world, before, 'reading the satchel must not mutate the world');
+
+  const other = projectCharacter(posted.world, {
+    id: 'other-satchel-witness', name: 'Other Witness', role: 'witness'
+  });
+  assert.equal(other.fieldSatchel.length, 0, 'another actor cannot inherit this character’s satchel item');
+});
+
+test('a human-hidden Commons post remains in the author satchel with the public redaction', async () => {
+  const author = { id: 'satchel-author', name: 'Satchel Author', role: 'witness' };
+  const reporter = { id: 'satchel-reporter', name: 'Satchel Reporter', role: 'witness' };
+  const founderActor = { id: 'satchel-founder', name: 'Founder', role: 'founder' };
+  const original = createWorld({ id: 'commons-hidden-satchel', now: t1 });
+  const posted = await applyAction(original, {
+    type: 'post-message',
+    text: 'This text must be redacted from the Witness field satchel after moderation.'
+  }, author, { now: t2 });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please review this message.'
+  }, reporter, { now: t3 });
+  const hidden = await applyAction(reported.world, {
+    type: 'moderate-message',
+    messageId: posted.result.messageId,
+    disposition: 'hide',
+    reason: 'privacy'
+  }, founderActor, { now: t4 });
+  const before = structuredClone(hidden.world);
+  const authorView = publicWorld(hidden.world, author);
+  const authorRecord = projectCharacter(authorView, author);
+  const founderRecord = projectCharacter(hidden.world, founderActor);
+
+  assert.equal(authorRecord.fieldSatchel.length, 1);
+  assert.equal(authorRecord.fieldSatchel[0].eventId, posted.world.events[0].id);
+  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by human moderation.]');
+  assert.equal(authorRecord.fieldSatchel[0].status, 'retained conversation · not evidence or authority');
+  assert.equal(authorRecord.xp, 0);
+  assert.equal(founderRecord.fieldSatchel.length, 0);
+  assert.deepEqual(hidden.world, before, 'projection must not alter the retained post or moderation history');
+});
+
+test('Commons field satchel keeps the newest 100 unique messages in append order, not timestamp order', () => {
+  const events = Array.from({ length: 101 }, (_, index) => ({
+    id: 'satchel-event-' + index,
+    type: 'message-posted',
+    actor: witness,
+    at: new Date(Date.parse(t1) + (100 - index) * 1000).toISOString(),
+    messageId: 'satchel-message-' + index,
+    channel: 'commons',
+    text: 'Retained Commons message ' + index
+  }));
+  const world = {
+    id: 'bounded-commons-satchel',
+    revision: events.length,
+    xp: 0,
+    creations: [],
+    events,
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const record = projectCharacter(world, witness);
+
+  assert.equal(record.fieldSatchelTotal, 101);
+  assert.equal(record.fieldSatchel.length, 100);
+  assert.equal(record.fieldSatchelOmittedCount, 1);
+  assert.equal(record.fieldSatchel[0].eventId, 'satchel-event-100');
+  assert.equal(record.fieldSatchel.at(-1).eventId, 'satchel-event-1');
+  assert.equal(record.fieldSatchel.some(item => item.eventId === 'satchel-event-0'), false);
+});
+
