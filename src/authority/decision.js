@@ -194,7 +194,9 @@ function readNonceLedger(filePath) {
   let before;
   try { before = lstatSync(filePath); }
   catch (error) {
-    if (error.code === "ENOENT") return [];
+    // An absent ledger cannot distinguish first use from deleted replay history.
+    // Provision the empty ledger explicitly; authorization must never recreate it.
+    if (error?.code === "ENOENT") throw new Error("FOUNDER_NONCE_LEDGER_ABSENT");
     throw new Error("FOUNDER_NONCE_LEDGER_UNAVAILABLE");
   }
   if (before.isSymbolicLink() || !before.isFile() ||
