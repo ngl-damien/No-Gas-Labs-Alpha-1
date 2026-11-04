@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildEnrollmentCandidate,
   formatEnrollmentError,
@@ -69,32 +71,43 @@ test('candidate builder rejects non-P-256 keys and private KeyObjects before fin
   }
 });
 
-test('default ceremony emits only a public NOT_ENROLLED candidate', () => {
-  const pair = keyPair();
+test('default ceremony refuses to generate an unusable candidate without a platform keystore', () => {
   const output = [];
-  let generated = 0;
-  const candidate = main([], {
-    generateKeyPairSync: () => { generated += 1; return pair; },
-    log: value => output.push(String(value)),
-    now: new Date('2026-11-03T00:00:00.000Z')
-  });
-
-  assert.equal(generated, 1);
-  assert.equal(candidate.status, 'NOT_ENROLLED');
-  assert.equal(candidate.enrolled, false);
-  assert.equal(candidate.mode, null);
-  assert.match(output.join('\n'), /No private key was persisted/);
-  assert.match(output.join('\n'), /Raw private-key export is disabled/);
-  assert.doesNotMatch(output.join('\n'), /"d"\s*:/);
+  assert.throws(
+    () => main([], { log: value => output.push(String(value)) }),
+    error => error.code === 'FOUNDER_KEYSTORE_UNAVAILABLE'
+  );
+  assert.deepEqual(output, []);
 });
 
-test('raw private-key file export is rejected before key generation or output', () => {
-  let generated = 0;
+test('help explains the unavailable keystore without generating or emitting a candidate', () => {
+  const output = [];
+  const result = main(['--help'], { log: value => output.push(String(value)) });
+  const rendered = output.join('\n');
+
+  assert.equal(result, null);
+  assert.match(rendered, /No key is generated/);
+  assert.match(rendered, /platform-backed, non-extractable keystore/);
+  assert.match(rendered, /Raw private-key file export is disabled/);
+  assert.doesNotMatch(rendered, /public_key_jwk/);
+});
+
+test('actual CLI exits before emitting a candidate when no platform keystore is available', () => {
+  const scriptPath = fileURLToPath(new URL('../scripts/founder-enroll-ceremony.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [scriptPath], { encoding: 'utf8' });
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /FOUNDER_KEYSTORE_UNAVAILABLE/);
+  assert.match(result.stderr, /No platform-backed non-extractable keystore is configured/);
+  assert.doesNotMatch(result.stdout + result.stderr, /"private_key_jwk"|-----BEGIN PRIVATE KEY-----/);
+});
+
+test('raw private-key file export remains rejected before output', () => {
   let logged = 0;
   let caught;
   assert.throws(
     () => main(['--write-private-path', '/secure/founder.jwk'], {
-      generateKeyPairSync: () => { generated += 1; return keyPair(); },
       log: () => { logged += 1; }
     }),
     error => {
@@ -102,7 +115,6 @@ test('raw private-key file export is rejected before key generation or output', 
       return error.code === 'FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED';
     }
   );
-  assert.equal(generated, 0);
   assert.equal(logged, 0);
   assert.equal(
     formatEnrollmentError(caught),
@@ -110,17 +122,14 @@ test('raw private-key file export is rejected before key generation or output', 
   );
 });
 
-test('unknown command-line arguments fail before key generation or output', () => {
-  let generated = 0;
+test('unknown command-line arguments fail before output', () => {
   let logged = 0;
   assert.throws(
     () => main(['--write-private-pat', '/secure/founder.jwk'], {
-      generateKeyPairSync: () => { generated += 1; return keyPair(); },
       log: () => { logged += 1; }
     }),
     error => error.code === 'FOUNDER_ENROLLMENT_ARGUMENT_INVALID'
   );
-  assert.equal(generated, 0);
   assert.equal(logged, 0);
 });
 
