@@ -852,7 +852,9 @@ function renderPlayerGuildBoard(board, sourceWorld){
       }else if(!satchel.items.length){
         panel.append(paragraph('No public retained work from current members is available yet. Private drafts and private reports are not listed.','empty-note'));
       }else{
-        if(satchel.omittedCount)panel.append(paragraph('Showing the newest 20 of '+satchel.total+' retained items; '+satchel.omittedCount+' additional items are outside the bounded projection.','form-help'));
+        const visibleCount=Math.min(20,satchel.items.length);
+        const hiddenCount=Math.max(0,satchel.total-visibleCount);
+        if(hiddenCount)panel.append(paragraph('Showing the newest '+visibleCount+' of '+satchel.total+' retained items; '+hiddenCount+' older items are not displayed in this panel.','form-help'));
         for(const item of satchel.items.slice(0,20)){
           const row=node('article',{class:'note-entry','data-guild-field-item':item.eventId},[
             node('div',{class:'eyebrow',text:item.kind.toUpperCase().replaceAll('-',' ')}),
