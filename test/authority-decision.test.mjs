@@ -1329,3 +1329,36 @@ test("nonce authorization reports uncertainty when its owner lock disappears dur
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a missing nonce ledger fails closed instead of resetting consumed replay history", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-ledger-replay-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const environment = {
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    };
+
+    const first = withEnvironment(environment, () =>
+      authorizationEvent({ signed, payload: fixture.payload }));
+    assert.equal(first.type, "QUEST_AUTHORIZED");
+    const committed = readFileSync(fixture.nonceLedgerPath);
+    assert.deepEqual(JSON.parse(committed.toString("utf8")).nonces, [signed.nonce]);
+
+    unlinkSync(fixture.nonceLedgerPath);
+    withEnvironment(environment, () => {
+      assert.throws(
+        () => authorizationEvent({ signed, payload: fixture.payload }),
+        /FOUNDER_NONCE_LEDGER_ABSENT/
+      );
+    });
+    assert.equal(existsSync(fixture.nonceLedgerPath), false,
+      "authorization must not recreate an absent replay ledger");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the failed writer must release only its own lock");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
