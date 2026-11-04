@@ -290,7 +290,7 @@ function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedRece
 }
 
 function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
-  if (!assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt, true)) return;
+  assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt);
 
   // Node's portable fs API has no compare-and-unlink primitive. The descriptor,
   // full metadata, and receipt checks narrow the same-inode rewrite window; a
