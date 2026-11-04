@@ -475,6 +475,10 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
       top < obstacle.bottom + 4 && bottom > obstacle.top - 4
     );
   };
+  const point = (x, y) => {
+    if (x < margin || x > width - margin || y < margin || y > height - margin || blocked(x, y)) return null;
+    return Object.freeze({ ...base, x, y });
+  };
   if (!blocked(base.x, base.y)) return Object.freeze(base);
 
   const step = Math.max(8, Math.ceil(Math.max(width, height) / 512));
