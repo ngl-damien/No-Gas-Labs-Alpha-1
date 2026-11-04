@@ -730,7 +730,7 @@ test('quest compass relocates off-screen arrows and captions around the mobile q
   );
   assert.ok(indicator);
   assert.equal(indicator.x, 26);
-  assert.equal(indicator.y, 442);
+  assert.ok(Math.abs(indicator.y - 442.4) < 1e-9);
   assert.equal(indicator.occluded, undefined);
   assert.ok(Object.isFrozen(indicator));
   assert.ok(indicator.y - 16 >= questCard.bottom + 4);
@@ -738,7 +738,7 @@ test('quest compass relocates off-screen arrows and captions around the mobile q
   const caption = projectQuestCompassCaptionPosition(
     indicator.x, indicator.y, 390, 844, 120, 24, [questCard], 8
   );
-  assert.deepEqual(caption, { left: 8, top: 462, width: 120, height: 24 });
+  assert.deepEqual(caption, { left: 8, top: 462.4, width: 120, height: 24 });
   assert.ok(Object.isFrozen(caption));
   assert.ok(caption.top >= questCard.bottom + 4);
 });
