@@ -184,6 +184,143 @@ test('Collaborator skill counts unique actor-scoped Guild response attempts, inc
   assert.deepEqual(world, before, 'the skill is a read-only projection of retained response events');
 });
 
+test('Study Cards are actor-scoped collectibles derived only from uniquely linked study attempts', () => {
+  const world = {
+    xp: 999,
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      event('study-founder', 'study', founder, t2, {
+        studyId: 'study-1', creationId: 'study-source', version: 1,
+        question: 'What does the source establish?',
+        attempt: 'I inspected the exact published version.',
+        nextCheck: 'Compare the claim with a separate source.'
+      }),
+      event('study-witness', 'study', witness, t2, {
+        studyId: 'study-2', creationId: 'study-source', version: 1,
+        question: 'What remains uncertain?',
+        attempt: 'I recorded the unresolved point.',
+        nextCheck: 'Inspect another source.'
+      }),
+      event('study-review', 'study-reviewed', founder, t3, {
+        reviewId: 'review-1', studyId: 'study-1', creationId: 'study-source', version: 1,
+        response: 'The source supports only the narrow wording.',
+        reflection: 'A second source is still needed.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.studyCardTotal, 1);
+  assert.equal(founderRecord.studyCardOmittedCount, 0);
+  assert.equal(founderRecord.studyCardUnavailableCount, 0);
+  assert.deepEqual(founderRecord.studyCards.map(card => [
+    card.id, card.sourceEventId, card.reviewStatus, card.reviewEventId
+  ]), [['study-card:study-1', 'study-founder', 'reflection-recorded', 'study-review']]);
+  assert.equal(founderRecord.studyCards[0].title, 'study-source');
+  assert.match(founderRecord.studyCards[0].status, /not mastery, evidence, or XP/);
+  assert.deepEqual(founderRecord.studyCards[0].action, {
+    type: 'creation', creationId: 'study-source', version: 1
+  });
+  assert.equal(founderRecord.xp, 100, 'the card adds no XP beyond the retained publication');
+  assert.equal(projectCharacter(world, witness).studyCards[0].studyId, 'study-2',
+    'another actor’s study card is not projected into the Founder collection');
+  assert.equal(projectCharacter(world, witness).xp, 0);
+  assert.ok(Object.isFrozen(founderRecord.studyCards));
+  assert.ok(Object.isFrozen(founderRecord.studyCards[0]));
+  assert.ok(Object.isFrozen(founderRecord.studyCards[0].action));
+  assert.deepEqual(world, before, 'Study Cards are read-only projections, not new world events');
+});
+
+test('duplicate event identities cannot mint Study Cards or mark reflection recorded', () => {
+  const duplicateStudy = (studyId, attempt) => event('duplicate-study-event', 'study', founder, t2, {
+    studyId, creationId: 'study-source', version: 1,
+    question: 'What is known?', attempt, nextCheck: 'Check another source.'
+  });
+  const duplicateStudyWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      duplicateStudy('study-a', 'First attempt.'),
+      duplicateStudy('study-b', 'Second attempt.')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const unavailable = projectCharacter(duplicateStudyWorld, founder);
+  assert.deepEqual(unavailable.studyCards, []);
+  assert.equal(unavailable.studyCardTotal, 0);
+  assert.equal(unavailable.studyCardUnavailableCount, 2);
+
+  const study = event('study-event', 'study', founder, t2, {
+    studyId: 'study-1', creationId: 'study-source', version: 1,
+    question: 'What does the source establish?', attempt: 'I inspected the source.',
+    nextCheck: 'Compare a separate source.'
+  });
+  const duplicateReview = (reviewId, studyId) => event('duplicate-review-event', 'study-reviewed', founder, t3, {
+    reviewId, studyId, creationId: 'study-source', version: 1,
+    response: 'I compared the source.', reflection: 'The result remains provisional.'
+  });
+  const reviewWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      study,
+      duplicateReview('review-1', 'study-1'),
+      duplicateReview('review-2', 'study-2')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const reviewed = projectCharacter(reviewWorld, founder).studyCards;
+  assert.equal(reviewed.length, 1);
+  assert.equal(reviewed[0].reviewStatus, 'attempt-recorded');
+  assert.equal(reviewed[0].reviewEventId, null);
+});
+
+test('ambiguous study identities stay in history but cannot manufacture Study Cards', () => {
+  const study = (id, attempt) => event(id, 'study', founder, t2, {
+    studyId: 'duplicate-study', creationId: 'study-source', version: 1,
+    question: 'What is known?', attempt, nextCheck: 'Check a separate source.'
+  });
+  const world = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      study('study-a', 'First attempt.'),
+      study('study-b', 'Second ambiguous attempt.')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const record = projectCharacter(world, founder);
+  assert.deepEqual(record.studyCards, []);
+  assert.equal(record.studyCardTotal, 0);
+  assert.equal(record.studyCardUnavailableCount, 2);
+  assert.equal(record.xp, 100, 'ambiguous cards do not change publication XP');
+});
+
+test('Study Card collection is bounded and keeps newest retained attempts in append order', () => {
+  const events = [
+    publication('study-publication', founder, 'study-source', 1, t1),
+    ...Array.from({ length: 101 }, (_, index) => event(
+      'study-event-' + index, 'study', founder, t2, {
+        studyId: 'study-' + index, creationId: 'study-source', version: 1,
+        question: 'Question ' + index, attempt: 'Attempt ' + index,
+        nextCheck: 'Check ' + index
+      }
+    ))
+  ];
+  const record = projectCharacter({
+    creations: [publishedCreation('study-source', [t1])],
+    events, discoveries: [], contributions: [], reports: [], methods: []
+  }, founder);
+  assert.equal(record.studyCardTotal, 101);
+  assert.equal(record.studyCards.length, 100);
+  assert.equal(record.studyCardOmittedCount, 1);
+  assert.equal(record.studyCardUnavailableCount, 0);
+  assert.equal(record.studyCards[0].studyId, 'study-100');
+  assert.equal(record.studyCards.at(-1).studyId, 'study-1');
+});
+
 test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => {
   const world = {
     xp: 900,

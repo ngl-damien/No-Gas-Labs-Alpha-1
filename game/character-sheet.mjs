@@ -353,6 +353,42 @@ export function projectCharacter(world, viewer) {
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
+  const studyReviewById = new Map(studyReviews.map(event => [event.studyId, event]));
+  const studyCardEntries = studyEvents
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const studyCardTotal = studyCardEntries.length;
+  const studyCardOmittedCount = Math.max(0, studyCardTotal - 100);
+  const rawActorStudyEventCount = rows(world?.events).filter(event =>
+    event?.type === 'study' && event?.actor?.id === viewer?.id &&
+    event?.actor?.role === viewer?.role
+  ).length;
+  const studyCardUnavailableCount = Math.max(0, rawActorStudyEventCount - studyCardTotal);
+  const studyCards = Object.freeze(studyCardEntries.slice(0, 100).map(({ event }) => {
+    const sourceVersion = retainedVersions.get(versionKey(event.creationId, event.version));
+    const review = studyReviewById.get(event.studyId);
+    return Object.freeze({
+      id: 'study-card:' + event.studyId,
+      studyId: event.studyId,
+      sourceEventId: event.id,
+      creationId: event.creationId,
+      version: event.version,
+      title: typeof sourceVersion?.title === 'string' && sourceVersion.title.trim()
+        ? sourceVersion.title : event.creationId,
+      question: event.question,
+      attempt: event.attempt,
+      nextCheck: event.nextCheck,
+      at: event.at,
+      reviewStatus: review ? 'reflection-recorded' : 'attempt-recorded',
+      reviewEventId: review?.id || null,
+      status: 'recorded practice · not mastery, evidence, or XP',
+      action: Object.freeze({
+        type: 'creation', creationId: event.creationId, version: event.version
+      })
+    });
+  }));
   const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -568,6 +604,10 @@ export function projectCharacter(world, viewer) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    studyCards,
+    studyCardTotal,
+    studyCardOmittedCount,
+    studyCardUnavailableCount,
     inventory: Object.freeze(inventory),
     fieldSatchel,
     fieldSatchelTotal,
