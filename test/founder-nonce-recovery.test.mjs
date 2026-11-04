@@ -692,6 +692,68 @@ test('offline recovery refuses owner-lock removal when a temporary nonce file ap
 });
 
 
+
+test('offline recovery never unlinks a replacement-directory owner lock after path swap', async t => {
+  const value = await fixture(t);
+  const ledgerBefore = await readFile(value.ledgerPath);
+  const movedDirectory = value.directory + '-original';
+  const replacementDirectory = await mkdtemp(join(tmpdir(), 'ngl-founder-nonce-replacement-'));
+  await chmod(replacementDirectory, 0o700);
+  await writeFile(join(replacementDirectory, '.founder-nonce.lock'), 'replacement-owner-lock', { mode: 0o600 });
+  const recoveryModule = new URL('../scripts/recover-founder-nonce-lock.mjs', import.meta.url).href;
+  const childSource = [
+    "import fsPromises from 'node:fs/promises';",
+    "import { syncBuiltinESMExports } from 'node:module';",
+    "const originalUnlink = fsPromises.unlink;",
+    "let swapped = false;",
+    "fsPromises.unlink = async (target, ...args) => {",
+    "  if (!swapped && String(target).endsWith('/.founder-nonce.lock')) {",
+    "    await fsPromises.rename(process.env.TEST_DIRECTORY, process.env.TEST_MOVED_DIRECTORY);",
+    "    await fsPromises.rename(process.env.TEST_REPLACEMENT_DIRECTORY, process.env.TEST_DIRECTORY);",
+    "    swapped = true;",
+    "  }",
+    "  return originalUnlink(target, ...args);",
+    "};",
+    "syncBuiltinESMExports();",
+    "const { recoverFounderNonceLock } = await import(process.env.TEST_RECOVERY_MODULE);",
+    "try {",
+    "  const result = await recoverFounderNonceLock({ ledgerPath: process.env.TEST_LEDGER, confirmOwnerStopped: true, confirmSameHost: true });",
+    "  console.log(JSON.stringify({ status: result.status, swapped }));",
+    "} catch (error) {",
+    "  console.log(JSON.stringify({ status: 'blocked', code: error?.code || String(error), swapped }));",
+    "}"
+  ].join("\n");
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', childSource], {
+    encoding: 'utf8',
+    timeout: 10000,
+    env: {
+      ...process.env,
+      TEST_DIRECTORY: value.directory,
+      TEST_MOVED_DIRECTORY: movedDirectory,
+      TEST_REPLACEMENT_DIRECTORY: replacementDirectory,
+      TEST_LEDGER: value.ledgerPath,
+      TEST_RECOVERY_MODULE: recoveryModule
+    }
+  });
+
+  try {
+    assert.equal(child.status, 0, child.stderr);
+    const observed = JSON.parse(child.stdout);
+    assert.equal(observed.status, 'blocked');
+    assert.equal(observed.swapped, true);
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce.lock')), false,
+      'the inspected original owner lock may be removed, but no replacement lock may be touched');
+    assert.equal(await readFile(join(value.directory, '.founder-nonce.lock'), 'utf8'), 'replacement-owner-lock',
+      'the replacement directory owner lock must remain byte-for-byte untouched');
+    assert.equal(await exists(join(movedDirectory, '.founder-nonce-recovery.lock')), true,
+      'the recovery fence must remain in the inspected original directory after path replacement');
+    assert.deepEqual(await readFile(join(movedDirectory, 'founder-nonces.json')), ledgerBefore);
+  } finally {
+    await rm(movedDirectory, { recursive: true, force: true });
+  }
+});
+
+
 test('offline recovery refuses owner-lock removal when its recovery lease is replaced during recovery', async t => {
   const value = await fixture(t);
   const ledgerBefore = await readFile(value.ledgerPath);
