@@ -1002,7 +1002,7 @@ function openCouncilChamber(){
     content.append(card);
   }
   if(progress>=target)
-    content.append(paragraph('All role slots have one retained attempt. This is not consensus, endorsement, adjudication, or approval.','form-help'));
+    content.append(paragraph('All four role slots have one retained attempt.','form-help'));
   content.append(paragraph(
     'Role coverage is not consensus, endorsement, adjudication, or approval. A structurally valid response is still untrusted input for human review. Rejected responses remain preserved attempts, not endorsements. This chamber creates no vote, event, XP, mastery, evidence status, truth verdict, or authority. Consequential decisions remain in the human-gated Decision Chamber.',
     'form-help'
