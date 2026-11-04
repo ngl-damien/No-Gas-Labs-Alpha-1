@@ -847,6 +847,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/artifacts.mjs',
     'game/contradiction-clerk.mjs',
     'test/game-contradiction-clerk.test.mjs',
+    'test/contradiction-clerk.test.mjs',
     'test/game-artifacts.test.mjs',
     'game/research-records.mjs',
     'game/model.mjs',
