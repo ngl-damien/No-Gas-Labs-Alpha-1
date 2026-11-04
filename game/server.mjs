@@ -15,6 +15,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
+import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS } from './social.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -29,7 +30,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']],
@@ -50,7 +51,10 @@ const actionFields = {
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
   'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
   'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
-  'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId']
+  'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
+  'post-message': ['type', 'text', 'requestId'],
+  'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
+  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -151,6 +155,19 @@ function preflightAction(input) {
       preflightText(input.reflection, 1000, 'Reflection', { required: true });
       break;
     }
+    case 'post-message':
+      preflightText(input.text, COMMONS_MESSAGE_LIMIT, 'Message', { required: true });
+      break;
+    case 'report-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded report reason.');
+      preflightText(input.details, 500, 'Report details', { required: true });
+      break;
+    case 'moderate-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_DISPOSITIONS.includes(input.disposition)) fail('INVALID_MESSAGE_DISPOSITION', 'Choose hide or restore.');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded moderation reason.');
+      break;
     case 'record-collaborator-response': {
       if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
       requiredId(input.moonshotId, 'Moonshot ID');
@@ -207,7 +224,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -236,7 +253,7 @@ function validateHistory(world) {
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const eventAt = Date.parse(event.at);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = eventAt;
     if (event.type === 'study') {
       if (typeof event.studyId !== 'string' || !event.studyId || studyIds.has(event.studyId) ||
@@ -457,7 +474,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -469,6 +486,9 @@ function validateHistory(world) {
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
+      if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
+      if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
