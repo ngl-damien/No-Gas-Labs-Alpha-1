@@ -398,9 +398,15 @@ export function projectCharacter(world, viewer) {
     }))
   );
 
-  const completedQuestObjectives = getQuestTrail(world, viewer)
+  const questTrail = getQuestTrail(world, viewer);
+  const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+  const collaboratorResponseObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-response'
+  );
+  const collaboratorResponseCount = Array.isArray(collaboratorResponseObjective?.evidenceIds)
+    ? collaboratorResponseObjective.evidenceIds.length : 0;
 
   const skills = [
     {
@@ -465,6 +471,13 @@ export function projectCharacter(world, viewer) {
       count: sourceObservationResponses.length,
       record: 'append-only author responses to retained challenges',
       basis: 'Responses are counted only when the original note author answers one uniquely linked earlier challenge. This counts accountable response practice, not truth, adjudication, approval, or XP.'
+    },
+    {
+      id: 'collaborator',
+      label: 'Collaborator',
+      count: collaboratorResponseCount,
+      record: 'bounded collaborator-response attempts',
+      basis: 'Unique actor-attributed responses to bounded Guild Hall role packets, including rejected attempts. Rejected responses remain preserved attempts, not endorsements; structure/scope validation is not provider identity, truth, independent observation, execution, mastery, approval, XP or authority.'
     },
     {
       id: 'researcher',
