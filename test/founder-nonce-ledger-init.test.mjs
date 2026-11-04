@@ -511,7 +511,14 @@ test('owner-lock release directory fsync uncertainty is explicit and cannot trig
   const failed = runWithDirectorySyncFailure(value, 3);
   try {
     assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
-    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN/);
+    const diagnostic = JSON.parse(failed.child.stderr);
+    assert.equal(diagnostic.code, 'FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN');
+    assert.deepEqual(diagnostic.initializationState, {
+      ledgerCreated: true,
+      ledgerContentsVerified: true,
+      ledgerModifiedAfterCreation: false,
+      ownerLockRemovalDurabilityUncertain: true
+    });
     assert.equal(existsSync(failed.markerPath), true);
     assert.equal(JSON.parse(failed.child.stdout.trim()).directorySyncs, 3);
     assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
