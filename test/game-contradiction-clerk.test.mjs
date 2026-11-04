@@ -156,7 +156,7 @@ test('the Clerk does not execute accessor-backed retained metadata', () => {
 });
 
 test('maximum valid challenge answers always fit the server report limit', () => {
-  const html = 'x'.repeat(131_072);
+  const html = 'x'.repeat(1_002_151);
   const creation = currentCreation({
     id: 'i'.repeat(80),
     title: 'T'.repeat(80),
@@ -171,7 +171,7 @@ test('maximum valid challenge answers always fit the server report limit', () =>
 
   assert.ok(Array.from(report).length <= 1000);
   assert.ok(report.includes('Target: ' + 'T'.repeat(59) + '… [' + creation.id + '] v1'));
-  assert.ok(report.includes('SHA-256 ' + creation.receipt.digest + ' · 131072B'));
+  assert.ok(report.includes('SHA-256 ' + creation.receipt.digest + ' · 1002151B'));
   assert.ok(report.includes('REPORT ONLY — NOT A VERDICT.'));
   assert.ok(report.includes('no AI/provider call or independent observation occurred'));
   assert.ok(report.includes('Claim: ' + 'c'.repeat(140)));
