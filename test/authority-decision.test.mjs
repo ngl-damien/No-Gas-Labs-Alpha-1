@@ -1554,3 +1554,53 @@ test("nonce writer refuses before locking when neither descriptor namespace is a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("missing and malformed Founder nonces fail closed before acquiring or changing the durable ledger", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-invalid-nonce-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const valid = fixture.sign();
+    const missing = { ...valid };
+    delete missing.nonce;
+    const cases = [
+      ["missing", missing],
+      ["empty", { ...valid, nonce: "" }],
+      ["short", { ...valid, nonce: "f".repeat(31) }],
+      ["uppercase", { ...valid, nonce: "A".repeat(32) }],
+      ["non-hex", { ...valid, nonce: "g".repeat(32) }],
+    ];
+    const trust = loadTrustAnchor(fixture.trustPath);
+    const environment = {
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    };
+    const originalLedger = readFileSync(fixture.nonceLedgerPath);
+    const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+
+    for (const [label, signed] of cases) {
+      const verification = verifyFounderDecision({
+        signed,
+        payload: fixture.payload,
+        public_key_jwk: trust.public_key_jwk,
+        expected_fingerprint: trust.fingerprint,
+      });
+      assert.equal(verification.valid, false, label);
+      assert.equal(verification.reason, "NONCE_INVALID", label);
+      withEnvironment(environment, () => {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_DECISION_INVALID:NONCE_INVALID/,
+          label
+        );
+      });
+      assert.deepEqual(readFileSync(fixture.nonceLedgerPath), originalLedger,
+        label + " nonce must not alter durable replay history");
+      assert.equal(existsSync(ownerLockPath), false,
+        label + " nonce must be rejected before acquiring the writer lock");
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
