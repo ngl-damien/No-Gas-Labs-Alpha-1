@@ -136,6 +136,28 @@ function compactRecord(record) {
   return compact;
 }
 
+/**
+ * Confirm that one compact collaborator input record is an exact projection
+ * of a uniquely retained research event. Matching IDs alone must not
+ * authenticate invented observations or altered source details.
+ */
+export function isExactCollaboratorSourceRecord(packetRecord, projectedRecord) {
+  try {
+    const projection = projectedRecord?._projection;
+    if (!projection || projection.recordSafe !== true || projection.eventIdUnique !== true) return false;
+    if (projectedRecord.type === 'moonshot-proposed') {
+      if (projection.proposalStatus !== 'unique') return false;
+    } else {
+      if (!['experiment-reported', 'experiment-challenged'].includes(projectedRecord.type) ||
+          projection.proposalStatus !== 'linked') return false;
+      if (projectedRecord.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
+    }
+    return JSON.stringify(packetRecord) === JSON.stringify(compactRecord(projectedRecord));
+  } catch {
+    return false;
+  }
+}
+
 function packetIdentifiersBounded(record) {
   const identifiers = [record.id, record.moonshotId, record.actor?.id];
   if (record.type === 'moonshot-proposed' && record.sourceCreationId != null) identifiers.push(record.sourceCreationId);
