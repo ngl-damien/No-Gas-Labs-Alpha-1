@@ -12,6 +12,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {projectTownSquare,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS} from './social.mjs';
 
 function registerOfflineShell(){
   const serviceWorker=globalThis.navigator?.serviceWorker;
@@ -64,11 +65,104 @@ async function openInstitution(locationId = null) {
   });
 }
 
+function openCommons(){
+  const content=showSheet('The Commons at TownSquare','PUBLIC CONVERSATION · HUMAN MODERATION');
+  activeNoteRenderer=()=>renderCommonsContent(content);
+  renderCommonsContent(content);
+}
+function renderCommonsContent(content){
+  if(content!==$('sheet-content')||$('sheet').hidden)return;
+  const feed=projectTownSquare(world,viewer);
+  content.replaceChildren();
+  content.dataset.commonsPanel='true';
+  content.append(
+    paragraph(mode==='shared'
+      ? 'Messages are shared with the current game community. Reports are private to their author and the authenticated Founder.'
+      : 'Private-world messages stay on this device. Shared conversation requires the shared service.'),
+    paragraph('Conversation is not evidence, truth, approval, authority, verification, or XP. Human moderation can hide public text while preserving the original event in world history.','form-help'),
+    button('Institution records →',()=>openInstitution('town-square'),{class:'secondary-button','data-commons-institution-records':'true'})
+  );
+  const form=node('form',{id:'commons-compose','aria-label':'Post a Commons message'});
+  const textarea=node('textarea',{id:'commons-message',maxlength:String(COMMONS_MESSAGE_LIMIT),rows:'3',placeholder:'A question, useful invitation, absurdity, or field observation.'});
+  const count=node('small',{id:'commons-message-count','aria-live':'polite',text:'0 / '+COMMONS_MESSAGE_LIMIT});
+  textarea.addEventListener('input',()=>{count.textContent=Array.from(textarea.value).length+' / '+COMMONS_MESSAGE_LIMIT;});
+  const post=button('Post to The Commons',guarded(async()=>{
+    const text=textarea.value.trim();
+    if(!text)throw new Error('Write a message before posting.');
+    await act({type:'post-message',text});
+    toast('Message retained. Conversation only; no XP or authority.');
+  }),{class:'primary-button','data-commons-post':'true'});
+  form.addEventListener('submit',event=>{event.preventDefault();post.click();});
+  form.append(textarea,count,post);
+  content.append(node('section',{class:'field-card'},[
+    node('div',{class:'eyebrow',text:'WRITE A MESSAGE'}),
+    form
+  ]));
+  content.append(node('h3',{class:'section-title',text:'RECENT MESSAGES · '+feed.totalMessages}));
+  if(feed.omittedMessageCount)content.append(paragraph(feed.omittedMessageCount+' earlier messages remain in the Chronicle and are not included in this bounded view.','form-help'));
+  if(!feed.messages.length)content.append(paragraph('The Commons is quiet. A first message creates a retained conversation event, not progress or proof.','form-help'));
+  for(const message of feed.messages){
+    const card=node('article',{class:'field-card','data-commons-message-id':message.messageId});
+    card.append(
+      node('div',{class:'eyebrow',text:message.author.name+' · '+String(message.author.role).toUpperCase()}),
+      paragraph(new Date(message.at).toLocaleString()),
+      paragraph(message.text)
+    );
+    if(message.hidden)card.append(paragraph('Hidden by human moderation. The original message remains retained in history.','form-help'));
+    if(message.canReport){
+      const report=node('details',{class:'commons-report'});
+      report.append(node('summary',{text:'Report this message privately'}));
+      const reason=node('select',{id:'commons-report-reason-'+message.messageId,'aria-label':'Private report reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      const details=node('textarea',{id:'commons-report-details-'+message.messageId,rows:'2',maxlength:'500',placeholder:'Why should a human review this message?'});
+      report.append(reason,details,button('Submit private report',guarded(async()=>{
+        await act({type:'report-message',messageId:message.messageId,reason:reason.value,details:details.value.trim()});
+        toast('Private report retained for human review.');
+      }),{class:'secondary-button','data-commons-report':message.messageId}));
+      card.append(report);
+    }
+    if(viewer.role==='founder'&&message.pendingReportCount>0){
+      const review=node('div',{class:'button-row'});
+      const reason=node('select',{id:'commons-moderation-reason-'+message.messageId,'aria-label':'Human moderation reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      review.append(reason,button('Hide after human review',guarded(async()=>{
+        await act({type:'moderate-message',messageId:message.messageId,disposition:'hide',reason:reason.value});
+        toast('Message hidden; original history retained.');
+      }),{class:'secondary-button','data-commons-hide':message.messageId}));
+      card.append(review);
+    }
+    if(viewer.role==='founder'&&message.hidden){
+      const reason=node('select',{id:'commons-restore-reason-'+message.messageId,'aria-label':'Human restoration reason'});
+      for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
+      card.append(node('div',{class:'button-row'},[
+        reason,
+        button('Restore retained message',guarded(async()=>{
+          await act({type:'moderate-message',messageId:message.messageId,disposition:'restore',reason:reason.value});
+          toast('Message restored; moderation history retained.');
+        }),{class:'secondary-button','data-commons-restore':message.messageId})
+      ]));
+    }
+    content.append(card);
+  }
+  if(viewer.role==='founder'&&feed.pendingReports.length){
+    const panel=node('section',{id:'commons-pending-reports',class:'field-card'});
+    panel.append(node('h3',{text:'PENDING PRIVATE REPORTS · '+feed.pendingReportTotal}));
+    for(const report of feed.pendingReports){
+      const item=node('details');
+      item.append(node('summary',{text:report.reason+' · '+report.reporter.name+' → '+report.messageAuthor.name}));
+      item.append(paragraph(report.details),paragraph(report.messageText,'form-help'));
+      panel.append(item);
+    }
+    if(feed.omittedPendingReportCount)panel.append(paragraph(feed.omittedPendingReportCount+' older pending reports are omitted from this view.','form-help'));
+    content.append(panel);
+  }
+}
 function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
-  if (id === 'decision_chamber' || id === 'town-square') return openInstitution(id);
+  if (id === 'town-square') return openCommons();
+  if (id === 'decision_chamber') return openInstitution(id);
   if (id === 'academy') return openAcademy();
   if (id === 'moonshot_field') return openMoonshotField();
   if (id === 'publication_house') return openPublicationHouse();
@@ -167,7 +261,7 @@ function followQuestAction(action){
   if(action.type==='location'&&typeof action.id==='string'){
     const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id);
     if(npc){closeSheet();view.goTo(action.id,'npc');return}
-    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive'].includes(action.id)){
+    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive','town-square'].includes(action.id)){
       closeSheet();view.goTo(action.id);return;
     }
   }
@@ -509,7 +603,7 @@ function openGuide(id){
   );
   if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
 }
-function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.name}),node('small',{text:p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
+function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.id==='town-square'?'The Commons at TownSquare':place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.id==='town-square'?'The Commons at TownSquare':p.name}),node('small',{text:p.id==='town-square'?'Public conversation, private reports and retained human moderation.':p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports and C for retained challenges. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt and challenge is a separately retained, attributed record. A map pin routes you to inspect it; it is not a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS & DISSENT'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':'DISSENT · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[
     node('h3',{text:'The Contradiction Clerk'}),
