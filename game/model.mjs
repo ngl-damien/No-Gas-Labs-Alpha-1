@@ -1,8 +1,8 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial} from './research-records.mjs';
-import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
-import {validateCollaboratorResponse} from './collaborator-response.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords} from './research-records.mjs';
+import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
+import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {COMMONS_CHANNEL,COMMONS_MESSAGE_LIMIT,COMMONS_POSTS_PER_MINUTE,COMMONS_RATE_WINDOW_MS,COMMONS_REASONS,COMMONS_DISPOSITIONS,hiddenCommonsMessageIds,projectPlayerGuilds,normalizePlayerGuildName,playerGuildNameKey,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT,PLAYER_GUILD_LIMIT} from './social.mjs';
 const encoder=new TextEncoder();
 const kinds=new Set(['comic','loom','observatory','custom']);
@@ -623,6 +623,12 @@ export async function validateWorld(raw) {
        Date.parse(reviewVersions[0].publishedAt)>Date.parse(e.at)||reviewPublications.length!==1||
        Date.parse(reviewPublications[0].at)>Date.parse(e.at))invalid('Study review must retain its exact earlier published source version.');
   }
+  const projectedResearchByEventId=new Map();
+  if(raw.events.some(event=>event?.type==='collaborator-response-recorded')){
+    let projectedResearch;
+    try{projectedResearch=projectResearchRecords(raw.events,raw.creations);}catch{invalid('Research history cannot be projected for collaborator validation.');}
+    for(const record of projectedResearch)if(typeof record?.id==='string')projectedResearchByEventId.set(record.id,record);
+  }
   const collaboratorResponseIds=new Set();
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='collaborator-response-recorded')continue;
@@ -659,7 +665,16 @@ export async function validateWorld(raw) {
       if(!source||eventPositions.get(source)>=packetIndex||record?.eventId!==source.id||record?.type!==source.type||record?.at!==source.at||
          record?.actor?.id!==source.actor?.id||record?.actor?.role!==source.actor?.role||record?.moonshotId!==source.moonshotId||source.moonshotId!==e.moonshotId)
         invalid('Collaborator packet source reference is not an earlier matching world event.');
+      const projectedSource=projectedResearchByEventId.get(source.id);
+      if(projectedSource?._projection?.index!==eventPositions.get(source)||!isExactCollaboratorSourceRecord(record,projectedSource))
+        invalid('Collaborator packet source content does not match retained history.');
     }
+    const checked=validateCollaboratorResponseSnapshot({
+      packetJson:e.packetJson,role:e.role,moonshotId:e.moonshotId,
+      sourceEventIds:e.sourceEventIds,responseText:e.responseText
+    });
+    if(checked.status!==e.validationStatus||checked.reason!==e.validationReason)
+      invalid('Collaborator archive validation status does not match retained response bytes.');
   }
   for(const key of ['contributions','reports'])for(const n of raw[key]){unique(n.id);actorFor(n.actor);const c=raw.creations.find(c=>c.id===n.creationId);if(!c||!Number.isInteger(n.version)||n.version<1||n.version>c.version||typeof n.text!=='string'||!n.text.trim()||Array.from(n.text).length>(key==='reports'?1000:500)||!isStrictTimestamp(n.at))invalid('Malformed attributed note.');}
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
