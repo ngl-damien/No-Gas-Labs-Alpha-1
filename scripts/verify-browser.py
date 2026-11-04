@@ -5,6 +5,7 @@ Requires Python Playwright plus Chromium for development only. No provider keys 
 import argparse
 import os
 import json
+import hashlib
 import re
 import select
 import subprocess
@@ -510,6 +511,54 @@ def shared(browser,url,data,out):
         close_sheet(b)
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        # A real pending decision proposal must remain reviewable but not actionable
+        # until the live server verifies a signed Founder disposition.
+        decision_bytes='Browser fixture only: a pending proposal for the read-only Decision Chamber acceptance path.'
+        decision_policy=owner.request.post(url+'api/decisions/policy',data={
+            'id':'browser-decision-policy',
+            'reviewWindowMs':86400000,
+            'basis':'Disposable browser acceptance fixture; no operational policy activation.'
+        })
+        assert decision_policy.status==200, decision_policy.text()
+        decision_proposal=owner.request.post(url+'api/decisions/proposals',data={
+            'id':'decision:browser-authorization-gate',
+            'title':'Browser authorization gate fixture',
+            'evaluation':{
+                'bytes':decision_bytes,
+                'receipt':{
+                    'algorithm':'sha256',
+                    'digest':hashlib.sha256(decision_bytes.encode('utf-8')).hexdigest(),
+                    'size':len(decision_bytes.encode('utf-8'))
+                }
+            },
+            'risks':['Disposable browser fixture only; no external effect.'],
+            'rollback':'No source or external state changed.',
+            'proposedEffect':'Exercise the read-only Decision Chamber; no disposition is permitted.'
+        })
+        assert decision_proposal.status==200, decision_proposal.text()
+        decision_before=owner.request.get(url+'api/decisions').json()
+        assert decision_before['dispositionAuthorization']['available'] is False
+        assert decision_before['dispositionAuthorization']['code']=='FOUNDER_NOT_ENROLLED'
+        assert decision_before['decisions'][0]['status']=='PENDING'
+        world_before_decision=owner.request.get(url+'api/state').json()['world']
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
+        expect(a.locator('#sheet')).to_contain_text('Browser authorization gate fixture')
+        expect(a.locator('#sheet')).to_contain_text('Founder trust anchor is not enrolled')
+        expect(a.locator('#sheet [data-decision-authorization-blocked="true"]')).to_have_count(1)
+        expect(a.locator('#sheet [data-gate-action]')).to_have_count(0)
+        a.screenshot(path=str(out/'decision-chamber-authorization-blocked.png'))
+        close_sheet(a)
+        decision_after=owner.request.get(url+'api/decisions').json()
+        world_after_decision=owner.request.get(url+'api/state').json()['world']
+        assert decision_after['revision']==decision_before['revision']
+        assert decision_after['decisions'][0]['status']=='PENDING'
+        assert world_after_decision['revision']==world_before_decision['revision']
+        assert world_after_decision['xp']==world_before_decision['xp']
+
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
         close_sheet(a)
         snapshot=visitor.request.get(url+'api/state').json()

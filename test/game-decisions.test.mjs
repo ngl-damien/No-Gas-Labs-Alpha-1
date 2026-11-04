@@ -162,6 +162,41 @@ test('HTTP Founder Gate does not unlock dispositions for a TEST_ONLY trust ancho
   }
 });
 
+test('HTTP Founder Gate remains fail-closed for a production-shaped anchor until signed route verification is integrated', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-decision-production-anchor-'));
+  const trustPath = await writeTrustAnchor(directory, {
+    schema: 'ngl.founder-trust-anchor.v1',
+    status: 'ENROLLED',
+    enrolled: true,
+    mode: 'PRODUCTION',
+    public_key_jwk: { kty: 'EC', crv: 'P-256', x: 'C'.repeat(43), y: 'D'.repeat(43) },
+    fingerprint: 'b'.repeat(64)
+  });
+  const hostState = await host(directory, trustPath);
+  try {
+    const owner = hostState.client();
+    await owner.request('/api/login', { key });
+    const before = (await owner.request('/api/decisions')).body;
+    assert.equal(before.dispositionAuthorization.available, false);
+    assert.equal(before.dispositionAuthorization.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
+    const blocked = await owner.request('/api/decisions/choose', {
+      decisionId: 'not-installed',
+      expectedRevision: 1,
+      requestId: 'production-shaped-anchor-choice',
+      action: 'APPROVE'
+    });
+    assert.equal(blocked.status, 503);
+    assert.equal(blocked.body.error.code, 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED');
+    const after = (await owner.request('/api/decisions')).body;
+    assert.equal(after.revision, before.revision);
+    assert.equal(after.decisions.length, 0);
+  } finally {
+    await hostState.server.closeGame();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
 test('HTTP Founder Gate reports an unreadable trust anchor and blocks dispositions', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decision-bad-anchor-'));
   const trustPath = join(directory, 'founder.pub.json');
