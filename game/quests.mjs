@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
+import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -543,13 +544,25 @@ export function getQuestTrail(world, viewer) {
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
   const collaboratorResponseIdCounts = new Map();
+  const collaboratorRoleIds = new Set(COLLABORATOR_ROLES.map(role => role.id));
   for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
     collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
   const collaboratorResponses = events.filter(event => event?.type === 'collaborator-response-recorded' &&
     typeof event.id === 'string' && uniqueMoonshotEventIds.has(event.id) &&
     typeof event.responseId === 'string' && collaboratorResponseIdCounts.get(event.responseId) === 1 &&
+    collaboratorRoleIds.has(event.role) &&
+    ['valid-for-human-review', 'rejected'].includes(event.validationStatus) &&
+    event.validator === 'ngl.collaborator-response.v1' &&
     event.actor?.id === actorId && event.actor?.role === actorRole);
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
+  const collaboratorResponsesByRole = new Map();
+  for (const event of collaboratorResponses) {
+    if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
+  }
+  const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
+  const nextCollaboratorPacket = projectCollaboratorPackets(world).find(packet =>
+    packet?.available === true && !collaboratorResponsesByRole.has(packet.id)
+  ) || null;
   const moonshotProposals = events.filter(event =>
     isValidMoonshotProposal(event) && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
@@ -801,9 +814,21 @@ export function getQuestTrail(world, viewer) {
       ),
       trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
         collaboratorResponses.map(event => event.id), collaboratorResponses,
-        hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
-        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorPacket
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' :
+          !hasCollaboratorResponse && !nextCollaboratorPacket
+            ? 'No bounded collaborator packet is currently available. Preserve a qualifying research input, then return to Guild Hall.' : null,
         'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
+      trailMilestone('founder-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+        collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+        hasAnyMoonshotProposal && nextCollaboratorPacket
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; the Guild Hall roles need a retained research question.' :
+          !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
+            ? 'No remaining role has a currently available source-bound packet. Preserve a qualifying research input, then return.' : null,
+        'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
     ]);
   }
@@ -903,9 +928,21 @@ export function getQuestTrail(world, viewer) {
     ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,
-      hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
-      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorPacket
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' :
+        !hasCollaboratorResponse && !nextCollaboratorPacket
+          ? 'No bounded collaborator packet is currently available. Wait for a qualifying research input, then return to Guild Hall.' : null,
       'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+    ),
+    trailMilestone('witness-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+      collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+      hasAnyMoonshotProposal && nextCollaboratorPacket
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing the Guild Hall role hand-offs.' :
+        !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
+          ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
+      'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
     ),
   ]);
 }
