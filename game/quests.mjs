@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
-import { projectCommonsMessages } from './social.mjs';
+import { projectCommonsMessages, projectPlayerGuilds } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -402,6 +402,41 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
   });
 }
 
+const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
+/** Resolve reversible actor/session membership only from a unique retained guild history. */
+function currentPlayerGuildMembership(world, viewer, events) {
+  const guildEvents = trailRows(events).filter(event =>
+    PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES.has(event?.type)
+  );
+  const validIds = uniqueEventIds(events);
+  const validIdentifier = value => typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+  if (guildEvents.some(event =>
+    !validIdentifier(event?.id) || !validIds.has(event.id) || !isStrictTimestamp(event?.at)
+  )) return { available: false, event: null };
+
+  try {
+    const name = typeof viewer?.name === 'string' && viewer.name.trim() &&
+      Array.from(viewer.name).length <= 80 ? viewer.name : 'Player';
+    const projection = projectPlayerGuilds(world, {
+      id: viewer.id, role: viewer.role, name
+    });
+    if (!projection.viewerGuildId) return { available: true, event: null };
+    const event = [...guildEvents].reverse().find(candidate =>
+      (candidate.type === 'guild-created' || candidate.type === 'guild-joined') &&
+      candidate.guildId === projection.viewerGuildId &&
+      candidate.actor?.id === viewer.id && candidate.actor?.role === viewer.role
+    );
+    return event ? { available: true, event } : { available: false, event: null };
+  } catch {
+    return { available: false, event: null };
+  }
+}
+
 export function getQuestTrail(world, viewer) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
@@ -496,6 +531,7 @@ export function getQuestTrail(world, viewer) {
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
+  const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
@@ -834,6 +870,16 @@ export function getQuestTrail(world, viewer) {
         'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
       trailMilestone(
+        'founder-player-guild-membership', 'Join a player guild or found one', 1,
+        guildMembership.event ? [guildMembership.event.id] : [],
+        guildMembership.event ? [guildMembership.event] : [],
+        guildMembership.available && !guildMembership.event
+          ? { type: 'location', id: 'guild_hall' } : null,
+        !guildMembership.available
+          ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+        'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+      ),
+      trailMilestone(
         'founder-commons-message', 'Leave a message in The Commons', 1,
         firstCommonsMessage ? [firstCommonsMessage.id] : [],
         firstCommonsMessage ? [firstCommonsMessage] : [],
@@ -954,6 +1000,16 @@ export function getQuestTrail(world, viewer) {
         !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
           ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
       'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+    ),
+    trailMilestone(
+      'witness-player-guild-membership', 'Join a player guild or found one', 1,
+      guildMembership.event ? [guildMembership.event.id] : [],
+      guildMembership.event ? [guildMembership.event] : [],
+      guildMembership.available && !guildMembership.event
+        ? { type: 'location', id: 'guild_hall' } : null,
+      !guildMembership.available
+        ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+      'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
     ),
     trailMilestone(
       'witness-commons-message', 'Leave a message in The Commons', 1,
