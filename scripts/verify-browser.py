@@ -1208,9 +1208,13 @@ def shared(browser,url,data,out):
             page.get_by_role('button',name='Walk to The Commons at TownSquare',exact=True).click()
             page.wait_for_timeout(8000)
             for _ in range(24):
+                if page.locator('#sheet').is_visible():
+                    if page.locator('#sheet-title').text_content()=='The Commons at TownSquare':
+                        return
+                    close_sheet(page)
                 page.locator('#interact-button').click()
                 try:
-                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'",timeout=500)
+                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",timeout=500)
                     return
                 except Exception:
                     if page.locator('#sheet').is_visible():
@@ -1274,6 +1278,8 @@ def shared(browser,url,data,out):
         before_mute_state=visitor.request.get(url+'api/state').json()
         b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
+        expect(b.locator('#commons-muted-authors')).to_have_count(1)
+        b.locator('#commons-muted-authors summary').click()
         expect(b.locator('#commons-muted-authors')).to_contain_text('Damien Featherstone')
         muted_authors=json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))
         assert muted_authors==[{'id':'damien','role':'founder','name':'Damien Featherstone'}]
@@ -1283,7 +1289,6 @@ def shared(browser,url,data,out):
         assert after_mute_state['world']['xp']==before_mute_state['world']['xp']
         founder_mute_view=owner.request.get(url+'api/state').json()
         assert any(event['type']=='message-posted' and event['messageId']==commons_message_id and event['text']==commons_text for event in founder_mute_view['world']['events'])
-        b.locator('#commons-muted-authors summary').click()
         b.locator('[data-commons-unmute="damien"]').click()
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_contain_text(commons_text)
         assert json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))==[]
