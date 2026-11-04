@@ -245,7 +245,7 @@ function readNonceLedger(filePath) {
   }
 }
 
-function releaseNonceLock(lockPath, identity, directory) {
+function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
   let current;
   try { current = lstatSync(lockPath); }
   catch (error) {
@@ -253,9 +253,42 @@ function releaseNonceLock(lockPath, identity, directory) {
     throw error;
   }
   if (current.isSymbolicLink() || !current.isFile() ||
-      current.dev !== identity.dev || current.ino !== identity.ino) {
+      current.dev !== identity.dev || current.ino !== identity.ino ||
+      (expectedSnapshot && !sameFileSnapshot(expectedSnapshot, current))) {
     throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
   }
+
+  if (expectedSnapshot && typeof expectedReceipt === "string") {
+    let descriptor;
+    try {
+      descriptor = openSync(lockPath, fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+      const opened = fstatSync(descriptor);
+      if (!opened.isFile() || !sameFileSnapshot(expectedSnapshot, opened)) {
+        throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
+      }
+      const bytes = readBoundedDescriptor(descriptor, 4096);
+      const after = lstatSync(lockPath);
+      const afterDescriptor = fstatSync(descriptor);
+      if (after.isSymbolicLink() || !after.isFile() ||
+          !sameFileSnapshot(expectedSnapshot, after) ||
+          !sameFileSnapshot(expectedSnapshot, afterDescriptor) ||
+          bytes.length !== expectedSnapshot.size ||
+          bytes.toString("utf8") !== expectedReceipt) {
+        throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
+      }
+    } catch {
+      throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
+    } finally {
+      if (descriptor !== undefined) {
+        try { closeSync(descriptor); } catch {}
+      }
+    }
+  }
+
+  // Node's portable fs API has no compare-and-unlink primitive. The descriptor,
+  // full metadata, and receipt checks narrow the same-inode rewrite window; a
+  // hostile same-UID writer racing after the final check remains out of scope.
   unlinkSync(lockPath);
   syncDirectory(directory);
 }
@@ -292,6 +325,8 @@ function consumeFounderNonce(nonce) {
 
   let lockDescriptor;
   let lockIdentity;
+  let lockSnapshot;
+  let lockReceipt;
   let temporaryPath = null;
   let keepLock = false;
   try {
@@ -307,12 +342,14 @@ function consumeFounderNonce(nonce) {
     }
     lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
     assertNoFounderNonceRecoveryLease(directory);
-    writeFileSync(lockDescriptor, canonical({
+    lockReceipt = canonical({
       schema: "ngl.ledger-lock.v1",
       pid: process.pid,
       openedAt: new Date().toISOString(),
-    }));
+    });
+    writeFileSync(lockDescriptor, lockReceipt);
     fsyncSync(lockDescriptor);
+    lockSnapshot = fstatSync(lockDescriptor);
     assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
     try { syncDirectory(directory); }
     catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
@@ -341,7 +378,7 @@ function consumeFounderNonce(nonce) {
     try { syncDirectory(directory); }
     catch { keepLock = true; throw new Error("FOUNDER_NONCE_DURABILITY_UNCERTAIN"); }
     try {
-      releaseNonceLock(lockPath, lockIdentity, directory);
+      releaseNonceLock(lockPath, lockIdentity, directory, lockSnapshot, lockReceipt);
       lockIdentity = null;
     } catch {
       keepLock = true;
