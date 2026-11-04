@@ -294,7 +294,7 @@ def institutional_locations(browser,url,out):
             expect(control).to_have_count(1)
             before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
             control.evaluate("(button)=>button.click()")
-            page.wait_for_function("(role)=>document.querySelector('[data-guild-npc-control=\\\"'+role+'\\\"]')?.dataset.guildNpcAction==='talk'",arg=role)
+            page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg=role)
             expect(control).to_have_attribute('data-guild-npc-action','talk')
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
@@ -352,7 +352,7 @@ def institutional_locations(browser,url,out):
         expect(guild_response_quest.get_by_role('button',name='Go do this →',exact=True)).to_be_visible()
         quest_route_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
         guild_response_quest.get_by_role('button',name='Go do this →',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('[data-guild-npc-control=\\\"archivist\\\"]')?.dataset.guildNpcAction==='talk'")
+        page.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         expect(page.locator('#sheet')).to_be_hidden()
         quest_route_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
         assert quest_route_after==quest_route_before, 'Following the Guild response quest to its NPC must not create an event, revision, or XP'
