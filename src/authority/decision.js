@@ -245,11 +245,12 @@ function readNonceLedger(filePath) {
   }
 }
 
-function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
+function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt, allowMissing = false) {
   let current;
   try { current = lstatSync(lockPath); }
   catch (error) {
-    if (error.code === "ENOENT") return;
+    if (error?.code === "ENOENT" && allowMissing) return false;
+    if (error?.code === "ENOENT") throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
     throw error;
   }
   if (current.isSymbolicLink() || !current.isFile() ||
@@ -285,6 +286,11 @@ function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null
       }
     }
   }
+  return true;
+}
+
+function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
+  if (!assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt, true)) return;
 
   // Node's portable fs API has no compare-and-unlink primitive. The descriptor,
   // full metadata, and receipt checks narrow the same-inode rewrite window; a
@@ -375,6 +381,7 @@ function consumeFounderNonce(nonce) {
       if (temporaryDescriptor !== undefined) closeSync(temporaryDescriptor);
     }
     assertPrivateDirectoryIdentity(directory, directoryIdentity, "FOUNDER_NONCE_LEDGER_UNSAFE");
+    assertNonceLockOwned(lockPath, lockIdentity, lockSnapshot, lockReceipt);
     renameSync(temporaryPath, ledgerPath);
     temporaryPath = null;
     try { syncDirectory(directory); }
