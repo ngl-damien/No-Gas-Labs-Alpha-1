@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GUILD_NPCS } from '../game/pixel-world-view.mjs';
+import { COLLABORATOR_ROLES } from '../game/collaborator-contracts.mjs';
 import { focusGuildCollaborator, resolveGuildNpcWorkbench } from '../game/guild-npc-workbench.mjs';
 
 test('each registered Guild NPC resolves only to its exact owning institution', () => {
   assert.equal(GUILD_NPCS.length, 4);
+  assert.deepEqual(GUILD_NPCS.map(npc => npc.roleId), COLLABORATOR_ROLES.map(role => role.id));
   for (const npc of GUILD_NPCS) {
     assert.deepEqual(resolveGuildNpcWorkbench({
       id: npc.routeLocation,
