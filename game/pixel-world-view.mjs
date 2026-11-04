@@ -21,6 +21,24 @@ function isArraySafely(value) {
   try { return Array.isArray(value); } catch { return false; }
 }
 
+function readSafeRectangles(value) {
+  if (!isArraySafely(value)) return null;
+  const count = ownDataValue(value, 'length');
+  if (!Number.isSafeInteger(count) || count < 0 || count > 128) return null;
+  const rectangles = [];
+  for (let index = 0; index < count; index += 1) {
+    const item = ownDataValue(value, String(index));
+    if (!item || typeof item !== 'object' || isArraySafely(item)) return null;
+    const left = ownDataValue(item, 'left');
+    const top = ownDataValue(item, 'top');
+    const right = ownDataValue(item, 'right');
+    const bottom = ownDataValue(item, 'bottom');
+    if (![left, top, right, bottom].every(Number.isFinite) || right < left || bottom < top) return null;
+    if (right > left && bottom > top) rectangles.push({ left, top, right, bottom });
+  }
+  return rectangles;
+}
+
 /**
  * Project only uniquely linked Source Observation activity onto the map.
  * Unlinked, malformed, duplicated, or otherwise unprojectable retained events
@@ -83,10 +101,10 @@ const QUEST_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const QUEST_RECIPES = new Set(['comic', 'loom', 'observatory', 'custom']);
 
 const GUILD_NPC_POSITIONS = Object.freeze([
-  { roleId: 'archivist', x: 125, y: 80, accent: '#6b805d', sigil: 'A' },
-  { roleId: 'adversary', x: 335, y: 80, accent: '#af5138', sigil: '!' },
-  { roleId: 'synthesizer', x: 125, y: 265, accent: '#536b68', sigil: 'S' },
-  { roleId: 'tutor', x: 335, y: 265, accent: '#9a8b5b', sigil: 'T' }
+  { roleId: 'archivist', x: 980, y: 220, accent: '#6b805d', sigil: 'A', routeLocation: 'evidence_archive' },
+  { roleId: 'adversary', x: 1080, y: 235, accent: '#af5138', sigil: '!', routeLocation: 'evidence_archive' },
+  { roleId: 'synthesizer', x: 150, y: 230, accent: '#536b68', sigil: 'S', routeLocation: 'guild_hall' },
+  { roleId: 'tutor', x: 250, y: 470, accent: '#9a8b5b', sigil: 'T', routeLocation: 'academy' }
 ]);
 const COLLABORATOR_ROLE_CATALOGUE = projectCollaboratorPackets({ events: [], creations: [] });
 const GUILD_NPC_SHORT_NAMES = Object.freeze({
@@ -97,23 +115,25 @@ const GUILD_NPC_SHORT_NAMES = Object.freeze({
 });
 
 // The role catalogue is the single source of names and objectives. The pixel
-// renderer contributes only map positions and visual accents.
+// renderer contributes map positions, service institutions and visual accents.
 export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => {
   const role = COLLABORATOR_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
-  return role ? [Object.freeze({
+  const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
+  return role && place ? [Object.freeze({
     id: 'guild-npc-' + role.id,
     roleId: role.id,
     name: role.name,
     objective: role.objective,
     shortName: GUILD_NPC_SHORT_NAMES[role.id] || role.name.toUpperCase(),
-    routeLocation: 'guild_hall',
+    ...position,
+    routeLocation: place.id,
+    locationLabel: place.name.toUpperCase(),
     authority: 'advisory-only',
     invokesModel: false,
     mayWriteCanonicalState: false,
     mayGrantAuthority: false,
     mayAwardProgress: false,
-    mayCertifyTruthOrExecution: false,
-    ...position
+    mayCertifyTruthOrExecution: false
   })] : [];
 }));
 
@@ -162,11 +182,54 @@ export function projectGuildNpcReadiness(world) {
   }));
 }
 
+const GUILD_NPC_POINTER_HIT_RADIUS = 34;
+
+function ownFiniteCoordinate(value, key) {
+  try {
+    const descriptor = value && Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value') &&
+      Number.isFinite(descriptor.value) ? descriptor.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function projectGuildNpcPointerTarget(point, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  let selected = null;
+  for (const npc of GUILD_NPCS) {
+    const distance = Math.hypot(npc.x - worldX, npc.y + 10 - worldY);
+    if (distance <= GUILD_NPC_POINTER_HIT_RADIUS &&
+        (!selected || distance < selected.distance)) {
+      selected = { npc, distance };
+    }
+  }
+  if (!selected) return null;
+  return Object.freeze({
+    id: selected.npc.id,
+    roleId: selected.npc.roleId,
+    name: selected.npc.name,
+    routeLocation: selected.npc.routeLocation
+  });
+}
+
 function guildNpcAccessibilityText(readiness) {
   const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
   const descriptions = GUILD_NPCS.map(npc => {
     const entry = byRole.get(npc.roleId);
-    if (!entry) return npc.name + ': packet state unavailable.';
+    if (!entry) return npc.name + ' at ' + npc.locationLabel + ': packet state unavailable.';
     const countPhrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
     const packetState = entry.status === 'ready'
       ? `a source-bound packet is available with ${countPhrase(entry.inputCount, 'retained event reference', 'retained event references')}`
@@ -176,9 +239,9 @@ function guildNpcAccessibilityText(readiness) {
     const omitted = entry.omittedCount > 0
       ? ` ${countPhrase(entry.omittedCount, 'additional eligible event reference is omitted', 'additional eligible event references are omitted')} from this bounded packet.`
       : '';
-    return `${npc.name}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
+    return `${npc.name} at ${npc.locationLabel}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
   });
-  return 'Guild Hall bounded collaborator guides: ' + descriptions.join(' ') +
+  return 'Bounded institutional collaborator guides: ' + descriptions.join(' ') +
     ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.';
 }
 function safeQuestTargetId(value) {
@@ -231,7 +294,7 @@ export function projectMapLabelMetrics(screenFontSize, zoom, viewportWidth) {
  * off-screen objects into view. Inputs and outputs are in CSS pixels/world units.
  */
 export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewportHeight, camera, zoom,
-  panelWidth, panelHeight, margin = 8) {
+  panelWidth, panelHeight, margin = 8, avoidRects = []) {
   const cameraX = ownDataValue(camera, 'x');
   const cameraY = ownDataValue(camera, 'y');
   if (![anchorX, anchorY, viewportWidth, viewportHeight, cameraX, cameraY, zoom,
@@ -240,7 +303,11 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
       panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
       margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
       panelWidth > viewportWidth - margin * 2 ||
-      panelHeight > viewportHeight - margin * 2) return null;
+      panelHeight > viewportHeight - margin * 2 ||
+      !isArraySafely(avoidRects)) return null;
+
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return null;
 
   const screenX = viewportWidth / 2 + (anchorX - cameraX) * zoom;
   const screenY = viewportHeight / 2 + (anchorY - cameraY) * zoom;
@@ -252,12 +319,30 @@ export function projectMapLabelPosition(anchorX, anchorY, viewportWidth, viewpor
   if (originalRight <= margin || originalLeft >= viewportWidth - margin ||
       originalBottom <= margin || originalTop >= viewportHeight - margin) return null;
 
-  const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, originalLeft));
-  const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, originalTop));
-  return Object.freeze({
-    x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
-    y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
-  });
+  const candidates = [
+    { left: originalLeft, top: originalTop },
+    { left: originalLeft, top: screenY + 4 },
+    { left: screenX + 4, top: screenY - panelHeight / 2 },
+    { left: screenX - panelWidth - 4, top: screenY - panelHeight / 2 },
+    { left: originalLeft + panelWidth / 2 + 4, top: originalTop },
+    { left: originalLeft - panelWidth / 2 - 4, top: originalTop }
+  ];
+  for (const candidate of candidates) {
+    const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, candidate.left));
+    const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, candidate.top));
+    const right = left + panelWidth;
+    const bottom = top + panelHeight;
+    const blocked = obstacles.some(obstacle =>
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
+    );
+    if (blocked) continue;
+    return Object.freeze({
+      x: cameraX + (left + panelWidth / 2 - viewportWidth / 2) / zoom,
+      y: cameraY + (top + panelHeight - viewportHeight / 2) / zoom
+    });
+  }
+  return null;
 }
 
 /**
@@ -275,6 +360,11 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
   if (type === 'location') {
     const id = ownDataValue(action, 'id');
     if (!safeQuestTargetId(id)) return null;
+    const npcMatches = GUILD_NPCS.filter(npc => npc.id === id);
+    if (npcMatches.length === 1) {
+      const npc = npcMatches[0];
+      return createQuestMapTarget('npc', npc.id, npc.x, npc.y + 10, npc.name);
+    }
     const place = PLACES.find(item => item.id === id);
     return place ? createQuestMapTarget('location', place.id, place.x, place.y, place.name) : null;
   }
@@ -342,15 +432,15 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
  * Project an off-screen quest destination to the nearest safe viewport edge.
  * A null result means the target is already visible or the projection is unsafe.
  */
-export function projectQuestCompassIndicator(target, camera, width, height, zoom, margin = 26) {
+export function projectQuestCompassIndicator(target, camera, width, height, zoom, margin = 26, avoidRects = []) {
   const targetX = ownDataValue(target, 'x');
   const targetY = ownDataValue(target, 'y');
   const cameraX = ownDataValue(camera, 'x');
   const cameraY = ownDataValue(camera, 'y');
   const label = ownDataValue(target, 'label');
   if (![targetX, targetY, cameraX, cameraY, width, height, zoom, margin].every(Number.isFinite) ||
-      zoom <= 0 || width < 64 || height < 64 || margin < 8 ||
-      margin * 2 >= Math.min(width, height)) return null;
+      zoom <= 0 || width < 64 || height < 64 || width > 8192 || height > 8192 ||
+      margin < 8 || margin * 2 >= Math.min(width, height)) return null;
 
   const screenX = width / 2 + (targetX - cameraX) * zoom;
   const screenY = height / 2 + (targetY - cameraY) * zoom;
@@ -366,12 +456,122 @@ export function projectQuestCompassIndicator(target, camera, width, height, zoom
     dy === 0 ? Infinity : (height / 2 - margin) / Math.abs(dy)
   );
   if (!Number.isFinite(scale) || scale <= 0) return null;
-  return Object.freeze({
+
+  const base = {
     x: width / 2 + dx * scale,
     y: height / 2 + dy * scale,
     angle: Math.atan2(dy, dx),
     label: questTargetLabel(label, 'Next objective')
+  };
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return Object.freeze({ ...base, occluded: true });
+  const blocked = (x, y) => {
+    const left = x - 16;
+    const top = y - 16;
+    const right = x + 16;
+    const bottom = y + 16;
+    return obstacles.some(obstacle =>
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
+    );
+  };
+  const point = (x, y) => {
+    if (x < margin || x > width - margin || y < margin || y > height - margin || blocked(x, y)) return null;
+    return Object.freeze({ ...base, x, y });
+  };
+  if (!blocked(base.x, base.y)) return Object.freeze(base);
+
+  const step = Math.max(8, Math.ceil(Math.max(width, height) / 512));
+  const edgeDistances = [
+    { edge: 'left', distance: base.x - margin, order: 0 },
+    { edge: 'right', distance: width - margin - base.x, order: 1 },
+    { edge: 'top', distance: base.y - margin, order: 2 },
+    { edge: 'bottom', distance: height - margin - base.y, order: 3 }
+  ];
+  edgeDistances.sort((left, right) => left.distance - right.distance || left.order - right.order);
+
+  let best = null;
+  let bestDistanceSquared = Infinity;
+  for (const { edge, distance } of edgeDistances) {
+    // No point on a farther edge can beat the best point already found.
+    if (best && distance * distance >= bestDistanceSquared) break;
+
+    const vertical = edge === 'left' || edge === 'right';
+    const edgeX = edge === 'left' ? margin
+      : edge === 'right' ? width - margin
+        : Math.max(margin, Math.min(width - margin, base.x));
+    const edgeY = edge === 'top' ? margin
+      : edge === 'bottom' ? height - margin
+        : Math.max(margin, Math.min(height - margin, base.y));
+    const edgeLength = vertical ? height - margin * 2 : width - margin * 2;
+    const maxSteps = Math.ceil(edgeLength / step);
+
+    // Search each edge from its nearest point to the base. The first clear
+    // sample on an edge is its nearest usable position; compare those across
+    // edges so a covered primary edge cannot hide a clear alternative.
+    for (let index = 0; index <= maxSteps; index += 1) {
+      const offsets = index === 0 ? [0] : [-index * step, index * step];
+      let foundOnEdge = false;
+      for (const offset of offsets) {
+        const candidate = point(
+          vertical ? edgeX : edgeX + offset,
+          vertical ? edgeY + offset : edgeY
+        );
+        if (!candidate) continue;
+        const dx = candidate.x - base.x;
+        const dy = candidate.y - base.y;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < bestDistanceSquared) {
+          best = candidate;
+          bestDistanceSquared = distanceSquared;
+        }
+        foundOnEdge = true;
+        break;
+      }
+      if (foundOnEdge) break;
+    }
+  }
+  return best || Object.freeze({ ...base, occluded: true });
+}
+
+export function projectQuestCompassCaptionPosition(anchorX, anchorY, viewportWidth, viewportHeight,
+  panelWidth, panelHeight, avoidRects = [], margin = 8) {
+  if (![anchorX, anchorY, viewportWidth, viewportHeight, panelWidth, panelHeight, margin].every(Number.isFinite) ||
+      viewportWidth < 64 || viewportHeight < 64 || viewportWidth > 8192 || viewportHeight > 8192 ||
+      panelWidth <= 0 || panelHeight <= 0 || margin < 0 ||
+      margin * 2 >= Math.min(viewportWidth, viewportHeight) ||
+      panelWidth > viewportWidth - margin * 2 || panelHeight > viewportHeight - margin * 2) return null;
+  const obstacles = readSafeRectangles(avoidRects);
+  if (!obstacles) return null;
+  obstacles.push({
+    left: anchorX - 16, top: anchorY - 16, right: anchorX + 16, bottom: anchorY + 16
   });
+  const belowTop = anchorY + 20;
+  const aboveTop = anchorY - panelHeight - 20;
+  const preferredTop = anchorY < viewportHeight / 2 ? belowTop : aboveTop;
+  const alternateTop = anchorY < viewportHeight / 2 ? aboveTop : belowTop;
+  const candidates = [
+    { left: anchorX - panelWidth / 2, top: preferredTop },
+    { left: anchorX - panelWidth / 2, top: alternateTop },
+    { left: anchorX + 20, top: anchorY - panelHeight / 2 },
+    { left: anchorX - panelWidth - 20, top: anchorY - panelHeight / 2 },
+    { left: anchorX - panelWidth / 2, top: margin },
+    { left: anchorX - panelWidth / 2, top: viewportHeight - margin - panelHeight },
+    { left: margin, top: anchorY - panelHeight / 2 },
+    { left: viewportWidth - margin - panelWidth, top: anchorY - panelHeight / 2 }
+  ];
+  for (const candidate of candidates) {
+    const left = Math.max(margin, Math.min(viewportWidth - margin - panelWidth, candidate.left));
+    const top = Math.max(margin, Math.min(viewportHeight - margin - panelHeight, candidate.top));
+    const right = left + panelWidth;
+    const bottom = top + panelHeight;
+    const blocked = obstacles.some(obstacle =>
+      left < obstacle.right + 4 && right > obstacle.left - 4 &&
+      top < obstacle.bottom + 4 && bottom > obstacle.top - 4
+    );
+    if (!blocked) return Object.freeze({ left, top, width: panelWidth, height: panelHeight });
+  }
+  return null;
 }
 
 export const WORLD_TILE_SIZE = 32;
@@ -735,9 +935,15 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
+const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
+
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
+    const inheritedPointer = this.onPointer;
+    canvas.removeEventListener('pointerdown', inheritedPointer);
+    this.onPointer = event => this.handlePointer(event, inheritedPointer);
+    canvas.addEventListener('pointerdown', this.onPointer);
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
@@ -745,6 +951,256 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.updateResearchAccessibility();
+    this.createNpcControls();
+    this.observeMapOverlays();
+  }
+
+  createNpcControls() {
+    if (typeof document === 'undefined' || !document.body ||
+        typeof document.createElement !== 'function' ||
+        typeof document.body.appendChild !== 'function') return;
+    try {
+      const group = document.createElement('div');
+      group.className = 'ngl-world-collaborator-controls';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'World collaborators');
+      group.dataset.worldNpcControls = 'true';
+      Object.assign(group.style, {
+        position: 'fixed', left: '8px', bottom: '8px',
+        width: '1px', height: '1px', margin: '-1px', padding: '0',
+        overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+        border: '0', zIndex: '1000'
+      });
+      group.addEventListener('focusin', () => this.setNpcControlsVisible(true));
+      group.addEventListener('focusout', event => {
+        if (!group.contains?.(event?.relatedTarget)) this.setNpcControlsVisible(false);
+      });
+
+      this.npcControlButtons = new Map();
+      for (const npc of GUILD_NPCS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.guildNpcControl = npc.roleId;
+        button.textContent = 'Approach ' + npc.shortName;
+        button.setAttribute('aria-label',
+          'Approach ' + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
+          ' Advisory only; no model execution, canonical event, evidence, progress, approval, or authority is created.');
+        Object.assign(button.style, {
+          display: 'block', minWidth: '44px', minHeight: '44px',
+          padding: '8px 10px', background: '#141512',
+          border: '1px solid #9aa39a', borderRadius: '6px',
+          color: '#e8e6dc', font: '12px system-ui', textAlign: 'left',
+          touchAction: 'manipulation', cursor: 'pointer'
+        });
+        button.addEventListener('click', event => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          this.handleNpcAction(npc.id);
+        });
+        group.appendChild(button);
+        this.npcControlButtons.set(npc.roleId, button);
+      }
+      document.body.appendChild(group);
+      this.npcControlGroup = group;
+      this.npcControlsVisible = false;
+      this.updateNpcControls(false);
+    } catch {
+      try { this.npcControlGroup?.remove?.(); } catch {}
+      this.npcControlGroup = null;
+      this.npcControlButtons = new Map();
+    }
+  }
+
+  setNpcControlsVisible(visible) {
+    const group = this.npcControlGroup;
+    if (!group?.style) return;
+    this.npcControlsVisible = visible === true;
+    if (this.npcControlsVisible) {
+      Object.assign(group.style, {
+        width: 'min(320px, calc(100vw - 16px))', height: 'auto',
+        margin: '0', padding: '8px', overflow: 'visible',
+        clipPath: 'none', whiteSpace: 'normal', background: '#0c0d0b',
+        border: '1px solid #9aa39a', borderRadius: '8px',
+        color: '#e8e6dc', display: 'grid', gap: '8px',
+        boxShadow: '0 4px 16px rgba(0,0,0,.32)'
+      });
+    } else {
+      Object.assign(group.style, {
+        width: '1px', height: '1px', margin: '-1px', padding: '0',
+        overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+        background: 'transparent', border: '0', borderRadius: '0',
+        boxShadow: 'none'
+      });
+    }
+  }
+
+  updateNpcControls(modalOpen = false) {
+    const group = this.npcControlGroup;
+    if (!group || !(this.npcControlButtons instanceof Map)) return;
+    const playUiVisible = typeof this.mapOverlayVisibility === 'boolean'
+      ? this.mapOverlayVisibility
+      : typeof document !== 'undefined' && this.playUiVisible();
+    const unavailable = modalOpen === true || !playUiVisible;
+    if (group.hidden !== unavailable) group.hidden = unavailable;
+    for (const npc of GUILD_NPCS) {
+      const button = this.npcControlButtons.get(npc.roleId);
+      if (!button) continue;
+      if (button.disabled !== unavailable) button.disabled = unavailable;
+      if (unavailable) continue;
+      const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+        ? Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
+        : Infinity;
+      const canTalk = distance < 160;
+      const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
+      const packetState = readiness?.status || 'unavailable';
+      const actionState = canTalk ? 'talk' : 'approach';
+      const actionLabel = canTalk ? 'Talk to ' : 'Approach ';
+      const buttonText = (canTalk ? 'Talk' : 'Approach') + ' · ' + npc.shortName + ' · ' + npc.locationLabel;
+      const accessibleLabel = actionLabel + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
+        ' Packet state: ' + packetState + '. ' +
+        (canTalk
+          ? 'Activating opens the owning institution; it does not submit a collaborator response.'
+          : 'Activating routes to this exact character. Arrival requires a separate explicit interaction.') +
+        ' This advisory entry point invokes no model and creates no canonical event, evidence, progress, approval, or authority.';
+      if (button.dataset.guildNpcAction !== actionState) button.dataset.guildNpcAction = actionState;
+      if (button.textContent !== buttonText) button.textContent = buttonText;
+      if (button.dataset.guildNpcAriaLabel !== accessibleLabel) {
+        button.setAttribute('aria-label', accessibleLabel);
+        button.dataset.guildNpcAriaLabel = accessibleLabel;
+      }
+    }
+  }
+
+  handleNpcAction(id) {
+    if (typeof document === 'undefined' || !this.playUiVisible() ||
+        document.body?.classList?.contains?.('modal-open') === true) return;
+    const nearest = this.nearest(id, 'npc');
+    if (nearest?.type !== 'npc') return;
+    if (nearest.distance < 160) this.interact(id, 'npc');
+    else this.goTo(id, 'npc');
+  }
+
+  resize() {
+    super.resize();
+    this.mapOverlayVisibility = this.playUiVisible();
+    this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
+  }
+
+  measureMapOverlayRects() {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function' ||
+        typeof this.canvas?.getBoundingClientRect !== 'function') return Object.freeze([]);
+    let canvasRect, elements;
+    try {
+      canvasRect = this.canvas.getBoundingClientRect();
+      elements = document.querySelectorAll(MAP_OVERLAY_SELECTOR);
+    } catch {
+      return Object.freeze([]);
+    }
+    const originX = canvasRect?.left;
+    const originY = canvasRect?.top;
+    if (![originX, originY, this.width, this.height].every(Number.isFinite)) return Object.freeze([]);
+
+    const overlays = [];
+    try {
+      for (const element of elements) {
+        try {
+          if (!element || typeof element.getBoundingClientRect !== 'function') continue;
+          const rect = element.getBoundingClientRect();
+          const left = Math.max(0, rect.left - originX);
+          const top = Math.max(0, rect.top - originY);
+          const right = Math.min(this.width, rect.right - originX);
+          const bottom = Math.min(this.height, rect.bottom - originY);
+          if (![left, top, right, bottom].every(Number.isFinite) ||
+              right <= left || bottom <= top) continue;
+          overlays.push(Object.freeze({ left, top, right, bottom }));
+        } catch {}
+      }
+    } catch {}
+    return Object.freeze(overlays);
+  }
+
+  playUiVisible() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return false;
+    try {
+      const playUi = document.getElementById('play-ui');
+      return !!playUi && playUi.hidden !== true;
+    } catch {
+      return false;
+    }
+  }
+
+  observeMapOverlayElements() {
+    if (!this.resizeObserver?.observe || typeof document === 'undefined' ||
+        typeof document.querySelectorAll !== 'function') return;
+    try {
+      for (const element of document.querySelectorAll(MAP_OVERLAY_SELECTOR)) {
+        try { this.resizeObserver.observe(element); } catch {}
+      }
+    } catch {}
+  }
+
+  refreshMapOverlayRectsIfNeeded() {
+    const visible = this.playUiVisible();
+    const dirty = this.mapOverlayRectsDirty === true;
+    if (visible === this.mapOverlayVisibility && !dirty) return;
+    if (dirty) this.observeMapOverlayElements();
+    this.mapOverlayVisibility = visible;
+    this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
+  }
+
+  observeMapOverlays() {
+    if (typeof document === 'undefined') return;
+    this.observeMapOverlayElements();
+    if (!this.mapOverlayMutationObserver && typeof MutationObserver === 'function' && document.body) {
+      let observer = null;
+      try {
+        observer = new MutationObserver(() => {
+          // Defer layout reads to the next render; never measure from the mutation callback.
+          this.mapOverlayRectsDirty = true;
+        });
+        observer.observe(document.body, {
+          attributes: true,
+          attributeFilter: ['class', 'style', 'hidden', 'aria-expanded'],
+          childList: true,
+          characterData: true,
+          subtree: true
+        });
+        this.mapOverlayMutationObserver = observer;
+      } catch {
+        try { observer?.disconnect?.(); } catch {}
+        this.mapOverlayMutationObserver = null;
+      }
+    }
+    this.mapOverlayVisibility = this.playUiVisible();
+    this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
+  }
+
+  handlePointer(event, fallback) {
+    const rect = this.canvas.getBoundingClientRect();
+    const target = projectGuildNpcPointerTarget({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    }, this.camera, this.zoom, this.width, this.height);
+    if (!target) {
+      if (typeof fallback === 'function') fallback(event);
+      return;
+    }
+
+    const nearest = this.nearest(target.id, 'npc');
+    if (nearest?.type !== 'npc') {
+      if (typeof fallback === 'function') fallback(event);
+      return;
+    }
+    event.preventDefault?.();
+    if (nearest.distance < 160) {
+      this.interact(target.id, 'npc');
+      return;
+    }
+    this.goTo(target.id, 'npc');
+    this.canvas.focus({ preventScroll: true });
   }
 
   goTo(id, targetType) {
@@ -815,6 +1271,9 @@ export class PixelWorldView extends WorldView {
       ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
     this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
       `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
+    ).join(';');
+    this.canvas.dataset.guildNpcLocations = GUILD_NPCS.map(npc =>
+      `${npc.roleId}=${npc.routeLocation}`
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     if (!counts?.available) {
@@ -901,21 +1360,34 @@ export class PixelWorldView extends WorldView {
     const width = Math.min(metrics.maxWidth, Math.max(metrics.minWidth,
       Math.ceil(context.measureText(label).width) + 2 * metrics.horizontalPadding));
     const height = metrics.fontSize + 2 * metrics.verticalPadding;
+    if (!Array.isArray(this.mapAvoidRects)) this.mapAvoidRects = [];
     const placement = projectMapLabelPosition(
-      x, y, this.width, this.height, this.camera, this.zoom, width * this.zoom, height * this.zoom
+      x, y, this.width, this.height, this.camera, this.zoom,
+      width * this.zoom, height * this.zoom, 8, this.mapAvoidRects
     );
     if (!placement) return;
     const drawX = placement.x;
     const drawY = placement.y;
     const left = Math.round(drawX - width / 2);
-    const top = Math.round(drawY - metrics.fontSize - metrics.verticalPadding);
+    const top = Math.round(drawY - height);
     context.fillStyle = '#0c0d0b';
     context.fillRect(left, top, width, height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = metrics.lineWidth;
     context.strokeRect(left + metrics.lineWidth / 2, top + metrics.lineWidth / 2,
       width - metrics.lineWidth, height - metrics.lineWidth);
-    this.text(label, drawX, drawY, metrics.fontSize, '#f5f1e6');
+    this.text(label, drawX, drawY - metrics.verticalPadding, metrics.fontSize, '#f5f1e6');
+
+    const screenCenterX = this.width / 2 + (drawX - this.camera.x) * this.zoom;
+    const screenBottom = this.height / 2 + (drawY - this.camera.y) * this.zoom;
+    const screenWidth = width * this.zoom;
+    const screenHeight = height * this.zoom;
+    this.mapAvoidRects.push(Object.freeze({
+      left: screenCenterX - screenWidth / 2,
+      top: screenBottom - screenHeight,
+      right: screenCenterX + screenWidth / 2,
+      bottom: screenBottom
+    }));
   }
 
   drawResearchCounterPanel(x, y) {
@@ -1138,10 +1610,11 @@ export class PixelWorldView extends WorldView {
 
   drawQuestCompass() {
     const indicator = projectQuestCompassIndicator(
-      this.questTarget, this.camera, this.width, this.height, this.zoom
+      this.questTarget, this.camera, this.width, this.height, this.zoom, 26, this.mapOverlayRects
     );
-    this.canvas.dataset.questCompass = indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
-    if (!indicator) return;
+    this.canvas.dataset.questCompass = indicator?.occluded ? 'occluded' :
+      indicator ? 'offscreen' : this.questTarget ? 'onscreen' : 'none';
+    if (!indicator || indicator.occluded) return;
     const context = this.ctx;
     context.save();
     context.translate(indicator.x, indicator.y);
@@ -1160,24 +1633,32 @@ export class PixelWorldView extends WorldView {
     context.restore();
 
     const caption = 'NEXT · ' + Array.from(indicator.label).slice(0, 14).join('');
-    context.save();
     context.font = '11px ui-monospace, monospace';
     const width = Math.min(this.width - 16, Math.max(92, Math.ceil(context.measureText(caption).width) + 18));
-    const left = Math.max(8, Math.min(this.width - width - 8, indicator.x - width / 2));
-    const top = Math.max(8, Math.min(this.height - 30,
-      indicator.y < this.height / 2 ? indicator.y + 18 : indicator.y - 34));
+    const placement = projectQuestCompassCaptionPosition(
+      indicator.x, indicator.y, this.width, this.height, width, 24, this.mapOverlayRects, 8
+    );
+    if (!placement) return;
+    context.save();
     context.fillStyle = '#0c0d0b';
-    context.fillRect(left, top, width, 24);
+    context.fillRect(placement.left, placement.top, placement.width, placement.height);
     context.strokeStyle = '#e8e6dc';
     context.lineWidth = 1.5;
-    context.strokeRect(left + 0.75, top + 0.75, width - 1.5, 22.5);
+    context.strokeRect(placement.left + 0.75, placement.top + 0.75,
+      placement.width - 1.5, placement.height - 1.5);
     context.fillStyle = '#f5f1e6';
     context.textAlign = 'center';
-    context.fillText(caption, left + width / 2, top + 16);
+    context.fillText(caption, placement.left + placement.width / 2, placement.top + 16);
     context.restore();
   }
 
   render() {
+    this.refreshMapOverlayRectsIfNeeded();
+    this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
+    if (this.canvas.dataset) {
+      this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
+      this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
+    }
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     context.clearRect(0, 0, this.width, this.height);
@@ -1223,13 +1704,24 @@ export class PixelWorldView extends WorldView {
     this.drawQuestTarget();
 
     const near = this.nearest();
-    this.canvas.dataset.nearbyNpcRole =
-      near?.type === 'npc' && near.distance < 145 ? near.roleId : 'none';
-    this.canvas.dataset.nearbyNpcPacketState = near?.type === 'npc'
-      ? this.guildNpcReadiness?.find(entry => entry.roleId === near.roleId)?.status ?? 'unavailable'
+    const modalOpen = document.body.classList.contains('modal-open');
+    const promptRange = near?.type === 'npc' ? 160 : 145;
+    const promptVisible = !!near && near.distance < promptRange && !modalOpen;
+    const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
+    this.updateNpcControls(modalOpen);
+    this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
+    this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
+      ? this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
       : 'none';
-    if (near?.distance < 145 && !document.body.classList.contains('modal-open')) {
-      const label = near?.type === 'npc' ? 'E · Talk · ' + near.shortName
+    if (nearbyNpc) {
+      this.canvas.setAttribute('aria-description',
+        `Nearby collaborator ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. This NPC is advisory only and cannot create canonical state, evidence, progress, approval, or authority.`);
+    } else {
+      this.canvas.removeAttribute('aria-description');
+    }
+    if (promptVisible) {
+      const label = near?.type === 'npc'
+        ? (this.width < 600 ? 'TAP · TALK · ' : 'E · TALK · ') + near.shortName
         : near.type === 'workbench' ? 'E · Make something'
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
@@ -1246,5 +1738,14 @@ export class PixelWorldView extends WorldView {
     }
     context.restore();
     this.drawQuestCompass();
+  }
+
+  destroy() {
+    try { this.npcControlGroup?.remove?.(); } catch {}
+    this.npcControlGroup = null;
+    this.npcControlButtons?.clear?.();
+    try { this.mapOverlayMutationObserver?.disconnect?.(); } catch {}
+    this.mapOverlayMutationObserver = null;
+    super.destroy();
   }
 }
