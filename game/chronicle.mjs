@@ -260,6 +260,27 @@ function worldEntry(event, index, creations, notes) {
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+  } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
+    const guildId = text(event?.guildId) || "not identified";
+    entry.category = "GUILD HALL · PLAYER GUILDS";
+    if (type === "guild-created") {
+      entry.title = `Player guild founded · ${text(event?.name) || "unnamed group"}`;
+      entry.summary = `${actorName(event?.actor)} founded a player group. Its charter and membership are retained as social history.`;
+      entry.detail = `Guild ID: ${guildId} · Charter: ${text(event?.charter) || "not recorded"}`;
+    } else if (type === "guild-joined") {
+      entry.title = "Player joined a guild";
+      entry.summary = `${actorName(event?.actor)} joined a retained player group.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    } else if (type === "guild-left") {
+      entry.title = "Player left a guild";
+      entry.summary = `${actorName(event?.actor)} ended their membership. The earlier join and founding events remain retained.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    } else {
+      entry.title = "Player guild closed";
+      entry.summary = `${actorName(event?.actor)} closed a single-member guild after other members had left. Its prior history remains retained.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    }
+    entry.warning = "A player guild is a session-actor relationship, not proof of distinct humans, institutional authority, verified work, evidence, XP, item ownership, approval or endorsement.";
   } else if (type === "message-posted") {
     entry.title = `Commons message · ${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"}`;
     entry.category = "THE COMMONS";
