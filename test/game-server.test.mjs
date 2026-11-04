@@ -1064,7 +1064,7 @@ test('Polymath Academy study notes bind to retained versions and replay idempote
 });
 
 
-test('Decision Chamber map summary updates from the durable gate without exposing proposal content', async t => {
+test('Decision Chamber map summary keeps proposals pending while signed dispositions are unavailable', async t => {
   const f = await fixture(t);
   const founder = f.client();
   const witness = f.client();
@@ -1100,30 +1100,38 @@ test('Decision Chamber map summary updates from the durable gate without exposin
   assert.equal(pendingWorld.institution.decisionSummary.decisionCount, 1);
   assert.equal(pendingWorld.institution.decisionSummary.counts.PENDING, 1);
 
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_NOT_ENROLLED');
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:world-map',
     expectedRevision: 1,
     requestId: 'request:world-map',
     action: 'REJECT'
   });
-  assert.equal(chosen.response.status, 200, JSON.stringify(chosen.body));
-  const rejectedWorld = await stream.next('world');
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.PENDING, 0);
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.REJECTED, 1);
-  assert.equal(rejectedWorld.world.xp, 0, 'decision dispositions do not award game XP');
-  assert.equal(rejectedWorld.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  const pendingState = await witness.request('/api/state');
+  assert.equal(pendingState.body.institution.decisionSummary.revision, 2);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(pendingState.body.world.xp, 0, 'blocked dispositions do not award game XP');
+  assert.equal(pendingState.body.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
 
-  const publicState = await witness.request('/api/state');
-  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 1);
+  const publicState = pendingState;
+  assert.equal(publicState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 0);
   const publicInstitution = JSON.stringify(publicState.body.institution);
   for (const privateValue of ['Private decision title', 'Private decision risk', 'Private rollback detail', 'Private proposed effect', bytes]) {
     assert.equal(publicInstitution.includes(privateValue), false, 'world map summary must remain aggregate-only');
   }
 });
 
-test('decision HTTP route returns 503 for post-rename durability uncertainty and fences retries', async t => {
+test('decision HTTP route fails closed before persistence while signed Founder authorization is unavailable', async t => {
   let failNextSync = false;
+  let syncCalls = 0;
   const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
     if (failNextSync) {
       failNextSync = false;
       throw Object.assign(new Error('injected decision directory sync failure'), { code: 'EIO' });
@@ -1153,6 +1161,7 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(created.response.status, 200, JSON.stringify(created.body));
 
+  const syncCallsBeforeChoice = syncCalls;
   failNextSync = true;
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1161,7 +1170,9 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'APPROVE'
   });
   assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'the authority gate must reject before the decision store attempts persistence');
+  assert.equal(failNextSync, true, 'the injected durability fault must remain untouched by a blocked disposition');
 
   const retry = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1170,10 +1181,17 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'REJECT'
   });
   assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
-  assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
-  const unavailable = await founder.request('/api/state');
-  assert.equal(unavailable.response.status, 200);
-  assert.equal(unavailable.body.institution.decisionSummary.available, false, 'uncertain ledger must not masquerade as a zero-count gate');
+  assert.equal(retry.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice);
+  assert.equal(failNextSync, true);
+  failNextSync = false;
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.available, true);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.world.xp, 0);
 });
 
 
