@@ -11,6 +11,7 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const MAX_FIELD_SATCHEL_ITEMS = 100;
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -370,6 +371,33 @@ export function projectCharacter(world, viewer) {
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
   const commonsMessages = projectCommonsMessages(world, viewer);
 
+  // The satchel is a bounded, actor-scoped projection of retained Commons
+  // submissions. It points back to TownSquare but never creates XP, evidence,
+  // approval, authority, or a canonical event.
+  const satchelEntries = commonsMessages
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const fieldSatchelTotal = satchelEntries.length;
+  const fieldSatchelOmittedCount = Math.max(0, fieldSatchelTotal - MAX_FIELD_SATCHEL_ITEMS);
+  const fieldSatchel = Object.freeze(
+    satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(({ event }) => Object.freeze({
+      id: 'commons-message:' + event.id,
+      eventId: event.id,
+      messageId: event.messageId,
+      kind: 'commons-message',
+      title: 'Commons message',
+      at: event.at,
+      status: 'retained conversation · not evidence or authority',
+      summary: event.text,
+      actorId: event.actor.id,
+      actorRole: event.actor.role,
+      locationId: 'town-square',
+      action: Object.freeze({ type: 'location', id: 'town-square' })
+    }))
+  );
+
   const completedQuestObjectives = getQuestTrail(world, viewer)
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
@@ -516,6 +544,9 @@ export function projectCharacter(world, viewer) {
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
     inventory: Object.freeze(inventory),
+    fieldSatchel,
+    fieldSatchelTotal,
+    fieldSatchelOmittedCount,
     recentActivity: Object.freeze(recentActivity)
   });
 }

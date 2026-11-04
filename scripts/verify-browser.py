@@ -1295,6 +1295,29 @@ def shared(browser,url,data,out):
         assert replayed_commons['world']['xp']==before_commons_xp
         assert replayed_commons['world']['events'][-1]['requestId']==pending_commons['requestId']
 
+        commons_event=next(event for event in replayed_commons['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
+        commons_event_id=commons_event['id']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Field satchel · retained Commons activity')
+        satchel_item=a.locator(f'[data-field-satchel-item="{commons_event_id}"]')
+        expect(satchel_item).to_have_count(1)
+        expect(satchel_item).to_contain_text(commons_text)
+        expect(satchel_item).to_contain_text('retained conversation · not evidence or authority')
+        expect(satchel_item).to_contain_text(commons_event_id)
+        before_satchel_return=visitor.request.get(url+'api/state').json()
+        a.locator(f'[data-field-satchel-return="{commons_event_id}"]').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        after_satchel_return=visitor.request.get(url+'api/state').json()
+        assert after_satchel_return['world']['revision']==before_satchel_return['world']['revision']
+        assert after_satchel_return['world']['events']==before_satchel_return['world']['events']
+        assert after_satchel_return['world']['xp']==before_satchel_return['world']['xp']
+
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('No retained Commons messages are recorded for this character yet.')
+        expect(b.locator('[data-field-satchel-item]')).to_have_count(0)
+        close_sheet(b)
+
         open_commons(b)
         before_mute_state=visitor.request.get(url+'api/state').json()
         b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
@@ -1385,7 +1408,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation'
     finally:owner.close();visitor.close()
 
 
