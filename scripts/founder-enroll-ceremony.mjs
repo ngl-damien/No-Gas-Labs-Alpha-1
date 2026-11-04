@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 /**
- * Founder enrollment candidate ceremony — run on Founder's device only.
+ * Founder enrollment candidate builder — the command-line ceremony is fail-closed.
  *
- * This command creates a public-key candidate, not an enrolled trust anchor.
- * The candidate remains NOT_ENROLLED until Founder-controlled private-key
- * custody is independently verified and a separate enrollment decision is made.
+ * buildEnrollmentCandidate() accepts a public key from a future platform-backed
+ * keystore adapter. The current Node-only CLI has no non-extractable keystore,
+ * so it must not generate a throwaway private key and present an unusable public
+ * candidate. A separate Founder-controlled enrollment decision is still required.
  *
- * Raw private-key file export is deliberately disabled. This Node ceremony
- * cannot provide descriptor-relative, non-extractable key custody. A future
- * platform-specific Android Keystore / secure-enclave adapter must own that
- * operation before any production enrollment is possible.
+ * Raw private-key file export is deliberately disabled.
  */
-import { generateKeyPairSync, createHash, KeyObject } from 'node:crypto';
+import { createHash, KeyObject } from 'node:crypto';
 import { resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 function failure(code, message) {
   return Object.assign(new Error(message), { code });
@@ -23,8 +21,17 @@ const SAFE_ENROLLMENT_ERROR_DETAILS = Object.freeze({
   FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED:
     'Raw private-key file export is disabled; use a platform-backed, non-extractable keystore flow before enrollment.',
   FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID:
-    'Only a public P-256 elliptic-curve key with canonical 32-byte coordinates can produce an enrollment candidate.'
+    'Only a public P-256 elliptic-curve key with canonical 32-byte coordinates can produce an enrollment candidate.',
+  FOUNDER_KEYSTORE_UNAVAILABLE:
+    'No platform-backed, non-extractable keystore is configured; no key was generated and no enrollment candidate was created.'
 });
+
+const ENROLLMENT_HELP = [
+  'Founder enrollment is unavailable in this Node-only ceremony.',
+  'No key is generated or persisted by this command.',
+  'Raw private-key file export is disabled.',
+  'A platform-backed, non-extractable keystore adapter and a separate Founder-controlled enrollment decision are required.'
+].join('\n');
 
 export function formatEnrollmentError(error) {
   const code = typeof error?.code === 'string' && /^[A-Z0-9_]{1,96}$/.test(error.code)
@@ -45,9 +52,13 @@ function validateArguments(argv) {
       'Raw private-key file export is disabled until a platform-backed, non-extractable keystore adapter is available.'
     );
   }
+  if (argv.length === 1 && (argv[0] === '--help' || argv[0] === '-h')) {
+    return 'help';
+  }
   if (argv.length > 0) {
     throw failure('FOUNDER_ENROLLMENT_ARGUMENT_INVALID', 'This candidate ceremony accepts no command-line arguments.');
   }
+  return 'run';
 }
 
 function isCanonicalP256Coordinate(value) {
@@ -112,19 +123,19 @@ export function buildEnrollmentCandidate(publicKey, { now = new Date() } = {}) {
 
 export function main(argv = process.argv.slice(2), options = {}) {
   const log = options.log ?? console.log;
-  const generate = options.generateKeyPairSync ?? generateKeyPairSync;
+  const command = validateArguments(argv);
 
-  // Reject raw-file export and every unrecognized argument before generating
-  // even an ephemeral key or printing a candidate.
-  validateArguments(argv);
+  if (command === 'help') {
+    log(ENROLLMENT_HELP);
+    return null;
+  }
 
-  const { publicKey } = generate('ec', { namedCurve: 'P-256' });
-  const candidate = buildEnrollmentCandidate(publicKey, { now: options.now ?? new Date() });
-
-  log(JSON.stringify(candidate, null, 2));
-  log('\n# No private key was persisted. This candidate remains NOT_ENROLLED and cannot authorize.');
-  log('# Raw private-key export is disabled; a platform-backed non-extractable keystore and separate Founder-controlled enrollment are required.');
-  return candidate;
+  // Do not create a throwaway keypair: without a platform keystore the private
+  // half cannot be retained for later signing, so its public candidate is unusable.
+  throw failure(
+    'FOUNDER_KEYSTORE_UNAVAILABLE',
+    'No platform-backed non-extractable keystore is configured; refusing to generate an ephemeral key whose private half cannot be retained for signing.'
+  );
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
