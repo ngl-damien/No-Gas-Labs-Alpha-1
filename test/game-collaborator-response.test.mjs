@@ -447,6 +447,32 @@ function retainedResponseEvent(packet, role, responseText, actor = founder) {
   };
 }
 
+test('revalidates retained Council responses for all four bounded collaborator roles', () => {
+  const sourceWorld = worldForTest();
+  const packets = packetsForTest();
+  for (const role of Object.keys(validResponses)) {
+    const event = {
+      ...retainedResponseEvent(packets[role], role, JSON.stringify(validResponses[role])),
+      id: 'retained-response-event-' + role,
+      responseId: 'retained-response-id-' + role
+    };
+    const world = {
+      ...sourceWorld,
+      revision: sourceWorld.revision + 1,
+      events: [...sourceWorld.events, event]
+    };
+    const before = structuredClone(world);
+    const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+    assert.equal(review.status, 'valid-for-human-review', role + ': ' + review.reason);
+    assert.equal(review.role, role);
+    assert.equal(review.eventId, event.id);
+    assert.equal(review.responseId, event.responseId);
+    assert.deepEqual(review.packetScope.includedEventIds, packets[role].inputRefs);
+    assert.equal(Object.isFrozen(review.response), true);
+    assert.deepEqual(world, before, role + ' retained review must not mutate the world');
+  }
+});
+
 test('revalidates an exact actor-scoped retained response against its source snapshot for Council Chamber review', () => {
   const sourceWorld = worldForTest();
   const packet = packetsForTest().adversary;
