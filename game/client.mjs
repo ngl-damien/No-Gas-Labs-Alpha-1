@@ -166,7 +166,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
         button('Unmute →',()=>{
           const next=feed.mutedAuthors.filter(candidate=>candidate.id!==author.id||candidate.role!==author.role);
           if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
-        }),{class:'secondary-button','data-commons-unmute':author.id,'data-commons-unmute-role':author.role}
+        },{class:'secondary-button','data-commons-unmute':author.id,'data-commons-unmute-role':author.role})
       ]));
     }
     content.append(mutedPanel);
