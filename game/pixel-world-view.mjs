@@ -225,6 +225,40 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
   });
 }
 
+const INSTITUTION_POINTER_HIT_RADIUS = 60;
+
+/**
+ * Resolve a touch/canvas point to a real institutional landmark in world space.
+ * The returned ID is only a navigation target; arrival still uses the existing
+ * WorldView interaction callback and cannot create an event by itself.
+ */
+export function projectInstitutionPointerTarget(point, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+
+  let selected = null;
+  for (const place of PLACES) {
+    if (place.type !== 'institution') continue;
+    const distance = Math.hypot(place.x - worldX, place.y - worldY);
+    if (distance <= INSTITUTION_POINTER_HIT_RADIUS &&
+        (!selected || distance < selected.distance)) {
+      selected = { place, distance };
+    }
+  }
+  return selected?.place.id ?? null;
+}
+
 function guildNpcAccessibilityText(readiness) {
   const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
   const descriptions = GUILD_NPCS.map(npc => {
@@ -1187,27 +1221,43 @@ export class PixelWorldView extends WorldView {
 
   handlePointer(event, fallback) {
     const rect = this.canvas.getBoundingClientRect();
-    const target = projectGuildNpcPointerTarget({
+    const point = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
-    }, this.camera, this.zoom, this.width, this.height);
-    if (!target) {
-      if (typeof fallback === 'function') fallback(event);
+    };
+    const npcTarget = projectGuildNpcPointerTarget(
+      point, this.camera, this.zoom, this.width, this.height
+    );
+    if (npcTarget) {
+      const nearest = this.nearest(npcTarget.id, 'npc');
+      if (nearest?.type === 'npc') {
+        event.preventDefault?.();
+        if (nearest.distance < 160) {
+          this.interact(npcTarget.id, 'npc');
+          return;
+        }
+        this.goTo(npcTarget.id, 'npc');
+        this.canvas.focus({ preventScroll: true });
+        return;
+      }
+    }
+
+    const institutionId = projectInstitutionPointerTarget(
+      point, this.camera, this.zoom, this.width, this.height
+    );
+    if (institutionId) {
+      event.preventDefault?.();
+      const nearest = this.nearest(institutionId, 'institution');
+      if (nearest?.type === 'institution' && nearest.distance < 160) {
+        this.interact(institutionId);
+        return;
+      }
+      this.goTo(institutionId);
+      this.canvas.focus({ preventScroll: true });
       return;
     }
 
-    const nearest = this.nearest(target.id, 'npc');
-    if (nearest?.type !== 'npc') {
-      if (typeof fallback === 'function') fallback(event);
-      return;
-    }
-    event.preventDefault?.();
-    if (nearest.distance < 160) {
-      this.interact(target.id, 'npc');
-      return;
-    }
-    this.goTo(target.id, 'npc');
-    this.canvas.focus({ preventScroll: true });
+    if (typeof fallback === 'function') fallback(event);
   }
 
   goTo(id, targetType) {
