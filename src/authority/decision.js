@@ -245,11 +245,10 @@ function readNonceLedger(filePath) {
   }
 }
 
-function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt, allowMissing = false) {
+function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedReceipt) {
   let current;
   try { current = lstatSync(lockPath); }
   catch (error) {
-    if (error?.code === "ENOENT" && allowMissing) return false;
     if (error?.code === "ENOENT") throw new Error("FOUNDER_NONCE_LEDGER_LOCK_CHANGED");
     throw error;
   }
@@ -286,7 +285,6 @@ function assertNonceLockOwned(lockPath, identity, expectedSnapshot, expectedRece
       }
     }
   }
-  return true;
 }
 
 function releaseNonceLock(lockPath, identity, directory, expectedSnapshot = null, expectedReceipt = null) {
