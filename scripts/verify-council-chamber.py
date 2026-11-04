@@ -250,13 +250,16 @@ def seed_council_review_fixture(page):
         if (!reportEvent || reportEvent.actor.id !== fixture.reporterActorId) {
           throw new Error('The source report is not retained under the original Witness actor.');
         }
-        const includedChallenges = dto.world.events.filter(event =>
-          event.type === 'experiment-challenged' && event.reportId === fixture.reportId &&
-          packet.inputRefs.includes(event.id)
+        const allChallenges = dto.world.events.filter(event =>
+          event.type === 'experiment-challenged' && event.reportId === fixture.reportId
         );
-        if (!includedChallenges.length ||
-            includedChallenges.some(event => event.actor.id !== fixture.challengerActorId)) {
+        if (!allChallenges.length ||
+            allChallenges.some(event => event.actor.id !== fixture.challengerActorId)) {
           throw new Error('The challenge must remain visible as dissent from the second Witness actor.');
+        }
+        const includedChallenges = allChallenges.filter(event => packet.inputRefs.includes(event.id));
+        if (role !== 'tutor' && !includedChallenges.length) {
+          throw new Error('The ' + role + ' packet must retain the relevant challenge in its bounded source slice.');
         }
         let response;
         if (role === 'archivist') {
