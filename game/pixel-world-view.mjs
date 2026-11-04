@@ -967,6 +967,7 @@ export class PixelWorldView extends WorldView {
     super.resize();
     this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
   }
 
   measureMapOverlayRects() {
@@ -1012,14 +1013,7 @@ export class PixelWorldView extends WorldView {
     }
   }
 
-  refreshMapOverlayRectsIfNeeded() {
-    const visible = this.playUiVisible();
-    if (visible === this.mapOverlayVisibility) return;
-    this.mapOverlayVisibility = visible;
-    this.mapOverlayRects = this.measureMapOverlayRects();
-  }
-
-  observeMapOverlays() {
+  observeMapOverlayElements() {
     if (!this.resizeObserver?.observe || typeof document === 'undefined' ||
         typeof document.querySelectorAll !== 'function') return;
     try {
@@ -1027,8 +1021,44 @@ export class PixelWorldView extends WorldView {
         try { this.resizeObserver.observe(element); } catch {}
       }
     } catch {}
+  }
+
+  refreshMapOverlayRectsIfNeeded() {
+    const visible = this.playUiVisible();
+    const dirty = this.mapOverlayRectsDirty === true;
+    if (visible === this.mapOverlayVisibility && !dirty) return;
+    if (dirty) this.observeMapOverlayElements();
+    this.mapOverlayVisibility = visible;
+    this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
+  }
+
+  observeMapOverlays() {
+    if (typeof document === 'undefined') return;
+    this.observeMapOverlayElements();
+    if (!this.mapOverlayMutationObserver && typeof MutationObserver === 'function' && document.body) {
+      let observer = null;
+      try {
+        observer = new MutationObserver(() => {
+          // Defer layout reads to the next render; never measure from the mutation callback.
+          this.mapOverlayRectsDirty = true;
+        });
+        observer.observe(document.body, {
+          attributes: true,
+          attributeFilter: ['class', 'style', 'hidden', 'aria-expanded'],
+          childList: true,
+          characterData: true,
+          subtree: true
+        });
+        this.mapOverlayMutationObserver = observer;
+      } catch {
+        try { observer?.disconnect?.(); } catch {}
+        this.mapOverlayMutationObserver = null;
+      }
+    }
     this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
+    this.mapOverlayRectsDirty = false;
   }
 
   handlePointer(event, fallback) {
@@ -1594,6 +1624,8 @@ export class PixelWorldView extends WorldView {
     try { this.npcControlGroup?.remove?.(); } catch {}
     this.npcControlGroup = null;
     this.npcControlButtons?.clear?.();
+    try { this.mapOverlayMutationObserver?.disconnect?.(); } catch {}
+    this.mapOverlayMutationObserver = null;
     super.destroy();
   }
 }
