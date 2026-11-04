@@ -259,5 +259,7 @@ test('directory-sync uncertainty prints a safe remediation detail without leakin
 
   const systemError = Object.assign(new Error('open /private/founder.jwk failed'), { code: 'EIO' });
   assert.equal(formatEnrollmentError(systemError), 'EIO');
+  const malformedCode = Object.assign(new Error('unsafe diagnostic'), { code: 'EIO\n/private/founder.jwk' });
+  assert.equal(formatEnrollmentError(malformedCode), 'FOUNDER_ENROLLMENT_FAILED');
   assert.equal(formatEnrollmentError(new Error('open /private/founder.jwk failed')), 'FOUNDER_ENROLLMENT_FAILED');
 });
