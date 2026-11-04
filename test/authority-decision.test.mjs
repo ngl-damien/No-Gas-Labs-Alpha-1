@@ -1282,3 +1282,45 @@ test("nonce writer refuses to publish after its owner lock disappears before led
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("nonce authorization reports uncertainty when its owner lock disappears during ledger rename", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-missing-writer-lock-postcheck-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const lockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+    const originalRenameSync = fs.renameSync;
+    let removed = false;
+    fs.renameSync = (from, to) => {
+      if (!removed && to === fixture.nonceLedgerPath) {
+        removed = true;
+        unlinkSync(lockPath);
+      }
+      return originalRenameSync(from, to);
+    };
+    syncBuiltinESMExports();
+    try {
+      withEnvironment({
+        NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+        NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+      }, () => {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_NONCE_LEDGER_LOCK_CHANGED/
+        );
+      });
+      assert.equal(removed, true, "the test must remove the owner lock after pre-rename validation");
+      const ledger = JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8"));
+      assert.deepEqual(ledger.nonces, [signed.nonce],
+        "the nonce commit is durable even though lock release is uncertain");
+      assert.equal(existsSync(lockPath), false, "the externally removed lock must not be recreated or mistaken for owned");
+    } finally {
+      fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
