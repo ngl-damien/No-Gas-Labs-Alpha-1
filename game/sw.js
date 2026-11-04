@@ -1,6 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Change this identifier whenever a public shell resource or import graph changes.
-const CACHE_NAME = CACHE_PREFIX + '20261103-pixel-world-1';
+const CACHE_NAME = CACHE_PREFIX + '20261103-pixel-world-2';
 
 // Cache only the public application shell. Shared APIs, authenticated state,
 // private server data, and retained artifact endpoints are deliberately excluded.
