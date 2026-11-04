@@ -251,6 +251,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
   }
 }
 function openInstitutionLocation(id) {
+  if (id === 'council_chamber') return openCouncilChamber();
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
