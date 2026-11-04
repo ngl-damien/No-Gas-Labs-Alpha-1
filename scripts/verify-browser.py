@@ -1169,7 +1169,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-COLLABORATOR-RESPONSE')
         a.locator('#relay-retry-pending-shared-action').click()
         expect(a.locator('#sheet')).to_be_hidden()
-        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1)'), 'Exact collaborator-response retry must clear the pending receipt'
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact collaborator-response retry must clear the pending receipt'
         recovered_collaborator=visitor.request.get(url+'api/state').json()
         recovered_responses=[event for event in recovered_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
         assert len(recovered_responses)==1, 'Exact retry must not append a duplicate collaborator response'
