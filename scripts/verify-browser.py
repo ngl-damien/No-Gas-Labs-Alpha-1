@@ -1199,6 +1199,115 @@ def shared(browser,url,data,out):
         a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
         assert visitor.request.get(url+'api/state').json()['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
         a.screenshot(path=str(out/'guild-npc-collaborator-relay.png'))
+
+        def open_commons(page):
+            close_sheet(page)
+            page.locator('#places-button').click()
+            page.get_by_role('button',name='Walk to The Commons at TownSquare',exact=True).click()
+            page.wait_for_timeout(8000)
+            for _ in range(24):
+                page.locator('#interact-button').click()
+                try:
+                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'",timeout=500)
+                    return
+                except Exception:
+                    if page.locator('#sheet').is_visible():
+                        close_sheet(page)
+                    page.wait_for_timeout(350)
+            raise AssertionError('The player could not reach and interact with The Commons at TownSquare')
+
+        open_commons(a)
+        before_commons=owner.request.get(url+'api/state').json()
+        assert before_commons['viewer']['role']=='founder'
+        before_commons_revision=before_commons['world']['revision']
+        before_commons_xp=before_commons['world']['xp']
+        commons_text='Keep the argument and the moderation record; do not turn either into evidence.'
+        lost_commons={'remaining':True,'payload':None,'response':None}
+        def lose_commons_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_commons['remaining'] and payload.get('type')=='post-message' and payload.get('text')==commons_text:
+                lost_commons['payload']=payload
+                committed=route.fetch()
+                lost_commons['response']=committed.json()
+                assert committed.status==200, 'The Commons post must commit before simulated response loss'
+                lost_commons['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Commons post lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_commons_response)
+        a.locator('#commons-message').fill(commons_text)
+        a.locator('[data-commons-post="true"]').click()
+        expect(a.locator('#toast')).to_contain_text('Commons post lost after commit')
+        pending_commons_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_commons_raw, 'A committed Commons post with a lost response must retain its exact Relay receipt'
+        pending_commons=json.loads(pending_commons_raw)
+        assert pending_commons['actorId']==before_commons['viewer']['id'] and pending_commons['actorRole']=='founder'
+        assert pending_commons['action']=={'type':'post-message','text':commons_text}
+        assert pending_commons['requestId']==lost_commons['payload']['requestId']
+        committed_commons=visitor.request.get(url+'api/state').json()
+        commons_posts=[event for event in committed_commons['world']['events'] if event['type']=='message-posted']
+        assert len(commons_posts)==1 and commons_posts[0]['text']==commons_text
+        commons_message_id=lost_commons['response']['result']['messageId']
+        assert commons_posts[0]['messageId']==commons_message_id
+        assert committed_commons['world']['revision']==before_commons_revision+1
+        assert committed_commons['world']['xp']==before_commons_xp, 'A Commons post must not award XP'
+        a.unroute('**/api/action',lose_commons_response)
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · POST-MESSAGE')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact Commons retry must clear the pending Relay receipt'
+        replayed_commons=visitor.request.get(url+'api/state').json()
+        assert len([event for event in replayed_commons['world']['events'] if event['type']=='message-posted'])==1
+        assert replayed_commons['world']['revision']==committed_commons['world']['revision']
+        assert replayed_commons['world']['xp']==before_commons_xp
+        assert replayed_commons['world']['events'][-1]['requestId']==pending_commons['requestId']
+
+        open_commons(b)
+        witness_card=b.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(witness_card).to_contain_text(commons_text)
+        witness_card.locator('details summary').click()
+        b.locator(f'#commons-report-reason-{commons_message_id}').select_option('privacy')
+        b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
+        b.locator(f'[data-commons-report="{commons_message_id}"]').click()
+        expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
+        assert 'is-recorded' in b.locator('[data-objective-id="witness-commons-message"]').get_attribute('class')
+        report_state=owner.request.get(url+'api/state').json()
+        assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
+
+        open_commons(a)
+        founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(founder_card.locator(f'[data-commons-hide="{commons_message_id}"]')).to_have_count(1)
+        expect(a.locator('#commons-pending-reports')).to_contain_text('A human should review the public text')
+        a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
+        founder_card.locator(f'[data-commons-hide="{commons_message_id}"]').click()
+        expect(a.locator('#toast')).to_contain_text('Message hidden')
+        hidden_for_witness=visitor.request.get(url+'api/state').json()
+        hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted')
+        assert hidden_post['text']=='[Message hidden by human moderation.]'
+        assert hidden_for_witness['world']['xp']==before_commons_xp
+        founder_hidden=owner.request.get(url+'api/state').json()
+        assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted')['text']==commons_text
+        assert len([event for event in founder_hidden['world']['events'] if event['type']=='message-moderated'])==1
+        founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        founder_card.locator(f'[data-commons-restore="{commons_message_id}"]').click()
+        expect(a.locator('#toast')).to_contain_text('Message restored')
+        restored_for_witness=visitor.request.get(url+'api/state').json()
+        assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted')['text']==commons_text
+        assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
+        assert restored_for_witness['world']['revision']==before_commons_revision+4
+        assert restored_for_witness['world']['xp']==before_commons_xp
+        expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
+        expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
+        close_sheet(a);a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Speaker')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(a);close_sheet(b)
         close_sheet(a)
         before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
         for page in [a,b]:
@@ -1216,7 +1325,7 @@ def shared(browser,url,data,out):
         assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest'}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','commonsSocial':'TownSquare post → exact Relay retry → Witness private report → Founder hide/restore → retained history; no XP'}
     finally:owner.close();visitor.close()
 
 
