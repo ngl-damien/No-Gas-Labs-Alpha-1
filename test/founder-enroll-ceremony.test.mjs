@@ -34,6 +34,7 @@ test('enrollment candidate remains NOT_ENROLLED until a separate custody decisio
   assert.equal(typeof candidate.fingerprint, 'string');
   assert.equal(candidate.fingerprint.length, 64);
   assert.equal(Object.hasOwn(candidate.public_key_jwk, 'd'), false);
+  assert.deepEqual(Object.keys(candidate.public_key_jwk).sort(), ['crv', 'kty', 'x', 'y']);
   assert.equal(Object.isFrozen(candidate.public_key_jwk), true);
   const originalX = candidate.public_key_jwk.x;
   assert.throws(() => { candidate.public_key_jwk.x = 'tampered'; }, TypeError);
@@ -48,6 +49,24 @@ test('enrollment candidate remains NOT_ENROLLED until a separate custody decisio
     .digest('hex');
   assert.equal(candidate.fingerprint, expectedFingerprint);
   assert.match(candidate.instruction, /separate, explicit enrollment step/);
+});
+
+test('candidate builder rejects non-P-256 keys and private KeyObjects before fingerprinting', () => {
+  const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const p256 = keyPair();
+
+  for (const unsupported of [p384.publicKey, rsa.publicKey, p256.privateKey]) {
+    let caught;
+    assert.throws(
+      () => buildEnrollmentCandidate(unsupported),
+      error => {
+        caught = error;
+        return error.code === 'FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID';
+      }
+    );
+    assert.match(formatEnrollmentError(caught), /^FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID:/);
+  }
 });
 
 test('default ceremony emits only a public NOT_ENROLLED candidate', () => {

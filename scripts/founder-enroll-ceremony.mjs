@@ -11,7 +11,7 @@
  * platform-specific Android Keystore / secure-enclave adapter must own that
  * operation before any production enrollment is possible.
  */
-import { generateKeyPairSync, createHash } from 'node:crypto';
+import { generateKeyPairSync, createHash, KeyObject } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -21,7 +21,9 @@ function failure(code, message) {
 
 const SAFE_ENROLLMENT_ERROR_DETAILS = Object.freeze({
   FOUNDER_PRIVATE_KEY_EXPORT_UNSUPPORTED:
-    'Raw private-key file export is disabled; use a platform-backed, non-extractable keystore flow before enrollment.'
+    'Raw private-key file export is disabled; use a platform-backed, non-extractable keystore flow before enrollment.',
+  FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID:
+    'Only a public P-256 elliptic-curve key with canonical 32-byte coordinates can produce an enrollment candidate.'
 });
 
 export function formatEnrollmentError(error) {
@@ -48,8 +50,50 @@ function validateArguments(argv) {
   }
 }
 
+function isCanonicalP256Coordinate(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) return false;
+  const bytes = Buffer.from(value, 'base64url');
+  return bytes.length === 32 && bytes.toString('base64url') === value;
+}
+
+function exportPublicP256Jwk(publicKey) {
+  if (!(publicKey instanceof KeyObject) ||
+      publicKey.type !== 'public' ||
+      publicKey.asymmetricKeyType !== 'ec') {
+    throw failure(
+      'FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID',
+      'Enrollment candidates require a public P-256 elliptic-curve key.'
+    );
+  }
+
+  let jwk;
+  try {
+    jwk = publicKey.export({ format: 'jwk' });
+  } catch {
+    throw failure(
+      'FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID',
+      'Enrollment candidates require an exportable public P-256 elliptic-curve key.'
+    );
+  }
+
+  if (jwk.kty !== 'EC' ||
+      jwk.crv !== 'P-256' ||
+      Object.hasOwn(jwk, 'd') ||
+      !isCanonicalP256Coordinate(jwk.x) ||
+      !isCanonicalP256Coordinate(jwk.y)) {
+    throw failure(
+      'FOUNDER_ENROLLMENT_PUBLIC_KEY_INVALID',
+      'Enrollment candidates require canonical public P-256 coordinates only.'
+    );
+  }
+
+  // Rebuild the JWK from the four fields covered by the fingerprint. Do not
+  // carry extra provider-specific or private fields into the candidate.
+  return { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y };
+}
+
 export function buildEnrollmentCandidate(publicKey, { now = new Date() } = {}) {
-  const jwk = publicKey.export({ format: 'jwk' });
+  const jwk = exportPublicP256Jwk(publicKey);
   const fingerprint = createHash('sha256')
     .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
     .digest('hex');
