@@ -2133,6 +2133,25 @@ def forge_inventory_mobile(browser,url,out,width=390):
         assert equipped_state['revision']==before_revision+2
         assert equipped_state['xp']==before_xp
         expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Equipped')
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(equip_quest).to_have_count(1)
+        expect(equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(equip_quest).to_contain_text('1/1')
+        equip_evidence=equip_quest.locator('details.quest-evidence')
+        expect(equip_evidence).to_have_count(1)
+        equip_evidence.locator('summary').click()
+        expect(equip_evidence).to_contain_text('slot provenance')
+        expect(equip_evidence).to_contain_text('source event '+forged['id'])
+        page.screenshot(path=str(out/f'forge-equipment-quest-board-mobile-{width}.png'))
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+
         unequip_button=page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]')
         unequip_bounds=unequip_button.bounding_box()
         assert unequip_bounds and unequip_bounds['x']>=-1 and unequip_bounds['x']+unequip_bounds['width']<=width+1, f'Unequip control exceeds the {width}px viewport: {unequip_bounds}'
@@ -2156,6 +2175,12 @@ def forge_inventory_mobile(browser,url,out,width=390):
         reloaded_forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
         expect(reloaded_forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
         expect(reloaded_forge_quest).to_contain_text('1/1')
+        const reloaded_equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(reloaded_equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_equip_quest).to_contain_text('1/1')
+        const reloaded_equip_evidence=reloaded_equip_quest.locator('details.quest-evidence')
+        reloaded_equip_evidence.locator('summary').click()
+        expect(reloaded_equip_evidence).to_contain_text('source event '+forged['id'])
         close_sheet(page)
         page.locator('#character-button').click()
         expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
@@ -2171,6 +2196,9 @@ def forge_inventory_mobile(browser,url,out,width=390):
             'equipmentRemovals':1,
             'questObjective':'founder-forge-field-item',
             'questProgress':'1/1',
+            'equipmentQuestObjective':'founder-equip-field-item',
+            'equipmentQuestProgress':'1/1',
+            'equipmentQuestSourceEventId':forged['id'],
             'questEvidenceItemId':forged['itemId'],
             'questEvidenceSourceEventId':publication['id'],
             'xpDelta':unequipped_state['xp']-before_xp,
