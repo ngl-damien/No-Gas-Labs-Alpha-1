@@ -2243,6 +2243,15 @@ def launchpad(page,url,out,label):
     stored_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
     assert stored_position=={'schema':'ngl.player-position.v1','x':position['x'],'y':position['y']}
     assert len(world['creations'])==3 and world['xp']==300
+    before_rejected_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+    tampered_save={**private_save,'playerPosition':{**position,'id':'forged-player'}}
+    page.locator('#import-world').set_input_files({'name':'tampered-world.json','mimeType':'application/json','buffer':json.dumps(tampered_save).encode()})
+    page.wait_for_function("()=>document.querySelector('#toast')?.textContent.includes('invalid character position')")
+    after_rejected_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+    after_rejected_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert after_rejected_world==before_rejected_world==world
+    assert after_rejected_position==stored_position
+    assert page.locator('#creation-count').text_content()=='3'
     page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(private_save).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
@@ -2259,7 +2268,7 @@ def launchpad(page,url,out,label):
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
-    return {'journey':label,'passed':True,'artifacts':3,'checks':9,'positionRoundTrip':True,'errors':errors}
+    return {'journey':label,'passed':True,'artifacts':3,'checks':12,'positionRoundTrip':True,'invalidPositionImportRejected':True,'errors':errors}
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
