@@ -2,6 +2,10 @@
 
 A dependency-free JavaScript tool for inspecting temporal claims, pinned source lineage and reported incumbent/candidate results. The browser stages **unauthorized local proposals**. It does not authenticate witnesses or operate the Founder Gate.
 
+## Stage A software-only temporal retrieval benchmark
+
+Run `node experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/temporal-retrieval-benchmark.mjs` from the repository root to emit the deterministic synthetic dataset, query results and benchmark receipt. Run `node --test test/temporal-retrieval-benchmark.test.mjs` for adversarial validation. The benchmark covers event-ID retrieval, state/relation retrieval, bounded temporal windows, future-inaccessible records, missing/duplicate/reordered/corrupted data, receipt verification and replay in a fresh Node process. It measures software retrieval only; it is not a participant study or evidence of anomalous information transfer.
+
 ## Run and import
 
 Use Node 24+ from this directory:
