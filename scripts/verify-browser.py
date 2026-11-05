@@ -1970,7 +1970,7 @@ def shared(browser,url,data,out):
         assert forged_state['viewer']['id']==witness_id and forged_state['viewer']['role']=='witness'
         forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged']
         forged_event=next((event for event in forge_events if event.get('sourceEventId')==relay_source['id']),None)
-        assert forged_event, f\"Shared Forge did not retain the exact Witness source link: revision={forged_state['world']['revision']}, forgeEvents={[(event.get('sourceEventId'),event.get('actor')) for event in forge_events]}\"
+        assert forged_event, "Shared Forge did not retain the exact Witness source link: revision={} forgeEvents={}".format(forged_state['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in forge_events])
         assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
         assert forged_state['world']['revision']==forge_revision+1
         assert forged_state['world']['xp']==forge_xp
