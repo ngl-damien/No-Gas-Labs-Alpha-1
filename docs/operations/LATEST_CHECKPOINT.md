@@ -1,6 +1,39 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 71 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 72 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
+
+**Current main:** \`c9e2cedcb27b078e8c82aad29e4503d9cbcff652\`. This is a documentation-only archive commit adding \`docs/archive/EXHIBIT-A-STRATEGIC-BRIEFING-2026-11-05.md\`. Its preservation note says the briefing was supplied by the user and does not imply Gemini received or responded. The game/runtime tree is unchanged from main \`950a976560354ffa86ddd3b01f9c6d42d4247d22\`.
+
+**Integration candidate:** PR #366, branch \`integration/mmorpg-stack-main-20261105\`, head \`b633ade8b07b73ef3e26336658341a61938df28f\`, based on \`950a976\`. It passed all seven exact-head workflows before main advanced. Against current main \`c9e2ced\`, #366 is 1 ahead / 1 behind, merge base \`950a976\`; the single behind commit is the documentation-only Exhibit A archive. PR #365 remains a dirty-ancestry probe and is superseded by #366.
+
+**Forge extension:** draft PR #367, branch \`game/forge-inventory-equipment-mainstack-20261105\`, parent #366. Code/test head \`a7123ba7dcc1701917d5c6a5f0d7173c0e756fda\`. Relative to parent #366 it is 35 commits ahead / 0 behind; relative to current main \`c9e2ced\` it is 36 ahead / 1 behind, merge base \`950a976\`. No rebase, merge, or conflict resolution was performed after main advanced.
+
+**Run 72 change:** commit \`a7123ba7dcc1701917d5c6a5f0d7173c0e756fda\` changes only \`scripts/verify-browser.py\`. The two-session shared Forge journey now captures the actual Witness \`POST /api/action\` response, checks the 200 response and Witness identity, finds the exact forged event/source link in that response, then independently rereads authoritative server state through the browser-context request client for both Witness and Founder. It matches the exact event ID, actor/role, source event, revision increment, and unchanged XP. The test no longer treats a page-side fetch snapshot as the sole proof of committed state.
+
+**Failure adjudication:** the preceding Browser run [42072515148](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42072515148) failed at the old post-wait assertion with \`forgeEvents=[]\`. That failure did not establish whether runtime persistence or the observation path was at fault. The strengthened assertion passed against the same runtime code. The old observation was insufficient; a server persistence defect is not established.
+
+**Exact code/test-head verification on \`a7123ba\`:**
+- Verify [42078385757](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385757): PASS. Node 24 repository tests, Python inspector, standalone game build, and bounded institutional exercise exited 0. Hosted preflight warnings/failures are empty. Preflight artifact [13438513136](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385757/artifacts/13438513136), SHA-256 \`15449c888ebe4aaf2a590122b044cf0160cab7473089acca91744c86f8dd787a\`.
+- Genesis Evidence Invariant [42078385561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385561): PASS.
+- Browser Acceptance [42078385557](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385557): PASS, 14/14 journeys. Artifact [13439548406](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385557/artifacts/13439548406), SHA-256 \`1e7a2a05b4fb501d52954864803fe43e89a417376924223e19207beddc5875f7\`. The 320px and 390px Forge journeys each recorded one actor-owned item, one equip, one unequip, zero XP delta, three revision changes, and reload retention. The two-session shared journey verified Witness ownership, Founder cross-actor equip rejection without revision, Witness equipment, actor-scoped loadout after re-entry, zero XP, and zero state-read retries.
+- Quest Board mobile [42078385630](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385630): PASS.
+- Council Chamber mobile [42078385737](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385737): PASS.
+- Academy Study Shelf mobile [42078385545](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385545) and Synthesis Clerk mobile [42078385721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385721) were still in progress at the last observation; they are not counted as passes or failures.
+
+**Hosted preflight and local limitation:** root \`AGENTS.md\` and the complete \`RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md\` were read. Nested \`AGENTS.md\` checks under \`scripts/\`, \`docs/\`, and \`docs/operations/\` returned 404; root instructions govern. No local checkout was available, so local portable preflight was not run. The hosted Verify preflight ran before tests on this code/test head and reported zero warnings and zero failures. This limitation remains explicit.
+
+**Donor and other-worker audit:** PR #298 is the recovered Forge donor, merged only to \`android/instrumentation-diagnostics-20261102\`, not main. #367 selectively adapts actor-owned source binding, matching slots, one-item-per-source, bounded inventory, idempotent replay, restart recovery, no-XP behavior, and Chronicle representation. Worker A's latest available result remains PR #362; its “both encounter modes” claim has no exact Founder-originating provenance linked and is not treated as a canonical decision. No combat rules are inferred.
+
+**Remaining blockers:** #366/#367 are draft/unmerged and now one main commit behind. Academy and Synthesis mobile jobs remain pending at the last observation. No physical Android device acceptance, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat decision, or G9 Founder acceptance occurred. No merge, release, deployment, external publication, spending, credential change, or authority transition occurred.
+
+**Next action:** finish the two pending mobile jobs, then reconcile #366/#367 with current main \`c9e2ced\` while preserving Exhibit A. Do not merge the feature stack. After ancestry is clean, continue with the next independently testable gameplay gap; do not invent combat or trade rules without provenance-backed Founder decisions.
+
+**Checkpoint integrity:** operational Markdown only; no cryptographic seal, Founder signature, or hash-chain authority is claimed.
+---
+
+## Run 71 snapshot — prior checkpoint (before the Exhibit A main commit)
+
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.
 
 **Current main:** `950a976560354ffa86ddd3b01f9c6d42d4247d22`, after PR #314. Direct source audit:
