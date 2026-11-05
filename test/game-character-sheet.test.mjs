@@ -1252,7 +1252,7 @@ test('Forge research sources retain exact earlier artifact versions without prom
   for(const item of [proposalItem,reportItem]){
     assert.equal(item.sourceCreationId,'research-source');
     assert.equal(item.sourceVersion,1);
-    assert.deepEqual(item.receipt,receipt(1));
+    assert.deepEqual(item.receipt,{digest:receipt(1).digest,size:receipt(1).size});
     assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
   }
   assert.equal(unlinkedItem.sourceCreationId,null);
