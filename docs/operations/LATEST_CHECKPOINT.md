@@ -838,3 +838,42 @@ Put the already-existing actor-scoped Study Card projection inside the actual Po
 ### Next ranked action
 
 Rehydrate again before editing. First reconcile the #316 signed-authority API/test boundary with the #350→#359 game stack without duplicating Worker A's owned changes. Then choose the next unowned player-capability gap from the current G4/G6/G7 evidence: a real event-backed item/equipment loop or independently retrievable source-verification loop. Do not promote a Study Note into a Source Observation or verified claim without the corresponding independent source retrieval and observation.
+
+---
+
+## Run 66 — 2026-11-04 — Worker B — G4 equipment-loop audit (bootstrap)
+
+**Worker:** MMORPG / playable-world delivery.  
+**Starting branch:** `game/quest-board-world-institution-20261104` (PR #361).  
+**Starting head:** `0e82865f62dd2797debb2b3ec7cb9c5981166e9d`.  
+**Prior durable game checkpoint:** Run 65 (above).
+
+### Required rehydration and current coordination
+
+- Read root `AGENTS.md` first (blob `a4beeee1c0ec46faab28502957c0e53850b2855d`), then the complete canonical `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md` (blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). The same blobs are present at this branch head.
+- Read the MMORPG completion contract and current-main ledger. The ledger on main remains stale at all gates NOT ASSESSED; the Run 65 checkpoint records the latest branch-local G6 work and must not be mistaken for integrated main capability.
+- Re-observed current main at `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`; it is distinct from the proposed game stack.
+- Re-observed active game PRs #359, #360 and #361. Their exact current heads were `00b1cda3b5459cc8830eeb80a94455505beb0d00`, `5e62a14b83bd1d113039dc9dc64448220c2b324e`, and `0e82865f62dd2797debb2b3ec7cb9c5981166e9d`; Verify, Genesis and Browser checks on these exact heads were observed completed/success. #361 also has successful Quest Board mobile and inherited Council/Academy mobile checks. #360 owns `game/client.mjs` and `scripts/verify-browser.py` for exact Relay retry/re-entry; #361 owns the in-world Quest Board and its dedicated mobile journey. Do not duplicate either change.
+- Latest Worker A security work was re-observed: PR #348 (absent nonce ledger fails closed) and child #353 (missing/malformed nonce regressions); #353 exact-head Verify, Genesis and Browser checks were observed successful. Worker A owns the authority/nonce paths. No authority or credential files are in this run's intended scope.
+- Donor review: Run 65's RAE/Mesh/Relay evidence-authority separation and TaskAgile touch/offline reference remain relevant. No TaskAgile code is treated as canonical; client-held score/state is not authority. This run will inspect the Alpha-1 recovered Guild/Forge and existing game event/projection mechanisms before selecting a bounded equipment capability.
+
+### Candidate objective and intended audit scope
+
+Audit whether the existing actor-owned Forge field-item inventory can support a minimal, event-backed equipment/loadout loop without inventing item ownership, XP, mastery, or authority. Candidate source/test paths are:
+
+- `game/model.mjs`, `game/server.mjs`, `game/client.mjs`, `game/character-sheet.mjs`, `game/quests.mjs`;
+- `test/game-model.test.mjs`, `test/game-server.test.mjs`, `test/game-character-sheet.test.mjs`, `test/game-quests.test.mjs`;
+- `scripts/verify-browser.py`, `package.json`, `test/agent-governance.test.mjs`;
+- this checkpoint and `docs/operations/MMORPG_COMPLETION_LEDGER.md`.
+
+This is an audit candidate, not a claim that the current item schema is equipment-capable. If retained items lack an explicit equip-compatible kind/slot or the actor/server contract cannot enforce ownership and replay safety, reject the candidate and choose the next unblocked capability rather than coercing research artifacts into gear.
+
+### Preflight and nested instructions
+
+- Both registered Desktop Commander devices were observed offline; no local checkout or Node 24 runtime is available. Local `npm run agent:preflight` therefore could not execute.
+- Manual recursive Git tree inspection at the exact starting head found only root `AGENTS.md` plus `recovery/public-repos/TaskAgile/AGENTS.md`. No nested instruction file exists under the intended `game/`, `test/`, `scripts/`, `docs/`, or `.github/workflows/` paths. The TaskAgile file is outside this run's edit scope.
+- The checkpoint-only push to this existing PR branch triggers the hosted Verify workflow, whose first command is `npm run agent:preflight:ci`. Its exact-head receipt will be inspected before any implementation path is opened. If that hosted preflight is not ready, stop and report the blocker.
+
+### Authority and scope
+
+No merge, release, deployment, spending, external publication, credential/permission change, Founder decision, trust-anchor enrollment, XP award, or canonical game-state mutation is authorized or performed by this bootstrap entry.
