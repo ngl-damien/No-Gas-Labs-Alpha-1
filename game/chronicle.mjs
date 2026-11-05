@@ -1,5 +1,6 @@
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
+  forge: "Forge",
   relay: "The Relay",
   river: "River of Receipts",
   overlook: "The Long View",
@@ -260,6 +261,22 @@ function worldEntry(event, index, creations, notes) {
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+  } else if (type === "field-item-forged") {
+    entry.title = "Personal field item forged · Surveyor’s Compass";
+    entry.category = "FORGE · PLAYER INVENTORY";
+    entry.summary = "An actor-owned item was forged from one earlier retained guide discovery. It is not transferable and grants no XP, combat power, mastery, truth, approval or authority.";
+    entry.detail = `Item: ${text(event?.itemId) || "not identified"} · Source event: ${text(event?.sourceEventId) || "not identified"} · Slot: ${text(event?.slotId) || "not identified"}`;
+    entry.warning = "This records a game item bound to its source event and actor; it is not independent evidence or an institutional credential.";
+  } else if (type === "field-item-equipped") {
+    entry.title = "Personal field item equipped";
+    entry.category = "FORGE · ARMOR BEARER";
+    entry.summary = "A reversible loadout selection was retained for this actor. Equipment changes no XP, combat statistics, authority, approval or truth.";
+    entry.detail = `Slot: ${text(event?.slotId) || "not identified"} · Item event: ${text(event?.sourceEventId) || "not identified"}`;
+  } else if (type === "field-item-unequipped") {
+    entry.title = "Personal field item unequipped";
+    entry.category = "FORGE · ARMOR BEARER";
+    entry.summary = "A reversible loadout removal was retained. The item remains in personal inventory and its source history is unchanged.";
+    entry.detail = `Slot: ${text(event?.slotId) || "not identified"}`;
   } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
     const guildId = text(event?.guildId) || "not identified";
     entry.category = "GUILD HALL · PLAYER GUILDS";
