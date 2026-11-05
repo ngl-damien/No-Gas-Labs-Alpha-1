@@ -96,7 +96,6 @@ export function sealDataset({ datasetId, protocolVersion = 'stage-a-1', records 
     seen.add(input.id);
     const occurred = instant(input.occurredAt, 'record.occurredAt');
     const available = instant(input.availableAt, 'record.availableAt');
-    if (available < occurred) throw new TypeError('record.availableAt cannot precede occurredAt');
     const payloadText = canonicalJson(input.payload);
     if (Buffer.byteLength(payloadText, 'utf8') > MAX_PAYLOAD_BYTES) throw new TypeError('record payload exceeds byte limit');
     const body = {
@@ -152,7 +151,6 @@ export function validateDataset(dataset) {
     if (record.sequence !== index) throw new TypeError('record sequence is missing, duplicated or reordered');
     const occurred = instant(record.occurredAt, 'record.occurredAt');
     const available = instant(record.availableAt, 'record.availableAt');
-    if (available < occurred) throw new TypeError('record.availableAt cannot precede occurredAt');
     if (occurred < previousTime || (occurred === previousTime && record.id <= previousId)) {
       throw new TypeError('records are not in canonical temporal order');
     }
