@@ -220,3 +220,208 @@ test('world activity counts refresh when a new world projection is supplied', t 
   assert.equal(view.institutionCounts['town-square'], 1);
   assert.equal(view.institutionCounts.evidence_archive, 0);
 });
+
+
+function makeLifecycleView(t, { entryVisible = false } = {}) {
+  let modalOpen = false;
+  let nextFrameId = 0;
+  const frames = new Map();
+  const documentListeners = new Map();
+  const mutationObservers = [];
+  const views = [];
+  const doorway = { hidden: !entryVisible };
+  const document = {
+    hidden: false,
+    body: { classList: { contains: name => name === 'modal-open' && modalOpen } },
+    getElementById: id => id === 'doorway' ? doorway : null,
+    addEventListener: (name, listener) => {
+      const listeners = documentListeners.get(name) || new Set();
+      listeners.add(listener);
+      documentListeners.set(name, listeners);
+    },
+    removeEventListener: (name, listener) => {
+      const listeners = documentListeners.get(name);
+      listeners?.delete(listener);
+      if (listeners?.size === 0) documentListeners.delete(name);
+    }
+  };
+  const globals = {
+    document,
+    devicePixelRatio: 1,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    requestAnimationFrame: callback => {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame: id => frames.delete(id),
+    ResizeObserver: class { observe() {} disconnect() {} },
+    MutationObserver: class {
+      constructor(callback) {
+        this.callback = callback;
+        this.disconnected = false;
+        this.targets = [];
+        mutationObservers.push(this);
+      }
+      observe(target, options) {
+        this.targets.push({ target, options });
+      }
+      disconnect() {
+        this.disconnected = true;
+      }
+    }
+  };
+  const previous = new Map(Object.keys(globals).map(key => [
+    key, Object.getOwnPropertyDescriptor(globalThis, key),
+  ]));
+  Object.assign(globalThis, globals);
+  t.after(() => {
+    for (const view of views.reverse()) view.destroy();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+
+  const canvas = {
+    getContext: () => ({}),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 700 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    setAttribute: () => {},
+    getAttribute: () => null,
+    removeAttribute: () => {},
+    focus: () => {}
+  };
+  const positions = [];
+  const view = new WorldView(canvas, { onPosition: position => positions.push(position) });
+  views.push(view);
+  return {
+    view,
+    positions,
+    frames,
+    document,
+    doorway,
+    documentListeners,
+    mutationObservers,
+    setModalOpen(value) {
+      modalOpen = value;
+      for (const observer of mutationObservers) {
+        const observesBodyClass = observer.targets.some(({ target, options }) =>
+          target === document.body && options.attributeFilter?.includes('class'));
+        if (!observer.disconnected && observesBodyClass) observer.callback();
+      }
+    },
+    setDoorwayVisible(value) {
+      doorway.hidden = !value;
+      for (const observer of mutationObservers) {
+        const observesDoorwayHidden = observer.targets.some(({ target, options }) =>
+          target === doorway && options.attributeFilter?.includes('hidden'));
+        if (!observer.disconnected && observesDoorwayHidden) observer.callback();
+      }
+    },
+    dispatchVisibility() {
+      for (const listener of documentListeners.get('visibilitychange') || []) listener();
+    }
+  };
+}
+
+test('world rendering stays idle behind the entry doorway until the player enters', t => {
+  const fixture = makeLifecycleView(t, { entryVisible: true });
+  const { view, frames } = fixture;
+
+  assert.equal(view.paused, true);
+  assert.ok(fixture.mutationObservers.some(observer => observer.targets.some(({ target, options }) =>
+    target === fixture.doorway && options.attributeFilter?.includes('hidden'))),
+  'the lifecycle observer must watch the entry doorway hidden attribute');
+  assert.equal(frames.size, 0, 'the entry screen must not run a hidden world animation loop');
+
+  fixture.setDoorwayVisible(false);
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'entering the world starts exactly one frame loop');
+
+  fixture.setDoorwayVisible(true);
+  assert.equal(view.paused, true);
+  assert.equal(frames.size, 0, 'showing the entry screen pauses the world again');
+
+  fixture.document.hidden = true;
+  fixture.dispatchVisibility();
+  fixture.setDoorwayVisible(false);
+  assert.equal(view.paused, true, 'hiding the doorway cannot resume a background WebView');
+
+  fixture.document.hidden = false;
+  fixture.dispatchVisibility();
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'the world resumes only when both the doorway is closed and the WebView is visible');
+
+  view.destroy();
+  assert.ok(fixture.mutationObservers.every(observer => observer.disconnected));
+});
+
+test('world animation pauses behind sheets and in the background without stale-frame duplication', t => {
+  const fixture = makeLifecycleView(t);
+  const { view, frames, positions } = fixture;
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'a visible world schedules one animation frame');
+
+  let staleUpdates = 0;
+  let staleRenders = 0;
+  view.update = () => { staleUpdates += 1; };
+  view.render = () => { staleRenders += 1; };
+  const firstFrameId = view.animation;
+  const staleFrame = frames.get(firstFrameId);
+  view.moving = true;
+  view.keys.add('d');
+  view.input = { x: 1, y: 0 };
+  view.route = [{ x: 250, y: 250 }];
+  view.target = 'relay';
+
+  fixture.setModalOpen(true);
+  assert.equal(view.paused, true);
+  assert.equal(view.animation, null);
+  assert.equal(frames.size, 0, 'an open sheet cancels the world render loop');
+  assert.equal(view.moving, false);
+  assert.equal(view.keys.size, 0);
+  assert.deepEqual(view.input, { x: 0, y: 0 });
+  assert.deepEqual(view.route, []);
+  assert.equal(positions.length, 1, 'pausing persists the last player position once');
+
+  staleFrame(16);
+  assert.equal(frames.size, 0, 'a stale callback cannot restart a paused world');
+
+  fixture.setModalOpen(false);
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'closing the sheet resumes exactly one frame');
+  const resumedFrameId = view.animation;
+  fixture.setModalOpen(false);
+  assert.equal(view.animation, resumedFrameId, 'repeated visibility signals do not duplicate frames');
+  assert.equal(frames.size, 1);
+
+  staleFrame(32);
+  assert.equal(view.animation, resumedFrameId, 'an obsolete callback after resume cannot replace the new frame');
+  assert.equal(frames.size, 1, 'an obsolete callback after resume cannot create a second loop');
+  assert.equal(staleUpdates, 0, 'an obsolete callback after resume cannot advance the world');
+  assert.equal(staleRenders, 0, 'an obsolete callback after resume cannot render another frame');
+
+  fixture.document.hidden = true;
+  fixture.dispatchVisibility();
+  assert.equal(view.paused, true);
+  assert.equal(view.animation, null);
+  assert.equal(frames.size, 0, 'backgrounding the WebView pauses rendering');
+
+  fixture.setModalOpen(true);
+  fixture.setModalOpen(false);
+  assert.equal(view.paused, true, 'closing a sheet cannot resume a still-hidden WebView');
+  assert.equal(frames.size, 0);
+
+  fixture.document.hidden = false;
+  fixture.dispatchVisibility();
+  assert.equal(view.paused, false);
+  assert.equal(frames.size, 1, 'returning to a visible WebView resumes one frame');
+
+  view.destroy();
+  assert.equal(frames.size, 0);
+  assert.ok(fixture.mutationObservers.every(observer => observer.disconnected));
+  assert.equal(fixture.documentListeners.get('visibilitychange')?.size ?? 0, 0);
+});
