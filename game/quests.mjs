@@ -391,6 +391,46 @@ function projectFieldForgeEvents(events, actorId, actorRole, eventPositionByRefe
   });
 }
 
+function projectFieldEquipmentEvents(events, actorId, actorRole, eventPositionByReference, fieldForgeEvents) {
+  const history = trailRows(events);
+  const validIds = uniqueEventIds(history);
+  const forgedById = new Map(fieldForgeEvents.map(event => [event.id, event]));
+  const activeBySlot = new Map();
+  const equipmentEvents = [];
+
+  // Replay this actor's reversible slot selections. A quest records the first
+  // valid equip action even if a later retained unequip removes the loadout.
+  for (const event of history) {
+    if (event?.type === 'field-item-equipped') {
+      if (!safeResearchId(event.id) || !validIds.has(event.id) ||
+          !safeResearchId(event.sourceEventId) ||
+          !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
+          event.actor?.id !== actorId || event.actor?.role !== actorRole ||
+          !isStrictTimestamp(event.at)) continue;
+      const source = forgedById.get(event.sourceEventId);
+      const sourcePosition = source ? eventPositionByReference.get(source) ?? -1 : -1;
+      const position = eventPositionByReference.get(event) ?? -1;
+      if (!source || source.slotId !== event.slotId || sourcePosition < 0 ||
+          position <= sourcePosition || !isStrictTimestamp(source.at) ||
+          Date.parse(source.at) > Date.parse(event.at)) continue;
+      if (activeBySlot.get(event.slotId)?.sourceEventId === event.sourceEventId) continue;
+      activeBySlot.set(event.slotId, { sourceEventId: event.sourceEventId, position, at: event.at });
+      equipmentEvents.push(event);
+    } else if (event?.type === 'field-item-unequipped') {
+      if (!safeResearchId(event.id) || !validIds.has(event.id) ||
+          !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
+          event.actor?.id !== actorId || event.actor?.role !== actorRole ||
+          !isStrictTimestamp(event.at)) continue;
+      const active = activeBySlot.get(event.slotId);
+      const position = eventPositionByReference.get(event) ?? -1;
+      if (active && position > active.position && Date.parse(active.at) <= Date.parse(event.at)) {
+        activeBySlot.delete(event.slotId);
+      }
+    }
+  }
+  return equipmentEvents;
+}
+
 function researchObjectAction(proposal) {
   const moonshotId = proposal?.moonshotId;
   if (!safeResearchId(moonshotId)) return null;
@@ -438,6 +478,10 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       } : {}),
       ...(event.type === 'field-item-forged' ? {
         itemId: typeof event.itemId === 'string' ? event.itemId : null,
+        slotId: typeof event.slotId === 'string' ? event.slotId : null,
+        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+      } : {}),
+      ...(event.type === 'field-item-equipped' ? {
         slotId: typeof event.slotId === 'string' ? event.slotId : null,
         sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
       } : {})
@@ -600,6 +644,10 @@ export function getQuestTrail(world, viewer) {
   const uniqueMoonshotEventIds = uniqueEventIds(events);
   const fieldForgeEvents = projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference);
   const firstFieldForgeEvent = fieldForgeEvents[0] || null;
+  const fieldEquipmentEvents = projectFieldEquipmentEvents(
+    events, actorId, actorRole, eventPositionByReference, fieldForgeEvents
+  );
+  const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -1031,6 +1079,14 @@ export function getQuestTrail(world, viewer) {
         'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
       ),
       trailMilestone(
+        'founder-equip-field-item', 'Equip one of your own field items', 1,
+        firstFieldEquipmentEvent ? [firstFieldEquipmentEvent.id] : [],
+        firstFieldEquipmentEvent ? [firstFieldEquipmentEvent] : [],
+        firstFieldEquipmentEvent ? null : { type: 'location', id: 'forge' },
+        null,
+        'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
+      ),
+      trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
         guildMembership.event ? [guildMembership.event] : [],
@@ -1177,6 +1233,14 @@ export function getQuestTrail(world, viewer) {
       firstFieldForgeEvent ? null : { type: 'location', id: 'forge' },
       null,
       'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
+    ),
+    trailMilestone(
+      'witness-equip-field-item', 'Equip one of your own field items', 1,
+      firstFieldEquipmentEvent ? [firstFieldEquipmentEvent.id] : [],
+      firstFieldEquipmentEvent ? [firstFieldEquipmentEvent] : [],
+      firstFieldEquipmentEvent ? null : { type: 'location', id: 'forge' },
+      null,
+      'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
     ),
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
