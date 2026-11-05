@@ -394,7 +394,75 @@ function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION �
   target.append(panel);
 }
 
-function openCharacterSheet(){const record=projectCharacter(world,viewer);const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));content.append(node('article',{class:'field-card'},[node('h3',{text:'Level '+record.level}),paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')]));content.append(node('h3',{text:'Skills · recorded activity'}));for(const skill of record.skills){content.append(node('article',{class:'field-card'},[node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)]));}appendStudyCardCollection(content,record);content.append(node('h3',{text:'World inventory · published places'}));if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));for(const item of record.inventory){const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));content.append(node('article',{class:'field-card'},children));}content.append(node('h3',{text:'Field satchel · retained Commons activity'}));content.append(paragraph('A bounded, read-only index of this character’s own retained TownSquare messages. Each item points back to the Commons. Conversation is not evidence, truth, approval, authority or XP. Human-hidden posts remain in the record with the public redaction.','form-help'));if(!record.fieldSatchel.length)content.append(paragraph('No retained Commons messages are recorded for this character yet.'));if(record.fieldSatchelOmittedCount>0)content.append(paragraph('Showing the newest '+record.fieldSatchel.length+' of '+record.fieldSatchelTotal+' retained Commons messages. Older messages remain in the Chronicle.','form-help'));for(const item of record.fieldSatchel){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.status,date,'event '+item.eventId,'message '+item.messageId].join(' · ');const children=[node('h3',{text:item.title}),paragraph(details)];if(item.summary)children.push(paragraph(item.summary));if(item.action)children.push(button('Return to TownSquare →',()=>followQuestAction(item.action),{class:'list-button','data-field-satchel-return':item.eventId}));content.append(node('article',{class:'field-card','data-field-satchel-item':item.eventId},children));}content.append(node('h3',{text:'Recent field trail'}));if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));for(const item of record.recentActivity){const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));}}
+function openCharacterSheet(){
+  const record=projectCharacter(world,viewer);
+  const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');
+  content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));
+  content.append(node('article',{class:'field-card'},[
+    node('h3',{text:'Level '+record.level}),
+    paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')
+  ]));
+  content.append(node('h3',{text:'Skills · recorded activity'}));
+  for(const skill of record.skills)content.append(node('article',{class:'field-card'},[
+    node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)
+  ]));
+  appendStudyCardCollection(content,record);
+  content.append(node('h3',{text:'Equipment · field kit'}));
+  content.append(paragraph('Equipment is a reversible projection of this actor’s own earlier forged items. It grants no XP, combat statistics, truth, mastery, approval or authority.','form-help'));
+  for(const slot of record.equipment){
+    const children=[node('h3',{text:slot.label}),paragraph(slot.source?'Equipped · '+slot.source.title+' · source event '+slot.source.sourceEventId:'Empty equipment slot.')];
+    if(slot.source)children.push(button('Unequip',guarded(async()=>{
+      await act({type:'unequip-field-item',slotId:slot.id});
+      toast('Field item unequipped. Its forge history remains; no XP changed.');
+      openCharacterSheet();
+    }),{class:'list-button','data-unequip-field-item':slot.id}));
+    else children.push(button('Visit Forge →',()=>openForge(),{class:'list-button','data-visit-forge':slot.id}));
+    content.append(node('article',{class:'field-card','data-equipment-slot':slot.id},children));
+  }
+  content.append(node('h3',{text:'Personal inventory · forged field items'}));
+  content.append(paragraph('Each item exists only because this actor recorded a forge event against one unique earlier eligible source. Items are non-transferable and do not imply truth, mastery, combat power or authority.','form-help'));
+  if(!record.fieldInventory.length)content.append(paragraph('No personal field items forged yet. Visit the Forge after recording eligible activity.','empty-note'));
+  if(record.fieldInventoryOmittedCount>0)content.append(paragraph('Showing '+record.fieldInventory.length+' of '+record.fieldInventoryTotal+' forged items; '+record.fieldInventoryOmittedCount+' older items remain in retained history.','form-help'));
+  for(const item of record.fieldInventory){
+    const equipped=record.equipment.find(slot=>slot.id===item.slotId)?.source?.eventId===item.eventId;
+    const children=[node('h3',{text:item.title}),paragraph(item.slotLabel+' · '+item.status+' · owner '+item.ownerId+' ('+item.ownerRole+')'),paragraph('Source type '+item.sourceKind+' · retained event '+item.sourceEventId)];
+    if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
+    if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'.','form-help'));
+    else children.push(button('Equip item',guarded(async()=>{
+      await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
+      toast('Forged item equipped in its matching slot. No XP or authority changed.');
+      openCharacterSheet();
+    }),{class:'list-button','data-equip-forged-item':item.itemId}));
+    content.append(node('article',{class:'field-card','data-field-item-id':item.itemId},children));
+  }
+  content.append(node('h3',{text:'World inventory · published places'}));
+  if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));
+  for(const item of record.inventory){
+    const children=[node('h3',{text:item.title}),paragraph(item.kind.toUpperCase()+' · version '+item.version)];
+    if(item.receipt)children.push(node('small',{text:'SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    content.append(node('article',{class:'field-card'},children));
+  }
+  content.append(node('h3',{text:'Field satchel · retained Commons activity'}));
+  content.append(paragraph('A bounded, read-only index of this character’s own retained TownSquare messages. Each item points back to the Commons. Conversation is not evidence, truth, approval, authority or XP. Human-hidden posts remain in the record with the public redaction.','form-help'));
+  if(!record.fieldSatchel.length)content.append(paragraph('No retained Commons messages are recorded for this character yet.'));
+  if(record.fieldSatchelOmittedCount>0)content.append(paragraph('Showing the newest '+record.fieldSatchel.length+' of '+record.fieldSatchelTotal+' retained Commons messages. Older messages remain in the Chronicle.','form-help'));
+  for(const item of record.fieldSatchel){
+    const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;
+    const details=[item.status,date,'event '+item.eventId,'message '+item.messageId].join(' · ');
+    const children=[node('h3',{text:item.title}),paragraph(details)];
+    if(item.summary)children.push(paragraph(item.summary));
+    if(item.action)children.push(button('Return to TownSquare →',()=>followQuestAction(item.action),{class:'list-button','data-field-satchel-return':item.eventId}));
+    content.append(node('article',{class:'field-card','data-field-satchel-item':item.eventId},children));
+  }
+  content.append(node('h3',{text:'Recent field trail'}));
+  if(!record.recentActivity.length)content.append(paragraph('No activity events are recorded for this character yet.'));
+  for(const item of record.recentActivity){
+    const date=Number.isFinite(Date.parse(item.at))?new Date(item.at).toLocaleString():item.at;
+    const details=[item.creationId?'creation '+item.creationId:null,item.version!==null?'version '+item.version:null,item.locationId?'location '+item.locationId:null].filter(Boolean).join(' · ');
+    content.append(node('article',{class:'field-card'},[node('h3',{text:item.type.toUpperCase()}),paragraph(date+(details?' · '+details:''))]));
+  }
+}
 function followResearchTarget(object,fallback,targetType){
   if(!object){fallback();return}
   closeSheet();
@@ -1246,10 +1314,54 @@ function openCouncilChamber(){
     'form-help'
   ));
 }
+function buildFieldForgeSection(){
+  const section=node('section',{'data-field-forge-root':'true'});
+  const record=projectCharacter(world,viewer);
+  const forgedSources=new Set(record.fieldInventory.map(item=>item.sourceEventId));
+  section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
+  section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Items stay bound to this actor, fit one matching equipment slot, cannot be transferred or consumed, and grant no XP, combat statistics or authority.','form-help'));
+  for(const slot of record.equipment){
+    const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
+    const card=node('article',{class:'field-card','data-forge-slot':slot.id},[
+      node('h3',{text:slot.label}),paragraph(slot.description)
+    ]);
+    if(!eligible.length){
+      card.append(paragraph('No un-forged source is available for this slot. Record qualifying activity first, or use a different slot.','empty-note'));
+    }else{
+      const selector=node('select',{
+        id:'forge-source-'+slot.id,
+        'aria-label':'Retained source for '+slot.label,
+        'data-forge-choice':slot.id
+      },eligible.map(item=>node('option',{value:item.eventId,text:item.title+' · '+item.eventId})));
+      card.append(field('Retained source','forge-source-'+slot.id,selector));
+      card.append(button('Forge item',guarded(async()=>{
+        const sourceEventId=selector.value;
+        if(!sourceEventId)throw new Error('Choose a retained source first.');
+        await act({type:'forge-field-item',slotId:slot.id,sourceEventId});
+        toast('Personal field item forged from your own retained activity. No XP or authority changed.');
+        const root=$('sheet-content')?.querySelector('[data-field-forge-root]');
+        if(root)root.replaceWith(buildFieldForgeSection());
+      }),{class:'primary-button','data-forge-item':slot.id}));
+    }
+    section.append(card);
+  }
+  if(record.fieldInventory.length)section.append(paragraph(
+    record.fieldInventory.length+' personal field item'+(record.fieldInventory.length===1?' is':'s are')+' already forged. Inspect and equip them from the Character record.','form-help'
+  ));
+  return section;
+}
 function openForge(){
-  if(viewer.role==='founder')return openWorkshop();
-  const content=showSheet('Forge','FOUNDER-GATED CREATION');
-  content.append(paragraph('Drafting, repair and publication require an authenticated Founder session. Witnesses can inspect published work and leave attributed contributions or reports.'));
+  if(viewer.role==='founder'){
+    openWorkshop();
+    $('sheet-title').textContent='Forge';
+    $('sheet-kicker').textContent='FOUNDER-GATED MAKING · PLAYER FIELD KIT';
+    const content=$('sheet-content');
+    if(content)content.append(buildFieldForgeSection());
+    return;
+  }
+  const content=showSheet('Forge','PLAYER FIELD KIT · FOUNDER-GATED PUBLICATION');
+  content.append(paragraph('The Forge makes personal field items from your own earlier retained activity. Artifact drafting, repair and publication remain Founder-gated; Witnesses can still forge and equip their own field items.'));
+  content.append(buildFieldForgeSection());
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
