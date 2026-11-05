@@ -20,14 +20,16 @@ test('Stage A fixture is a sealed, deterministic synthetic event sequence', () =
 
 test('retrieval supports event identity, state relation and bounded temporal windows', () => {
   const { dataset, queries } = createStageAFixture();
-  assert.deepEqual(retrieve(dataset, queries[0]).ids, ['event-001']);
-  assert.deepEqual(retrieve(dataset, queries[1]).ids, ['event-004']);
-  assert.deepEqual(retrieve(dataset, queries[2]).ids, ['event-002', 'event-004']);
+  const querySpec = query => { const { expectedIds, ...spec } = query; return spec; };
+  assert.deepEqual(retrieve(dataset, querySpec(queries[0])).ids, ['event-001']);
+  assert.deepEqual(retrieve(dataset, querySpec(queries[1])).ids, ['event-004']);
+  assert.deepEqual(retrieve(dataset, querySpec(queries[2])).ids, ['event-002', 'event-004']);
 });
 
 test('future-inaccessible records are excluded even when their event time is inside the query window', () => {
   const { dataset, queries } = createStageAFixture();
-  const result = retrieve(dataset, queries[3]);
+  const { expectedIds, ...querySpec } = queries[3];
+  const result = retrieve(dataset, querySpec);
   assert.deepEqual(result.ids, []);
   assert.equal(result.excludedFutureCount, 1);
 });
