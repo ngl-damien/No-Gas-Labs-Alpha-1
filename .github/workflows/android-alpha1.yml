@@ -48,7 +48,6 @@ jobs:
           node-version: '24'
       - name: Portable repository preflight
         run: |
-          mkdir -p artifacts/agent-runs
           npm run agent:preflight -- \
             --path .github/workflows/android-alpha1.yml \
             --path android/.gitignore \
@@ -79,13 +78,13 @@ jobs:
             --path test/android-workflow.test.mjs \
             --path test/game-player-position.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
-            --receipt "artifacts/agent-runs/android-${GITHUB_RUN_ID}.json"
+            --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
       - name: Preserve portable preflight receipt
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ngl-agent-preflight-${{ github.run_id }}
-          path: artifacts/agent-runs/android-${{ github.run_id }}.json
+          path: agent-preflight-android-${{ github.run_id }}.json
           if-no-files-found: warn
       - uses: actions/setup-java@v4
         with:

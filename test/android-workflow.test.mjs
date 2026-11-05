@@ -15,10 +15,8 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
     'retain the bounded 40-minute job ceiling');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
     'the regression must be in both workflow path filters and the Android preflight');
-  const receiptDirectory = source.indexOf('mkdir -p artifacts/agent-runs');
-  const preflight = source.indexOf('npm run agent:preflight');
-  assert.ok(receiptDirectory >= 0 && receiptDirectory < preflight,
-    'the preflight receipt directory must exist before the runner writes its receipt');
-  assert.match(source, /path: artifacts\/agent-runs\/android-\$\{\{ github\.run_id \}\}\.json/,
-    'the non-hidden receipt must be preserved as an artifact');
+  assert.match(source, /--receipt "agent-preflight-android-\$\{GITHUB_RUN_ID\}\.json"/,
+    'the receipt uses a root-level path so descriptor-pinned creation needs no parent directory');
+  assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
+    'the non-hidden root-level receipt must be preserved as an artifact');
 });
