@@ -1769,7 +1769,7 @@ test('Forge inventory actions are actor-bound, idempotent and never award XP',as
   assert.equal(first.body.world.xp,beforeXp);
   const forged=first.body.world.events.at(-1);
   assert.equal(forged.type,'field-item-forged');
-  assert.equal(forged.actor.id,initial.body.actor.id);
+  assert.equal(forged.actor.id,initial.body.viewer.id);
   assert.equal(forged.sourceEventId,source.id);
   const revision=first.body.world.revision;
   const retry=await witness.request('/api/action',action);
