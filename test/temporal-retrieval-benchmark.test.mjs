@@ -71,6 +71,8 @@ test('a benchmark receipt binds the dataset and deterministic result set', () =>
   assert.equal(receipt.exactMatches, 4);
   assert.equal(receipt.accuracy, 1);
   assert.equal(receipt.datasetDigest, dataset.rootDigest);
+  assert.match(receipt.queryDigest, /^[a-f0-9]{64}$/);
+  assert.ok(Number.isFinite(receipt.latencyMs) && receipt.latencyMs >= 0);
   assert.equal(verifyReplay(dataset, queries, receipt).valid, true);
   const changedPlan = structuredClone(queries);
   changedPlan[0].asOf = '2026-11-05T12:00:31.000Z';
