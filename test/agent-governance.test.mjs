@@ -225,6 +225,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/artifacts.mjs',
     'test/game-artifacts.test.mjs',
     'scripts/verify-browser.py',
+    'experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/README.md',
     'experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/temporal-retrieval-benchmark.mjs',
     'test/temporal-retrieval-benchmark.test.mjs'
   ]) {
